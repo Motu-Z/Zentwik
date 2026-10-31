@@ -40,25 +40,48 @@ public partial class App : Application
 
         AppHost.Dispatcher.Attach(new SynchronizationContextDispatcher(context));
         IServiceProvider services = AppHost.Services;
+        ILogService log = services.GetRequiredService<ILogService>();
 
         // 主题必须在任何 Window / Page 创建之前应用：
         // 强调色是替换应用资源里的 Brush 键，控件一旦加载过就不会回头重算。
         ThemeController theme = services.GetRequiredService<ThemeController>();
-        theme.Initialize();
+        try
+        {
+            theme.Initialize();
+        }
+        catch (Exception ex)
+        {
+            // 关键兜底：主题初始化发生在「窗口尚未创建」之前，
+            // 此处抛出 = 进程在没有任何窗口的情况下退出 = 用户只看到黑屏。
+            // ThemeController 内部本身已做降级，这里是第二道防线：
+            // 无论如何都要把窗口建起来。
+            log.Error($"主题初始化失败，已用默认主题继续启动：{ex}");
+        }
 
-        _window = new MainWindow(
-            theme,
-            services.GetRequiredService<SettingsViewModel>(),
-            services.GetRequiredService<TuningViewModel>(),
-            services.GetRequiredService<ProcessViewModel>(),
-            services.GetRequiredService<ConfigViewModel>(),
-            services.GetRequiredService<BehaviorViewModel>(),
-            services.GetRequiredService<AdvancedViewModel>(),
-            services.GetRequiredService<LogViewModel>(),
-            services.GetRequiredService<ILogService>(),
-            services.GetRequiredService<IProcessWatcher>());
+        try
+        {
+            _window = new MainWindow(
+                theme,
+                services.GetRequiredService<SettingsViewModel>(),
+                services.GetRequiredService<TuningViewModel>(),
+                services.GetRequiredService<ProcessViewModel>(),
+                services.GetRequiredService<ConfigViewModel>(),
+                services.GetRequiredService<BehaviorViewModel>(),
+                services.GetRequiredService<AdvancedViewModel>(),
+                services.GetRequiredService<LogViewModel>(),
+                log,
+                services.GetRequiredService<IProcessWatcher>());
 
-        _window.Activate();
+            _window.Activate();
+        }
+        catch (Exception ex)
+        {
+            // 建窗口失败同样不能静默退进程：落盘 + 弹原生对话框，
+            // 让用户知道发生了什么，而不是只看到一片黑屏。
+            log.Error($"窗口创建失败：{ex}");
+            StartupCrashReporter.Report(ex, interactive: true);
+            throw;
+        }
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

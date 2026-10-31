@@ -33,6 +33,13 @@ public enum MotionLevel
 /// 这里只做「把 UiSettings 翻译成 WinUI 资源 / 系统对象」这一件事，不持有页面状态。
 /// 页面不需要知道当前是深色还是浅色 —— 它们只引用 ThemeResource，由 WinUI 自己重算。
 ///
+/// 【本类所有 WinRT 调用都必须降级（不可抛）】
+/// Initialize() 在 App.OnLaunched 里位于「建窗口之前」。此处的任何异常都会让进程
+/// 在窗口尚未创建时退出 —— 用户看到的只有一片黑屏，日志里也只有一句无用的栈。
+/// 因此本类的契约是：**对外只提供降级后的结果，绝不向外抛异常**。
+/// 拿不到系统强调色 → 用产品色；拿不到系统主题 → 用深色；材质不可用 → 用纯色；
+/// 标题栏通道异常 → 忽略（按钮本来就自绘，染色只是锦上添花）。
+///
 /// 【强调色为什么要覆盖资源键，而不是给每个控件设属性】
 /// 强调色会出现在按钮描边、下拉框焦点态、滑块、开关开启态、列表选中项……
 /// 逐个控件设属性既漏又散；替换 <c>AppAccentBrush</c> 这一组键，全局一次性生效。
@@ -40,7 +47,7 @@ public enum MotionLevel
 /// 所以一次覆盖同时命中明暗两套主题。
 ///
 /// 【材质与动效为什么拆成两个独立维度】
-/// 「极简 / 平衡 / 极致」这种三档绑定把两件正交的事捆在一起：想要亚克力但不想有动画，
+/// 「极简 / 平衡 / 极致」这三档绑定把两件正交的事捆在一起：想要亚克力但不想有动画，
 /// 或想要 Mica 但需要完整动效，都表达不出来。拆开之后每个维度各自单调，
 /// 组合数从 3 变成 3×3，而实现只是两个独立的枚举与两个独立的应用函数。
 /// </summary>
@@ -48,7 +55,12 @@ public sealed class ThemeController
 {
     private readonly IUiSettingsStore _settings;
     private readonly ILogService _log;
-    private readonly UISettings _systemUi = new();
+
+    /// <summary>
+    /// 系统 UISettings。**可空**：创建失败或后续调用失败一律退化为 null，
+    /// 即「不跟随系统」，走产品默认色与深色主题。绝不因它让启动失败。
+    /// </summary>
+    private readonly UISettings? _systemUi;
 
     private Window? _window;
 
@@ -61,6 +73,29 @@ public sealed class ThemeController
         _settings = settings;
         ArgumentNullException.ThrowIfNull(log);
         _log = log;
+
+        // 注意：原来是字段初始化器 `private readonly UISettings _systemUi = new();`。
+        // 那样写的话，构造期 new 失败会直接让 DI 解析 ThemeController 失败，
+        // 容器建不起来 = 启动即黑屏。改成「安全创建」，失败只降级、不抛出。
+        _systemUi = CreateSystemUi(log);
+    }
+
+    /// <summary>
+    /// 安全创建 UISettings。
+    /// UISettings 本身不要求包身份（unpackaged 可用），但在受限环境 / 旧系统 /
+    /// 组策略裁剪下激活仍可能失败。失败只意味着「拿不到系统色」，与启动无关。
+    /// </summary>
+    private static UISettings? CreateSystemUi(ILogService log)
+    {
+        try
+        {
+            return new UISettings();
+        }
+        catch (Exception ex)
+        {
+            log.Warn($"UISettings 不可用，系统强调色与系统主题已降级为产品默认值：{ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>当前生效的明暗模式（已把「跟随系统」解析成具体值）。</summary>
@@ -77,14 +112,31 @@ public sealed class ThemeController
 
     /// <summary>
     /// 启动期调用一次，必须在创建任何 Window / Page 之前。
+    /// 本方法**不向外抛异常** —— 所有失败都降级后继续，保证窗口仍能建起来。
     /// </summary>
     public void Initialize()
     {
-        _settings.Load();
+        try
+        {
+            _settings.Load();
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"界面设置读取失败，使用默认设置继续：{ex.GetType().Name}: {ex.Message}");
+        }
+
         UiSettings settings = _settings.Settings;
 
-        AccentColor = ResolveAccent(settings);
-        WriteAccent(AccentColor);
+        try
+        {
+            AccentColor = ResolveAccent(settings);
+            WriteAccent(AccentColor);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"强调色解析失败，使用产品默认色继续：{ex.GetType().Name}: {ex.Message}");
+            AccentColor = ParseHex(UiSettings.DefaultAccentHex);
+        }
 
         CurrentTheme = settings.ThemeMode switch
         {
@@ -169,6 +221,9 @@ public sealed class ThemeController
     /// 必须先用 Controller 的静态探测方法问一句再 new：在不支持的系统上
     /// <c>new MicaBackdrop()</c> 不抛异常，只给一块死板的纯色，看起来像「材质坏了」。
     /// 所以这里做的是 [请求档位 → 可行性探测 → 实际应用] 三步，返回值是**实际生效**的档位。
+    ///
+    /// 另外整段包 try-catch：SystemBackdrop 走 DirectComposition，
+    /// 在受限环境下 new DesktopAcrylicBackdrop() 可能抛 —— 材质只是装饰，失败退纯色。
     /// </summary>
     public BackdropKind ApplyBackdrop(BackdropKind requested)
     {
@@ -177,17 +232,27 @@ public sealed class ThemeController
 
         // 逐级降级：Mica 不可用就退 Acrylic，Acrylic 也不可用就纯色。
         BackdropKind resolved = requested;
-        if (resolved == BackdropKind.Mica && !MicaController.IsSupported())
-            resolved = DesktopAcrylicController.IsSupported() ? BackdropKind.Acrylic : BackdropKind.Solid;
-        else if (resolved == BackdropKind.Acrylic && !DesktopAcrylicController.IsSupported())
-            resolved = BackdropKind.Solid;
-
-        _window.SystemBackdrop = resolved switch
+        try
         {
-            BackdropKind.Mica => new MicaBackdrop { Kind = MicaKind.BaseAlt },
-            BackdropKind.Acrylic => new DesktopAcrylicBackdrop(),
-            _ => null
-        };
+            if (resolved == BackdropKind.Mica && !MicaController.IsSupported())
+                resolved = DesktopAcrylicController.IsSupported() ? BackdropKind.Acrylic : BackdropKind.Solid;
+            else if (resolved == BackdropKind.Acrylic && !DesktopAcrylicController.IsSupported())
+                resolved = BackdropKind.Solid;
+
+            _window.SystemBackdrop = resolved switch
+            {
+                BackdropKind.Mica => new MicaBackdrop { Kind = MicaKind.BaseAlt },
+                BackdropKind.Acrylic => new DesktopAcrylicBackdrop(),
+                _ => null
+            };
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"材质 {requested} 应用失败（{ex.GetType().Name}: {ex.Message}），已降级为纯色。");
+            resolved = BackdropKind.Solid;
+            try { _window.SystemBackdrop = null; }
+            catch { /* 连置空都失败就算了，窗口底色由 WriteBaseFill 兜底 */ }
+        }
 
         if (resolved != requested)
             _log.Warn($"材质 {requested} 不受支持，已降级为 {resolved}");
@@ -215,7 +280,14 @@ public sealed class ThemeController
     /// </summary>
     public void ApplyMotion(MotionLevel level)
     {
-        Timeline.AllowDependentAnimations = level == MotionLevel.Full;
+        try
+        {
+            Timeline.AllowDependentAnimations = level == MotionLevel.Full;
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"动效开关设置失败（{ex.GetType().Name}: {ex.Message}），按默认继续。");
+        }
 
         CurrentMotion = level;
         _settings.Settings.Motion = level.ToString();
@@ -246,14 +318,23 @@ public sealed class ThemeController
         if (_window is null)
             return;
 
-        _window.AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonForegroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonInactiveForegroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonHoverBackgroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonPressedBackgroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonHoverForegroundColor = Colors.Transparent;
-        _window.AppWindow.TitleBar.ButtonPressedForegroundColor = Colors.Transparent;
+        // AppWindow 通道在窗口正被销毁 / 未激活时可能抛。
+        // 标题栏按钮是自绘的，这里染色失败完全不影响可用性 —— 吞掉即可。
+        try
+        {
+            _window.AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonForegroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonInactiveForegroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonHoverBackgroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonPressedBackgroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonHoverForegroundColor = Colors.Transparent;
+            _window.AppWindow.TitleBar.ButtonPressedForegroundColor = Colors.Transparent;
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"标题栏按钮配色设置失败（{ex.GetType().Name}: {ex.Message}），已忽略。");
+        }
     }
 
     /// <summary>
@@ -264,17 +345,28 @@ public sealed class ThemeController
     {
         _baseFillOpaque = opaque;
 
-        if (!opaque)
-        {
-            Application.Current.Resources["AppWindowBaseBrush"] =
-                new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        ResourceDictionary? resources = Application.Current?.Resources;
+        if (resources is null)
             return;
-        }
 
-        bool dark = (_window?.Content as FrameworkElement)?.ActualTheme != ElementTheme.Light;
-        Application.Current.Resources["AppWindowBaseBrush"] = new SolidColorBrush(dark
-            ? Windows.UI.Color.FromArgb(255, 0x12, 0x12, 0x14)
-            : Windows.UI.Color.FromArgb(255, 0xF3, 0xF4, 0xF6));
+        try
+        {
+            if (!opaque)
+            {
+                resources["AppWindowBaseBrush"] =
+                    new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+                return;
+            }
+
+            bool dark = (_window?.Content as FrameworkElement)?.ActualTheme != ElementTheme.Light;
+            resources["AppWindowBaseBrush"] = new SolidColorBrush(dark
+                ? Windows.UI.Color.FromArgb(255, 0x12, 0x12, 0x14)
+                : Windows.UI.Color.FromArgb(255, 0xF3, 0xF4, 0xF6));
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"窗口底色写入失败（{ex.GetType().Name}: {ex.Message}），已忽略。");
+        }
     }
 
     // ==================== 内部 ====================
@@ -293,8 +385,24 @@ public sealed class ThemeController
         _ => MotionLevel.Full
     };
 
-    private ElementTheme SystemTheme() =>
-        _systemUi.GetColorValue(UIColorType.Background).R > 128 ? ElementTheme.Light : ElementTheme.Dark;
+    /// <summary>
+    /// 读系统背景色判定明暗。读不到（UISettings 不可用 / 调用被系统拒绝）→ 直接判深色，
+    /// 绝不向上抛 —— 主题解析失败不该拦住窗口创建。
+    /// </summary>
+    private ElementTheme SystemTheme()
+    {
+        try
+        {
+            if (_systemUi is not null && _systemUi.GetColorValue(UIColorType.Background).R > 128)
+                return ElementTheme.Light;
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"读取系统背景色失败，回退深色主题：{ex.GetType().Name}: {ex.Message}");
+        }
+
+        return ElementTheme.Dark;
+    }
 
     private Windows.UI.Color ResolveAccent(UiSettings settings)
     {
@@ -305,7 +413,19 @@ public sealed class ThemeController
             return ParseHex(UiSettings.DefaultAccentHex);
 
         if (settings.FollowSystemAccent)
-            return _systemUi.GetColorValue(UIColorType.Accent);
+        {
+            try
+            {
+                if (_systemUi is not null)
+                    return _systemUi.GetColorValue(UIColorType.Accent);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"读取系统强调色失败，回退产品色：{ex.GetType().Name}: {ex.Message}");
+            }
+
+            return ParseHex(UiSettings.DefaultAccentHex);
+        }
 
         return ParseHex(settings.CustomAccentHex);
     }
@@ -336,28 +456,40 @@ public sealed class ThemeController
     /// </summary>
     private void WriteAccent(Windows.UI.Color color)
     {
-        ResourceDictionary resources = Application.Current.Resources;
+        ResourceDictionary? resources = Application.Current?.Resources;
+        if (resources is null)
+        {
+            _log.Warn("Application.Current 尚未就绪，强调色资源未写入。");
+            return;
+        }
 
-        resources["AppAccentBrush"] = new SolidColorBrush(color);
-        resources["AppAccentHoverBrush"] = new SolidColorBrush(Lighten(color, 0.35));
-        resources["AppAccentPressedBrush"] = new SolidColorBrush(Darken(color, 0.22));
-        resources["AppAccentSoftBrush"] = new SolidColorBrush(WithAlpha(color, 0x2E));
-        resources["AppAccentBorderBrush"] = new SolidColorBrush(WithAlpha(color, 0x8C));
+        try
+        {
+            resources["AppAccentBrush"] = new SolidColorBrush(color);
+            resources["AppAccentHoverBrush"] = new SolidColorBrush(Lighten(color, 0.35));
+            resources["AppAccentPressedBrush"] = new SolidColorBrush(Darken(color, 0.22));
+            resources["AppAccentSoftBrush"] = new SolidColorBrush(WithAlpha(color, 0x2E));
+            resources["AppAccentBorderBrush"] = new SolidColorBrush(WithAlpha(color, 0x8C));
 
-        // 原生模板里的强调色消费点（滑块 / 开关），一并跟上。
-        resources["SliderTrackValueFill"] = new SolidColorBrush(color);
-        resources["SliderTrackValueFillPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
-        resources["SliderTrackValueFillPressed"] = new SolidColorBrush(Darken(color, 0.22));
-        resources["SliderThumbBackground"] = new SolidColorBrush(color);
-        resources["SliderThumbBackgroundPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
-        resources["SliderThumbBackgroundPressed"] = new SolidColorBrush(Darken(color, 0.22));
-        resources["ToggleSwitchFillOn"] = new SolidColorBrush(color);
-        resources["ToggleSwitchFillOnPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
-        resources["ToggleSwitchFillOnPressed"] = new SolidColorBrush(Darken(color, 0.22));
-        resources["ToggleSwitchStrokeOn"] = new SolidColorBrush(color);
-        resources["ToggleSwitchStrokeOnPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
-        resources["ToggleSwitchStrokeOnPressed"] = new SolidColorBrush(Darken(color, 0.22));
-        resources["NavigationViewSelectionIndicatorForeground"] = new SolidColorBrush(color);
+            // 原生模板里的强调色消费点（滑块 / 开关），一并跟上。
+            resources["SliderTrackValueFill"] = new SolidColorBrush(color);
+            resources["SliderTrackValueFillPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
+            resources["SliderTrackValueFillPressed"] = new SolidColorBrush(Darken(color, 0.22));
+            resources["SliderThumbBackground"] = new SolidColorBrush(color);
+            resources["SliderThumbBackgroundPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
+            resources["SliderThumbBackgroundPressed"] = new SolidColorBrush(Darken(color, 0.22));
+            resources["ToggleSwitchFillOn"] = new SolidColorBrush(color);
+            resources["ToggleSwitchFillOnPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
+            resources["ToggleSwitchFillOnPressed"] = new SolidColorBrush(Darken(color, 0.22));
+            resources["ToggleSwitchStrokeOn"] = new SolidColorBrush(color);
+            resources["ToggleSwitchStrokeOnPointerOver"] = new SolidColorBrush(Lighten(color, 0.35));
+            resources["ToggleSwitchStrokeOnPressed"] = new SolidColorBrush(Darken(color, 0.22));
+            resources["NavigationViewSelectionIndicatorForeground"] = new SolidColorBrush(color);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"强调色资源写入失败（{ex.GetType().Name}: {ex.Message}），界面将使用主题默认强调色。");
+        }
     }
 
     private static Windows.UI.Color WithAlpha(Windows.UI.Color c, byte alpha) =>
