@@ -1,11 +1,14 @@
 # Zentwik 调校页 (TuningPage) 接口契约
 
+> **当前契约版本：`v1.5`**（2026-11-01，人类批准）。历史版本见下方「契约版本记录」。
+>
 > **⚠️ 强制规范**：本文档是前端 (XAML) 与后端 (ViewModel) 通信的唯一法定契约。
 > 任何 AI 或开发者不得擅自修改、重命名本文档中定义的属性或命令；如需修改，请提前与人类商讨并告知另一个 AI。
 >
 > **契约基线**：`v2.0.0-can15`（commit `3f928f7`，分支 `main`）。
 >
 > **契约版本记录**：
+> - **v1.5（2026-11-01，人类批准）**：**UI 红线入典**。① 核心网格强制结构由 `ItemsRepeater` + `UniformGridLayout` 改为 **`ListView` + `ItemsWrapGrid`**（属性名 `ListView.ItemsPanel`，类型仍是 `ItemsPanelTemplate`；详见第 3 节 API 事实）。② 数值输入**禁用 `<ControlTemplate>` 重写 `TextBox`**，隐式加减号一律用 `Grid` 叠加「纯 `TextBox` + 左右两个 `Button`」，命令**直接** `Command=` 绑定，**废除** `TextBox.Tag` / `Header` 模板穿透。③ 加减号**常驻显示**（不再悬浮 / 聚焦淡入）。④ 全页**禁用 `TabView`**。**属性 / 命令定义、参数、步长、钳制范围、绑定语义一律未变** —— 后端 `.cs` **无需任何改动**，本次纯前端契约条目修订。
 > - **v1.4（2026-11-01，人类批准）**：补全**步进命令**（4 个成员 / 6 处绑定）：`CoreSlotViewModel.IncrementCommand` / `DecrementCommand`（CO ±1）与 `TuningViewModel.IncrementCommand` / `DecrementCommand`（`IRelayCommand<string>`，参数 `"FMax"` / `"Parking"`）。步进**必须置脏**（不经过 `TextChanged`，脏状态不会自动产生）。前端 XAML 无需改动，详见 4.3。
 > - **v1.3（2026-11-01，人类批准）**：`RefreshCommand` 升级为**全量同步** —— 一次读回 SMU 核心状态 **+** 电源策略（计划 / 升频 / 停放），并按「读到的真值覆盖草稿」处置界面状态（详见 4.2）。命令名称 / 来源方法 / 绑定方式全部未变，**前端 XAML 无需改动**；是否在同步前弹确认框由前端自行决定（判据与配方见 4.2）。
 > - **v1.2（2026-11-01，人类批准）**：电源策略防抖收敛到 ViewModel —— 滑杆变更停手 700ms 自动执行、下拉立即执行。**`ApplyPowerCommand` 本身不变**（名称 / 来源方法 / 行为 / 绑定方式全部照旧），新增 View 层可调用的非绑定方法 `SchedulePowerApply()`（详见 4.1）。**前端无需改动 XAML**：既有事件处理器名称与签名保持不变。v1.1 立项的 `IsCoreParkingSupported` / `IsFMaxSupported` 两个硬闸门属性**均已实现**。
@@ -103,7 +106,7 @@
 
 | 属性名 | 类型 | 默认值 | 绑定模式 | 说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| `HasCores` | `bool` | `false` | OneWay | 已取到核心列表。为 `false` 时 `ItemsRepeater` 隐藏、空态面板显示。 |
+| `HasCores` | `bool` | `false` | OneWay | 已取到核心列表。为 `false` 时核心网格（`ListView`）隐藏、空态面板显示。 |
 | `IsCoreGridEmpty` | `bool` | `true` | OneWay | `!HasCores`，随 `HasCores` 自动通知（`NotifyPropertyChangedFor`）。 |
 
 ### 2.5 方案选择
@@ -128,10 +131,25 @@
 
 | 属性名 | 类型 | 说明 |
 | :--- | :--- | :--- |
-| `Cores` | `ObservableCollection<CoreSlotViewModel>` | **动态生成**：SMU 快照 `CoreMargins` 有多少个物理核心就生成多少个 Slot。数量不变时**只回填硬件值、不清空重建**（防滚动位置跳动）；数量变化才 Clear + 重建。前端必须 `ItemsRepeater` + `UniformGridLayout`（列数 8，`ItemsStretch="Fill"`，`MinItemWidth=64`，`MinItemHeight=34`）自动流式布局。 |
+| `Cores` | `ObservableCollection<CoreSlotViewModel>` | **动态生成**：SMU 快照 `CoreMargins` 有多少个物理核心就生成多少个 Slot。数量不变时**只回填硬件值、不清空重建**（防滚动位置跳动）；数量变化才 Clear + 重建。前端必须 **`ListView` + `ItemsWrapGrid`**（列数 8，`Orientation="Horizontal"`，`MaximumRowsOrColumns="8"`，`ItemWidth` / `ItemHeight` **必须显式给值**，否则列宽随内容浮动），自动流式布局。 |
 | `BoostOptions` | `ObservableCollection<string>` | 升频模式文案，固定 5 项，顺序由后端 `ProcessorPowerTuning.BoostOptions` 决定（AOT 下不用 `Enum.GetValues`）。 |
 | `PowerPlanOptions` | `ObservableCollection<string>` | 电源计划文案，固定 4 项（解除限制 / 温和 / 均衡 / 静音），索引即 `PowerPlanIndex`。 |
 | `ProfileOptions` | `ObservableCollection<string>` | 方案名列表，与 `ProfileService.Items` 一一对应，**索引即身份**（下拉框只需 int SelectedIndex，不塞对象）。空列表时后端会塞一项占位 `"自定义方案"` 并把索引指 0，避免下拉框空壳。 |
+
+> **⚠️ WinAppSDK 2.x 的 `ItemsPanel` API 事实（写错直接编译不过，WMC0011 / WMC0090 unknown member）**：
+>
+> ```xml
+> <ListView.ItemsPanel>
+>     <ItemsPanelTemplate>
+>         <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="8" ItemWidth="92" ItemHeight="34" />
+>     </ItemsPanelTemplate>
+> </ListView.ItemsPanel>
+> ```
+>
+> - 属性名是 **`ItemsPanel`**，类型**仍是 `ItemsPanelTemplate`**（2.x 改了属性名、没改类型名，两者不一致是官方设定，不是笔误）。
+> - `ListView.ItemsPanelTemplate`（旧写法）**已不存在**，属性元素与 Style Setter 两种写法都编译失败。
+> - `ListView` **没有 `IsScrollEnabled` 属性**（UWP 记忆不适用）；关内部滚动用 `ScrollViewer.VerticalScrollMode` / `ScrollViewer.VerticalScrollBarVisibility` = `Disabled`，纵向滚动统一交给外层 `ScrollViewer`（两层滚动器嵌套会互相抢滚轮）。
+> - `ItemsWrapGrid` 不显式给 `ItemWidth` / `ItemHeight` 时按首个元素的期望尺寸排版，列宽会浮动，8 列不再等宽。
 
 ### `CoreSlotViewModel` 字段定义（一个物理核心一个实例）
 
@@ -149,8 +167,8 @@
 | `IsDirty` | `bool` | OneWay | `!HardwareKnown \|\| Value != HardwareValue`——只有 dirty 的格子才值得下发。 |
 | `RoundedValue` | `int` | OneWay | 下发 / 保存时读取的值（当前 = `Value`）。 |
 | `ApplyCommand` | `IRelayCommand` | — | **单核写入**入口（VM 已提供；当前 XAML 未绑定，保留给逐核下发按钮）。失败只回滚这一核，不会把别的核拽回旧值。 |
-| `IncrementCommand` | `IRelayCommand` | — | **步进 +1**（CO ±1，钳制 -50~+50）。经 `TextBox.Header` 穿透进模板，模板内按钮**没有** `CommandParameter`，故本命令**不接参数**。步进后必须置脏。 |
-| `DecrementCommand` | `IRelayCommand` | — | **步进 -1**（同上）。经 `TextBox.Tag` 穿透进模板，不接参数。步进后必须置脏。 |
+| `IncrementCommand` | `IRelayCommand` | — | **步进 +1**（CO ±1，钳制 -50~+50）。前端 `Grid` 叠加的「+」按钮**直接** `Command=` 绑定，不带 `CommandParameter`，故本命令**不接参数**。步进后必须置脏。 |
+| `DecrementCommand` | `IRelayCommand` | — | **步进 -1**（同上）。前端 `Grid` 叠加的「−」按钮**直接** `Command=` 绑定，不带 `CommandParameter`，不接参数。步进后必须置脏。 |
 
 > 方法（非绑定，后端内部 / View 不直接调）：`UpdateHardware(int)`（回填硬件值并清 dirty）、`LoadDraft(int)`（从配置文件载入草稿，`int.MinValue` 忽略）。
 
@@ -169,8 +187,8 @@
 | `SaveCommand` | `Save()` | 浮动保存条「保存覆盖」按钮（View 层 `Click → Execute(null)`） | **只落盘不下发**。保存的是"期望状态"（逐核 `RoundedValue` + FMax + 出厂基线），供开机静默自启重新应用。无核心列表时拒绝。 |
 | `DiscardDraftCommand` | `DiscardDraft()` | 浮动保存条「放弃」按钮（`Click → Execute(null)`） | 界面回到**当前选中方案**（`ProfileIndex` 对应快照）的 CO / FMax 值，**不碰硬件**；清脏状态。 |
 | `SaveDraftAsCommand` | `SaveDraftAs()` | 浮动保存条「另存为」按钮（`Click → Execute(null)`） | 当前草稿（CO + FMax）存成新方案（名 "自定义方案 HHmmss"）并选中新方案，落盘，清脏状态。 |
-| `IncrementCommand` | `Increment(string target)` | 步进「加号」。前端经 `TextBox.Header` 穿透，模板内 `CommandParameter="FMax"` / `"Parking"` | 参数 `"FMax"` → FMax **+10 MHz**（钳制 400~5400）；参数 `"Parking"` → 核心停放 **+5%**（钳制 0~100）。**内部必须调 `MarkDirty()`**。 |
-| `DecrementCommand` | `Decrement(string target)` | 步进「减号」。前端经 `TextBox.Tag` 穿透，模板内 `CommandParameter="FMax"` / `"Parking"` | 同上，方向相反。**内部必须调 `MarkDirty()`**。 |
+| `IncrementCommand` | `Increment(string target)` | 步进「加号」。前端**直接** `Command=` 绑定在「+」按钮上，按钮带 `CommandParameter="FMax"` / `"Parking"` | 参数 `"FMax"` → FMax **+10 MHz**（钳制 400~5400）；参数 `"Parking"` → 核心停放 **+5%**（钳制 0~100）。**内部必须调 `MarkDirty()`**。 |
+| `DecrementCommand` | `Decrement(string target)` | 步进「减号」。前端**直接** `Command=` 绑定在「−」按钮上，按钮带 `CommandParameter="FMax"` / `"Parking"` | 同上，方向相反。**内部必须调 `MarkDirty()`**。 |
 
 > 模板示例名 → 真实名对照：`SyncHardwareCommand`→**`RefreshCommand`**；`ApplySettingsCommand`→**`ApplyCommand`**；`DiscardChangesCommand`→**`DiscardDraftCommand`**；`SaveProfileCommand`→**`SaveCommand`**；`SaveAsProfileCommand`→**`SaveDraftAsCommand`**。
 
@@ -220,13 +238,15 @@
 
 ### 4.3 步进命令（v1.4 新增）
 
-调校页的三个数值入口（逐核 CO、FMax、核心停放）都提供隐式加减号：平时隐藏，悬浮 / 聚焦时淡入。
+调校页的三个数值入口（逐核 CO、FMax、核心停放）都提供隐式加减号。**v1.5 起，加减号改为 `Grid` 叠加「纯 `TextBox` + 左右两个 `Button`」实现，命令直接绑在按钮上（`Command=` + `CommandParameter`），不再通过 `TextBox.Tag` / `Header` 穿透进模板**（红线②：禁用 `<ControlTemplate>` 重写 `TextBox`）。
 
-| 入口 | 命令宿主 | 类型 | 步长 | 钳制 | 穿透方式 |
+> **v1.5 行为变更**：加减号**常驻显示**（不再"平时隐藏、悬浮 / 聚焦时淡入"）。原因是模板被禁用后拿不到 `TextBox` 的 `PointerOver` / `Focused` 状态机，无法再做淡入淡出。**这是有意识的取舍 —— 稳定压倒一切**，观感问题留待后续另行优化。命令语义、参数、步长、钳制范围**一律未变**。
+
+| 入口 | 命令宿主 | 类型 | 步长 | 钳制 | 绑定方式 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| 逐核 CO | `CoreSlotViewModel.IncrementCommand` / `DecrementCommand` | `IRelayCommand`（**无参**） | ±1 | -50 ~ +50 | `TextBox.Tag`（减）/ `Header`（加），模板内按钮**无** `CommandParameter` |
-| FMax | `TuningViewModel.IncrementCommand` / `DecrementCommand` | `IRelayCommand<string>` | ±10 MHz | 400 ~ 5400 | `TextBox.Tag` / `Header`，模板内 `CommandParameter="FMax"` |
-| 核心停放 | 同上（同一对命令） | `IRelayCommand<string>` | ±5% | 0 ~ 100 | `TextBox.Tag` / `Header`，模板内 `CommandParameter="Parking"` |
+| 逐核 CO | `CoreSlotViewModel.IncrementCommand` / `DecrementCommand` | `IRelayCommand`（**无参**） | ±1 | -50 ~ +50 | `Grid` 叠加的两个 `Button`，各自 `Command=` 直绑，**无** `CommandParameter` |
+| FMax | `TuningViewModel.IncrementCommand` / `DecrementCommand` | `IRelayCommand<string>` | ±10 MHz | 400 ~ 5400 | `Grid` 叠加的两个 `Button`，`CommandParameter="FMax"` |
+| 核心停放 | 同上（同一对命令） | `IRelayCommand<string>` | ±5% | 0 ~ 100 | `Grid` 叠加的两个 `Button`，`CommandParameter="Parking"` |
 
 **参数字面量契约**：`"FMax"` / `"Parking"` 两个字符串必须与前端 XAML 的 `CommandParameter` 逐字一致，改一处必须同时改另一处。
 
@@ -247,6 +267,7 @@
 ### 5.1 多语言与样式
 - 前端使用 `x:Uid` 绑定资源，**后端不硬编码中文字符串**（VM 内中文仅用于状态提示文案，属展示数据，不动它）。
 - 数值输入：**纯 `TextBox`**（样式 `AppTextBoxMono`，34px / Consolas / 居中 / `MaxLength`），**不是** NumberBox——契约入口是 `EditText` / `FMaxText` / `ParkingText` 三个容错字符串属性。停放另有 `Slider`（0~100，步进 5）。
+- **数值输入不得用 `<ControlTemplate>` 重写 `TextBox`**（红线②）：加减号一律用 `Grid` 叠加「纯 `TextBox` + 左右两个 `Button`」实现，命令直接 `Command=` 绑定在按钮上。
 - 下拉框：必须用自定义 `ctl:AppComboBox`（深浅自适应），**禁止系统默认白底 ComboBox**。
 - `bool → Visibility` 一律走 `UiConverters.ToVisibleWhenTrue / ToVisibleWhenFalse / ToCollapsedWhenTrue` 编译期函数；`UiSeverity → InfoBarSeverity` 走 `UiConverters.ToInfoBarSeverity`。**不引 IValueConverter 进资源字典**。
 
@@ -288,6 +309,19 @@
 ---
 
 ## 7. 契约变更登记（新增属性必须走此流程）
+
+**v1.5 变更记录（2026-11-01，人类批准）**：
+
+> 本次为**纯前端结构规范修订**，**未新增 / 未删除 / 未重命名任何属性或命令**，所有绑定语义、参数、步长、钳制范围不变 —— **后端 `.cs` 无需任何改动**。
+
+| 提案项 | 类型 | 用途 | 落地状态 |
+| :--- | :--- | :--- | :--- |
+| 核心网格强制结构改为 `ListView` + `ItemsWrapGrid` | 前端结构规范（替换 §3 原「`ItemsRepeater` + `UniformGridLayout`」） | 8 列等分流式布局 | ✅ **已落地**（`ListView.ItemsPanel` 属性名 + `ItemsPanelTemplate` 类型；`ItemWidth` / `ItemHeight` 显式给值） |
+| `ItemsPanel` API 事实写入契约 | 前端 API 事实（§3 附注） | 防止后来者改回旧写法导致 WMC0011 / WMC0090 | ✅ **已写入** |
+| 数值输入禁用 `<ControlTemplate>` 重写 `TextBox` | 前端结构规范（红线②） | 隐式加减号一律 `Grid` 叠加「纯 `TextBox` + 左右两个 `Button`」 | ✅ **已落地** |
+| 废除 `TextBox.Tag` / `Header` 模板穿透 | 前端绑定方式（替换 4.3 原「穿透方式」列） | 步进命令**直接** `Command=` 绑在按钮上，按钮自带 `CommandParameter` | ✅ **已落地**（逐核 CO 仍为无参命令，按钮不带 `CommandParameter`） |
+| 加减号常驻显示 | 前端行为（替换 4.3 原「平时隐藏，悬浮 / 聚焦时淡入」） | 模板禁用后无 `PointerOver` / `Focused` 状态机，退而求其次保稳定 | ✅ **已落地**（观感待后续优化） |
+| 全页禁用 `TabView` | 前端结构规范（红线③） | 避免未验证控件导致黑屏 | ✅ **核对确认：本页从未使用** |
 
 **v1.4 变更记录（2026-11-01，人类批准）**：
 
