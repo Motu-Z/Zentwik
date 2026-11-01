@@ -67,7 +67,7 @@
             <SolidColorBrush x:Key="AppInfoBrush" Color="#FFA3B8CC" />
             <SolidColorBrush x:Key="AppWarnBrush" Color="#FFF5D90A" />
             <SolidColorBrush x:Key="AppErrorBrush" Color="#FFFF453A" />
-            <SolidColorBrush x:Key="AppSuccessBrush" Color="#FF60CDFF" />
+            <SolidColorBrush x:Key="AppSuccessBrush" Color="{ThemeResource AppAccentBrush}" />
             <SolidColorBrush x:Key="AppInfoSoftBrush" Color="#26A3B8CC" />
             <SolidColorBrush x:Key="AppWarnSoftBrush" Color="#26F5D90A" />
             <SolidColorBrush x:Key="AppErrorSoftBrush" Color="#26FF453A" />
@@ -93,11 +93,11 @@
             <!-- InfoBar：半透明语义底 + 8px 圆角，不用原生亮黄 -->
             <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#26F5D90A" />
             <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#30FF453A" />
-            <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#2660CDFF" />
+            <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="{ThemeResource AppAccentSoftBrush}" />
             <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="InfoBarWarningSeverityIconBackground" Color="#33F5D90A" />
             <SolidColorBrush x:Key="InfoBarErrorSeverityIconBackground" Color="#33FF453A" />
-            <SolidColorBrush x:Key="InfoBarSuccessSeverityIconBackground" Color="#3360CDFF" />
+            <SolidColorBrush x:Key="InfoBarSuccessSeverityIconBackground" Color="{ThemeResource AppAccentBorderBrush}" />
             <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#33A3B8CC" />
             <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#4DFF453A" />
             <SolidColorBrush x:Key="InfoBarTitleForeground" Color="#FFFFFFFF" />
@@ -110,7 +110,7 @@
             <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#08FFFFFF" />
             <SolidColorBrush x:Key="TextControlBorderBrush" Color="#1AFFFFFF" />
             <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#33FFFFFF" />
-            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#9960CDFF" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{ThemeResource AppAccentBorderBrush}" />
             <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="TextControlForeground" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#66FFFFFF" />
@@ -119,21 +119,21 @@
             <SolidColorBrush x:Key="SliderTrackFill" Color="#26FFFFFF" />
             <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#33FFFFFF" />
             <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#33FFFFFF" />
-            <SolidColorBrush x:Key="SliderTrackValueFill" Color="#FF60CDFF" />
-            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FF7FD8FF" />
-            <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#FF4FB8E8" />
-            <SolidColorBrush x:Key="SliderThumbBackground" Color="#FF60CDFF" />
-            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FF7FD8FF" />
-            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FF4FB8E8" />
+            <SolidColorBrush x:Key="SliderTrackValueFill" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{ThemeResource AppAccentPressedBrush}" />
+            <SolidColorBrush x:Key="SliderThumbBackground" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{ThemeResource AppAccentPressedBrush}" />
             <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
 
             <!-- 开关 -->
-            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF60CDFF" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF7FD8FF" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF4FB8E8" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF60CDFF" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF7FD8FF" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF4FB8E8" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{ThemeResource AppAccentPressedBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="{ThemeResource AppAccentPressedBrush}" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FF000000" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FF000000" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FF000000" />
@@ -178,7 +178,7 @@
             <SolidColorBrush x:Key="AppInfoBrush" Color="#FF4A6076" />
             <SolidColorBrush x:Key="AppWarnBrush" Color="#FF9D7B00" />
             <SolidColorBrush x:Key="AppErrorBrush" Color="#FFC42B1C" />
-            <SolidColorBrush x:Key="AppSuccessBrush" Color="#FF0A7EBB" />
+            <SolidColorBrush x:Key="AppSuccessBrush" Color="{ThemeResource AppAccentBrush}" />
             <SolidColorBrush x:Key="AppInfoSoftBrush" Color="#1F4A6076" />
             <SolidColorBrush x:Key="AppWarnSoftBrush" Color="#269D7B00" />
             <SolidColorBrush x:Key="AppErrorSoftBrush" Color="#26C42B1C" />
@@ -199,11 +199,11 @@
 
             <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#26F5D90A" />
             <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#30C42B1C" />
-            <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#260A7EBB" />
+            <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="{ThemeResource AppAccentSoftBrush}" />
             <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#0D000000" />
             <SolidColorBrush x:Key="InfoBarWarningSeverityIconBackground" Color="#339D7B00" />
             <SolidColorBrush x:Key="InfoBarErrorSeverityIconBackground" Color="#33C42B1C" />
-            <SolidColorBrush x:Key="InfoBarSuccessSeverityIconBackground" Color="#330A7EBB" />
+            <SolidColorBrush x:Key="InfoBarSuccessSeverityIconBackground" Color="{ThemeResource AppAccentBorderBrush}" />
             <SolidColorBrush x:Key="InfoBarInformationalSeverityIconBackground" Color="#334A6076" />
             <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#4DC42B1C" />
             <SolidColorBrush x:Key="InfoBarTitleForeground" Color="#FF14161A" />
@@ -215,7 +215,7 @@
             <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#06000000" />
             <SolidColorBrush x:Key="TextControlBorderBrush" Color="#1A000000" />
             <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#33000000" />
-            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#990A7EBB" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="{ThemeResource AppAccentBorderBrush}" />
             <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="#12000000" />
             <SolidColorBrush x:Key="TextControlForeground" Color="#FF14161A" />
             <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#FF868C96" />
@@ -223,20 +223,20 @@
             <SolidColorBrush x:Key="SliderTrackFill" Color="#22000000" />
             <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#33000000" />
             <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#33000000" />
-            <SolidColorBrush x:Key="SliderTrackValueFill" Color="#FF0A7EBB" />
-            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FF0F93D6" />
-            <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#FF086A9E" />
-            <SolidColorBrush x:Key="SliderThumbBackground" Color="#FF0A7EBB" />
-            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FF0F93D6" />
-            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FF086A9E" />
+            <SolidColorBrush x:Key="SliderTrackValueFill" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{ThemeResource AppAccentPressedBrush}" />
+            <SolidColorBrush x:Key="SliderThumbBackground" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{ThemeResource AppAccentPressedBrush}" />
             <SolidColorBrush x:Key="SliderOuterThumbBackground" Color="Transparent" />
 
-            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF0A7EBB" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF0F93D6" />
-            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF086A9E" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF0A7EBB" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="#FF0F93D6" />
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="#FF086A9E" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="{ThemeResource AppAccentPressedBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{ThemeResource AppAccentBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{ThemeResource AppAccentHoverBrush}" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOnPressed" Color="{ThemeResource AppAccentPressedBrush}" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFFFF" />
@@ -286,18 +286,17 @@
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
-    <!-- ==================== 强调色 #60CDFF ==================== -->
-    <!-- 规范要求品牌色走 SystemAccentColor 语义键：颜色 + 画刷成对提供，
-         XAML 里 Foreground 一律绑画刷（WinUI 不接受 Color 直接赋 Brush）。 -->
-    <Color x:Key="SystemAccentColor">#FF60CDFF</Color>
-    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="{StaticResource SystemAccentColor}" />
-
-    <SolidColorBrush x:Key="AppAccentBrush" Color="#FF60CDFF" />
-    <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#FF7FD8FF" />
-    <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#FF4FB8E8" />
-    <SolidColorBrush x:Key="AppAccentSoftBrush" Color="#2660CDFF" />
-    <SolidColorBrush x:Key="AppAccentSoftHoverBrush" Color="#4060CDFF" />
-    <SolidColorBrush x:Key="AppAccentBorderBrush" Color="#4D60CDFF" />
+    <!-- ==================== 强调色 #39C5BB (Miku Cyan) ==================== -->
+    <!-- 根级强调色直接用 SolidColorBrush 承载（Color 属性取字面值），规避 WinUI3 对独立
+         <Color> 元素的解析告警(WMC0011)/错误(XLS0414)。三键同值，AppAccent* 派生画刷在下方各自持色阶。 -->
+    <SolidColorBrush x:Key="SystemAccentColor" Color="#FF39C5BB" />
+    <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#FF39C5BB" />
+    <SolidColorBrush x:Key="AppAccentBrush" Color="#FF39C5BB" />
+    <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#FF5BD4CC" />
+    <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#FF2BA89F" />
+    <SolidColorBrush x:Key="AppAccentSoftBrush" Color="#2639C5BB" />
+    <SolidColorBrush x:Key="AppAccentSoftHoverBrush" Color="#4039C5BB" />
+    <SolidColorBrush x:Key="AppAccentBorderBrush" Color="#4D39C5BB" />
     <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FF04222F" />
 
     <!-- ==================== 尺寸 ==================== -->

@@ -645,13 +645,24 @@
         <Setter Property="UseSystemFocusVisuals" Value="False" />
     </Style>
 
-    <!-- 数值输入：34px 高、Consolas、居中 —— CO 网格 / FMax / 核心停放专用 -->
+    <!-- 数值输入：34px 高、Consolas、居中 —— CO 网格 / FMax / 核心停放专用。
+         【Padding 为什么是 20,8,20,0 而不是 4,0】
+         WinUI 3 的 TextBox 模板里，内容区是一个 ScrollViewer（x:Name="ContentElement"），
+         而 DefaultScrollViewerStyle 把 VerticalContentAlignment 写死成 Top ——
+         结果就是 TextBox.VerticalContentAlignment 根本不生效，文字永远顶在框的上沿。
+         红线②禁掉了重写 TextBox 模板，只能在样式层用内边距补偿：
+             框高 34 / 上下边框各 1 / 单行行高约 16
+             上内边距 8 → 文字中心 = 1 + 8 + 8 = 17 = 框中心 → 视觉绝对居中
+             下内边距 0 → 内容区高 24 > 行高 16，永远不会触发内部滚动条
+         左右各 20 是给压在两端的加减号留位：数字只落在中间那截，不会被按钮压住。 -->
     <Style x:Key="AppTextBoxMono" TargetType="TextBox" BasedOn="{StaticResource AppTextBox}">
         <Setter Property="Height" Value="{StaticResource AppInputHeight}" />
+        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="FontFamily" Value="{StaticResource AppMonoFontFamily}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="TextAlignment" Value="Center" />
-        <Setter Property="Padding" Value="4,0" />
+        <Setter Property="Padding" Value="20,8,20,0" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
     </Style>
@@ -719,6 +730,19 @@
 
     <!-- ==================== 下拉框 ==================== -->
 
+    <!--
+    下拉条目样式。
+    【选中态为什么不再铺亮蓝色块】
+    原来 Selected 态用的是 AppAccentSoftBrush（半透明亮青）打底 + AppAccentBrush 亮青字，
+    在深色弹层上就是一块极其突兀的荧光色块。
+    现在改成：淡灰底（AppControlBackgroundHoverBrush）+ 左侧一根 3px 青色细竖条表示选中，
+    文字保持正文色 —— 选中与否一眼可辨，但不再抢戏。
+
+    【视觉状态名】
+    WinUI 3 实际用的是 Selected / SelectedPointerOver / SelectedPressed；
+    UWP 时代的 PointerOverSelected / PressedSelected 在 WinUI 3 里根本不会被触发。
+    两套名字都留着：命中哪套算哪套，绝不会因为状态名对不上而崩。
+    -->
     <Style x:Key="AppComboBoxItemStyle" TargetType="ComboBoxItem">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
@@ -736,6 +760,10 @@
                           Background="{TemplateBinding Background}"
                           CornerRadius="4"
                           Margin="4,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal" />
@@ -751,20 +779,32 @@
                                 </VisualState>
                                 <VisualState x:Name="Selected">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppAccentSoftBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppAccentBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppControlBackgroundHoverBrush}" />
+                                        <Setter Target="SelectionMark.Visibility" Value="Visible" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedPointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppControlBackgroundHoverBrush}" />
+                                        <Setter Target="SelectionMark.Visibility" Value="Visible" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedPressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppControlBackgroundPressedBrush}" />
+                                        <Setter Target="SelectionMark.Visibility" Value="Visible" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="PointerOverSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppAccentSoftBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppAccentBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppControlBackgroundHoverBrush}" />
+                                        <Setter Target="SelectionMark.Visibility" Value="Visible" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="PressedSelected">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource AppAccentSoftBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppAccentBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource AppControlBackgroundPressedBrush}" />
+                                        <Setter Target="SelectionMark.Visibility" Value="Visible" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">
@@ -775,11 +815,23 @@
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
 
+                        <!-- 选中标记：左侧一根 3px 细竖条，比整块亮色底克制得多 -->
+                        <Rectangle x:Name="SelectionMark"
+                                   Grid.Column="0"
+                                   Width="3"
+                                   Height="14"
+                                   Margin="0,0,4,0"
+                                   RadiusX="1.5" RadiusY="1.5"
+                                   VerticalAlignment="Center"
+                                   Fill="{ThemeResource AppAccentBrush}"
+                                   Visibility="Collapsed" />
+
                         <ContentPresenter x:Name="ContentPresenter"
+                                          Grid.Column="1"
                                           Content="{TemplateBinding Content}"
                                           ContentTemplate="{TemplateBinding ContentTemplate}"
                                           Foreground="{TemplateBinding Foreground}"
-                                          Padding="{TemplateBinding Padding}"
+                                          Padding="6,4,10,4"
                                           HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
                                           AutomationProperties.AccessibilityView="Raw" />
@@ -792,6 +844,17 @@
     <!--
     AppComboBox：完全重模板。必要命名部件：ContentPresenter / PlaceholderTextBlock /
     DropDownGlyph / Popup / ItemsPresenter —— ComboBox 的 code-behind 按名取，缺一个就是运行期空引用。
+
+    【关闭态文字为什么走 TextBlock 而不是 ContentPresenter】
+    ComboBox 基类会在运行时往 ContentPresenter 的 Content 上写值，
+    模板里再绑 SelectionBoxItem 会被它顶掉（写成 null）→ 合上就是一片空白。
+    所以 ContentPresenter 原样保留（命名部件不能少）但设为不可见，
+    改用 TextBlock 显示 AppComboBox.DisplayText —— 一条与基类互不干扰的纯文本通道。
+
+    【弹层滚动条】
+    弹层内容通常只有个位数的条目，右侧却挂着一根带上下箭头的原生滚动条（宽 12px + 箭头），
+    视觉上比弹层本身还抢眼。这里直接把滚动条藏掉：ScrollMode 保留 Enabled（条目多时仍可滚），
+    滚动条可见性设为 Hidden。
     -->
     <Style x:Key="AppComboBoxStyle" TargetType="ctl:AppComboBox">
         <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
@@ -811,7 +874,7 @@
         <Setter Property="ScrollViewer.HorizontalScrollMode" Value="Disabled" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="ScrollViewer.VerticalScrollMode" Value="Enabled" />
-        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ctl:AppComboBox">
@@ -921,5 +984,229 @@
     </Style>
 
     <Style TargetType="ctl:AppComboBox" BasedOn="{StaticResource AppComboBoxStyle}" />
+
+    <!-- ============================================================================
+         新增基元组件（breeze-shell 设计启发，全部用 Zentwik 现有 token 上色）
+         度量沿用 Zentwik 现状：卡片圆角 8 / 控件 32–34 / 圆角 4（下拉 6）
+         ============================================================================ -->
+
+    <!-- ==================== 页头 ==================== -->
+    <!-- 用法：外层 Grid 用 AppPageHeader，标题/描述/操作区用配套子样式自由组合 -->
+    <Style x:Key="AppPageHeader" TargetType="Grid">
+        <Setter Property="Margin" Value="0,0,0,16" />
+        <Setter Property="ColumnSpacing" Value="16" />
+    </Style>
+    <Style x:Key="AppPageHeaderTitle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="AppPageHeaderDesc" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource AppTextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Margin" Value="0,4,0,0" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="AppPageHeaderActions" TargetType="StackPanel">
+        <Setter Property="Orientation" Value="Horizontal" />
+        <Setter Property="Spacing" Value="8" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+
+    <!-- ==================== 内联通知 InfoBar（4 档语义，图标由内容放置） ==================== -->
+    <Style x:Key="AppInfoBar" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource InfoBarInformationalSeverityBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppDividerBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style x:Key="AppInfoBarWarning" TargetType="Border" BasedOn="{StaticResource AppInfoBar}">
+        <Setter Property="Background" Value="{ThemeResource InfoBarWarningSeverityBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppWarnSoftBrush}" />
+    </Style>
+    <Style x:Key="AppInfoBarError" TargetType="Border" BasedOn="{StaticResource AppInfoBar}">
+        <Setter Property="Background" Value="{ThemeResource InfoBarErrorSeverityBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppErrorSoftBrush}" />
+    </Style>
+    <Style x:Key="AppInfoBarSuccess" TargetType="Border" BasedOn="{StaticResource AppInfoBar}">
+        <Setter Property="Background" Value="{ThemeResource InfoBarSuccessSeverityBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppAccentSoftBrush}" />
+    </Style>
+
+    <!-- ==================== 可折叠分组 Expander ==================== -->
+    <Style x:Key="AppExpander" TargetType="Expander">
+        <Setter Property="Background" Value="{ThemeResource AppCardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource AppCardCornerRadius}" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <!-- ==================== 分段选择 SegmentedControl ==================== -->
+    <!-- 外层圆角容器；内部放若干 AppSegmentedItem(RadioButton)，同 GroupName 互斥 -->
+    <Style x:Key="AppSegmentedControl" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource AppControlBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppControlBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource AppControlCornerRadius}" />
+        <Setter Property="Padding" Value="3" />
+    </Style>
+    <Style x:Key="AppSegmentedItem" TargetType="RadioButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{ThemeResource AppTextSecondaryBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="UseSystemFocusVisuals" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid x:Name="Root" Background="Transparent">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="BackgroundBorder.Background" Value="{ThemeResource AppControlBackgroundHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="BackgroundBorder.Background" Value="{ThemeResource AppControlBackgroundPressedBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <!-- CheckStates 声明在 CommonStates 之后：选中态优先于悬停，保证选中项不变灰 -->
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="BackgroundBorder.Background" Value="{ThemeResource AppAccentBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppOnAccentBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border x:Name="BackgroundBorder" Background="{TemplateBinding Background}" CornerRadius="3" />
+                        <ContentPresenter x:Name="ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          Padding="{TemplateBinding Padding}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==================== 可选卡片 ChoiceCard（左侧 3px 青色竖条 = 选中，与 ComboBox 选中态语言一致） ==================== -->
+    <Style x:Key="AppChoiceCard" TargetType="RadioButton">
+        <Setter Property="Background" Value="{ThemeResource AppCardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource AppCardCornerRadius}" />
+        <Setter Property="Padding" Value="16,14" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="UseSystemFocusVisuals" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid x:Name="Root" Background="Transparent">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardBorder.Background" Value="{ThemeResource AppControlBackgroundHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="CardBorder.BorderBrush" Value="{ThemeResource AppAccentBorderBrush}" />
+                                        <Setter Target="AccentBar.Opacity" Value="1" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked">
+                                    <VisualState.Setters>
+                                        <Setter Target="AccentBar.Opacity" Value="0" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border x:Name="CardBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="ContentPresenter"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              Foreground="{ThemeResource AppTextSecondaryBrush}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <!-- 左侧 3px 青色选中竖条（Z 序在卡片之上） -->
+                        <Rectangle x:Name="AccentBar"
+                                   HorizontalAlignment="Left" Width="3"
+                                   Fill="{ThemeResource AppAccentBrush}" Opacity="0" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==================== 进度条 ProgressBar ==================== -->
+    <Style x:Key="AppProgressBar" TargetType="ProgressBar">
+        <Setter Property="Foreground" Value="{ThemeResource AppAccentBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AppControlBackgroundBrush}" />
+        <Setter Property="Height" Value="4" />
+        <Setter Property="CornerRadius" Value="2" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- ==================== 设置行卡片 SettingsCard（TuningPage 高频布局：左标签+描述 / 右控件） ==================== -->
+    <Style x:Key="AppSettingsCard" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource AppCardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AppCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource AppCardCornerRadius}" />
+        <Setter Property="Padding" Value="16,14" />
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+    <Style x:Key="AppSettingsLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="AppSettingsDesc" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource AppTextSecondaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Margin" Value="0,2,0,0" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- ==================== 开关 ToggleSwitch（原生模板已通过 Tokens 青色化，此处仅统一样式） ==================== -->
+    <Style x:Key="AppToggleSwitch" TargetType="ToggleSwitch">
+        <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="Segoe UI Variable Text, Microsoft YaHei UI" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
 
 </ResourceDictionary>

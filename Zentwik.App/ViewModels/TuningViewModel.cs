@@ -143,11 +143,68 @@ public sealed partial class TuningViewModel : ObservableObject
     [ObservableProperty]
     public partial int ProfileIndex { get; set; } = -1;
 
+    /// <summary>
+    /// SMU 快照回填的 CPU 名称。**后端常把规格缀在型号后面**
+    /// （"AMD Ryzen 9 9955HX 16-Core Processor"），直接展示会挤爆标题行。
+    /// 展示层请用拆分后的 <see cref="CpuTitle"/>（主标题）与 <see cref="CpuDetail"/>（副标题）。
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CpuTitle))]
+    [NotifyPropertyChangedFor(nameof(CpuDetail))]
     public partial string CpuName { get; set; } = "未探测";
 
     [ObservableProperty]
     public partial string CpuSubText { get; set; } = "等待同步 SMU";
+
+    /// <summary>
+    /// CPU 主标题：纯型号（"AMD Ryzen 9 9955HX"）。
+    /// 从 <see cref="CpuName"/> 里剥掉 "16-Core Processor" 这类规格后缀，剩不下就原样返回。
+    /// </summary>
+    public string CpuTitle
+    {
+        get
+        {
+            int specStart = FindCoreSpecStart(CpuName);
+            return specStart < 0 ? CpuName : CpuName[..specStart].TrimEnd();
+        }
+    }
+
+    /// <summary>
+    /// CPU 副标题：规格 + SMU 状态（"16-Core Processor · SMU 就绪"）。
+    /// SMU 异常时后半段是错误全文；没有规格时只显示 SMU 状态。
+    /// </summary>
+    public string CpuDetail
+    {
+        get
+        {
+            int specStart = FindCoreSpecStart(CpuName);
+            string spec = specStart < 0 ? string.Empty : CpuName[specStart..].Trim();
+            string state = string.IsNullOrWhiteSpace(SmuStateText) ? "SMU 未连接" : SmuStateText;
+            return spec.Length == 0 ? state : $"{spec} · {state}";
+        }
+    }
+
+    /// <summary>
+    /// 找出 "16-Core Processor" 这类规格后缀的起始下标；没有则返回 -1。
+    /// 例："AMD Ryzen 9 9955HX 16-Core Processor" → 20（"16" 的位置）。
+    /// </summary>
+    private static int FindCoreSpecStart(string? cpuName)
+    {
+        if (string.IsNullOrWhiteSpace(cpuName))
+            return -1;
+
+        int marker = cpuName.LastIndexOf("-Core Processor", StringComparison.Ordinal);
+        if (marker <= 0)
+            return -1;
+
+        // 回退到数字起点："16-Core Processor" 里的 "16"
+        int start = marker;
+        while (start > 0 && char.IsDigit(cpuName[start - 1]))
+            start--;
+
+        // 规格串前面必须还剩得下型号，否则整串就是规格，当没有规格处理。
+        return start > 0 ? start : -1;
+    }
 
     [ObservableProperty]
     public partial string TopologyText { get; set; } = "—";
@@ -162,7 +219,9 @@ public sealed partial class TuningViewModel : ObservableObject
 
     public bool IsCoreGridEmpty => !HasCores;
 
+    /// <summary>SMU 状态行文案："SMU 就绪" / 错误全文。变化会带动副标题 <see cref="CpuDetail"/>。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CpuDetail))]
     public partial string SmuStateText { get; set; } = "未连接";
 
     [ObservableProperty]
