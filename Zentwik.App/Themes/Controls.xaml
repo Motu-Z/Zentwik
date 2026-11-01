@@ -965,7 +965,7 @@
                             <Border Background="{ThemeResource AppComboPopupBackgroundBrush}"
                                     BorderBrush="{ThemeResource AppPopupBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="6"
+                                    CornerRadius="{StaticResource AppComboCornerRadius}"
                                     Margin="0,4,0,0"
                                     Padding="0,4"
                                     MaxHeight="300">
@@ -986,8 +986,8 @@
     <Style TargetType="ctl:AppComboBox" BasedOn="{StaticResource AppComboBoxStyle}" />
 
     <!-- ============================================================================
-         新增基元组件（breeze-shell 设计启发，全部用 Zentwik 现有 token 上色）
-         度量沿用 Zentwik 现状：卡片圆角 8 / 控件 32–34 / 圆角 4（下拉 6）
+         新增基元组件（breeze-shell 设计移植，全部用 Zentwik token 上色）
+         度量已对齐 breeze-shell：卡片圆角 7 / 控件高 32 / 圆角 4（下拉 4、分段容器 6）
          ============================================================================ -->
 
     <!-- ==================== 页头 ==================== -->
@@ -998,13 +998,13 @@
     </Style>
     <Style x:Key="AppPageHeaderTitle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />
-        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontSize" Value="28" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style x:Key="AppPageHeaderDesc" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource AppTextSecondaryBrush}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Margin" Value="0,4,0,0" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
@@ -1020,8 +1020,8 @@
         <Setter Property="Background" Value="{ThemeResource InfoBarInformationalSeverityBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppDividerBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Padding" Value="12,10" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="14" />
     </Style>
     <Style x:Key="AppInfoBarWarning" TargetType="Border" BasedOn="{StaticResource AppInfoBar}">
         <Setter Property="Background" Value="{ThemeResource InfoBarWarningSeverityBackgroundBrush}" />
@@ -1052,8 +1052,8 @@
         <Setter Property="Background" Value="{ThemeResource AppControlBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource AppControlBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{StaticResource AppControlCornerRadius}" />
-        <Setter Property="Padding" Value="3" />
+        <Setter Property="CornerRadius" Value="{StaticResource AppSegmentedCornerRadius}" />
+        <Setter Property="Padding" Value="2" />
     </Style>
     <Style x:Key="AppSegmentedItem" TargetType="RadioButton">
         <Setter Property="Background" Value="Transparent" />
@@ -1095,7 +1095,7 @@
                                 <VisualState x:Name="Unchecked" />
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
-                        <Border x:Name="BackgroundBorder" Background="{TemplateBinding Background}" CornerRadius="3" />
+                        <Border x:Name="BackgroundBorder" Background="{TemplateBinding Background}" CornerRadius="{StaticResource AppControlCornerRadius}" />
                         <ContentPresenter x:Name="ContentPresenter"
                                           Content="{TemplateBinding Content}"
                                           ContentTemplate="{TemplateBinding ContentTemplate}"
@@ -1186,7 +1186,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource AppCardCornerRadius}" />
         <Setter Property="Padding" Value="16,14" />
-        <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
     <Style x:Key="AppSettingsLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource AppTextPrimaryBrush}" />

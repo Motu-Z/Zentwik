@@ -299,19 +299,28 @@
     <SolidColorBrush x:Key="AppAccentBorderBrush" Color="#4D39C5BB" />
     <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FF04222F" />
 
-    <!-- ==================== 尺寸 ==================== -->
-    <CornerRadius x:Key="AppCardCornerRadius">8</CornerRadius>
+    <!-- ==================== 尺寸（已对齐 breeze-shell 设计度量） ====================
+         breeze 实测来源：config_page/components/Fluent.tsx + constants.ts
+           · 卡片圆角 7（Card/SettingsCard/Expander/ChoiceCard 全用 7）
+           · 控件圆角 4（Button/ComboBox/NumberBox/Segment 全用 4）
+           · 分段控件容器圆角 6、内部项圆角 4、容器 padding 2
+           · ComboBox / NumberBox / Slider 控件高度 32
+           · 页面内边距 PAGE_PADDING=28（窗口 920 宽、220 侧栏）
+           · 卡片内边距 Card padding=14，设置卡 16/13~16
+         下列 token 已按上述值落地；未列出的（如标题栏、导航项高度）为 Zentwik 自身约定，保留。 -->
+    <CornerRadius x:Key="AppCardCornerRadius">7</CornerRadius>
     <CornerRadius x:Key="AppControlCornerRadius">4</CornerRadius>
-    <CornerRadius x:Key="AppComboCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="AppSegmentedCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="AppComboCornerRadius">4</CornerRadius>
     <CornerRadius x:Key="AppCaptionCornerRadius">6</CornerRadius>
 
-    <Thickness x:Key="AppCardPadding">20,24</Thickness>
-    <Thickness x:Key="AppContentPadding">40,32,40,32</Thickness>
+    <Thickness x:Key="AppCardPadding">16,14</Thickness>
+    <Thickness x:Key="AppContentPadding">28,24,28,24</Thickness>
 
     <x:Double x:Key="AppControlHeight">32</x:Double>
     <x:Double x:Key="AppSmallControlHeight">26</x:Double>
-    <x:Double x:Key="AppComboHeight">34</x:Double>
-    <x:Double x:Key="AppInputHeight">34</x:Double>
+    <x:Double x:Key="AppComboHeight">32</x:Double>
+    <x:Double x:Key="AppInputHeight">32</x:Double>
     <x:Double x:Key="AppIconButtonSize">36</x:Double>
     <x:Double x:Key="AppSidebarWidth">220</x:Double>
     <x:Double x:Key="AppTitleBarHeight">48</x:Double>
