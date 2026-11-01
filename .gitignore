@@ -30,3 +30,11 @@ __pycache__/
 build/**/publish/
 build/**/bin/
 build/**/obj/
+
+# 临时截图与图片（根目录排查截图等误提交；应用资源统一放 Assets/，不受此规则影响）
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+!Assets/**
