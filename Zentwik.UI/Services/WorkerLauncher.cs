@@ -46,7 +46,21 @@ public static class WorkerLauncher
     /// <summary>拉起流程串行化：两个页面同时首次加载会各拉一个 Worker。</summary>
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
+    /// <summary>
+    /// 本进程是否拉起过 Worker。<b>只置位、不清零</b>。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么不能每次 <see cref="EnsureRunningAsync"/> 重新判定】
+    /// 原来的实现每次进方法先置 false，ping 通之后也置 false。而
+    /// <c>WorkerBridge.EnsureConnectedAsync</c> 是每条业务命令的前置调用 ——
+    /// 第一次拉起的进程随后只要有任何一次 IPC，归属标记就被抹成「不是我拉的」，
+    /// 退出时 <see cref="RequestShutdown"/> 直接 return，Worker 永远留了下来。
+    /// 表现就是「界面关了、后台还在，只有托盘的退出偶尔能杀掉」。
+    /// </remarks>
     private static bool _startedByUs;
+
+    /// <summary>已经发过 shutdown 的标记：多条退出路径（窗口关闭 / 托盘退出 / App.Exit 兜底）只发一次。</summary>
+    private static int _shutdownRequested;
 
     private static DateTime _nextAttemptUtc = DateTime.MinValue;
 
@@ -76,14 +90,11 @@ public static class WorkerLauncher
             await Gate.WaitAsync(cancellationToken).ConfigureAwait(true);
             entered = true;
 
-            // 每次调用重新判定「这次是不是本进程拉起的」：
-            // 残留 true 会让退出流程给并非本进程启动的 Worker 发 shutdown。
-            _startedByUs = false;
+            // 归属标记是「粘性」的：这里不再重置。理由见字段 _startedByUs 的注释。
 
             // ---------- 1. 已经在跑？ ----------
             if (await PingAsync(ProbeTimeout).ConfigureAwait(true))
             {
-                _startedByUs = false;
                 _nextAttemptUtc = DateTime.MinValue;
                 return true;
             }
@@ -190,7 +201,80 @@ public static class WorkerLauncher
         }
     }
 
-    /// <summary>让本次拉起的 Worker 退出。fire-and-forget，不阻塞退出路径。</summary>
+    /// <summary>
+    /// 同步请求 Worker 退出，返回是否真的把 shutdown 发出去了。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么必须同步】
+    /// 退出流程里原本是 <c>Task.Run</c> 发完就不管。而 WPF 在最后一个窗口关闭后
+    /// 会立刻结束进程，线程池里那条任务经常还没跑到 <c>ConnectAsync</c> 就被砍掉 ——
+    /// 于是 Worker 留了下来，只能靠托盘的「退出」再试一次（那条路径前面还有窗口销毁、
+    /// 托盘释放等收尾工作，恰好给了任务几百毫秒，命中率看起来更高）。
+    /// 这是「经常不随界面关闭」的直接原因。
+    ///
+    /// 【为什么可以阻塞 UI 线程】
+    /// 只在关闭路径上调用。管道就在本机，正常情况几十毫秒返回；Worker 不在时
+    /// <c>ConnectAsync</c> 立即失败。每段超时可调，最坏耗时约两倍 <paramref name="timeout"/>。
+    /// </remarks>
+    /// <param name="timeout">建立连接与收发的单段超时。</param>
+    /// <param name="evenIfNotOwned">
+    /// true 表示不看归属标记。用户选「完全退出」时就应该全退 ——
+    /// Worker 是上次崩溃残留的、还是开机任务拉起的，对用户来说都是「后台服务」。
+    /// </param>
+    public static bool RequestShutdown(TimeSpan timeout, bool evenIfNotOwned = false)
+    {
+        if (!evenIfNotOwned && !_startedByUs)
+        {
+            return false;
+        }
+
+        // 诊断模式（截图 / 自检 / 探针）不碰环境里已有的 Worker：
+        // 用户机器上的守护进程不该被一次回归测试顺手关掉。
+        if (!WorkerBridge.AllowAutoStart || WorkerBridge.ForcedOffline)
+        {
+            return false;
+        }
+
+        // 窗口关闭、托盘退出、App.Exit 兜底会各调一次，只放第一条过去。
+        if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            WorkerPipeClient client = new();
+
+            try
+            {
+                client.ConnectAsync(timeout).GetAwaiter().GetResult();
+
+                PipeResponse response = client.SendAsync(
+                    new PipeRequest
+                    {
+                        Version = WorkerPipeContract.ProtocolVersion,
+                        Command = WorkerPipeContract.CommandShutdown,
+                    },
+                    timeout).GetAwaiter().GetResult();
+
+                Log(response.Success ? "已请求 Worker 退出" : $"Worker 拒绝退出：{response.Message}");
+                return response.Success;
+            }
+            finally
+            {
+                // 客户端只实现 IAsyncDisposable：退出路径不能再排一个 await，
+                // 这里同步等它把管道句柄关掉即可（内部无 UI 线程回调）。
+                client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"RequestShutdown 失败：{ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>兼容旧调用点：不阻塞，让后台线程去发。</summary>
     public static void ShutdownIfOwned()
     {
         if (!_startedByUs)
@@ -198,29 +282,7 @@ public static class WorkerLauncher
             return;
         }
 
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await using var client = new WorkerPipeClient();
-
-                await client.ConnectAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-
-                await client.SendAsync(
-                    new PipeRequest
-                    {
-                        Version = WorkerPipeContract.ProtocolVersion,
-                        Command = WorkerPipeContract.CommandShutdown,
-                    },
-                    TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-
-                Log("已请求 Worker 退出");
-            }
-            catch (Exception ex)
-            {
-                Log($"ShutdownIfOwned 失败：{ex.GetType().Name}: {ex.Message}");
-            }
-        });
+        _ = Task.Run(() => RequestShutdown(TimeSpan.FromSeconds(2)));
     }
 
     private static void Finish(bool ready)

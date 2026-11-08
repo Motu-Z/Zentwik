@@ -22,9 +22,9 @@
     <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Zentwik-App\$(Configuration)\</OutputPath>
 
     <!-- 与 Zentwik.Core / Zentwik.UI 同一口径，任务管理器里能对上版本 -->
-    <Version>2.0.1</Version>
-    <FileVersion>2.0.1.0</FileVersion>
-    <AssemblyVersion>2.0.1.0</AssemblyVersion>
+    <Version>2.0.2</Version>
+    <FileVersion>2.0.2.0</FileVersion>
+    <AssemblyVersion>2.0.2.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

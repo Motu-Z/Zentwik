@@ -623,7 +623,9 @@ public partial class App : Application
                     $"roundtrip = {flipped.Value?.WatchProcessBinding == !original.WatchProcessBinding
                                   && restored.Value?.WatchProcessBinding == original.WatchProcessBinding}");
 
-                Services.WorkerLauncher.ShutdownIfOwned();
+                // 同步发：探针进程紧接着就 Environment.Exit，异步那条任务根本没机会跑。
+                Services.WorkerLauncher.RequestShutdown(
+                    TimeSpan.FromSeconds(3), evenIfNotOwned: true);
             }).GetAwaiter().GetResult();
         }
         catch (Exception ex)
@@ -721,8 +723,12 @@ public partial class App : Application
         System.IO.File.WriteAllText(path, sb.ToString());
 
         // 删除是靠提权 Worker 做的，这里不关它会一直占着管道和 Core.dll。
-        Services.WorkerLauncher.ShutdownIfOwned();
-        System.Threading.Thread.Sleep(1200);
+        // 同步发（原来是 fire-and-forget + 睡 1200 ms）：发不出去时那 1.2 秒纯属白等，
+        // 发得出去时又没人保证它真的写进管道。
+        Services.WorkerLauncher.RequestShutdown(
+            TimeSpan.FromSeconds(3), evenIfNotOwned: true);
+
+        System.Threading.Thread.Sleep(500);
 
         Environment.Exit(0);
     }
@@ -1578,6 +1584,12 @@ public partial class App : Application
             Console.WriteLine("workerprobe failed: " + ex.Message);
         }
 
+        // 探针走的是真实拉起路径，退出前必须把自己拉起来的 Worker 收掉 ——
+        // 否则每跑一次就多一个残留的提权进程，下一次 UI 启动会把它当成
+        // 「不是我拉起的」，后续关闭界面就再也关不掉它。
+        Services.WorkerLauncher.RequestShutdown(
+            TimeSpan.FromSeconds(3), evenIfNotOwned: true);
+
         Environment.Exit(0);
     }
 
@@ -1714,11 +1726,14 @@ public partial class App : Application
         Exit += (_, _) =>
         {
             // 「仅留服务」= 只退 UI，Worker 常驻，不能连带杀掉。
+            // 其余两档在这里再兜一次：主窗口之外还有别的退出路径（断言失败、
+            // 未捕获异常后的强制关停），漏掉就会又留下一个后台进程。
+            // 已经发过的情况下 RequestShutdown 会直接返回，不会重复等待。
             if (ViewModels.AppSettings.Instance.CloseBehavior
                 != ViewModels.MainWindowCloseBehavior.CloseWindowOnly)
             {
-                // 只关「本次 UI 拉起的」Worker：计划任务或用户自己起的不能连带杀。
-                WorkerLauncher.ShutdownIfOwned();
+                WorkerLauncher.RequestShutdown(
+                    TimeSpan.FromSeconds(1.5), evenIfNotOwned: true);
             }
 
             _tray?.Dispose();

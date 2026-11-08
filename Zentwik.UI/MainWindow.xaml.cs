@@ -424,6 +424,9 @@ public partial class MainWindow : Window
         return WindowCloseAction.Hide;
     }
 
+    /// <summary>退出时给 Worker 发 shutdown 的超时。分连接与收发两段，最坏约两倍。</summary>
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(2);
+
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         base.OnClosing(e);
@@ -434,7 +437,18 @@ public partial class MainWindow : Window
         WindowCloseAction action = ResolveCloseAction(
             MinimizeToTrayEnabled, AppSettings.Instance.CloseBehavior);
 
-        // 两档退出都让窗口正常关闭；是否连带关 Worker 由 App.Exit 按同一个设置决定。
+        if (action == WindowCloseAction.ExitAll)
+        {
+            // 【必须在这里同步发，不能留给 App.Exit】
+            // 窗口关掉之后 WPF 立刻结束进程，fire-and-forget 的关闭请求经常还没连上
+            // 管道就被砍掉 —— Worker 就留在了后台。同步发的代价是退出多几十毫秒。
+            //
+            // evenIfNotOwned：用户既然选了「界面和后台服务一起退出」，就不该因为
+            // Worker 是上次残留或开机任务拉起的而留下它。自启任务下次登录会重新拉起。
+            WorkerLauncher.RequestShutdown(ShutdownTimeout, evenIfNotOwned: true);
+        }
+
+        // 两档退出都让窗口正常关闭。
         if (action != WindowCloseAction.Hide)
             return;
 
@@ -449,7 +463,7 @@ public partial class MainWindow : Window
         _allowClose = true;
 
         // 托盘里的「退出」是显式关整个应用，不受「仅留服务」影响。
-        WorkerLauncher.ShutdownIfOwned();
+        WorkerLauncher.RequestShutdown(ShutdownTimeout, evenIfNotOwned: true);
         Close();
     }
 
