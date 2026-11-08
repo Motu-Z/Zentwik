@@ -31,6 +31,15 @@
 - 关闭行为文案「仅关界面」改为「仅留服务」。
 - 行为页小标题改为「STARTUP / 启动」「CLOSE ACTION / 关闭」「BACKGROUND / 后台」。
 
+
+---Changed (修改)
+
+## [2.0.0]
+
+### Changed (修改)
+- 改回 WPF UI，放弃 WinUI 3。
+- 实装或修复了大量功能。
+
 ---
 
 ## [2.0.0-can3]
@@ -95,18 +104,6 @@
 - **配置目录一次性迁移**：优先整目录 `Move`；失败则递归复制；再失败保留旧目录不动。
 - **交接文档定稿 v1.0.1**：补充更名影响面、本地 DLL 引用口径与 AOT 迁移注意事项。
 
-### 兼容性说明
-
-- **配置不会丢**：`profiles.json` / `bindings.json` / `tuning.json` / `masks.json` / `ui.json` / `scenarios.json` 随目录迁移，文件名不变。
-- **开机自启会失效一次**：计划任务名由 `ZenForgeAutoStart` 改为 `ZenwikAutoStart`；升级后到「行为」页关闭再开启自启，并手动删除旧任务。
-- **单实例互斥体改名**：`Local\ZenForge.SingleInstance` → `Local\Zenwik.SingleInstance`；升级时先退出旧版。
-- **发布产物为两个文件**：`Zenwik.exe` + `WinIo32.dll`；后者需显式排除在单文件外。
-
-### 验收口径
-
-- Linux 上 `dotnet build Zenwik.slnx -c Release` 与 `dotnet publish -r win-x64` 均 0 警告 0 错误，产物含 `Zenwik.exe` + `WinIo32.dll`。
-- **1.93.1 写入行为需真机复验**：`Cpu` 构造传 `CoreOptions.Current`；确认 CO 逐核写入回读一致、FMax 回读在容差内、SMU 版本号正常显示。
-
 ---
 
 ## [1.2.0]
@@ -130,11 +127,6 @@
 - **搜索框光标垂直偏下**：去掉 `PART_ContentHost` 的重复居中。
 - **占位符聚焦时消失**：改为仅按“是否有内容”显示，并置于输入框之前。
 
-### 验收口径
-
-- 关窗后任务管理器“内存”列应见个位数 MB；私有提交仍几十 MB 属 .NET/WPF 运行时特性，不是泄漏。
-- 动画观感、高 DPI 渲染、搜索框光标位置需 Windows 真机验收。
-
 ---
 
 ## [1.1.x]
@@ -157,13 +149,6 @@
 - 场景切换短路改比 `ProfileService.ActiveId`，避免用户手动切换被场景逻辑无声覆盖。
 - `SmoothSortPanel` 四处修复：滚动抑制重试、位移上限、`ScrollViewer` 解绑、双列表清理。
 - `LogService.Clear()` 清空竞态修复；全局异常限流表统一上限。
-
-### 仍待实装
-
-1. 场景规则编辑器。
-2. 切换失败回滚。
-3. 重扫的解绑语义。
-4. 真机验收平滑动画、高 DPI 渲染。
 
 ---
 
