@@ -31,9 +31,6 @@
 - 关闭行为文案「仅关界面」改为「仅留服务」。
 - 行为页小标题改为「STARTUP / 启动」「CLOSE ACTION / 关闭」「BACKGROUND / 后台」。
 
-
----Changed (修改)
-
 ## [2.0.0]
 
 ### Changed (修改)
