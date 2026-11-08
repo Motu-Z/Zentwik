@@ -54,13 +54,22 @@ namespace Zentwik.Worker
                 TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
                 // ---------- 参数过滤 ----------
-                // --open-ui 是本进程自己的开关，必须在交给 Host 之前摘掉：
+                // --open-ui / --tray 是本进程自己的开关，必须在交给 Host 之前摘掉：
                 // Host.CreateApplicationBuilder(args) 会把参数喂给 CommandLineConfigurationProvider，
                 // 让一个业务开关混进配置系统，等于把一个进程参数变成一份隐式配置。
                 // （批次五实测：裸开关 -silent 并不会让 Worker 崩，所以这里不是为了「防崩」，
                 //   而是为了让参数归属清晰 —— 谁解析，谁消费。）
+                //
+                // 【两个开关的优先级】
+                // 同时出现时以 --open-ui 为准：「打开窗口」是更明确、用户感知更强的意图，
+                // 而 --tray 只表达「别开窗口」。计划任务不会同时写两个，这条规则防的是
+                // 用户手工敲错命令时得到一个既不弹窗也不建托盘的后台进程。
                 bool openUi = args.Contains(AutoStartService.OpenUiArgument);
-                string[] hostArgs = args.Where(a => a != AutoStartService.OpenUiArgument).ToArray();
+                bool tray = args.Contains(AutoStartService.TrayArgument);
+
+                string[] hostArgs = args
+                    .Where(a => a != AutoStartService.OpenUiArgument && a != AutoStartService.TrayArgument)
+                    .ToArray();
 
                 HostApplicationBuilder builder = Host.CreateApplicationBuilder(hostArgs);
 
@@ -88,7 +97,7 @@ namespace Zentwik.Worker
                 // 【为什么不用 host.Start() + host.Run()】
                 // Run() 内部自己会调 StartAsync()，先 Start 再 Run 会抛
                 // InvalidOperationException（Host already started）。
-                if (openUi)
+                if (openUi || tray)
                 {
                     ILogService uiLog = host.Services.GetRequiredService<ILogService>();
 
@@ -97,11 +106,15 @@ namespace Zentwik.Worker
                     IHostApplicationLifetime hostLifetime =
                         host.Services.GetRequiredService<IHostApplicationLifetime>();
 
+                    // openUi 优先（见上面的参数过滤注释）：开窗口时不带任何参数，
+                    // 只留托盘时把 --tray 原样转给 UI，由 UI 决定「不建 MainWindow、只建托盘」。
+                    string? uiArgs = openUi ? null : AutoStartService.TrayArgument;
+
                     hostLifetime.ApplicationStarted.Register(() =>
                     {
                         // fire-and-forget：拉不起 UI 不能让常驻进程退出，
-                        // 所以异常必须在 LaunchUiAsync 内部吃掉。
-                        _ = Task.Run(() => LaunchUiAsync(uiLog));
+                        // 异常必须在 LaunchUi 内部吃掉。
+                        _ = Task.Run(() => LaunchUi(uiLog, uiArgs));
                     });
                 }
 
@@ -169,10 +182,10 @@ namespace Zentwik.Worker
         private const string UiExeName = "Zentwik.UI.exe";
 
         /// <summary>
-        /// 登录自启时把 UI 叫起来。**任何失败都只记日志，不抛、不退出**：
-        /// Worker 的职责是常驻并写 SMU，UI 只是入口之一；拉不起界面不等于后台没在工作。
+        /// 把 UI 叫起来。任何失败都只记日志、返回 false，不抛也不退出。
         /// </summary>
-        private static void LaunchUiAsync(ILogService log)
+        /// <param name="extraArgs">null = 正常开窗口；TrayArgument = 只建托盘。</param>
+        internal static bool LaunchUi(ILogService log, string? extraArgs)
         {
             try
             {
@@ -180,7 +193,7 @@ namespace Zentwik.Worker
                 if (uiPath is null)
                 {
                     log.Warn($"找不到 {UiExeName}，跳过拉起 UI。已搜索：{string.Join(" | ", EnumerateUiPaths())}");
-                    return;
+                    return false;
                 }
 
                 // Worker 是提权进程，子进程继承提权令牌 —— 不弹 UAC（事实卡 §5.2 第 2 行）。
@@ -189,16 +202,21 @@ namespace Zentwik.Worker
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = uiPath,
+                    Arguments = extraArgs ?? string.Empty,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 });
 
-                log.Info($"已拉起 UI：{uiPath}");
+                log.Info(extraArgs is null
+                    ? $"已拉起 UI：{uiPath}"
+                    : $"已拉起 UI（{extraArgs}）：{uiPath}");
+                return true;
             }
             catch (Exception ex)
             {
                 // 调用方是 fire-and-forget，异常没有观察者：不在这里捕获等于静默丢失。
                 log.Warn($"拉起 UI 失败：{ex.GetType().Name}: {ex.Message}");
+                return false;
             }
         }
 

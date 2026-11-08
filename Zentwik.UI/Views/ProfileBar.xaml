@@ -1,0 +1,107 @@
+<UserControl x:Class="Zentwik.UI.Views.ProfileBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             xmlns:conv="clr-namespace:Zentwik.UI.Converters"
+             xmlns:views="clr-namespace:Zentwik.UI.Views"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:StringEmptyToVisibilityConverter x:Key="StringEmptyToVis" />
+    </UserControl.Resources>
+
+    <StackPanel Orientation="Horizontal">
+        <Button x:Name="ProfileButton"
+                automation:AutomationProperties.Name="打开方案管理"
+                ToolTip="{Binding Label}"
+                Cursor="Hand"
+                FocusVisualStyle="{StaticResource NoFocusVisual}"
+                Click="OnToggleProfilePopup">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="Transparent"
+                            CornerRadius="4"
+                            Padding="8,5">
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- 点色即状态：蓝＝正在生效，琥珀＝有改动没落盘，灰＝既没生效也没改 -->
+                <Ellipse Width="6" Height="6" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Current.IsActive}" Value="True">
+                                    <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding HasUnsavedChanges}" Value="True">
+                                    <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+
+                <TextBlock Text="{Binding CurrentName}"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center" />
+
+                <TextBlock Text="· 未保存"
+                           FontSize="12"
+                           Foreground="{DynamicResource WarningBrush}"
+                           Margin="6,0,0,0"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding HasUnsavedChanges, Converter={StaticResource BoolToVis}}" />
+
+                <Path Data="M0 0 L4 4 L8 0"
+                      Stroke="{DynamicResource TextSecondaryBrush}"
+                      StrokeThickness="1.4"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      Width="8" Height="4"
+                      Stretch="Uniform"
+                      Margin="7,1,0,0"
+                      VerticalAlignment="Center" />
+            </StackPanel>
+        </Button>
+
+        <!--
+            方案面板挂在按钮下方，不再铺在场景页里当区块用。
+            页面只负责「什么条件切到哪个方案」，方案的增删改归这里。
+        -->
+        <Popup x:Name="ProfilePopup"
+               PlacementTarget="{Binding ElementName=ProfileButton}"
+               Placement="Bottom"
+               HorizontalOffset="-8"
+               VerticalOffset="10"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade"
+               Closed="OnProfilePopupClosed">
+            <Border Width="300"
+                    MaxHeight="440"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource LineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Effect="{DynamicResource OverlayShadowEffect}"
+                    Padding="14,12,14,8">
+                <views:ProfileOverlay x:Name="Overlay" />
+            </Border>
+        </Popup>
+    </StackPanel>
+</UserControl>

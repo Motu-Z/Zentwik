@@ -427,9 +427,17 @@ namespace Zentwik.Core.Services
                 }
             }
 
-            // 订阅者回调放到锁外：处理器可能做重操作，没必要占着缓冲锁
+            // 订阅者回调放到锁外：处理器可能做重操作，没必要占着缓冲锁。
+            // 订阅者异常不能冒泡回调用点 —— 日志遍布 WMI 回调与管道线程。
             EnqueueFile(entry);
-            EntryAdded?.Invoke(entry);
+            try
+            {
+                EntryAdded?.Invoke(entry);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LogService] 日志订阅者处理失败：{ex.Message}");
+            }
         }
 
         private void BumpCount(LogLevel level, int delta)

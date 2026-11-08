@@ -1,0 +1,25 @@
+<UserControl x:Class="Zentwik.UI.Views.PlaceholderView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:Zentwik.UI.Views"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource TopBarStyle}" Padding="32,0,124,0">
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType={x:Type views:PlaceholderView}}}"
+                       Style="{StaticResource PageTitleStyle}" />
+        </Border>
+
+        <TextBlock Grid.Row="1"
+                   Text="功能开发中"
+                   FontSize="13"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   Margin="32,28,0,0" />
+    </Grid>
+</UserControl>

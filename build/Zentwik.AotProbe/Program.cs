@@ -83,21 +83,32 @@ internal static class Program
         UiSettings source = new()
         {
             ThemeMode = AppThemeMode.Dark,
-            AutoStart = true,
+            AutoStartMode = AutoStartMode.WorkerWithTray,
+            CloseBehavior = CloseBehavior.Tray,
             CustomAccentHex = "#60CDFF",
         };
 
         JsonFile.Write(path, source, AppJsonContext.Default.UiSettings);
         UiSettings? restored = JsonFile.Read(path, AppJsonContext.Default.UiSettings);
 
+        // 枚举必须序列化成**名称**而不是数字：数字形态在配置文件里既不可读，
+        // 也会让「往枚举中间插一个值」变成一次静默的语义漂移。
         Check("json.roundtrip",
-            restored is not null && restored.ThemeMode == AppThemeMode.Dark && restored.AutoStart,
-            $"theme={restored?.ThemeMode}, autoStart={restored?.AutoStart}");
+            restored is not null
+                && restored.ThemeMode == AppThemeMode.Dark
+                && restored.AutoStartMode == AutoStartMode.WorkerWithTray
+                && restored.CloseBehavior == CloseBehavior.Tray,
+            $"theme={restored?.ThemeMode}, autoStart={restored?.AutoStartMode}, close={restored?.CloseBehavior}");
 
         // 键名必须是 PascalCase：老配置全靠这个形状才读得出来。
         string raw = File.ReadAllText(path);
         Check("json.pascalCase", raw.Contains("\"ThemeMode\"", StringComparison.Ordinal),
             raw.ReplaceLineEndings(" ")[..Math.Min(72, raw.Length)]);
+
+        Check("json.enumAsString",
+            raw.Contains("\"WorkerWithTray\"", StringComparison.Ordinal)
+                && raw.Contains("\"Tray\"", StringComparison.Ordinal),
+            raw.ReplaceLineEndings(" ")[..Math.Min(120, raw.Length)]);
     }
 
     // ---------------------------------------------------------------- 日志
@@ -263,7 +274,7 @@ internal static class Program
 
         Check("di.maskStore", provider.GetRequiredService<IMaskStore>().Masks.Count >= 0,
             $"masks={provider.GetRequiredService<IMaskStore>().Masks.Count}");
-        Check("di.bindingStore", provider.GetRequiredService<IBindingStore>().Profile is not null, "已加载");
+        Check("di.bindingStore", provider.GetRequiredService<ISchedulingStore>().Profile is not null, "已加载");
         Check("di.tuningStore", provider.GetRequiredService<ITuningStore>().Profile is not null, "已加载");
         Check("di.uiSettings", provider.GetRequiredService<IUiSettingsStore>().Settings is not null, "已加载");
 
@@ -289,7 +300,7 @@ internal static class Program
 
         try
         {
-            CpuSetBinder binder = provider.GetRequiredService<CpuSetBinder>();
+            CpuSetScheduler binder = provider.GetRequiredService<CpuSetScheduler>();
             binder.ResetTopology();
             bool ccd0 = binder.IsCcdAvailable(0);
             Check("cpuset.topology", true, $"CCD0 可用={ccd0}");

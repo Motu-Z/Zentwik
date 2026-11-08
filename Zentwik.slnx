@@ -1,6 +1,5 @@
 <Solution>
   <Project Path="Zentwik.Core/Zentwik.Core.csproj" />
   <Project Path="Zentwik.Tests/Zentwik.Tests.csproj" />
-  <Project Path="Zentwik.UI/Zentwik.UI.csproj" />
   <Project Path="Zentwik.Worker/Zentwik.Worker.csproj" />
 </Solution>

@@ -117,13 +117,21 @@ namespace Zentwik.Core.Helpers
             // 迁移必须互斥：开机自启与用户手动启动可能同时发生在两个进程里。
             // 两边同时 Directory.Move 会让其中一个以「目录已存在」失败，
             // 之后各自按不同的结果继续跑，配置就分裂成两份。
-            Mutex? gate = TryAcquireMigrationGate(out bool owned);
+            Mutex? gate = TryAcquireMigrationGate(out bool owned, out bool gateUnavailable);
 
             try
             {
                 // 拿到锁后重新判断：先到的进程可能已经搬完了。
                 if (HasContent(target))
                     return target;
+
+                // 拿不到锁（不是互斥体不可用）说明另一个进程正在迁移。
+                // 此时绝不能自己 Directory.Move：两边同时搬会撕裂配置。
+                if (gate is null && !gateUnavailable)
+                {
+                    EnsureDirectory(target);
+                    return target;
+                }
 
                 MigrateFromLegacy(target);
             }
@@ -225,9 +233,10 @@ namespace Zentwik.Core.Helpers
             }
         }
 
-        private static Mutex? TryAcquireMigrationGate(out bool owned)
+        private static Mutex? TryAcquireMigrationGate(out bool owned, out bool gateUnavailable)
         {
             owned = false;
+            gateUnavailable = false;
 
             try
             {
@@ -254,6 +263,7 @@ namespace Zentwik.Core.Helpers
                 // 命名互斥体创建不出来（受限会话）。单进程场景没有并发迁移风险；
                 // 多进程时最坏结果是两边都复制一遍 —— 内容相同，不会损坏数据。
                 Debug.WriteLine($"配置迁移互斥体不可用：{ex.Message}");
+                gateUnavailable = true;
                 return null;
             }
         }

@@ -1,0 +1,26 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      强调色字典。
+
+      【关键：这里刻意不定义画刷实例】
+      从 XAML 加载的 SolidColorBrush 会被 WPF 自动冻结（Freezable 优化），
+      冻结后设置 .Color 会抛 InvalidOperationException：
+      "无法在冻结的 #FF60CDFF 画刷上设置属性 Color"。
+
+      强调色必须在运行时反复改色（用户拖彩虹滑块），所以画Brush 实例
+      由 AppThemeService 在代码里 new 出来并注入 Application.Resources ——
+      代码创建的对象不会走 XAML 的自动冻结路径。
+
+      【与中性色的隔离】
+      强调色单独成典，与 Tokens.Dark/Light.xaml 分开：
+      换强调色时只改这一处，中性色与语义色（危险=红）一个字节都不动。
+
+      【引用方式】
+      全界面统一写 Background="{DynamicResource AccentBrush}"。
+      不要用 StaticResource —— 静态资源在加载时解析一次就固定死了，
+      之后改画刷颜色不会刷新界面。
+    -->
+
+</ResourceDictionary>

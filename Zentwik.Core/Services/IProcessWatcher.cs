@@ -3,7 +3,7 @@ using System;
 namespace Zentwik.Core.Services
 {
     /// <summary>
-    /// 进程绑核监听。负责按 <c>bindings.json</c> 的规则给新出现的进程自动绑核。
+    /// 进程调度监听。负责按 <c>schedules.json</c> 的规则给新出现的进程自动绑定。
     ///
     /// 实现方保证 <see cref="Start"/> / <see cref="Stop"/> 可重复调用：
     /// 已启动时再次 Start 不产生第二个监听循环。
@@ -13,7 +13,7 @@ namespace Zentwik.Core.Services
         /// <summary>当前是否走事件驱动路径。为 false 表示降级为轮询。</summary>
         bool UsingEvents { get; }
 
-        /// <summary>本实例是否持有全局互斥体（即是否为真正执行绑核的那一个）。</summary>
+        /// <summary>本实例是否持有全局互斥体（即是否为真正执行绑定的那一个）。</summary>
         bool HasOwnership { get; }
 
         /// <summary>监听循环是否正在运行。</summary>
@@ -37,5 +37,17 @@ namespace Zentwik.Core.Services
 
         /// <summary>宿主窗口可见性变化，用于调整采样频率。</summary>
         void SetHostVisible(bool visible);
+
+        /// <summary>本工具**成功**绑过、且尚未解绑的 PID 快照。</summary>
+        int[] GetBoundProcessIds();
+
+        /// <summary>
+        /// 解绑全部本工具绑过的进程，返回真正清掉 CPU Set 的数量。
+        /// 只遍历已绑集合，不扫全系统。
+        /// </summary>
+        int ClearAllSchedules();
+
+        /// <summary>解绑单个 PID。返回是否真的清掉了 CPU Set。</summary>
+        bool ClearSchedule(int pid);
     }
 }

@@ -10,7 +10,10 @@ namespace Zentwik.Tests.Fakes
         /// <summary>最后一次 Save 的内容；null 表示还没保存过。</summary>
         public TuningProfile? LastSaved { get; private set; }
 
-        public void Load() { }
+        /// <summary>Load 被调用的次数。用来验证「应用前从盘上重读」确实发生了。</summary>
+        public int LoadCount { get; private set; }
+
+        public void Load() => LoadCount++;
 
         public void Save(TuningProfile profile)
         {

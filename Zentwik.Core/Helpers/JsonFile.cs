@@ -34,11 +34,22 @@ namespace Zentwik.Core.Helpers
             ArgumentException.ThrowIfNullOrEmpty(path);
             ArgumentNullException.ThrowIfNull(typeInfo);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            string? dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
 
-            string temp = path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(value, typeInfo));
-            File.Move(temp, path, true);
+            // 临时名必须每个进程、每次写入都不同：UI 与 Worker 共用同一个配置目录，
+            // 固定 .tmp 会让两个进程互相截断对方写了一半的内容。
+            string temp = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(value, typeInfo));
+                File.Move(temp, path, true);
+            }
+            finally
+            {
+                try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+            }
         }
     }
 }

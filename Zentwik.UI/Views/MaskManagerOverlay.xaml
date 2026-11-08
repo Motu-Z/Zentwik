@@ -1,0 +1,464 @@
+<UserControl x:Class="Zentwik.UI.Views.MaskManagerOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             xmlns:conv="clr-namespace:Zentwik.UI.Converters"
+             x:Name="MaskRoot"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:CountToVisibilityConverter x:Key="CountToVis" />
+
+        <!-- SMT 小方块：22 高，选中吃强调色淡底 + 描边 -->
+        <Style x:Key="SmtCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Bd"
+                                Background="{DynamicResource WindowBgBrush}"
+                                BorderBrush="Transparent"
+                                BorderThickness="1"
+                                CornerRadius="3">
+                            <TextBlock x:Name="Label"
+                                       Text="{Binding DisplayName}"
+                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Label" Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 快捷勾选小 chip：11 号、轻描边，hover 才提亮文字 -->
+        <Style x:Key="QuickChipStyle" TargetType="Button">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Background" Value="{DynamicResource WindowBgBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              TextElement.FontSize="{TemplateBinding FontSize}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 纯文字危险按钮：无底无边，hover 下划线 -->
+        <Style x:Key="TextDangerButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <TextBlock x:Name="Label"
+                                       Text="{TemplateBinding Content}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       FontWeight="{TemplateBinding FontWeight}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Label" Property="TextDecorations" Value="Underline" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 强调色实底按钮（参考稿 .btn-primary）：强调色底 + 深色字 -->
+        <Style x:Key="AccentFilledButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="16,0" />
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="#FF09090B" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              TextElement.FontSize="{TemplateBinding FontSize}"
+                                              TextElement.FontWeight="SemiBold" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <!--
+        DataContext 直接继承宿主的 ProcessViewModel（页签在 ProcessView 里），
+        不要再自己绑一次：宿主已经用 Owner="{Binding}" 传入同一份 VM，
+        两边互为输入会收敛到 null，整块静默空白。
+    -->
+    <Grid ClipToBounds="True">
+
+        <Grid x:Name="ListView"
+              Visibility="{Binding MaskManager.IsListVisible, Converter={StaticResource BoolToVis}}">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="ListShift" />
+            </Grid.RenderTransform>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <ScrollViewer Grid.Row="0" Style="{StaticResource PageScrollStyle}">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding MaskManager.SavedMasks}"
+                                  automation:AutomationProperties.Name="已保存掩码列表">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource GhostCardButtonStyle}"
+                                        automation:AutomationProperties.Name="编辑此掩码"
+                                        Command="{Binding DataContext.MaskManager.OpenEditorCommand,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}">
+                                    <Border Background="{DynamicResource WindowBgBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="16"
+                                            Margin="0,0,0,10">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                 Value="True">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+
+                                            <Border Background="{DynamicResource AccentSubtleBrush}"
+                                                    CornerRadius="4"
+                                                    Padding="8,4"
+                                                    Margin="0,12,0,0"
+                                                    HorizontalAlignment="Left">
+                                                <TextBlock FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                           FontSize="12"
+                                                           Foreground="{DynamicResource AccentBrush}">
+                                                    <Run Text="CORE  " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding RangeText, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="还没有保存的掩码"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               Margin="0,4,0,0"
+                               Visibility="{Binding MaskManager.SavedMasks.Count, Converter={StaticResource CountToVis}}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 新建：虚线描边，比卡片弱一档 -->
+            <Button Grid.Row="1"
+                    Style="{StaticResource GhostAddButtonStyle}"
+                    Height="44"
+                    Margin="0,12,0,0"
+                    automation:AutomationProperties.Name="新建掩码"
+                    Command="{Binding MaskManager.NewMaskCommand}">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Path Style="{StaticResource IconGlyphStyle}"
+                          Width="14" Height="14"
+                          VerticalAlignment="Center"
+                          Data="M12 5 V19 M5 12 H19"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+
+                    <TextBlock Text="新建掩码" Margin="8,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <Grid x:Name="EditorView"
+              Background="{DynamicResource PanelBrush}"
+              Visibility="{Binding MaskManager.IsEditing, Converter={StaticResource BoolToVis}}">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="EditorShift" />
+            </Grid.RenderTransform>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 返回头 -->
+            <Grid Grid.Row="0" Margin="0,0,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0"
+                        Style="{StaticResource IconButtonStyle}"
+                        Width="28" Height="28"
+                        automation:AutomationProperties.Name="返回掩码列表"
+                        Command="{Binding MaskManager.BackCommand}"
+>
+                    <Path Style="{StaticResource IconGlyphStyle}"
+                          Width="16" Height="16"
+                          Data="M15 5 L8 12 L15 19"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                </Button>
+
+                <TextBlock Grid.Column="1"
+                           Text="{Binding MaskManager.EditorTitle}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+
+                <Border Grid.ColumnSpan="2"
+                        Height="1"
+                        VerticalAlignment="Bottom"
+                        Margin="-20,0,-20,0"
+                        Background="{DynamicResource LineBrush}"
+                        IsHitTestVisible="False" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
+                <StackPanel Margin="0,16,0,16">
+
+                    <!-- 名称 -->
+                    <TextBlock Text="掩码名称"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,8" />
+
+                    <TextBox Style="{StaticResource TextFieldStyle}"
+                             conv:InputAssist.Watermark="例如：游戏专属核"
+                             conv:InputAssist.ErrorText="{Binding MaskManager.NameError}"
+                             automation:AutomationProperties.Name="掩码名称"
+                             Text="{Binding MaskManager.MaskName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" />
+
+                    <!-- 快捷勾选 -->
+                    <TextBlock Text="快捷勾选"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,20,0,8" />
+
+                    <WrapPanel>
+                        <Button Style="{StaticResource QuickChipStyle}"
+                                automation:AutomationProperties.Name="全部核心"
+                                Command="{Binding MaskManager.SelectAllCommand}"
+                                Content="全部" />
+
+                        <Button Style="{StaticResource QuickChipStyle}"
+                                Margin="8,0,0,0"
+                                automation:AutomationProperties.Name="物理核心"
+                                Command="{Binding MaskManager.SelectPhysicalOnlyCommand}"
+                                Content="仅物理核" />
+
+                        <Button Style="{StaticResource QuickChipStyle}"
+                                Margin="8,0,0,0"
+                                automation:AutomationProperties.Name="反向选择"
+                                Command="{Binding MaskManager.InvertSelectionCommand}"
+                                Content="反向" />
+
+                        <Button Style="{StaticResource QuickChipStyle}"
+                                Margin="8,0,0,0"
+                                automation:AutomationProperties.Name="清空选择"
+                                Command="{Binding MaskManager.ClearSelectionCommand}"
+                                Content="清空" />
+                    </WrapPanel>
+
+                    <!-- 拓扑 -->
+                    <TextBlock Text="核心拓扑"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,20,0,8" />
+
+                    <ItemsControl ItemsSource="{Binding MaskManager.CcdGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource WindowBgBrush}"
+                                        BorderBrush="{DynamicResource LineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="12,12,4,4"
+                                        Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   Margin="0,0,0,10" />
+
+                                        <ItemsControl ItemsSource="{Binding Cores}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Columns="4" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{DynamicResource PanelBrush}"
+                                                            BorderBrush="{DynamicResource LineBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="4"
+                                                            Padding="2,6"
+                                                            Margin="0,0,8,8">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                                       FontSize="10"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       HorizontalAlignment="Center"
+                                                                       Margin="0,0,0,4" />
+
+                                                            <ItemsControl ItemsSource="{Binding Threads}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                    <ItemsPanelTemplate>
+                                                                        <UniformGrid Columns="2" />
+                                                                    </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <CheckBox Style="{StaticResource SmtCheckBoxStyle}"
+                                                                                  Margin="0,0,2,0"
+                                                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                                  automation:AutomationProperties.Name="{Binding DisplayName}" />
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="{Binding MaskManager.SelectedCoreCountText}"
+                               FontFamily="{DynamicResource AppMonoFontFamily}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextTertiaryBrush}"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 底部：删除 + 保存 -->
+            <Border Grid.Row="2"
+                    BorderBrush="{DynamicResource LineBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="0,14,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0"
+                            Style="{StaticResource TextDangerButtonStyle}"
+                            VerticalAlignment="Center"
+                            automation:AutomationProperties.Name="删除此掩码"
+                            Content="删除"
+                            Command="{Binding MaskManager.DeleteMaskCommand}"
+                            CommandParameter="{Binding MaskManager.SelectedMask}"
+                            Visibility="{Binding MaskManager.IsNewMask, Converter={StaticResource InverseBoolToVis}}" />
+
+                    <Button Grid.Column="2"
+                            Style="{StaticResource AccentFilledButtonStyle}"
+                            automation:AutomationProperties.Name="保存掩码"
+                            Command="{Binding MaskManager.SaveCommand}">
+                        <TextBlock Text="保存" />
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

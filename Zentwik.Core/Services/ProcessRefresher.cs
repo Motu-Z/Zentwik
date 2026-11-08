@@ -186,7 +186,7 @@ namespace Zentwik.Core.Services
         /// 事件在采样线程上同步触发，这里不做任何封送：常驻进程里没有可封送的界面线程。
         /// 见 ProcessBindingPage.OnProcessesRefreshed。
         ///
-        /// 【必须是 AutoResetEventSlim，不能是 ManualResetEventSlim】
+        /// 【必须是 AutoResetEvent，不能用 ManualResetEvent】
         /// 1.0.2 的实测教训：这里原本是 ManualResetEventSlim，只 Set 从不 Reset，
         /// 于是「第一次打开进程页」把信号永久置位。之后无论有没有人看，
         /// 采样线程在「没人看」分支里的 WaitAny 都会**立刻返回**，变成：
@@ -199,7 +199,6 @@ namespace Zentwik.Core.Services
         ///
         /// AutoResetEvent 的语义正好：一次 Set 只唤醒一个等待者，
         /// 唤醒后自动复位，等待方再次 Wait 就会真的睡下去。
-        /// （.NET 没有 AutoResetEventSlim，只有 ManualResetEventSlim。）
         /// </summary>
         private readonly AutoResetEvent _watchSignal = new(false);
 
@@ -211,7 +210,7 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 「正在看进程列表」的引用计数。
         ///
-        /// 0.7.0 起自动绑核已改由 ProcessWatcher 的 WMI 事件驱动，这份快照只服务于
+        /// 0.7.0 起自动绑定已改由 ProcessWatcher 的 WMI 事件驱动，这份快照只服务于
         /// 「用户正在看列表」这一个用途。既然没人看，就没有任何理由继续采样 ——
         /// 所以这里不是「降频到某个慢周期」，而是完全停下。
         /// 用计数而不是布尔值，是为了容纳「窗口可见 + 页面已加载」这类多个条件

@@ -1,200 +1,529 @@
-using System;
+using System.ComponentModel;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
-using Zentwik.Core.Ipc;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using Zentwik.UI.Services;
+using Zentwik.UI.ViewModels;
+using Zentwik.UI.Views;
 
-using Application = System.Windows.Application;
-using MessageBox = System.Windows.MessageBox;
+namespace Zentwik.UI;
 
-namespace Zentwik.UI
+public partial class MainWindow : Window
 {
-    public partial class MainWindow : Window
+    private const int WM_GETMINMAXINFO = 0x0024;
+
+    public MainWindow()
     {
-        /// <summary>回滚 IsChecked 时置位，避免回滚动作反过来触发相反方向的处理器。</summary>
-        private bool _suppressAutoStartEvent;
+        // 资源字典必须先于 InitializeComponent 就位：
+        // MainWindow.xaml 里用 {StaticResource NavItemStyle} 等样式，
+        // 解析 XAML 时就会去 Application.Resources 里找。
+        // 而字典是在 AppThemeService.Initialize 里合并的，
+        // 若 InitializeComponent 先跑，样式尚未合并 → 运行时找不到资源。
+        AppThemeService.Instance.Initialize();
 
-        /// <summary>防重入：SendAsync 最长 10 秒，用户在等待期间再点一次会并发执行。</summary>
-        private bool _isProcessingAutoStart;
+        InitializeComponent();
 
-        public MainWindow()
+        System.ComponentModel.DependencyPropertyDescriptor
+            .FromProperty(WindowStateProperty, typeof(Window))
+            .AddValueChanged(this, (_, _) => UpdateMaximizeButton());
+
+        // 版本号来自程序集元数据，不在 XAML / C# 里硬编码
+        SidebarHeader.ToolTip = $"Zentwik v{GetVersion()}\n点击展开侧栏";
+
+        // 侧栏宽度跟随外壳状态
+        ShellState.Instance.PropertyChanged += OnShellStateChanged;
+        Closed += (_, _) => ShellState.Instance.PropertyChanged -= OnShellStateChanged;
+
+        Navigate("Misc");
+
+        _ = BootWorkerAsync();
+    }
+
+    // ==================== Worker 连通性 ====================
+
+    /// <summary>
+    /// 启动后把 Worker 拉起来并刷新状态灯。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么不等窗口先上屏】
+    /// Worker 的清单是 requireAdministrator，拉起会弹 UAC；没有 PawnIO 时它还会
+    /// 在初始化里阻塞最多 60 秒。这一段必须异步跑在窗口显示之后，
+    /// 否则用户看到的是「点了图标，窗口一分钟不出来」。
+    ///
+    /// 【为什么失败不处理】
+    /// 拉不起来就把状态灯留在「未连接」，业务页各自以遮罩降级。
+    /// 这里弹窗反而会盖住界面 —— 用户点一下状态灯就能重试。
+    /// </remarks>
+    private async Task BootWorkerAsync()
+    {
+        try
         {
-            InitializeComponent();
-
-            // 标题里带上当前关闭行为：手工验收要在三种模式间切换，
-            // 窗口上能直接看出跑的是哪一档，不用回头翻源码。
-            Title = $"Zentwik — 关闭行为：{App.CurrentCloseBehavior}";
-
-            // 【顺序不能反】先设初值，再订阅事件。
-            // 反过来会让这次赋值触发 Checked/Unchecked → 直接发一次 IPC，
-            // 表现为「程序一启动就去注册/注销计划任务」，而且用户没点过任何东西。
-            AutoStartCheckBox.IsChecked = App.Settings.Settings.AutoStart;
-            AutoStartCheckBox.Checked += OnAutoStartChanged;
-            AutoStartCheckBox.Unchecked += OnAutoStartChanged;
+            await WorkerLauncher.EnsureRunningAsync();
+        }
+        catch (Exception)
+        {
+            // EnsureRunningAsync 自身不抛；这里只兜底，避免未观察的任务异常。
         }
 
-        /// <summary>
-        /// 状态文本。x:Name 生成的是 internal 字段（同程序集可访问），
-        /// 但 <see cref="Application.MainWindow"/> 的静态类型是 <see cref="Window"/>，
-        /// 没有这个属性，所以必须由窗口自己暴露一个 string 属性给 App 赋值。
-        /// 属性名与 x:Name 刻意不同（StatusText vs StatusTextBlock），避免同名冲突。
-        /// </summary>
-        public string StatusText
+        await ProbeWorkerAsync(force: true);
+
+        // 连上了才拉方案列表：没连上拉也是白等，界面继续用本地占位方案。
+        if (ViewModels.WorkerStatus.Instance.IsConnected)
         {
-            get => StatusTextBlock.Text;
-            set => StatusTextBlock.Text = value;
+            await ViewModels.PlanHub.InitializeAllAsync();
+
+            // 后台那份 ui.json 是权威值；本地文件只是上一次的缓存。
+            await AppSettings.Instance.SyncFromWorkerAsync();
+        }
+    }
+
+    private DateTime _nextProbeAt = DateTime.MinValue;
+
+    private void OnWorkerStatusClick(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        _ = ProbeWorkerAsync(force: true);
+    }
+
+    /// <summary>
+    /// ping 一次 Worker 并刷新左下角状态。失败后进入退避，避免每次切页都白等 400ms。
+    /// </summary>
+    private async Task ProbeWorkerAsync(bool force)
+    {
+        if (!force && DateTime.UtcNow < _nextProbeAt)
+        {
+            return;
         }
 
-        private void OnOpenTuningPageClick(object sender, RoutedEventArgs e)
+        _nextProbeAt = DateTime.UtcNow.AddSeconds(5);
+
+        try
         {
-            MessageBox.Show(
-                this,
-                "调校页待后续批次实现。",
-                "Zentwik",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
+            await Services.WorkerBridge.Instance.RefreshStatusAsync();
 
-        /// <summary>
-        /// 勾选 / 取消「开机自启」。
-        ///
-        /// 【三处状态必须一致】内存里的 <c>Settings.AutoStart</c>、ui.json、复选框。
-        /// 任何一步失败都要把复选框和内存一起回滚到操作前的值，
-        /// 否则用户看到勾着但任务计划不存在（或反过来），而界面上没有任何异常。
-        ///
-        /// 【为什么是 async void】Checked/Unchecked 是 WPF 的 void 事件签名，
-        /// 这里不用 .Wait()/.Result 去同步等待——那会在 UI 线程上死锁。
-        /// </summary>
-        private async void OnAutoStartChanged(object sender, RoutedEventArgs e)
-        {
-            if (_suppressAutoStartEvent || _isProcessingAutoStart)
-                return;
-
-            _isProcessingAutoStart = true;
-
-            // 从源头阻止第二次点击：早退回滚能挡住重复逻辑，但挡不住用户连点两下，
-            // 而两次并发 IPC 会让任务计划与 ui.json 的状态互相覆盖。
-            AutoStartCheckBox.IsEnabled = false;
-
-            try
+            if (!ViewModels.WorkerStatus.Instance.IsConnected)
             {
-                bool desired = AutoStartCheckBox.IsChecked == true;
-                bool original = !desired;
-
-                try
-                {
-                    await using var client = new WorkerPipeClient();
-                    await client.ConnectAsync(TimeSpan.FromSeconds(2));
-
-                    PipeResponse response = await client.SendAsync(
-                        new PipeRequest
-                        {
-                            // 红线 1.2：Version 没有初始化器，默认 0 会被对端判为版本不符，
-                            // 而报错文案是「UI 与 Worker 版本不一致，请重新安装」—— 归因会跑偏。
-                            Version = WorkerPipeContract.ProtocolVersion,
-                            Command = desired
-                                ? WorkerPipeContract.CommandRegisterAutoStart
-                                : WorkerPipeContract.CommandUnregisterAutoStart
-                        },
-                        TimeSpan.FromSeconds(10));
-
-                    if (response.Success)
-                    {
-                        App.Settings.Settings.AutoStart = desired;
-
-                        try
-                        {
-                            App.Settings.Save();
-                        }
-                        catch (Exception saveEx)
-                        {
-                            // Save 失败：回滚内存，保证三处状态一致。
-                            // 注意此时任务计划已经真实改变，这里只能保证界面与配置一致，
-                            // 任务计划与配置的短暂不一致由 MessageBox 告知用户。
-                            App.Settings.Settings.AutoStart = original;
-
-                            _suppressAutoStartEvent = true;
-                            AutoStartCheckBox.IsChecked = original;
-                            _suppressAutoStartEvent = false;
-
-                            App.Log.Warn($"保存 ui.json 失败：{saveEx.GetType().Name}: {saveEx.Message}");
-
-                            MessageBox.Show(
-                                this,
-                                $"任务计划已注册但配置保存失败：{saveEx.Message}\n下次启动时开关状态可能不准确。",
-                                "Zentwik",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Warning);
-                        }
-
-                        return;
-                    }
-
-                    // IPC 返回失败：任务计划没有改变，界面必须回到原状。
-                    _suppressAutoStartEvent = true;
-                    AutoStartCheckBox.IsChecked = original;
-                    _suppressAutoStartEvent = false;
-
-                    MessageBox.Show(
-                        this,
-                        $"设置开机自启失败：{response.Message}",
-                        "Zentwik",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                }
-                catch (Exception ex)
-                {
-                    // 连接失败 / 超时 / 版本不符：同样回滚。
-                    _suppressAutoStartEvent = true;
-                    AutoStartCheckBox.IsChecked = original;
-                    _suppressAutoStartEvent = false;
-
-                    App.Log.Warn($"设置开机自启异常：{ex.GetType().Name}: {ex.Message}");
-
-                    MessageBox.Show(
-                        this,
-                        $"设置开机自启异常：{ex.Message}",
-                        "Zentwik",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                }
-            }
-            finally
-            {
-                AutoStartCheckBox.IsEnabled = true;
-                _isProcessingAutoStart = false;
+                _nextProbeAt = DateTime.UtcNow.AddSeconds(15);
             }
         }
-
-        /// <summary>
-        /// 关闭窗口时的动作（事实卡 §7.3 组二）。
-        ///
-        /// 【为什么这里不调 this.Close()】
-        /// Close() 会再次进入 OnClosed，形成「关闭 → 再关闭」的递归；
-        /// 而且窗口已经在关闭流程里，再调一次不会产生任何新效果，只会让栈变深。
-        ///
-        /// 【Tray 模式为什么什么都不做】
-        /// ShutdownMode = OnExplicitShutdown（App.xaml），窗口关闭只是销毁这个窗口对象，
-        /// 应用本身继续跑 —— 这正是「收托盘」与「退出」的区别。这里把 MainWindow 置 null，
-        /// 是为了让托盘菜单的「打开」走「新建窗口」分支，而不是去 Show() 一个已销毁的窗口
-        /// （后者抛 InvalidOperationException: 无法在已关闭的 Window 上设置 Visibility）。
-        /// </summary>
-        protected override void OnClosed(EventArgs e)
+        catch (Exception)
         {
-            base.OnClosed(e);
+            _nextProbeAt = DateTime.UtcNow.AddSeconds(15);
+        }
+    }
 
-            switch (App.CurrentCloseBehavior)
+    private static string GetVersion()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+        if (string.IsNullOrWhiteSpace(version)) return "0.0.0";
+
+        // InformationalVersion 可能带 "+commit" 后缀，去掉只留主版本号
+        int plus = version.IndexOf('+');
+        return plus > 0 ? version[..plus] : version;
+    }
+
+    // ==================== 侧栏展开 / 收起 ====================
+
+    /// <summary>
+    /// 侧栏宽度过渡。展开 220 / 收缩 72，300ms 缓出。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么宽度动画放在 code-behind，而不是 XAML 的 DataTrigger 里】
+    /// 离屏截图只能拍一帧 —— 触发器里的 Storyboard 会拍到中间态（实测拍到 196），
+    /// 放在这里才能让截图模式一次性落到终值。
+    /// </remarks>
+    private void AnimateSidebar(bool animate = true)
+    {
+        double target = ShellState.Instance.Width;
+
+        if (!animate)
+        {
+            Sidebar.BeginAnimation(WidthProperty, null);
+            Sidebar.Width = target;
+            return;
+        }
+
+        Sidebar.BeginAnimation(
+            WidthProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(300))
             {
-                case CloseBehavior.Exit:
-                case CloseBehavior.WorkerOnly:
-                    // Exit：UI 退出，OnExit 里再决定要不要关 Worker。
-                    // WorkerOnly：UI 退出，OnExit 明确不关 Worker（B3）。
-                    Application.Current.Shutdown();
-                    break;
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            });
+    }
 
-                case CloseBehavior.Tray:
-                    if (ReferenceEquals(Application.Current.MainWindow, this))
-                        Application.Current.MainWindow = null;
-                    break;
+    private void OnShellStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ShellState.IsExpanded))
+        {
+            AnimateSidebar();
+        }
+    }
+
+    /// <summary>
+    /// 让侧栏立刻落到当前状态的宽度，跳过 300ms 过渡（截图 / 自检用）。
+    /// </summary>
+    public void SnapSidebar()
+    {
+        AnimateSidebar(animate: false);
+        UpdateLayout();
+    }
+
+    private void OnSidebarToggleClick(object sender, RoutedEventArgs e)
+    {
+        ShellState.Instance.IsExpanded = false;
+    }
+
+    private void OnSidebarHeaderClick(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+
+        // 收缩态下点 logo 就是展开；展开态下点 logo 不做任何事
+        // （收起只能走右上角的箭头，避免误触）。
+        if (ShellState.Instance.IsCollapsed)
+        {
+            ShellState.Instance.IsExpanded = true;
+        }
+    }
+
+    // ==================== 导航路由（Code-Behind） ====================
+
+    private readonly Dictionary<string, FrameworkElement> _viewCache = new();
+
+    /// <summary>当前显示的页面标签。用来判断「这次是不是真的要离开」。</summary>
+    private string _currentTag = "Misc";
+
+    /// <summary>正在把导航项勾回原位。此时触发的那次 Checked 必须忽略。</summary>
+    private bool _restoringNavigation;
+
+    private void OnNavChecked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { Tag: string tag })
+        {
+            return;
+        }
+
+        if (_restoringNavigation || tag == _currentTag)
+        {
+            return;
+        }
+
+        if (!TryLeaveCurrentPage(tag))
+        {
+            return;
+        }
+
+        // 点图标只切页，不动侧栏开合 —— 开合只有用户点 logo / 箭头才算。
+        Navigate(tag);
+    }
+
+    /// <summary>
+    /// 离开有未保存改动的页面时拦住导航。
+    /// </summary>
+    /// <remarks>
+    /// 【为什么是「拒绝 + Toast」而不是「弹确认」】
+    /// 全项目只有三项高危操作配确认层（清全部数据 / 停用全部功能 / 清空规则）。
+    /// 切页属于高频动作，每次都弹窗比直接放行更烦人；而放行会让用户
+    /// 以为刚拖的曲线已经生效（其实只在界面上，没下发 SMU）。
+    /// 所以取中间态：**拦下来 + 告知原因**，改动本身一条都不丢，用户回来接着调。
+    ///
+    /// 【为什么把导航项勾回原位】
+    /// Checked 事件发出时单选状态已经改了。不勾回去，界面会显示「已经切到进程页」
+    /// 而内容区还停在调校页。
+    /// </remarks>
+    private bool TryLeaveCurrentPage(string targetTag)
+    {
+        if (ContentHost?.Content is not FrameworkElement page)
+        {
+            return true;
+        }
+
+        if (page.DataContext is not ViewModels.TuningViewModel tuning || !tuning.IsDirty)
+        {
+            return true;
+        }
+
+        _restoringNavigation = true;
+
+        try
+        {
+            foreach (RadioButton radio in NavHost.Children.OfType<RadioButton>())
+            {
+                radio.IsChecked = radio.Tag as string == _currentTag;
             }
         }
+        finally
+        {
+            _restoringNavigation = false;
+        }
+
+        ViewModels.ToastService.Instance.Show("调校页有未保存的改动，请先应用或放弃");
+        return false;
+    }
+
+    private void Navigate(string tag)
+    {
+        // 初始 IsChecked 会在 XAML 加载阶段触发 Checked，
+        // 那时 ContentHost 尚未创建（它在 XAML 里位于导航项之后）。
+        // 这种早期触发直接忽略 —— 构造函数末尾会再做一次正式路由。
+        if (ContentHost is null) return;
+
+        if (!_viewCache.TryGetValue(tag, out var view))
+        {
+            view = CreateView(tag);
+            _viewCache[tag] = view;
+        }
+
+        ContentHost.Content = view;
+        _currentTag = tag;
+
+        _ = ProbeWorkerAsync(force: false);
+    }
+
+    public void NavigateTo(string tag)
+    {
+        if (tag != _currentTag && !TryLeaveCurrentPage(tag))
+        {
+            // 托盘等外部入口同样不能绕过未保存拦截。
+            return;
+        }
+
+        Navigate(tag);
+
+        // 同步侧栏选中项（Checked 只做路由，不会再动侧栏开合）
+        foreach (var radio in NavHost.Children.OfType<RadioButton>())
+        {
+            if (radio.Tag as string == tag)
+            {
+                radio.IsChecked = true;
+            }
+        }
+    }
+
+    private static FrameworkElement CreateView(string tag) => tag switch
+    {
+        "Misc"     => new SettingsView(),
+        "Tuning"   => new TuningView(),
+        "Process"  => new ProcessView(),
+        "Power"    => new PowerView(),
+        "Scenarios" => new ScenariosView(),
+        "Behavior" => new BehaviorView(),
+        "Logs"     => new LogsView(),
+        "Advanced" => new AdvancedView(),
+        _ => new PlaceholderView { Title = tag },
+    };
+
+    public void ScrollPageToEnd()
+    {
+        if (ContentHost.Content is not DependencyObject root)
+        {
+            return;
+        }
+
+        FindFirst<ScrollViewer>(root)?.ScrollToEnd();
+    }
+
+    public void OpenMaskManager()
+    {
+        if (ContentHost.Content is ProcessView view
+            && view.DataContext is ProcessViewModel vm)
+        {
+            vm.OpenMaskManager();
+            UpdateLayout();
+        }
+    }
+
+    /// <summary>直接进掩码编辑器。给 <c>--mask</c> 截图用：截图模式没有鼠标，点不到列表卡片。</summary>
+    public void OpenMaskEditor()
+    {
+        if (ContentHost.Content is ProcessView view
+            && view.DataContext is ProcessViewModel vm)
+        {
+            vm.MaskManager?.EditSelected();
+            UpdateLayout();
+        }
+    }
+
+    private static T? FindFirst<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root is null)
+        {
+            return null;
+        }
+
+        if (root is T match)
+        {
+            return match;
+        }
+
+        int count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (int i = 0; i < count; i++)
+        {
+            T? found = FindFirst<T>(VisualTreeHelper.GetChild(root, i));
+
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    // ==================== 窗口控制（Code-Behind） ====================
+
+    private void OnMinimizeClick(object sender, RoutedEventArgs e)
+    {
+        // 走 WM_SYSCOMMAND，不用 WindowState 赋值：
+        // 后者内部是 SetWindowPos，跳过了 DWM 的最小化缩放动画，看起来是硬消失。
+        SystemCommands.MinimizeWindow(this);
+    }
+
+    private void OnMaximizeClick(object sender, RoutedEventArgs e)
+    {
+        ToggleMaximize();
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    // 托盘图标是否创建成功。没有托盘时窗口不能隐藏，否则没人能把它叫回来。
+    public bool MinimizeToTrayEnabled { get; set; }
+
+    internal enum WindowCloseAction
+    {
+        /// <summary>退 UI，并连带关掉本次 UI 拉起的 Worker。</summary>
+        ExitAll,
+
+        /// <summary>只退 UI，Worker 常驻。</summary>
+        ExitUiKeepWorker,
+
+        /// <summary>窗口收进托盘，UI 进程存活。</summary>
+        Hide,
+    }
+
+    internal static WindowCloseAction ResolveCloseAction(
+        bool trayAvailable,
+        MainWindowCloseBehavior behavior)
+    {
+        if (behavior == MainWindowCloseBehavior.CloseWindowOnly)
+            return WindowCloseAction.ExitUiKeepWorker;
+
+        if (behavior == MainWindowCloseBehavior.ExitAll || !trayAvailable)
+            return WindowCloseAction.ExitAll;
+
+        return WindowCloseAction.Hide;
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+
+        if (_allowClose)
+            return;
+
+        WindowCloseAction action = ResolveCloseAction(
+            MinimizeToTrayEnabled, AppSettings.Instance.CloseBehavior);
+
+        // 两档退出都让窗口正常关闭；是否连带关 Worker 由 App.Exit 按同一个设置决定。
+        if (action != WindowCloseAction.Hide)
+            return;
+
+        e.Cancel = true;
+        Hide();
+    }
+
+    private bool _allowClose;
+
+    public void ExitApplication()
+    {
+        _allowClose = true;
+
+        // 托盘里的「退出」是显式关整个应用，不受「仅留服务」影响。
+        WorkerLauncher.ShutdownIfOwned();
+        Close();
+    }
+
+    private void ToggleMaximize()
+    {
+        // 同上：MaximizeWindow / RestoreWindow 发的是 SC_MAXIMIZE / SC_RESTORE，
+        // DWM 才会给出 Windows 原生的铺展与收回动画。
+        if (WindowState == WindowState.Maximized)
+        {
+            SystemCommands.RestoreWindow(this);
+        }
+        else
+        {
+            SystemCommands.MaximizeWindow(this);
+        }
+    }
+
+    private void UpdateMaximizeButton()
+    {
+        bool maximized = WindowState == WindowState.Maximized;
+
+        MaxButton.ToolTip = maximized ? "还原" : "最大化";
+        MaxIcon.Data = System.Windows.Media.Geometry.Parse(maximized
+            ? "M2.5 0.5 H9.5 V7.5 M0.5 2.5 H7.5 V9.5 H0.5 Z"
+            : "M1.5 0.5 H8.5 A1,1 0 0 1 9.5 1.5 V8.5 A1,1 0 0 1 8.5 9.5 H1.5 A1,1 0 0 1 0.5 8.5 V1.5 A1,1 0 0 1 1.5 0.5 Z");
+    }
+
+    // ==================== 最大化工作区修正 ====================
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            HwndSource.FromHwnd(handle)?.AddHook(WndProc);
+        }
+
+        // 窗口句柄此时才存在 —— 挂系统主题监听
+        AppThemeService.Instance.AttachWindow(this);
+    }
+
+    private static IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_GETMINMAXINFO)
+        {
+            var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+
+            IntPtr monitor = NativeMethods.MonitorFromWindow(hwnd, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            var info = new NativeMethods.MONITORINFO { cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+
+            if (NativeMethods.GetMonitorInfo(monitor, ref info))
+            {
+                mmi.ptMaxPosition.X = info.rcWork.Left - info.rcMonitor.Left;
+                mmi.ptMaxPosition.Y = info.rcWork.Top - info.rcMonitor.Top;
+                mmi.ptMaxSize.X = info.rcWork.Right - info.rcWork.Left;
+                mmi.ptMaxSize.Y = info.rcWork.Bottom - info.rcWork.Top;
+
+                Marshal.StructureToPtr(mmi, lParam, true);
+                handled = true;
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MINMAXINFO
+    {
+        public NativeMethods.POINT ptReserved;
+        public NativeMethods.POINT ptMaxSize;
+        public NativeMethods.POINT ptMaxPosition;
+        public NativeMethods.POINT ptMinTrackSize;
+        public NativeMethods.POINT ptMaxTrackSize;
     }
 }

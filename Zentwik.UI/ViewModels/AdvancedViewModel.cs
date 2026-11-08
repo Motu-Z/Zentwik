@@ -1,0 +1,225 @@
+using System.IO;
+
+namespace Zentwik.UI.ViewModels;
+
+public class AdvancedViewModel : ViewModelBase
+{
+    private readonly AppSettings _settings = AppSettings.Instance;
+
+    // ==================== 安全 ====================
+
+    public bool SmartAntiBrick
+    {
+        get => _settings.SmartAntiBrick;
+        set
+        {
+            if (_settings.SmartAntiBrick == value) return;
+
+            _settings.SmartAntiBrick = value;
+
+            OnPropertyChanged();
+        }
+    }
+
+    public bool SmartHibernateAware
+    {
+        get => _settings.SmartHibernateAware;
+        set
+        {
+            if (_settings.SmartHibernateAware == value) return;
+
+            _settings.SmartHibernateAware = value;
+
+            OnPropertyChanged();
+        }
+    }
+
+    // ==================== 防砖计数 ====================
+
+    /// <summary>连续异常启动次数由 Worker 的 BootGuard 维护，界面暂不展示该值。</summary>
+    public int BootCount => 0;
+
+    public string BootCountText => $"{BootCount} 次";
+
+    // ==================== 显示 ====================
+
+    public int ToastDuration
+    {
+        get => _settings.ToastDurationSeconds;
+        set
+        {
+            int clamped = Math.Clamp(value, 1, 30);
+
+            if (_settings.ToastDurationSeconds == clamped) return;
+
+            _settings.ToastDurationSeconds = clamped;
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ToastDurationText));
+        }
+    }
+
+    public string ToastDurationText => $"{ToastDuration} 秒";
+
+    // ==================== 诊断 / 恢复 ====================
+
+    public RelayCommand RestoreSafeDefaultsCommand { get; }
+
+    public RelayCommand RunSelfTestCommand { get; }
+
+    public RelayCommand ExportLogsCommand { get; }
+
+    // ==================== 重置 ====================
+
+    public RelayCommand DisableAllCommand { get; }
+
+    public RelayCommand ClearAllCommand { get; }
+
+    public AdvancedViewModel()
+    {
+        // 远程设置覆盖本地后，界面要跟着刷。
+        _settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppSettings.ToastDurationSeconds))
+            {
+                OnPropertyChanged(nameof(ToastDuration));
+                OnPropertyChanged(nameof(ToastDurationText));
+            }
+            else if (e.PropertyName == nameof(AppSettings.SmartAntiBrick))
+            {
+                OnPropertyChanged(nameof(SmartAntiBrick));
+            }
+            else if (e.PropertyName == nameof(AppSettings.SmartHibernateAware))
+            {
+                OnPropertyChanged(nameof(SmartHibernateAware));
+            }
+        };
+
+        // 【高危确认】用户 2026-11-04 裁定：这两项必须先弹界面内确认。
+        // 命令本身**只发起 Request，不执行动作** —— 真正的副作用在回调里，
+        // 取消时回调根本不会被调用。这样「点了但取消」与「没点过」完全等价。
+        DisableAllCommand = new RelayCommand(_ =>
+            ConfirmService.Instance.Request(
+                "停用全部功能",
+                new[]
+                {
+                    "自动应用调校参数将被关闭",
+                    "智能休眠感知将被关闭",
+                    "智能防砖保护将被关闭",
+                },
+                DisableAll,
+                "停用"));
+
+        ClearAllCommand = new RelayCommand(_ =>
+            ConfirmService.Instance.Request(
+                "清除全部数据",
+                new[]
+                {
+                    "删除全部配置方案",
+                    "删除全部已保存的调度规则",
+                    "恢复所有设置到默认值",
+                },
+                ClearAll,
+                "清除"));
+
+        RestoreSafeDefaultsCommand = new RelayCommand(_ => Fire(RestoreSafeDefaultsAsync));
+        RunSelfTestCommand = new RelayCommand(_ => Fire(ExportSelfTestAsync));
+        ExportLogsCommand = new RelayCommand(_ => Fire(ExportLogsAsync));
+    }
+
+    private void ClearAll() => Fire(ClearAllAsync);
+
+    private static async Task ClearAllAsync()
+    {
+        var outcome = await Services.WorkerBridge.Instance.FactoryResetAsync().ConfigureAwait(true);
+
+        if (!outcome.Success)
+        {
+            ToastService.Instance.ShowError(string.IsNullOrEmpty(outcome.Message)
+                ? "清除全部数据失败"
+                : outcome.Message);
+            return;
+        }
+
+        // 后台已重置：把设置与三类方案重新读回来，界面不能停在旧值上。
+        await AppSettings.Instance.SyncFromWorkerAsync().ConfigureAwait(true);
+        await PlanHub.InitializeAllAsync().ConfigureAwait(true);
+    }
+
+    private void DisableAll()
+    {
+        _settings.AutoApplyTuning = false;
+        _settings.WatchProcesses = false;
+        _settings.SmartHibernateAware = false;
+        _settings.SmartAntiBrick = false;
+
+        OnPropertyChanged(nameof(SmartAntiBrick));
+        OnPropertyChanged(nameof(SmartHibernateAware));
+    }
+
+    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
+
+    private static async Task RunSafeAsync(Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            ToastService.Instance.ShowError(ex.Message);
+        }
+    }
+
+    /// <summary>恢复默认安全参数：CO 归零、FMax 回基线，后台负责写盘并下发。</summary>
+    private static async Task RestoreSafeDefaultsAsync()
+    {
+        var outcome = await Services.WorkerBridge.Instance.ResetTuningSafeAsync().ConfigureAwait(true);
+
+        if (!outcome.Success)
+        {
+            ToastService.Instance.ShowError(string.IsNullOrEmpty(outcome.Message)
+                ? "恢复默认安全参数失败"
+                : outcome.Message);
+        }
+    }
+
+    /// <summary>自检报告：把当前诊断信息快照写到桌面。</summary>
+    private static Task ExportSelfTestAsync()
+    {
+        var logs = new LogsViewModel();
+        string path = WriteReport("zentwik-selftest", logs.BuildDiagnostics());
+
+        ToastService.Instance.Show($"自检报告已导出：{path}");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>导出全部后台日志到桌面。</summary>
+    private static async Task ExportLogsAsync()
+    {
+        var outcome = await Services.WorkerBridge.Instance.SnapshotLogsAsync().ConfigureAwait(true);
+
+        if (!outcome.Success)
+        {
+            ToastService.Instance.ShowError(string.IsNullOrEmpty(outcome.Message)
+                ? "导出日志失败"
+                : outcome.Message);
+            return;
+        }
+
+        string path = WriteReport("zentwik-logs", outcome.Value ?? string.Empty);
+        ToastService.Instance.Show($"日志已导出：{path}");
+    }
+
+    private static string WriteReport(string prefix, string body)
+    {
+        string dir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+            dir = Path.GetTempPath();
+
+        string path = Path.Combine(dir, $"{prefix}-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+        File.WriteAllText(path, body);
+        return path;
+    }
+}

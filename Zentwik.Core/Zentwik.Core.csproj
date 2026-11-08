@@ -31,9 +31,9 @@
     <LangVersion>latest</LangVersion>
 
     <!-- 版本号口径统一由 Core 维护，各宿主工程不再各写一份 -->
-    <Version>2.0.0-can3</Version>
-    <FileVersion>2.0.0.0</FileVersion>
-    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <Version>2.0.1</Version>
+    <FileVersion>2.0.1.0</FileVersion>
+    <AssemblyVersion>2.0.1.0</AssemblyVersion>
 
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -196,7 +196,11 @@
     <!-- 只引 Abstractions，不引完整 DI 容器：Core 负责「按什么生命周期登记」，
          容器本身由宿主创建。引完整包会把 ServiceProvider 实现拖进 Core，
          等于让业务层拥有一个可以随手解析任意服务的入口。 -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <!-- 版本必须与 Worker 的 Microsoft.Extensions.Hosting 对齐（10.0.x）。
+         两边取不同大版本时，UI 与 Worker 的输出目录里同名 DLL 内容不同：
+         合并到同一个部署目录后，谁后拷谁生效，另一方启动即
+         FileNotFoundException: Microsoft.Extensions.DependencyInjection.Abstractions。 -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
   </ItemGroup>
 
 </Project>

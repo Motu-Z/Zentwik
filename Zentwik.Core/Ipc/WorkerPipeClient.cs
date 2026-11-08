@@ -75,15 +75,26 @@ namespace Zentwik.Core.Ipc
                 {
                     await stream.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException ex)
                 {
                     await stream.DisposeAsync().ConfigureAwait(false);
+
+                    // 外部取消按取消语义原样传播，只有内部超时才折算成传输异常。
+                    if (cancellationToken.IsCancellationRequested)
+                        throw;
+
                     throw new IpcTransportException($"连接 Worker 管道超时（{timeout.TotalMilliseconds:F0} ms）。", ex);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     await stream.DisposeAsync().ConfigureAwait(false);
                     throw new IpcTransportException($"连接 Worker 管道失败：{ex.Message}", ex);
+                }
+                catch
+                {
+                    // stream 还是局部变量，字段没接手，漏掉就是一条泄漏的管道句柄。
+                    await stream.DisposeAsync().ConfigureAwait(false);
+                    throw;
                 }
 
                 // 两个包装器共享同一条流，leaveOpen 让流的生命周期归本类管。
@@ -153,8 +164,9 @@ namespace Zentwik.Core.Ipc
                     if (line is null)
                         throw new IpcTransportException("Worker 关闭了管道连接。");
 
-                    // StreamReader 没有行长上限，超限响应在这里截断而不是让它继续占内存。
-                    if (line.Length > WorkerPipeContract.MaxMessageBytes)
+                    // 上限按字节算：line.Length 是 UTF-16 字符数，中文一字三字节会漏判。
+                    // ReadLineAsync 已经把整行读进内存，这里只能事后拒绝。
+                    if (WorkerPipeContract.Utf8.GetByteCount(line) > WorkerPipeContract.MaxMessageBytes)
                         throw new IpcTransportException($"响应超过单条上限 {WorkerPipeContract.MaxMessageBytes} 字节。");
 
                     PipeResponse? response = JsonSerializer.Deserialize(line, IpcJsonContext.Default.PipeResponse);
@@ -183,6 +195,18 @@ namespace Zentwik.Core.Ipc
                 {
                     await DisposeStreamAsync().ConfigureAwait(false);
                     throw new IpcTransportException($"与 Worker 的通信中断：{ex.Message}", ex);
+                }
+                catch (OperationCanceledException)
+                {
+                    // 外部取消：连接可能停在写了半行 JSON 的状态，必须丢弃。
+                    await DisposeStreamAsync().ConfigureAwait(false);
+                    throw;
+                }
+                catch
+                {
+                    // 任何一次传输失败之后，本实例的连接都不可再复用。
+                    await DisposeStreamAsync().ConfigureAwait(false);
+                    throw;
                 }
             }
             finally

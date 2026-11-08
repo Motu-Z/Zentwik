@@ -20,7 +20,7 @@ namespace Zentwik.Core.Services
     ///   3. 快照抓取与写回 —— 只动 store 的内存副本，**不下发硬件**（见下）。
     ///
     /// 【刻意不测什么】
-    /// 不调 TuningApplyService、不写 SMU、不改进程绑核。自检的目的是验证逻辑，
+    /// 不调 TuningApplyService、不写 SMU、不改进程调度。自检的目的是验证逻辑，
     /// 不是验证硬件；为跑一次自检把用户的负压值改掉，代价与收益完全不成比例。
     /// 硬件下发那一段只能靠真机验收。
     /// </summary>
@@ -28,25 +28,25 @@ namespace Zentwik.Core.Services
     {
         private readonly ILogService _log;
         private readonly ScenarioService _scenarios;
-        private readonly ProfileService _profiles;
+        private readonly PlanService _plans;
         private readonly ScenarioMonitor _monitor;
         private readonly ITuningStore _tuning;
-        private readonly IBindingStore _bindings;
+        private readonly ISchedulingStore _scheduling;
 
-        public ScenarioSelfCheck(ILogService log, ScenarioService scenarios, ProfileService profiles, ScenarioMonitor monitor, ITuningStore tuning, IBindingStore bindings)
+        public ScenarioSelfCheck(ILogService log, ScenarioService scenarios, PlanService plans, ScenarioMonitor monitor, ITuningStore tuning, ISchedulingStore bindings)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
             ArgumentNullException.ThrowIfNull(scenarios);
             _scenarios = scenarios;
-            ArgumentNullException.ThrowIfNull(profiles);
-            _profiles = profiles;
+            ArgumentNullException.ThrowIfNull(plans);
+            _plans = plans;
             ArgumentNullException.ThrowIfNull(monitor);
             _monitor = monitor;
             ArgumentNullException.ThrowIfNull(tuning);
             _tuning = tuning;
             ArgumentNullException.ThrowIfNull(bindings);
-            _bindings = bindings;
+            _scheduling = bindings;
         }
 
         /// <summary>跑一遍自检，把结果写进日志。任何一步抛异常都不会影响启动。</summary>
@@ -138,20 +138,22 @@ namespace Zentwik.Core.Services
             // ---------- 7. 快照抓取值正确 ----------
             Check("快照-抓取：抓到的是 store 当前值且规则已深拷贝", ref passed, ref failed, () =>
             {
-                ProfileSnapshot snapshot = _profiles.CaptureCurrent("__selftest__");
+                PlanEntry tuning = _plans.CaptureCurrent(PlanKind.Tuning, "__selftest__");
 
-                if (!snapshot.CurveOptimizer.SequenceEqual(_tuning.Profile.CurveOptimizer))
+                if (!tuning.CurveOptimizer.SequenceEqual(_tuning.Profile.CurveOptimizer))
                     return "CO 值与 store 不一致";
 
-                if (snapshot.FMaxMHz != _tuning.Profile.FMaxMHz)
+                if (tuning.FMaxMHz != _tuning.Profile.FMaxMHz)
                     return "FMax 值与 store 不一致";
 
                 // 规则必须是副本：方案保存之后继续改进程页，不能把已存的方案也改了。
                 // 引用相等意味着改动会互相串，那是最难查的一类 bug。
-                if (snapshot.BindingRules.Count != _bindings.Profile.Rules.Count)
+                PlanEntry scheduling = _plans.CaptureCurrent(PlanKind.Scheduling, "__selftest__");
+
+                if (scheduling.ScheduleRules.Count != _scheduling.Profile.Rules.Count)
                     return "规则条数与 store 不一致";
 
-                if (snapshot.BindingRules.Any(r => _bindings.Profile.Rules.Any(c => ReferenceEquals(r, c))))
+                if (scheduling.ScheduleRules.Any(r => _scheduling.Profile.Rules.Any(c => ReferenceEquals(r, c))))
                     return "规则未深拷贝：与当前规则集共享同一批对象";
 
                 return null;
@@ -160,13 +162,14 @@ namespace Zentwik.Core.Services
             // ---------- 8. 生效标记与 ActiveId 一致 ----------
             Check("标记-一致：IsActive 只在该生效的那一份上为真", ref passed, ref failed, () =>
             {
-                string? activeId = _profiles.ActiveId;
-                int marked = _profiles.Items.Count(p => p.IsActive);
+                string? activeId = _plans.ActiveId(PlanKind.Tuning);
+                IReadOnlyList<PlanEntry> tuningPlans = _plans.Items(PlanKind.Tuning);
+                int marked = tuningPlans.Count(p => p.IsActive);
 
                 if (activeId == null)
                     return marked == 0 ? null : $"没有生效方案，却有 {marked} 份被标记";
 
-                return marked == 1 && _profiles.Items.First(p => p.IsActive).Id == activeId
+                return marked <= 1 && (marked == 0 || tuningPlans.First(p => p.IsActive).Id == activeId)
                     ? null
                     : $"被标记的有 {marked} 份，与 ActiveId 对不上";
             });

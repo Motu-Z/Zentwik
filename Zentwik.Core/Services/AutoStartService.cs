@@ -5,9 +5,11 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Zentwik.Core.Helpers;
 
 namespace Zentwik.Core.Services
 {
@@ -69,6 +71,47 @@ namespace Zentwik.Core.Services
         public const string OpenUiArgument = "--open-ui";
 
         /// <summary>
+        /// 登录自启的启动参数：只拉起 UI 的托盘，不开主窗口。
+        ///
+        /// 【为什么托盘也走命令行而不是 IPC】
+        /// 与 <see cref="OpenUiArgument"/> 同理：这是**进程启动参数**，决定 UI 进程
+        /// 一起来是建窗口还是只建托盘。托盘图标由 UI 进程持有（事实卡 §7.2：
+        /// Worker 不持有任何托盘），所以 Worker 只能把「别开窗口」这件事作为参数传下去。
+        ///
+        /// 【与 --open-ui 互斥】
+        /// 两者同时出现时以 <see cref="OpenUiArgument"/> 为准（见 Worker 的参数解析），
+        /// 因为「打开窗口」是更明确、用户感知更强的意图。
+        /// </summary>
+        public const string TrayArgument = "--tray";
+
+        /// <summary>
+        /// 把形态翻译成 Worker 的命令行参数。纯函数，便于单元测试逐个钉住四种形态。
+        ///
+        /// 【None 与 WorkerOnly 都返回空串，但含义不同】
+        /// None 根本不该创建计划任务（<see cref="Enable(AutoStartMode)"/> 会直接拒绝）；
+        /// WorkerOnly 则**要**创建任务，只是不带任何参数 —— 计划任务只拉 Worker，
+        /// Worker 起来后因为没收到开关而不去拉 UI。两者在命令行层面无法区分，
+        /// 区分点在调用方：一个不该走到这里，一个走到这里是正确结果。
+        /// </summary>
+        public static string BuildArguments(AutoStartMode mode) => mode switch
+        {
+            AutoStartMode.WorkerWithTray => TrayArgument,
+            AutoStartMode.WorkerWithUI => OpenUiArgument,
+            _ => string.Empty
+        };
+
+        /// <summary>形态的中文说明。日志与计划任务描述共用一份，避免两处文案漂移。</summary>
+        public static string DescribeMode(AutoStartMode mode) => mode switch
+        {
+            AutoStartMode.None => "不自启",
+            AutoStartMode.WorkerOnly => "只启动后台服务（不显示界面、不建托盘）",
+            AutoStartMode.WorkerWithTray => "启动后台服务 + 托盘图标",
+            AutoStartMode.WorkerWithUI => "启动后台服务 + 主界面",
+            _ => "未知形态"
+        };
+
+
+        /// <summary>
         /// 读取 schtasks 输出用的编码。
         ///
         /// schtasks 是控制台程序，往管道写的是**系统 OEM 代码页**（中文系统 936），
@@ -116,11 +159,30 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
-        /// 创建（或覆盖）计划任务。
+        /// 创建（或覆盖）计划任务。默认形态是「拉起 Worker 后打开主界面」，
+        /// 与旧版 <c>bool AutoStart = true</c> 的行为一致，保留这个无参重载是为了
+        /// 让「只是想开机看到界面」的调用方不必写枚举。
         /// </summary>
         /// <returns>true = 创建成功且已回查确认存在。</returns>
-        public bool Enable()
+        public bool Enable() => Enable(AutoStartMode.WorkerWithUI);
+
+        /// <summary>
+        /// 按给定形态创建（或覆盖）计划任务。
+        /// </summary>
+        /// <param name="mode">
+        /// 自启形态。<see cref="AutoStartMode.None"/> 会被拒绝 —— 那等于「不要自启」，
+        /// 正确动作是 <see cref="Disable"/>，在这里静默当成功会让「关掉自启」变成
+        /// 「任务还在但没人知道它带什么参数」。
+        /// </param>
+        /// <returns>true = 创建成功且已回查确认存在。</returns>
+        public bool Enable(AutoStartMode mode)
         {
+            if (mode == AutoStartMode.None)
+            {
+                _log.Error("创建计划任务失败：AutoStartMode.None 表示不要自启，应调用 Disable()");
+                return false;
+            }
+
             string? exePath = ResolveExecutablePath();
             if (string.IsNullOrEmpty(exePath))
             {
@@ -140,7 +202,8 @@ namespace Zentwik.Core.Services
             {
                 tempXml = Path.Combine(Path.GetTempPath(), $"Zentwik-AutoStart-{Guid.NewGuid():N}.xml");
 
-                string xml = BuildTaskXml(exePath, OpenUiArgument, userId);
+                string arguments = BuildArguments(mode);
+                string xml = BuildTaskXml(exePath, arguments, userId, mode);
                 // UTF-16 + BOM：schtasks /XML 最稳定的编码
                 File.WriteAllText(tempXml, xml, new UnicodeEncoding(bigEndian: false, byteOrderMark: true));
 
@@ -162,8 +225,8 @@ namespace Zentwik.Core.Services
                 }
 
                 _log.Info(
-                    $"计划任务 {TaskName} 创建成功：用户 {userId} · 登录后延时 {DelaySeconds} 秒 · 最高权限 · 登录后拉起 UI " +
-                    $"（{exePath} {OpenUiArgument}）");
+                    $"计划任务 {TaskName} 创建成功：用户 {userId} · 登录后延时 {DelaySeconds} 秒 · 最高权限 · " +
+                    $"{DescribeMode(mode)}（{exePath} {DescribeLaunch(arguments)}）");
 
                 // 把「下次运行时间 / 上次结果 / 运行方式」写进日志。
                 // 用户下次开机发现没起来时，这三个字段直接指出是没触发还是启动后崩了。
@@ -189,6 +252,93 @@ namespace Zentwik.Core.Services
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// 计划任务里的可执行路径与当前进程不一致时就地改写。
+        /// </summary>
+        /// <remarks>
+        /// 【为什么需要这一步】
+        /// 计划任务保存的是绝对路径。应用换了安装目录（例如从构建输出目录搬到正式部署目录）后，
+        /// 任务仍然指着旧位置 —— 开机拉起的是旧构建里的 Worker，再由那个 Worker 拉起旧界面。
+        /// 用户看到的现象是「开机自启开的是老 UI」，而设置页里的开关还是「已开启」。
+        ///
+        /// 【只在路径真的不同的时候写】
+        /// 每次都重写会让任务的「上次运行结果」等状态被清掉，也白白多一次提权写操作。
+        /// 形态（参数）沿用任务里原有的，不擅自替用户改「要不要开界面」。
+        /// </remarks>
+        /// <returns>true = 已改写成功。</returns>
+        public bool RepairRegisteredPath()
+        {
+            try
+            {
+                string? exePath = ResolveExecutablePath();
+                if (string.IsNullOrEmpty(exePath) || !IsEnabled())
+                    return false;
+
+                (int exitCode, string xml) = RunSchtasks($"/Query /TN \"{TaskName}\" /XML");
+                if (exitCode != 0)
+                    return false;
+
+                string? registered = ReadXmlText(xml, "Command");
+                if (string.IsNullOrWhiteSpace(registered))
+                    return false;
+
+                if (PathsEqual(registered.Trim(), exePath))
+                    return false;
+
+                AutoStartMode mode = ParseArgumentsMode(ReadXmlText(xml, "Arguments"));
+                _log.Warn($"计划任务 {TaskName} 指向 {registered}，与当前 {exePath} 不一致，正在改写");
+                return Enable(mode);
+            }
+            catch (Exception ex)
+            {
+                // 校正失败不阻断启动：任务还指着旧路径，下次启动会再试一次。
+                _log.Warn($"校正计划任务路径失败：{ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            try
+            {
+                return string.Equals(
+                    Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // 路径非法（含通配符等）时按「不相等」处理，交给 Enable 覆盖成正确路径。
+                return false;
+            }
+        }
+
+        /// <summary>从任务的参数推回自启形态。认不出来时按「只拉 Worker」处理，最保守。</summary>
+        internal static AutoStartMode ParseArgumentsMode(string? arguments)
+        {
+            string args = arguments ?? string.Empty;
+
+            if (args.Contains(TrayArgument, StringComparison.OrdinalIgnoreCase))
+                return AutoStartMode.WorkerWithTray;
+
+            if (args.Contains(OpenUiArgument, StringComparison.OrdinalIgnoreCase))
+                return AutoStartMode.WorkerWithUI;
+
+            return AutoStartMode.WorkerOnly;
+        }
+
+        /// <summary>
+        /// 取 XML 里某个叶子标签的文本。
+        /// </summary>
+        /// <remarks>
+        /// 不用 XDocument.Parse：schtasks 输出带 <c>&lt;?xml encoding="UTF-16"?&gt;</c> 声明，
+        /// 从字符串解析会撞「没有 BOM 无法切到 Unicode」。这里只关心一两个标签，
+        /// 用正则取更稳，也不受命名空间前缀影响。
+        /// </remarks>
+        private static string? ReadXmlText(string xml, string tag)
+        {
+            Match match = Regex.Match(xml, $"<{tag}>(.*?)</{tag}>", RegexOptions.Singleline);
+            return match.Success ? match.Groups[1].Value : null;
         }
 
         /// <summary>删除计划任务。</summary>
@@ -220,13 +370,18 @@ namespace Zentwik.Core.Services
             }
         }
 
+        /// <summary>参数为空时不要留一个悬空的空格（日志里看得出「没带参数」而不是「参数被截断」）。</summary>
+        private static string DescribeLaunch(string arguments) =>
+            string.IsNullOrEmpty(arguments) ? "(无参数)" : arguments;
+
         /// <summary>
         /// 构造任务定义 XML。
         /// </summary>
         /// <param name="exePath">Worker 可执行文件完整路径（`Environment.ProcessPath` 的解析结果）。</param>
-        /// <param name="arguments">启动参数（<see cref="OpenUiArgument"/>）。</param>
+        /// <param name="arguments">启动参数（<see cref="BuildArguments"/> 的结果，可能为空串）。</param>
         /// <param name="userId">当前用户 SID 或 DOMAIN\User；触发器和主体必须用同一份。</param>
-        private string BuildTaskXml(string exePath, string arguments, string userId)
+        /// <param name="mode">自启形态，只用于生成任务描述。</param>
+        private string BuildTaskXml(string exePath, string arguments, string userId, AutoStartMode mode)
         {
             XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
 
@@ -238,7 +393,7 @@ namespace Zentwik.Core.Services
                     new XElement(ns + "RegistrationInfo",
                         new XElement(ns + "Author", "Zentwik"),
                         new XElement(ns + "Description",
-                            "Zentwik 登录自启：延时 15 秒后以最高权限启动后台服务（重新应用 CO / FMax、启动进程绑核监听），随后打开主界面。")),
+                            $"Zentwik 登录自启：延时 15 秒后以最高权限启动后台服务（重新应用 CO / FMax、启动进程调度监听）。当前形态：{DescribeMode(mode)}。")),
 
                     // 触发器：该用户登录，延时 15 秒。
                     // UserId 必须写 —— 只写 Enabled + Delay 在组主体任务上永远不触发。

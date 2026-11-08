@@ -1,5 +1,7 @@
 using System;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Zentwik.Core.Serialization;
@@ -8,12 +10,32 @@ namespace Zentwik.Core.Helpers
 {
     /// <summary>
     /// 界面设置（主题 / 强调色），持久化到 %APPDATA%\Zentwik\ui.json
+    ///
+    /// 【为什么实现 INotifyPropertyChanged】
+    /// 托盘图标的有无由 <see cref="AutoStartMode"/> 与 <see cref="CloseBehavior"/> 共同决定
+    /// （见 <see cref="TrayPolicy"/>）。这两个值有三个写入点：行为页的两个下拉、
+    /// 主窗口侧边栏的自启复选框、以及 <c>App.ChangeAutoStartAsync</c> 的 IPC 成功路径。
+    /// 让「谁改了」逐个去通知托盘，漏一处就是「设置改了、图标没跟着变」；
+    /// 改成属性变更即广播，托盘只需要订阅一次。
+    ///
+    /// 刻意只在这两个属性上抛：其余字段（主题、材质、动效）改的是界面自身的呈现，
+    /// 由各自的绑定就地刷新，与进程生命周期无关，广播出去只会多出无意义的回调。
     /// </summary>
-    public sealed class UiSettings
+    public sealed class UiSettings : INotifyPropertyChanged
     {
         /// <summary>出厂强调色。与 ThemeService 的默认色、通用页色板的兜底色同一值。</summary>
         public const string DefaultAccentHex = "#38BDF8";
 
+        /// <summary>
+        /// 属性变更通知。序列化时被忽略（事件不参与 JSON），AOT 源生成不受影响。
+        /// </summary>
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        // 两个会广播变更的属性的后备字段。初值与属性默认值必须一致：
+        // 枚举的 0 恰好是 None / Exit，但那是巧合，不写出来就等于靠枚举顺序成立。
+        private AutoStartMode _autoStartMode = AutoStartMode.None;
+
+        private CloseBehavior _closeBehavior = CloseBehavior.Exit;
         [JsonConverter(typeof(JsonStringEnumConverter<AppThemeMode>))]
         public AppThemeMode ThemeMode { get; set; } = AppThemeMode.System;
 
@@ -38,26 +60,53 @@ namespace Zentwik.Core.Helpers
         /// <summary>窗口动效：Full / Reduced / Off。解析见 ThemeController.ParseMotion。</summary>
         public string Motion { get; set; } = "Full";
 
-        /// <summary>配置文件里是否显式写过 followSystemAccent（旧配置迁移用，不参与序列化）。</summary>
-        [JsonIgnore]
-        public bool FollowSystemAccentExplicit { get; set; }
-
-        /// <summary>
-        /// 强调色设定的版本号。0（缺键）= 旧版本写下的配置。
-        ///
-        /// 旧版 WPF 版本把 followSystemAccent 默认成 true 写进盘，于是老用户
-        /// 一升级就会看到系统青，而不是产品蓝。靠 FollowSystemAccentExplicit
-        /// 分辨不出来（旧文件里那个键是有的），只能另起一个版本号做一次性纠正。
-        /// </summary>
-        public int AccentVersion { get; set; }
-
         // 启动与后台
 
         /// <summary>
-        /// 开机静默自启：是否已注册 Windows 计划任务 ZentwikAutoStart。
+        /// 开机自启的形态（是否已注册计划任务 ZentwikAutoStart，以及拉起哪些进程）。
         /// 真实状态以计划任务是否存在为准，本字段仅作缓存与界面回显。
+        ///
+        /// 【为什么显式写默认值】
+        /// 枚举的默认值是 0。这里 0 恰好是 <see cref="AutoStartMode.None"/>，
+        /// 但如果将来有人往枚举里插一个值而不改数字，默认值就会悄悄变成「开机自启」。
+        /// 显式赋值是让「默认不自启」这条产品决定钉在代码里，而不是靠枚举顺序碰巧成立。
         /// </summary>
-        public bool AutoStart { get; set; }
+        [JsonConverter(typeof(JsonStringEnumConverter<AutoStartMode>))]
+        public AutoStartMode AutoStartMode
+        {
+            get => _autoStartMode;
+            set
+            {
+                // 只在真的变了的时候广播：App 的保存失败回滚路径会把同一个值再赋一遍，
+                // 无脑广播会让托盘在那一次回滚里被销毁又重建。
+                if (_autoStartMode == value)
+                    return;
+
+                _autoStartMode = value;
+                OnPropertyChanged();
+            }
+        }
+
+        /// <summary>
+        /// 点主窗口 X 时的行为。
+        ///
+        /// 【为什么从 App 的静态字段搬到这里】
+        /// 旧实现是 <c>App.CurrentCloseBehavior</c> —— 一个编译期写死的静态属性，
+        /// 用户改不了，手工验收也只能改源码重编。行为设置是用户设置，必须能选、能存。
+        /// </summary>
+        [JsonConverter(typeof(JsonStringEnumConverter<CloseBehavior>))]
+        public CloseBehavior CloseBehavior
+        {
+            get => _closeBehavior;
+            set
+            {
+                if (_closeBehavior == value)
+                    return;
+
+                _closeBehavior = value;
+                OnPropertyChanged();
+            }
+        }
 
         /// <summary>
         /// 启动时自动应用调校：静默模式（-silent）下是否把 tuning.json 的 CO / FMax 写回 SMU。
@@ -65,44 +114,20 @@ namespace Zentwik.Core.Helpers
         public bool ApplyTuningOnStartup { get; set; } = true;
 
         /// <summary>
-        /// 后台常驻调度：为 true 时进程常驻，按 bindings.json 的规则给新进程自动绑核。
+        /// 后台常驻调度：为 true 时按 schedules.json 的规则给新进程自动调度。
         ///
-        /// 注意它不是总闸 —— 要不要有后台由 <see cref="BackendService"/> 决定，
-        /// 这一项只是「后台要不要干调度这件事」。
+        /// 【它不是「要不要有后台」的总闸】
+        /// 双进程架构下，后台进程（Worker）由谁拉起、要不要常驻，由
+        /// <see cref="AutoStartMode"/> 与 <see cref="CloseBehavior"/> 决定 ——
+        /// 前者管开机时拉什么，后者管关窗口时留什么。本项只表达
+        /// 「后台要不要干调度这件事」，与「后台存不存在」是两回事。
+        ///
+        /// 旧版这里还有一个「后台服务总闸」与一组「轻量模式」字段（延迟秒数等），
+        /// 三者都已删除：它们表达的是单进程时代「点 X 要不要真的退出 / 多久销毁界面」
+        /// 的语义，双进程下同一个问题已经有了更精确的答案，留着只会让几处互相打架。
+        /// 删除清单见 docs/Core-API-契约-批次二冻结.txt 的「批次八追加」。
         /// </summary>
         public bool WatchProcessBinding { get; set; } = true;
-
-        /// <summary>
-        /// 【总闸】开启后台服务。关掉 = 用户根本不需要后台：点 X 直接彻底退出进程，
-        /// 监听 / 托盘 / 单实例锁一并收摊，不搞任何隐藏。打开后才会露出
-        /// 「后台常驻调度 / 仅留服务进程 / 显示托盘图标」。
-        /// 默认 false：没人希望装完就被一个退不掉的常驻进程缠上。
-        /// </summary>
-        public bool BackendService { get; set; }
-
-        /// <summary>
-        /// 仅留服务进程：开启时点 X 先隐藏、倒计时结束后销毁前台界面，进程只剩后台服务；
-        /// 关闭时点 X 只是隐藏窗口，界面完整保留，回来是瞬间的。
-        ///
-        /// 曾经并存的「仅清空页面」选项实测内存表现一致（工作集都压到个位数 MB），
-        /// 留两个只增加理解成本，已删。
-        /// </summary>
-        public bool LightMode { get; set; }
-
-        /// <summary>
-        /// 轻量模式延迟（秒）：关闭前台后等多久销毁界面。
-        ///
-        /// 目前固定 3 秒、界面不暴露；保留字段是为了让调用方读值而不是写死字面量。
-        /// 3 秒只是给「刚点 × 就想反悔」留个回头窗口，不是给系统留准备时间 ——
-        /// 真等半分钟才销毁，用户早就忘了自己还开着它。
-        /// </summary>
-        public int LightModeDelaySeconds { get; set; } = 3;
-
-        /// <summary>
-        /// 显示托盘图标。关掉后进程仍常驻（调度照跑），但没有可见入口，只能双击 exe 回来。
-        /// 默认 true：用户至少得能看见它在跑，也能就地退出。
-        /// </summary>
-        public bool ShowTrayIcon { get; set; } = true;
 
         /// <summary>
         /// 出错时用系统气泡提示（非阻塞）。
@@ -112,6 +137,16 @@ namespace Zentwik.Core.Helpers
         /// 错误仍然完整写进日志页，不会被丢弃。
         /// </summary>
         public bool NotifyOnError { get; set; } = true;
+
+        /// <summary>提示（Toast）停留秒数，1–30。界面读它决定气泡多久消失。</summary>
+        public int ToastSeconds { get; set; } = 3;
+
+        /// <summary>
+        /// 广播属性变更。只由本类的 setter 调用。
+        /// <c>[CallerMemberName]</c> 让调用点不必写字面量，属性改名时不会漏。
+        /// </summary>
+        private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     public class UiSettingsStore : IUiSettingsStore
@@ -138,92 +173,39 @@ namespace Zentwik.Core.Helpers
             {
                 Settings = new UiSettings();
             }
-
-            Normalize();
-            Migrate();
         }
 
+        /// <summary>
+        /// 读盘。**不做任何旧格式兼容**：本工程已裁定不背历史包袱，
+        /// 旧键（AutoStart / showTrayIcon / backendService / accentVersion …）
+        /// 读进来会被静默忽略，下次 <see cref="Save"/> 自然消失。
+        /// </summary>
         private UiSettings? ReadFromDisk()
         {
             if (!File.Exists(FilePath))
                 return null;
 
             string json = File.ReadAllText(FilePath);
-            UiSettings settings = JsonSerializer.Deserialize(json, AppJsonContext.Default.UiSettings) ?? new UiSettings();
-
-            // 旧版 ui.json 的 followSystemAccent 默认 false 且配过写死的青色，
-            // 于是老用户打开程序看到的都是硬编码青。文件里没写过这个键 = 从未设置过，
-            // 强制回到「跟随系统」；明确写过（无论 true/false）就尊重用户。
-            using JsonDocument doc = JsonDocument.Parse(json);
-            settings.FollowSystemAccentExplicit =
-                doc.RootElement.ValueKind == JsonValueKind.Object &&
-                doc.RootElement.TryGetProperty(nameof(UiSettings.FollowSystemAccent), out _);
-
-            if (!settings.FollowSystemAccentExplicit)
-                settings.FollowSystemAccent = true;
-
-            return settings;
-        }
-
-        /// <summary>
-        /// 一次性迁移：把旧版本「跟随系统强调色」的默认值纠正回产品色。
-        ///
-        /// 只在 AccentVersion 缺省（0）时跑一次，跑完落盘写 1；
-        /// 用户之后在通用页显式选了系统色，版本号已经是 1，不会再被改回去。
-        /// </summary>
-        private void Migrate()
-        {
-            if (Settings.AccentVersion >= 1)
-                return;
-
-            Settings.FollowSystemAccent = false;
-
-            // 只改 FollowSystemAccent 还不够：旧配置里存着一个自定义十六进制色，
-            // 关掉「跟随系统」之后就轮到它生效了 —— 结果是从系统青变成另一块遗留色。
-            Settings.CustomAccentHex = UiSettings.DefaultAccentHex;
-
-            Settings.AccentVersion = 1;
-            Save();
-        }
-
-        /// <summary>
-        /// 把数值类字段拉回合法区间：配置文件是纯文本，人手改坏或从旧版本继承
-        /// 一个 0 / 负数都是常事，在这里统一收口，读出来的值就能直接用。
-        /// </summary>
-        private void Normalize()
-        {
-            // 延迟目前不在界面暴露，一律回到默认 3 秒（旧配置里可能是 1 或 30）。
-            // 等输入框加回来，这里再改成只做区间收敛。
-            Settings.LightModeDelaySeconds = 3;
+            return JsonSerializer.Deserialize(json, AppJsonContext.Default.UiSettings) ?? new UiSettings();
         }
 
         /// <summary>
         /// 恢复出厂：整份设置换回默认实例并落盘。
         ///
-        /// 刻意逐字段赋值而不是 new 一个再替换：
-        ///   · 逐字段写漏一个，就是「重置后仍保留上一台机器的设置」；
-        ///   · 整体替换更彻底，且将来新增字段自动被带上默认值。
-        ///
-        /// 顺便清掉 FollowSystemAccentExplicit：重置后不该再带着
-        /// 「用户曾显式设过强调色」的历史标记，否则下次读盘时会跳过迁移逻辑。
+        /// 整体替换而不是逐字段清零：将来新增字段自动被带上默认值，
+        /// 不会出现「重置后仍保留上一台机器的某一项」。
         /// </summary>
         public void ResetToFactory()
         {
             Settings = new UiSettings();
-            Settings.FollowSystemAccentExplicit = false;
             Save();
         }
 
         public void Save()
         {
-            try
-            {
-                JsonFile.Write(FilePath, Settings, AppJsonContext.Default.UiSettings);
-            }
-            catch
-            {
-                // 设置保存失败不影响主流程
-            }
+            // 写盘失败必须让调用方知道：吞掉会让 IPC 回 Success=true，
+            // 界面显示已保存、重启后设置却回退。
+            JsonFile.Write(FilePath, Settings, AppJsonContext.Default.UiSettings);
         }
     }
 }

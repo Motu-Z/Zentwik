@@ -278,7 +278,7 @@
 
 **`TuningProfile`**（tuning.json）：`CurveOptimizer`（`int[]`）、`FMaxMHz`（`uint`）、`FMaxBaselineMHz`（`uint` 出厂基线）、`AppliedAt`（`string?`）。
 
-**`ProfileSnapshot`**（profiles.json，实现 `INotifyPropertyChanged`）：`Id`、`Name`、`Note`、`CurveOptimizer`、`FMaxMHz`、`BindingRules`、`IsActive`（场景切换在后台刷新，UI 只需 DataTrigger）。
+**`ProfileSnapshot`**（profiles.json，实现 `INotifyPropertyChanged`）：`Id`、`Name`、`Note`、`CurveOptimizer`、`FMaxMHz`、`ScheduleRules`、`IsActive`（场景切换在后台刷新，UI 只需 DataTrigger）。
 
 **值域红线**：CO ∈ [-50, +50]；FMax ∈ [400, 5400] MHz；核心停放 ∈ [0, 100] %。
 

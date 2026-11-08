@@ -12,8 +12,8 @@ namespace Zentwik.Core.Services
     /// SMU 自检：把定位 CO / FMax 问题所需的信息一次性收集成文本报告。
     ///
     /// 设计约束：
-    ///   1. 绝不改变用户的调校状态。写入测试只写「当前值」，写完立即回读比对；
-    ///      若当前值本身读不到（int.MinValue），就跳过该核的写入测试。
+    ///   1. 绝不改变用户的调校状态。写入测试只把每个核的当前值原样写回；
+    ///      当前值读不到（int.MinValue 或整份快照失败）时整段跳过，不猜一个值写进去。
     ///   2. 任何一步失败都不能中断整份报告 —— 失败本身就是最有价值的线索，
     ///      所以要记录异常再继续下一项。
     ///   3. 全程不弹窗、不碰 UI，由调用方在后台线程执行。
@@ -22,12 +22,12 @@ namespace Zentwik.Core.Services
     {
         private readonly ILogService _log;
         private readonly IAppPaths _paths;
-        private readonly ICpuSetBinder _cpuSets;
+        private readonly ICpuSetScheduler _cpuSets;
         private readonly ProcessRefresher _refresher;
         private readonly IProcessWatcher _watcher;
         private readonly SmuReader _smu;
 
-        public SmuDiagnostics(ILogService log, IAppPaths paths, ICpuSetBinder cpuSets, ProcessRefresher refresher, IProcessWatcher watcher, SmuReader smu)
+        public SmuDiagnostics(ILogService log, IAppPaths paths, ICpuSetScheduler cpuSets, ProcessRefresher refresher, IProcessWatcher watcher, SmuReader smu)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -102,7 +102,7 @@ namespace Zentwik.Core.Services
             Line("[2] Zentwik 侧拓扑（决定 CO 掩码怎么拆）");
             try
             {
-                Line($"    逻辑处理器数（CpuSetBinder）：{_cpuSets.LogicalProcessorCount}");
+                Line($"    逻辑处理器数（CpuSetScheduler）：{_cpuSets.LogicalProcessorCount}");
                 SmuReader reader = _smu;
                 Line($"    每 CCD 核数（_smu.CoresPerCcd）：{reader.CoresPerCcd}");
                 Line($"    每 CCD 核数（原始探测值，0=未探测）：{reader.CoresPerCcdRaw}");
@@ -234,19 +234,9 @@ namespace Zentwik.Core.Services
                 }
                 else if (!snapshot.Success)
                 {
-                    Line("    读不到当前值，无法「写回原值」；改为写入 CO=0（无偏移＝出厂态，安全）");
-                    try
-                    {
-                        (uint c0, uint ccd0, uint ccx0) = reader.SplitCoreForDiagnostics(0);
-                        bool ok = reader.TrySetCoForDiagnostics(c0, ccd0, ccx0, 0);
-                        Line($"      核 0 写入 0 → 接受={ok}");
-                        if (!ok)
-                            Line("      !! 连 CO=0 都被拒：说明写入通道本身不通，与数值无关。");
-                    }
-                    catch (Exception ex)
-                    {
-                        Line($"      核 0 写入 0 → 异常：{ex.Message}");
-                    }
+                    // 不知道原值就不能「写回原值」。写 CO=0 看似安全，实际是把
+                    // 用户已应用的负压清成出厂态，且无法恢复 —— 自检不该动硬件。
+                    Line("    跳过：读不到当前值，不执行写入测试");
                 }
                 else
                 {
@@ -326,7 +316,7 @@ namespace Zentwik.Core.Services
             void Line(string text = "") => sb.AppendLine(text);
 
             // ---------- 7. 绑定监听模式 ----------
-            Line("[7] 进程绑核监听");
+            Line("[7] 进程调度监听");
             try
             {
                 Line($"    运行中：{_watcher.IsRunning}");
@@ -340,14 +330,22 @@ namespace Zentwik.Core.Services
             Line();
         }
 
-private string Write(string content)
+        private string Write(string content)
         {
-            string dir = _paths.Dir("Diagnostics");
-            Directory.CreateDirectory(dir);
+            try
+            {
+                string dir = _paths.Dir("Diagnostics");
+                Directory.CreateDirectory(dir);
 
-            string path = Path.Combine(dir, $"smu-diag-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
-            File.WriteAllText(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-            return path;
+                string path = Path.Combine(dir, $"smu-diag-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+                File.WriteAllText(path, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                return path;
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"自检报告落盘失败：{ex.Message}");
+                return string.Empty;
+            }
         }
     }
 }

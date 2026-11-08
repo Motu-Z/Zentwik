@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Zentwik.Core.Ipc;
+using Zentwik.Core.Services;
 
 namespace Zentwik.Core.Serialization
 {
@@ -27,6 +29,30 @@ namespace Zentwik.Core.Serialization
         GenerationMode = JsonSourceGenerationMode.Default)]
     [JsonSerializable(typeof(PipeRequest))]
     [JsonSerializable(typeof(PipeResponse))]
+    [JsonSerializable(typeof(SmuStatusPayload))]
+    [JsonSerializable(typeof(TuningSnapshotPayload))]
+    [JsonSerializable(typeof(PlanQueryPayload))]
+    [JsonSerializable(typeof(SavePlanPayload))]
+    [JsonSerializable(typeof(PlanRefPayload))]
+    [JsonSerializable(typeof(RenamePlanPayload))]
+    [JsonSerializable(typeof(PlanListPayload))]
+    [JsonSerializable(typeof(SaveScheduleRulePayload))]
+    [JsonSerializable(typeof(ScheduleRulePayload))]
+    [JsonSerializable(typeof(List<ScheduleRulePayload>))]
+    [JsonSerializable(typeof(ScenarioRulePayload))]
+    [JsonSerializable(typeof(List<ScenarioRulePayload>))]
+    [JsonSerializable(typeof(ProcessEntryPayload))]
+    [JsonSerializable(typeof(List<ProcessEntryPayload>))]
+    [JsonSerializable(typeof(MaskListPayload))]
+    [JsonSerializable(typeof(SaveMaskPayload))]
+    [JsonSerializable(typeof(CpuTopologyPayload))]
+    [JsonSerializable(typeof(ScenarioStatePayload))]
+    [JsonSerializable(typeof(ApplyPowerPolicyPayload))]
+    [JsonSerializable(typeof(PowerPolicySnapshot))]
+    [JsonSerializable(typeof(PowerSchemeListPayload))]
+    [JsonSerializable(typeof(CreatePowerSchemePayload))]
+    [JsonSerializable(typeof(RenamePowerSchemePayload))]
+    [JsonSerializable(typeof(UiSettingsPayload))]
     public sealed partial class IpcJsonContext : JsonSerializerContext
     {
     }

@@ -1,0 +1,211 @@
+<UserControl x:Class="Zentwik.UI.Views.BehaviorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             xmlns:conv="clr-namespace:Zentwik.UI.Converters"
+             xmlns:vm="clr-namespace:Zentwik.UI.ViewModels"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <UserControl.DataContext>
+        <vm:BehaviorViewModel />
+    </UserControl.DataContext>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource TopBarStyle}" Padding="32,0,124,0">
+            <TextBlock Text="行为" Style="{StaticResource PageTitleStyle}" />
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
+            <StackPanel Margin="32,32,32,32" MaxWidth="1240">
+
+                <StackPanel>
+                    <Border Style="{StaticResource SectionHeaderStyle}">
+                        <TextBlock Text="STARTUP / 启动" Style="{StaticResource SectionTitleStyle}" />
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="开机启动行为" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="{Binding StartupHint}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource SegmentGroupStyle}"
+                                    VerticalAlignment="Center"
+                                    automation:AutomationProperties.Name="启动方式选项组">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="Startup"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="不启动"
+                                                 automation:AutomationProperties.Name="不启动"
+                                                 IsChecked="{Binding StartupNone, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="Startup"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="仅后台"
+                                                 automation:AutomationProperties.Name="仅启动后台服务"
+                                                 IsChecked="{Binding StartupServiceOnly, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="Startup"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="后台+托盘"
+                                                 automation:AutomationProperties.Name="启动后台服务与托盘"
+                                                 IsChecked="{Binding StartupServiceTray, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="Startup"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="后台+界面"
+                                                 automation:AutomationProperties.Name="启动后台服务与界面"
+                                                 IsChecked="{Binding StartupServiceWindow, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource DashRuleStyle}" />
+                        </Grid>
+                    </Border>
+
+                </StackPanel>
+
+                <StackPanel Margin="0,48,0,0">
+                    <Border Style="{StaticResource SectionHeaderStyle}">
+                        <TextBlock Text="CLOSE ACTION / 关闭" Style="{StaticResource SectionTitleStyle}" />
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="关闭窗口行为" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="{Binding CloseHint}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource SegmentGroupStyle}"
+                                    VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="Close"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="收进托盘"
+                                                 automation:AutomationProperties.Name="最小化到系统托盘"
+                                                 IsChecked="{Binding CloseMinimizeToTray, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="Close"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="完全退出"
+                                                 automation:AutomationProperties.Name="完全退出"
+                                                 IsChecked="{Binding CloseExitAll, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="Close"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="仅留服务"
+                                                 automation:AutomationProperties.Name="退出界面，后台服务继续运行"
+                                                 IsChecked="{Binding CloseWindowOnly, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource DashRuleStyle}" />
+                        </Grid>
+                    </Border>
+
+                </StackPanel>
+
+                <StackPanel Margin="0,48,0,0">
+                    <Border Style="{StaticResource SectionHeaderStyle}">
+                        <TextBlock Text="BACKGROUND / 后台" Style="{StaticResource SectionTitleStyle}" />
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="启动时自动应用调校" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <ToggleButton Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          automation:AutomationProperties.Name="启动时自动应用调校"
+                                          IsChecked="{Binding AutoApplyTuning, Mode=TwoWay}" />
+
+                            <Border Style="{StaticResource DashRuleStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="监听进程并自动调度" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <ToggleButton Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          automation:AutomationProperties.Name="监听进程并自动调度"
+                                          IsChecked="{Binding WatchProcesses, Mode=TwoWay}" />
+
+                            <Border Style="{StaticResource DashRuleStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="发生错误时弹出气泡" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <ToggleButton Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          automation:AutomationProperties.Name="发生错误时弹出气泡"
+                                          IsChecked="{Binding ErrorBubble, Mode=TwoWay}" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

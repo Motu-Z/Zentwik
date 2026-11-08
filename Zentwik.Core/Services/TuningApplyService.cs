@@ -46,8 +46,14 @@ namespace Zentwik.Core.Services
         private readonly IUiSettingsStore _settings;
         private readonly ITuningStore _tuning;
         private readonly ISmuReader _smu;
+        private readonly IBootGuard? _bootGuard;
 
-        public TuningApplyService(ILogService log, IUiSettingsStore settings, ITuningStore tuning, ISmuReader smu)
+        public TuningApplyService(
+            ILogService log,
+            IUiSettingsStore settings,
+            ITuningStore tuning,
+            ISmuReader smu,
+            IBootGuard? bootGuard = null)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -57,6 +63,9 @@ namespace Zentwik.Core.Services
             _tuning = tuning;
             ArgumentNullException.ThrowIfNull(smu);
             _smu = smu;
+
+            // 可选：单测直接 new 这个服务时不需要为了护栏去搭一套路径。
+            _bootGuard = bootGuard;
         }
 
         /// <summary>最近一次执行结果，供调校页在加载后显示。</summary>
@@ -66,7 +75,12 @@ namespace Zentwik.Core.Services
         /// 读取 tuning.json 并写回 SMU。全程可抛异常已内部兜住，返回值里带失败明细。
         /// 调用方决定要不要弹窗（静默模式不弹，GUI 模式弹）。
         /// </summary>
-        public TuningApplyOutcome ApplyFromStore()
+        /// <param name="ignoreStartupGate">
+        /// true 表示忽略「启动时自动应用调校」开关。启动流程用默认值 false（尊重用户开关）；
+        /// 用户在调校页点「应用」属于**显式操作**，传 true —— 否则关掉那个开关的用户
+        /// 会发现按钮点了没反应，而界面只显示一句「已关闭，本次未写入」。
+        /// </param>
+        public TuningApplyOutcome ApplyFromStore(bool ignoreStartupGate = false)
         {
             _tuning.Load();
             _settings.Load();
@@ -80,7 +94,7 @@ namespace Zentwik.Core.Services
 
             // 跳过也算一次结果：调校页要靠它显示「本次启动未应用 + 原因」，
             // 否则用户无从区别「应用失败」和「压根没尝试」。
-            if (!_settings.Settings.ApplyTuningOnStartup)
+            if (!ignoreStartupGate && !_settings.Settings.ApplyTuningOnStartup)
                 return Skip("「启动时自动应用调校」已关闭，本次未写入 SMU");
 
             if (!hasCo && !hasFMax)
@@ -110,8 +124,7 @@ namespace Zentwik.Core.Services
             bool hasFMax,
             TuningApplyOutcome outcome)
         {
-            // WaitForPawnIO 返回进程共享的同一个 SmuReader（内部只创建一个 Cpu），
-            // 驱动就绪即返回可用实例；超时（60s）仍不可用则跳过，不弹窗、不卡死。
+            // WaitForAvailability(60) 只返回可用性布尔：驱动未就绪就跳过写入。
             // 本方法只在后台线程被调用，等 60 秒不会冻住界面。
             //
             // 用完不 Dispose：Cpu.Dispose() 会 Opcode.Close() 掉进程级静态资源，
@@ -143,6 +156,12 @@ namespace Zentwik.Core.Services
             {
                 _log.Warn($"启动应用调校：SMU 探测异常（继续尝试写入）：{ex.Message}");
             }
+
+            // ---------- 护栏：写硬件之前先落标记 ----------
+            // 从这一行起真的会改硬件。标记必须在第一次写入之前就已落盘：
+            // 之后机器若蓝屏 / 断电 / 卡在写入里，进程没机会写任何「我失败了」的记录，
+            // 下次启动只能靠这个标记判断「上次没走完」。
+            _bootGuard?.BeginWrite();
 
             // ---------- CO ----------
             if (hasCo)
@@ -210,6 +229,10 @@ namespace Zentwik.Core.Services
                     _log.Error($"启动应用调校：FMax 写入异常：{ex.Message}");
                 }
             }
+
+            // 走到这里说明写入流程已经跑完（成功或失败都算安全落地）：
+            // 失败不计数 —— 砖的定义是「机器起不来」，不是「参数被拒」。
+            _bootGuard?.MarkHealthy();
         }
     }
 }

@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zentwik.Core\Zentwik.Core.csproj" />
+    <!-- 引用 Worker 只为测 apply-tuning 的分派映射；测试工程不进最终产物，
+         不会把 Worker 的宿主依赖带进产品。 -->
+    <ProjectReference Include="..\Zentwik.Worker\Zentwik.Worker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -61,8 +61,8 @@ namespace Zentwik.Core.DependencyInjection
             services.TryAddSingleton<MaskStore>();
             services.TryAddSingleton<IMaskStore>(provider => provider.GetRequiredService<MaskStore>());
 
-            services.TryAddSingleton<BindingStore>();
-            services.TryAddSingleton<IBindingStore>(provider => provider.GetRequiredService<BindingStore>());
+            services.TryAddSingleton<SchedulingStore>();
+            services.TryAddSingleton<ISchedulingStore>(provider => provider.GetRequiredService<SchedulingStore>());
 
             services.TryAddSingleton<TuningStore>();
             services.TryAddSingleton<ITuningStore>(provider => provider.GetRequiredService<TuningStore>());
@@ -76,8 +76,8 @@ namespace Zentwik.Core.DependencyInjection
             services.TryAddSingleton<SmuReader>();
             services.TryAddSingleton<ISmuReader>(provider => provider.GetRequiredService<SmuReader>());
 
-            services.TryAddSingleton<CpuSetBinder>();
-            services.TryAddSingleton<ICpuSetBinder>(provider => provider.GetRequiredService<CpuSetBinder>());
+            services.TryAddSingleton<CpuSetScheduler>();
+            services.TryAddSingleton<ICpuSetScheduler>(provider => provider.GetRequiredService<CpuSetScheduler>());
 
             services.TryAddSingleton<LogThrottle>();
             services.TryAddSingleton<ProcessRefresher>();
@@ -88,9 +88,21 @@ namespace Zentwik.Core.DependencyInjection
             services.TryAddSingleton<ProcessWatcher>();
             services.TryAddSingleton<IProcessWatcher>(provider => provider.GetRequiredService<ProcessWatcher>());
 
+            // ---------- 电源策略 ----------
+            // PowerPolicyApi 无状态（每次调用都是一次系统 API），单例只是省一次分配。
+            // 仍然写成「先具体类型、再映射接口」两行：与上面几组保持同一形状，
+            // 否则后来的人会以为「有的能取具体类型、有的不能」，进而开始猜注册规则。
+            services.TryAddSingleton<PowerPolicyApi>();
+            services.TryAddSingleton<IPowerPolicyApi>(provider => provider.GetRequiredService<PowerPolicyApi>());
+            services.TryAddSingleton<PowerPolicyService>();
+
             // ---------- 业务编排 ----------
+            // 启动护栏必须先于 TuningApplyService 可解析：后者在写 SMU 前后要落标记。
+            services.TryAddSingleton<BootGuard>();
+            services.TryAddSingleton<IBootGuard>(provider => provider.GetRequiredService<BootGuard>());
+
             services.TryAddSingleton<TuningApplyService>();
-            services.TryAddSingleton<ProfileService>();
+            services.TryAddSingleton<PlanService>();
             services.TryAddSingleton<ScenarioService>();
             services.TryAddSingleton<ScenarioMonitor>();
             services.TryAddSingleton<ScenarioSelfCheck>();

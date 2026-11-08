@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Serialization;
 
@@ -24,7 +25,19 @@ namespace Zentwik.Core.Services
         OnBattery = 1,
 
         /// <summary>交流供电（插上电源）。</summary>
-        OnAcPower = 2
+        OnAcPower = 2,
+
+        /// <summary>
+        /// 指定进程刚刚退出（参数 = 进程名）。
+        ///
+        /// 【与 ProcessRunning 的区别：这是事件，不是状态】
+        /// 其余三个触发都是「此刻成立不成立」，进程退出只在退出的那一拍成立。
+        /// <see cref="ScenarioMonitor"/> 比对相邻两次进程名单得出「这一拍谁没了」，
+        /// 交给 <see cref="Notify"/> 评估一次；下一拍它就不在触发集合里了。
+        /// 因此这条规则只会生效一次 —— 恰好是「退出时切回平衡」要的语义，
+        /// 也符合本服务「不负责切回去」的既有约定。
+        /// </summary>
+        ProcessExited = 3
     }
 
     /// <summary>
@@ -43,8 +56,22 @@ namespace Zentwik.Core.Services
         /// </summary>
         public string Argument { get; set; } = string.Empty;
 
-        /// <summary>命中后要切换到的方案 Id（指向 <see cref="ProfileService"/> 中的方案）。</summary>
+        /// <summary>
+        /// 调校动作：命中后切换到的调校方案 Id（指向 <see cref="PlanService"/> 中的调校方案）。
+        /// 空串表示这条规则不动调校。
+        /// </summary>
         public string ProfileId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 调度动作：命中后套用到触发进程上的自定义掩码 Id（指向 <see cref="Helpers.IMaskStore"/>）。
+        /// 空串表示这条规则不动调度。
+        /// </summary>
+        public string MaskId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 电源动作：命中后切换到的电源方案 Guid。空串表示这条规则不动电源方案。
+        /// </summary>
+        public string PowerSchemeId { get; set; } = string.Empty;
 
         /// <summary>
         /// 仲裁优先级：同时命中多条规则时，数字小的赢。
@@ -57,11 +84,12 @@ namespace Zentwik.Core.Services
 
         public bool Enabled { get; set; } = true;
 
-        /// <summary>触发源文案（列表行左侧）。写法与 BindingRule.Label 一致：显示名归模型管。</summary>
+        /// <summary>触发源文案（列表行左侧）。写法与 ScheduleRule.Label 一致：显示名归模型管。</summary>
         [System.Text.Json.Serialization.JsonIgnore]
         public string TriggerText => Trigger switch
         {
             ScenarioTrigger.ProcessRunning => string.IsNullOrEmpty(Argument) ? "进程运行" : $"运行 {Argument}",
+            ScenarioTrigger.ProcessExited => string.IsNullOrEmpty(Argument) ? "进程退出" : $"退出 {Argument}",
             ScenarioTrigger.OnBattery => "电池供电",
             _ => "交流供电"
         };
@@ -83,17 +111,26 @@ namespace Zentwik.Core.Services
     }
 
     /// <summary>
-    /// 场景自动切换（v1.1.x 骨架）。
+    /// 一条命中规则要执行的全部动作。三个字段各自可为空串（空 = 不动那一块），
+    /// 由界面按「有值才点亮」展示。
+    /// </summary>
+    public sealed record ScenarioOutcome(
+        string RuleId,
+        string TriggerArgument,
+        string ProfileId,
+        string MaskId,
+        string PowerSchemeId);
+
+    /// <summary>
+    /// 场景自动切换（v1.1.x）。
     ///
     /// 【这一版交付到哪一步】
     /// 数据结构、落盘、仲裁逻辑、以及唯一的外部入口 <see cref="Notify"/> 都已可用；
-    /// 事件源尚未接入 —— 进程事件要挂到 ProcessWatcher 上，电源状态要挂到系统的
-    /// 电源模式变更通知上，两处都牵动常驻线程的生命周期，属于 v1.1.x 的实装项。
+    /// 事件源在 <see cref="ScenarioMonitor"/> 里按规则内容按需挂载。
     ///
-    /// 【为什么不先接事件源】
-    /// 接了就要回答「什么时候启停监听」：后台服务关掉时监听要不要停、
-    /// 窗口收进托盘后还要不要切方案。这些问题的答案取决于用户对「后台常驻」的预期，
-    /// 先把判定逻辑做成纯函数，接事件就只剩一行调用 —— 顺序反了才会返工。
+    /// 【三个动作互相独立】
+    /// 一条规则可以只改调校、只改调度、只改电源，也可以三者都改。
+    /// 任一字段为空表示「这一块保持原样」，不是「清空它」。
     ///
     /// 【后台零占用】
     /// 本类不持有任何定时器、不启动任何线程。所有状态变化都来自外部调用 Notify。
@@ -101,18 +138,36 @@ namespace Zentwik.Core.Services
     public class ScenarioService
     {
         private readonly ILogService _log;
-        private readonly ProfileService _profiles;
+        private readonly PlanService _plans;
         private readonly IAppPaths _paths;
+        private readonly IMaskStore? _masks;
+        private readonly ICpuSetScheduler? _scheduler;
+        private readonly PowerPolicyService? _power;
 
-        public ScenarioService(ILogService log, ProfileService profiles, IAppPaths paths)
+        public ScenarioService(
+            ILogService log,
+            PlanService plans,
+            IAppPaths paths,
+            IMaskStore? masks = null,
+            ICpuSetScheduler? scheduler = null,
+            PowerPolicyService? power = null)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
-            ArgumentNullException.ThrowIfNull(profiles);
-            _profiles = profiles;
+            ArgumentNullException.ThrowIfNull(plans);
+            _plans = plans;
             ArgumentNullException.ThrowIfNull(paths);
             _paths = paths;
+            _masks = masks;
+            _scheduler = scheduler;
+            _power = power;
         }
+
+        /// <summary>
+        /// 上一次已下发的「掩码 | 进程」组合。评估是周期性的（事件合并窗口 800ms），
+        /// 同一个组合重复下发结果一样，只会把日志刷满。
+        /// </summary>
+        private string? _lastMaskKey;
 
         private string FilePath => _paths.File("scenarios.json");
 
@@ -167,7 +222,33 @@ namespace Zentwik.Core.Services
             get
             {
                 lock (Sync)
-                    return _rules.Any(r => r.Enabled && r.Trigger == ScenarioTrigger.ProcessRunning);
+                    return _rules.Any(r => r.Enabled &&
+                        (r.Trigger == ScenarioTrigger.ProcessRunning || r.Trigger == ScenarioTrigger.ProcessExited));
+            }
+        }
+
+        /// <summary>
+        /// 需要盯「还在不在」的进程名（启用中的退出规则所指向的那些）。
+        ///
+        /// 【为什么单独给一份名单，而不是让监视方比对全量进程】
+        /// 进程退出是差集运算：要知道谁没了，就得留一份上一拍的名单。全机器几百个进程
+        /// 都留一份是纯浪费 —— 只有规则里写到的名字才有人关心。
+        /// 用户一条退出规则都没配时返回空集合，监视方连这份差集都不做。
+        /// </summary>
+        public IReadOnlyList<string> ProcessExitArguments
+        {
+            get
+            {
+                lock (Sync)
+                {
+                    return _rules
+                        .Where(r => r.Enabled
+                                 && r.Trigger == ScenarioTrigger.ProcessExited
+                                 && !string.IsNullOrEmpty(r.Argument))
+                        .Select(r => r.Argument)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+                }
             }
         }
 
@@ -283,37 +364,202 @@ namespace Zentwik.Core.Services
             if (!Enabled)
                 return;
 
-            string? target = Resolve(active);
+            List<(ScenarioTrigger Trigger, string Argument)> snapshot = active.ToList();
+            ScenarioOutcome? outcome = ResolveOutcome(snapshot);
 
             // 没有规则命中时**刻意什么都不做**。
             // 场景只负责「切到某套」，不负责「切回去」——
             // 用户手动选的那套不该被一条没命中的规则覆盖掉。
-            if (target == null)
+            if (outcome is null)
                 return;
 
-            // 【为什么比的是 ProfileService.ActiveId，而不是自己记的 LastAppliedProfileId】
-            // 「上次是场景切的」不等于「现在还是那套」：中间用户可能手动切过。
-            // 比自己那份会出现这样的现场 —— 插电时场景切到「性能」，用户手动切到
-            // 「静音」，再拔插一次电源，场景一看 target 和上次一样就跳过了，
-            // 于是用户的手动选择被无声地保留下来，而他期待的是场景重新接管。
-            // 比「当前实际生效的是哪套」，两种来源的切换都算数，才不会短路错。
-            bool alreadyActive = string.Equals(target, _profiles.ActiveId, StringComparison.Ordinal);
-            LastAppliedProfileId = target;
+            ApplyProfile(outcome, snapshot);
+            ApplyScheduling(outcome);
+            ApplyPowerScheme(outcome);
+        }
+
+        /// <summary>
+        /// 调校动作。沿用原有语义：比的是「当前实际生效的是哪套」，不是自己记的上次目标 ——
+        /// 中间用户可能手动切过，比自己那份会让手动选择被无声保留。
+        /// </summary>
+        private void ApplyProfile(
+            ScenarioOutcome outcome,
+            List<(ScenarioTrigger Trigger, string Argument)> active)
+        {
+            if (string.IsNullOrEmpty(outcome.ProfileId))
+                return;
+
+            bool alreadyActive = string.Equals(outcome.ProfileId, _plans.ActiveId(PlanKind.Tuning), StringComparison.Ordinal);
+            LastAppliedProfileId = outcome.ProfileId;
 
             if (alreadyActive)
                 return;
 
-            if (_profiles.Apply(target))
-                _log.Info($"场景切换：{Describe(target)} ← {DescribeHit(active)}");
-            else
+            if (_plans.Apply(PlanKind.Tuning, outcome.ProfileId).Success)
+            {
+                _lastMissingProfileId = null;
+                _log.Info($"场景切换：{Describe(outcome.ProfileId)} ← {DescribeHit(active)}");
+            }
+            else if (!string.Equals(_lastMissingProfileId, outcome.ProfileId, StringComparison.Ordinal))
+            {
+                // 评估每 2 秒来一次，同一条失效规则会一直命中。不去重的话日志里
+                // 每两秒一行「目标方案不存在」，真正有用的上下文全被冲掉。
+                _lastMissingProfileId = outcome.ProfileId;
                 _log.Warn("场景切换：目标方案不存在，已跳过（方案可能已被删除）");
+            }
+        }
+
+        /// <summary>上一条因方案被删而跳过的规则 Id，用来抑制重复告警。</summary>
+        private string? _lastMissingProfileId;
+
+        /// <summary>
+        /// 调度动作：把掩码套到触发进程上。
+        ///
+        /// 只对「进程启动」类规则有意义 —— 电源类触发没有具体进程，没有绑核对象。
+        /// 同一 (掩码, 进程) 组合只下发一次：评估每 800ms 可能来一次，
+        /// 每次都重绑会把日志刷满，而结果完全一样。
+        /// </summary>
+        private void ApplyScheduling(ScenarioOutcome outcome)
+        {
+            if (_scheduler is null || string.IsNullOrEmpty(outcome.MaskId))
+                return;
+
+            // 新规则引用调度方案：整套用户规则一次下发。
+            PlanEntry? plan = _plans.Find(PlanKind.Scheduling, outcome.MaskId);
+
+            if (plan is not null)
+            {
+                string planKey = plan.Id + "|" + outcome.TriggerArgument;
+
+                if (string.Equals(Volatile.Read(ref _lastMaskKey), planKey, StringComparison.Ordinal))
+                    return;
+
+                Volatile.Write(ref _lastMaskKey, planKey);
+
+                PlanApplyResult result = _plans.Apply(PlanKind.Scheduling, plan.Id);
+
+                if (result.Success)
+                    _log.Info($"场景调度：已应用「{plan.Name}」");
+                else
+                    _log.Warn($"场景调度：应用「{plan.Name}」失败：{result.Message}");
+
+                return;
+            }
+
+            // 旧规则里存的是掩码 Id，继续按绑核处理。
+            if (_masks is null || string.IsNullOrEmpty(outcome.TriggerArgument))
+                return;
+
+            CustomMask? mask = _masks.FindById(outcome.MaskId);
+
+            if (mask is null)
+            {
+                _log.Warn($"场景调度：掩码 {outcome.MaskId} 已不存在，已跳过");
+                return;
+            }
+
+            string key = outcome.MaskId + "|" + outcome.TriggerArgument;
+
+            if (string.Equals(Volatile.Read(ref _lastMaskKey), key, StringComparison.Ordinal))
+                return;
+
+            Volatile.Write(ref _lastMaskKey, key);
+
+            int applied = 0;
+
+            foreach (int pid in FindProcessIds(outcome.TriggerArgument))
+            {
+                CpuSetScheduleResult result = _scheduler.ScheduleToMask(pid, mask.Mask);
+
+                if (result.Success)
+                {
+                    applied++;
+                }
+                else
+                {
+                    _log.Warn($"场景调度：{outcome.TriggerArgument}（PID {pid}）→ {mask.Name} 失败：{result.Error}");
+                }
+            }
+
+            if (applied > 0)
+                _log.Info($"场景调度：{outcome.TriggerArgument} → {mask.Name}（{applied} 个进程）");
+        }
+
+        /// <summary>电源动作：切到规则指定的电源方案。已经是那一套就不重复下发。</summary>
+        private void ApplyPowerScheme(ScenarioOutcome outcome)
+        {
+            if (_power is null || string.IsNullOrEmpty(outcome.PowerSchemeId))
+                return;
+
+            PlanEntry? plan = _plans.Find(PlanKind.Power, outcome.PowerSchemeId);
+            string guidText = plan?.PowerSchemeGuid ?? outcome.PowerSchemeId;
+
+            if (!Guid.TryParse(guidText, out Guid guid) || guid == Guid.Empty)
+                return;
+
+            if (_power.GetActiveScheme() == guid)
+                return;
+
+            (bool Success, string? Error) result = _power.SetActiveScheme(guid);
+
+            if (result.Success)
+                _log.Info($"场景电源：已切换到电源方案 {guid}");
+            else
+                _log.Warn($"场景电源：切换失败：{result.Error}");
+        }
+
+        /// <summary>
+        /// 把触发进程名展开成 PID。进程可能在两次评估之间退了，
+        /// 取 Id 前要防 InvalidOperationException（拿不到就跳过这一个）。
+        /// </summary>
+        private static List<int> FindProcessIds(string processName)
+        {
+            List<int> ids = new();
+
+            string bare = Path.GetFileNameWithoutExtension(processName);
+
+            if (string.IsNullOrEmpty(bare))
+                return ids;
+
+            System.Diagnostics.Process[] processes;
+
+            try
+            {
+                processes = System.Diagnostics.Process.GetProcessesByName(bare);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                return ids;
+            }
+
+            foreach (System.Diagnostics.Process process in processes)
+            {
+                try
+                {
+                    ids.Add(process.Id);
+                }
+                catch (InvalidOperationException)
+                {
+                    // 进程已退出，跳过。
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+
+            return ids;
         }
 
         /// <summary>
         /// 仲裁：从命中的规则里挑出该生效的那条。纯函数，不落盘、不下发，
         /// 因此界面可以拿它做「当前会切到哪套」的预览。
+        ///
+        /// 三个动作一起生效：优先级最高的那条有效规则决定全部三块，
+        /// 不是每块各自挑一条 —— 后者会让「游戏规则 + 插电规则」同时改不同模块，
+        /// 用户看不出是哪条在管事。
         /// </summary>
-        public string? Resolve(IEnumerable<(ScenarioTrigger Trigger, string Argument)> active)
+        public ScenarioOutcome? ResolveOutcome(IEnumerable<(ScenarioTrigger Trigger, string Argument)> active)
         {
             List<(ScenarioTrigger Trigger, string Argument)> snapshot = active.ToList();
             if (snapshot.Count == 0)
@@ -321,17 +567,32 @@ namespace Zentwik.Core.Services
 
             lock (Sync)
             {
-                return _rules
-                    .Where(rule => rule.Enabled && Matches(rule, snapshot))
-                    .OrderBy(rule => rule.Priority)
-                    .Select(rule => rule.ProfileId)
-                    .FirstOrDefault(id => !string.IsNullOrEmpty(id));
+                foreach (ScenarioRule rule in _rules
+                             .Where(rule => rule.Enabled && Matches(rule, snapshot))
+                             .OrderBy(rule => rule.Priority))
+                {
+                    bool hasAction = !string.IsNullOrEmpty(rule.ProfileId)
+                                  || !string.IsNullOrEmpty(rule.MaskId)
+                                  || !string.IsNullOrEmpty(rule.PowerSchemeId);
+
+                    if (!hasAction)
+                        continue;
+
+                    return new ScenarioOutcome(
+                        rule.Id,
+                        rule.Argument,
+                        rule.ProfileId,
+                        rule.MaskId,
+                        rule.PowerSchemeId);
+                }
             }
+
+            return null;
         }
 
         /// <summary>方案名；查不到就退回 Id —— 日志里写「（已删除）」会被读成别的问题。</summary>
         private string Describe(string profileId)
-            => _profiles.FindById(profileId)?.Name ?? profileId;
+            => _plans.Find(PlanKind.Tuning, profileId)?.Name ?? profileId;
 
         /// <summary>
         /// 把「此刻成立的触发」写成一句人话，只服务于日志。
@@ -349,6 +610,8 @@ namespace Zentwik.Core.Services
                 {
                     ScenarioTrigger.ProcessRunning =>
                         string.IsNullOrEmpty(argument) ? "进程" : $"进程 {argument}",
+                    ScenarioTrigger.ProcessExited =>
+                        string.IsNullOrEmpty(argument) ? "进程退出" : $"进程 {argument} 退出",
                     ScenarioTrigger.OnBattery => "电池供电",
                     _ => "交流供电"
                 });

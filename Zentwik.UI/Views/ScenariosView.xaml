@@ -1,0 +1,963 @@
+<UserControl x:Class="Zentwik.UI.Views.ScenariosView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             xmlns:conv="clr-namespace:Zentwik.UI.Converters"
+             xmlns:vm="clr-namespace:Zentwik.UI.ViewModels"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13"
+             PreviewMouseLeftButtonDown="OnSurfacePreviewMouseDown">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+
+        <!-- 表单卡宽度：左对齐、最多 900，窗口变窄时跟着缩（MaxWidth 会把它推到中间） -->
+        <conv:WidthClampConverter x:Key="FormWidthConverter" />
+
+
+        <!--
+            提交栏上方的分隔线。
+            必须走 BorderThickness 而不是「Height=1 + Background」：140% 缩放下
+            1 DIP 的背景带会被像素对齐抹成 0 设备像素，截图上整条线消失。
+        -->
+        <Style x:Key="FormDividerStyle" TargetType="Border">
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+
+        <!--
+            下拉框一共两套模板：
+              · DarkSelectStyle —— 自带实线边框，给触发条上的两级下拉；
+              · BareSelectStyle —— 不画边框，给三个动作块。
+            动作块留空时要画虚线框（「这一块不动」），而 Border 不支持虚线，
+            所以边框改成页面层叠的 Rectangle：实线一份、虚线一份，按 HasEditorXxx
+            切显隐。放在模板里做不到 —— 模板内只能绑 TemplatedParent 的依赖属性，
+            而 ComboBox 上没有「当前值是否为空」这样的布尔 DP。
+        -->
+        <Style x:Key="DarkSelectStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="36" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource SelectComboBoxItemStyle}" />
+            <Setter Property="MaxDropDownHeight" Value="260" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Rectangle x:Name="Solid"
+                                       Margin="0.5"
+                                       RadiusX="4" RadiusY="4"
+                                       Fill="{DynamicResource ControlBgBrush}"
+                                       Stroke="{DynamicResource ControlBorderBrush}"
+                                       StrokeThickness="1" />
+
+                            <ContentPresenter Margin="12,0,30,0"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+
+                            <Path x:Name="Arrow"
+                                  Width="8" Height="4"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,11,0"
+                                  Data="M0 0 L4 4 L8 0"
+                                  Stroke="{DynamicResource TextSecondaryBrush}"
+                                  StrokeThickness="1.4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Stretch="Uniform" />
+
+                            <!-- 整块可点：内容与箭头都是 IsHitTestVisible=False，点击落到这一层 -->
+                            <ToggleButton x:Name="ClickSurface"
+                                          Focusable="False"
+                                          IsTabStop="False"
+                                          ClickMode="Press"
+                                          Background="Transparent"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                                              RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Placement="Bottom"
+                                   VerticalOffset="4"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Focusable="False"
+                                   PopupAnimation="Fade">
+                                <Border Background="{DynamicResource PanelBrush}"
+                                        BorderBrush="{DynamicResource LineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="4"
+                                        Margin="0,0,8,8"
+                                        MinWidth="{TemplateBinding ActualWidth}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Solid" Property="Stroke" Value="{DynamicResource ControlBorderHoverBrush}" />
+                                <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+
+                            <!-- 键盘 Tab 到这里也要看得见焦点，不能只有鼠标 hover 和展开态 -->
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Solid" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="Solid" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 无边框版：边框由外层的两个 Rectangle 提供（见上面注释） -->
+        <Style x:Key="BareSelectStyle" TargetType="ComboBox" BasedOn="{StaticResource DarkSelectStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid Background="Transparent">
+                            <ContentPresenter Margin="12,0,30,0"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
+
+                            <Path x:Name="Arrow"
+                                  Width="8" Height="4"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,11,0"
+                                  Data="M0 0 L4 4 L8 0"
+                                  Stroke="{DynamicResource TextSecondaryBrush}"
+                                  StrokeThickness="1.4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Stretch="Uniform" />
+
+                            <ToggleButton x:Name="ClickSurface"
+                                          Focusable="False"
+                                          IsTabStop="False"
+                                          ClickMode="Press"
+                                          Background="Transparent"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
+                                                              RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent" />
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Placement="Bottom"
+                                   VerticalOffset="4"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Focusable="False"
+                                   PopupAnimation="Fade">
+                                <Border Background="{DynamicResource PanelBrush}"
+                                        BorderBrush="{DynamicResource LineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="4"
+                                        Margin="0,0,8,8"
+                                        MinWidth="{TemplateBinding ActualWidth}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="Arrow" Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 动作下拉的空态边框：虚线，不可命中（点击要落到下面的 ComboBox 上） -->
+        <Style x:Key="EmptySelectBorderStyle" TargetType="Rectangle">
+            <Setter Property="Margin" Value="0.5" />
+            <Setter Property="RadiusX" Value="4" />
+            <Setter Property="RadiusY" Value="4" />
+            <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="Stroke" Value="{DynamicResource ControlBorderBrush}" />
+            <Setter Property="StrokeThickness" Value="1" />
+            <Setter Property="StrokeDashArray" Value="3 3" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+
+        <!-- 动作下拉有值时的实线边框 -->
+        <Style x:Key="FilledSelectBorderStyle" TargetType="Rectangle">
+            <Setter Property="Margin" Value="0.5" />
+            <Setter Property="RadiusX" Value="4" />
+            <Setter Property="RadiusY" Value="4" />
+            <Setter Property="Fill" Value="{DynamicResource ControlBgBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource ControlBorderBrush}" />
+            <Setter Property="StrokeThickness" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+
+        <!-- 进程搜索结果的一行：hover 走列表通用的 5% 叠色 -->
+        <Style x:Key="ProcessSuggestionStyle" TargetType="Border">
+            <Setter Property="Padding" Value="9,7" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ItemHoverBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 行内小开关：32×18，比顶栏总控小一档 -->
+        <Style x:Key="MiniToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="Track"
+                                    CornerRadius="9"
+                                    Background="{DynamicResource LineBrush}" />
+                            <Ellipse x:Name="Knob"
+                                     Width="14" Height="14"
+                                     HorizontalAlignment="Left"
+                                     Margin="2,0,0,0"
+                                     Fill="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                <Setter TargetName="Knob" Property="Margin" Value="0,0,2,0" />
+                                <Setter TargetName="Knob" Property="Fill" Value="#FFFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="Opacity" Value="0.9" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--
+            规则卡：一条规则就是一句 IF → THEN。
+            IF 块给触发源，右边三个动作块各占一列；没配的那块左侧竖条保持线色、
+            文字转「保持原样」并降一档 —— 一眼能看出这条规则动了几块。
+        -->
+        <DataTemplate x:Key="RuleCardTemplate">
+            <Border x:Name="Card"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource LineBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="16,14"
+                    Margin="0,0,0,10"
+                    AllowDrop="True"
+                    Drop="OnRuleDrop"
+                    DragOver="OnRuleDragOver">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 拖拽手柄：整个左侧留白都能抓 -->
+                    <Border Grid.Column="0"
+                            Width="16"
+                            Margin="0,0,14,0"
+                            Background="Transparent"
+                            Cursor="SizeAll"
+                            automation:AutomationProperties.Name="拖动调整优先级"
+                            PreviewMouseLeftButtonDown="OnGripDown"
+                            PreviewMouseMove="OnGripMove">
+                        <Path x:Name="GripLines"
+                              Width="14"
+                              Height="12"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"
+                              Data="M0 1 H14 M0 6 H14 M0 11 H14"
+                              Stroke="{DynamicResource LineBrush}"
+                              StrokeThickness="2" />
+                    </Border>
+
+                    <!-- IF -->
+                    <Border Grid.Column="1"
+                            Background="{DynamicResource WindowBgBrush}"
+                            BorderBrush="{DynamicResource LineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="14,9"
+                            MinWidth="150">
+                        <StackPanel>
+                            <TextBlock Text="{Binding TriggerLabel}"
+                                       Style="{StaticResource MonoLabelStyle}" />
+
+                            <TextBlock Text="{Binding TriggerValue}"
+                                       Margin="0,4,0,0"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 箭头 -->
+                    <Path Grid.Column="2"
+                          Width="22"
+                          Height="14"
+                          Margin="16,0"
+                          VerticalAlignment="Center"
+                          Data="M0 7 H19 M13 1 L19 7 L13 13"
+                          Stroke="{DynamicResource AccentBrush}"
+                          StrokeThickness="1.5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" />
+
+                    <!-- THEN：三个动作 -->
+                    <Grid Grid.Column="3" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border x:Name="ProfileAction"
+                                Grid.Column="0"
+                                Margin="0,0,16,0"
+                                Padding="12,0,0,0"
+                                BorderThickness="2,0,0,0"
+                                BorderBrush="{DynamicResource LineBrush}">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="调校方案" Style="{StaticResource MonoLabelStyle}" />
+
+                                <TextBlock x:Name="ProfileValue"
+                                           Text="{Binding ProfileText}"
+                                           Margin="0,4,0,0"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="MaskAction"
+                                Grid.Column="1"
+                                Margin="0,0,16,0"
+                                Padding="12,0,0,0"
+                                BorderThickness="2,0,0,0"
+                                BorderBrush="{DynamicResource LineBrush}">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="调度方案" Style="{StaticResource MonoLabelStyle}" />
+
+                                <TextBlock x:Name="MaskValue"
+                                           Text="{Binding MaskText}"
+                                           Margin="0,4,0,0"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="PowerAction"
+                                Grid.Column="2"
+                                Padding="12,0,0,0"
+                                BorderThickness="2,0,0,0"
+                                BorderBrush="{DynamicResource LineBrush}">
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="电源方案" Style="{StaticResource MonoLabelStyle}" />
+
+                                <TextBlock x:Name="PowerValue"
+                                           Text="{Binding PowerSchemeText}"
+                                           Margin="0,4,0,0"
+                                           FontSize="13"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- 行尾：开关 + 删除 -->
+                    <Border Grid.Column="4"
+                            Margin="18,0,0,0"
+                            Padding="16,0,0,0"
+                            BorderThickness="1,0,0,0"
+                            BorderBrush="{DynamicResource LineBrush}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconButtonStyle}"
+                                    Width="26" Height="26"
+                                    automation:AutomationProperties.Name="上移规则"
+                                    Command="{Binding DataContext.MoveRuleUpCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}">
+                                <Path Style="{StaticResource IconGlyphStyle}"
+                                      Width="12" Height="12"
+                                      Data="M6 14 L12 8 L18 14"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
+
+                            <Button Style="{StaticResource IconButtonStyle}"
+                                    Width="26" Height="26"
+                                    Margin="4,0,0,0"
+                                    automation:AutomationProperties.Name="下移规则"
+                                    Command="{Binding DataContext.MoveRuleDownCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}">
+                                <Path Style="{StaticResource IconGlyphStyle}"
+                                      Width="12" Height="12"
+                                      Data="M6 10 L12 16 L18 10"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
+
+                            <ToggleButton Style="{StaticResource MiniToggleStyle}"
+                                          VerticalAlignment="Center"
+                                          automation:AutomationProperties.Name="{Binding ToggleLabel}"
+                                          IsChecked="{Binding Enabled, Mode=OneWay}"
+                                          Command="{Binding DataContext.ToggleRuleCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding}"
+                                          ToolTip="{Binding ToggleLabel}" />
+
+                            <Button Style="{StaticResource DangerIconButtonStyle}"
+                                    Margin="8,0,0,0"
+                                    automation:AutomationProperties.Name="删除此规则"
+                                    Command="{Binding DataContext.DeleteRuleCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}">
+                                <Path Style="{StaticResource IconGlyphStyle}"
+                                      Width="15" Height="15"
+                                      Data="M4 6 H20 M9 6 V4 H15 V6 M6 6 L7 20 H17 L18 6"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Dimmed}" Value="True">
+                    <Setter TargetName="Card" Property="Opacity" Value="0.5" />
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding HasProfile}" Value="True">
+                    <Setter TargetName="ProfileAction" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    <Setter TargetName="ProfileValue" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                    <Setter TargetName="ProfileValue" Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding HasMask}" Value="True">
+                    <Setter TargetName="MaskAction" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    <Setter TargetName="MaskValue" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                    <Setter TargetName="MaskValue" Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding HasPowerScheme}" Value="True">
+                    <Setter TargetName="PowerAction" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    <Setter TargetName="PowerValue" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                    <Setter TargetName="PowerValue" Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+
+                <Trigger SourceName="Card" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                    <Setter TargetName="GripLines" Property="Stroke" Value="{DynamicResource TextSecondaryBrush}" />
+                </Trigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <UserControl.DataContext>
+        <vm:ScenariosViewModel />
+    </UserControl.DataContext>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource TopBarStyle}" Padding="32,0,124,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="场景自动化" Style="{StaticResource PageTitleStyle}" />
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <TextBlock Text="自动化总控"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,12,0" />
+
+                    <ToggleButton Style="{StaticResource ToggleSwitchStyle}"
+                                  VerticalAlignment="Center"
+                                  automation:AutomationProperties.Name="启用自动切换"
+                                  IsChecked="{Binding SceneAutoSwitch, Mode=TwoWay}"
+ />
+
+                    <Button Style="{StaticResource PrimaryButtonStyle}"
+                            Margin="24,0,0,0"
+                            VerticalAlignment="Center"
+                            automation:AutomationProperties.Name="新建规则"
+                            Command="{Binding NewRuleCommand}"
+>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource IconGlyphStyle}"
+                                  Width="12" Height="12"
+                                  VerticalAlignment="Center"
+                                  Data="M12 5 V19 M5 12 H19"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+
+                            <TextBlock Text="新建规则" Margin="7,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
+            <StackPanel x:Name="ContentHost" Margin="32,27,32,32" MaxWidth="1320">
+
+                <Border Background="{DynamicResource PanelBrush}"
+                        BorderBrush="{DynamicResource LineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        HorizontalAlignment="Left"
+                        Width="{Binding ActualWidth, ElementName=ContentHost,
+                                        Converter={StaticResource FormWidthConverter},
+                                        ConverterParameter=900}"
+                        Margin="0,0,0,28"
+                        Visibility="{Binding IsEditorOpen, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <Border Height="2"
+                                VerticalAlignment="Top"
+                                CornerRadius="5,5,0,0"
+                                Background="{DynamicResource AccentBrush}" />
+
+                        <StackPanel Margin="24,22,24,20">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding EditorTitle}"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource IconButtonStyle}"
+                                        automation:AutomationProperties.Name="关闭规则表单"
+                                        Command="{Binding CancelEditorCommand}"
+>
+                                    <Path Style="{StaticResource IconGlyphStyle}"
+                                          Width="12" Height="12"
+                                          Data="M6 6 L18 18 M18 6 L6 18"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                </Button>
+                            </Grid>
+
+                            <!-- IF：一句人话 -->
+                            <TextBlock Text="IF / 触发条件"
+                                       Style="{StaticResource MonoLabelStyle}"
+                                       Margin="0,20,0,0" />
+
+                            <Border Background="{DynamicResource WindowBgBrush}"
+                                    BorderBrush="{DynamicResource LineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="16"
+                                    Margin="0,10,0,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="当"
+                                               Margin="0,0,12,0"
+                                               VerticalAlignment="Center"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                    <ComboBox Style="{StaticResource DarkSelectStyle}"
+                                              Width="120"
+                                              automation:AutomationProperties.Name="触发大类"
+                                              ItemsSource="{Binding TriggerKinds}"
+                                              SelectedItem="{Binding SelectedKind, Mode=TwoWay}"
+>
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <ComboBox Style="{StaticResource DarkSelectStyle}"
+                                              Width="160"
+                                              Margin="12,0,0,0"
+                                              automation:AutomationProperties.Name="触发状态"
+                                              ItemsSource="{Binding TriggerStates}"
+                                              SelectedItem="{Binding SelectedState, Mode=TwoWay}"
+>
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <!-- 进程搜索：只在大类是「进程」时出现 -->
+                                    <Grid x:Name="ProcBox"
+                                          Width="300"
+                                          Margin="12,0,0,0"
+                                          Visibility="{Binding IsProcessKind, Converter={StaticResource BoolToVis}}">
+                                        <Border Height="36"
+                                                Background="{DynamicResource ControlBgBrush}"
+                                                CornerRadius="6"
+                                                Padding="12,0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <Path Grid.Column="0"
+                                                      Width="13" Height="13"
+                                                      VerticalAlignment="Center"
+                                                      Data="M11 11 A7 7 0 1 0 4 11 A7 7 0 1 0 11 11 M16 16 L21 21"
+                                                      Stroke="{DynamicResource TextSecondaryBrush}"
+                                                      StrokeThickness="1.6"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Stretch="Uniform" />
+
+                                                <TextBox Grid.Column="1"
+                                                         Margin="10,0,0,0"
+                                                         Style="{StaticResource UnderlineFieldStyle}"
+                                                         conv:InputAssist.Watermark="输入或选择进程…"
+                                                         conv:InputAssist.ClearOnEscape="True"
+                                                         conv:InputAssist.HasError="{Binding HasProcessNameError}"
+                                                         conv:InputAssist.ErrorText="{Binding ProcessNameError}"
+                                                         automation:AutomationProperties.Name="触发进程名"
+                                                         Text="{Binding EditorProcessName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                                         GotKeyboardFocus="OnProcessBoxFocus"
+ />
+                                            </Grid>
+                                        </Border>
+
+                                        <Popup IsOpen="{Binding IsProcessPickerOpen, Mode=TwoWay}"
+                                               StaysOpen="True"
+                                               AllowsTransparency="True"
+                                               PlacementTarget="{Binding ElementName=ProcBox}"
+                                               Placement="Bottom"
+                                               VerticalOffset="4"
+                                               Width="{Binding ActualWidth, ElementName=ProcBox}">
+                                            <Border Background="{DynamicResource PanelBrush}"
+                                                    BorderBrush="{DynamicResource LineBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="4"
+                                                    Padding="4"
+                                                    Margin="0,0,8,8">
+                                                <ScrollViewer MaxHeight="200"
+                                                              VerticalScrollBarVisibility="Auto"
+                                                              HorizontalScrollBarVisibility="Disabled">
+                                                    <ItemsControl ItemsSource="{Binding ProcessSuggestions}"
+                                                                  PreviewMouseLeftButtonUp="OnProcessPick">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Style="{StaticResource ProcessSuggestionStyle}">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <TextBlock Grid.Column="0"
+                                                                                   Text="{Binding Name}"
+                                                                                   FontSize="13"
+                                                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                                   TextTrimming="CharacterEllipsis" />
+
+                                                                        <TextBlock Grid.Column="1"
+                                                                                   Text="{Binding Pid, StringFormat=PID {0}}"
+                                                                                   Margin="12,0,0,0"
+                                                                                   FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                                                   FontSize="11"
+                                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </Border>
+                                        </Popup>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- THEN -->
+                            <TextBlock Text="THEN / 执行动作"
+                                       Style="{StaticResource MonoLabelStyle}"
+                                       Margin="0,20,0,0" />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0"
+                                        Background="{DynamicResource WindowBgBrush}"
+                                        BorderBrush="{DynamicResource LineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="14,12"
+                                        Margin="0,0,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="调校方案" Style="{StaticResource MonoLabelStyle}" />
+
+                                        <Grid Margin="0,8,0,0">
+                                            <Rectangle Style="{StaticResource FilledSelectBorderStyle}"
+                                                       Visibility="{Binding HasEditorProfile, Converter={StaticResource BoolToVis}}" />
+
+                                            <Rectangle Style="{StaticResource EmptySelectBorderStyle}"
+                                                       Visibility="{Binding HasEditorProfile, Converter={StaticResource InverseBoolToVis}}" />
+
+                                            <ComboBox automation:AutomationProperties.Name="选择调校方案"
+                                                      ItemsSource="{Binding EditorProfiles}"
+                                                      SelectedValuePath="Id"
+                                                      SelectedValue="{Binding EditorProfileId, Mode=TwoWay}"
+>
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource BareSelectStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasEditorProfile}" Value="False">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1"
+                                        Background="{DynamicResource WindowBgBrush}"
+                                        BorderBrush="{DynamicResource LineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="14,12"
+                                        Margin="8,0,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="调度方案" Style="{StaticResource MonoLabelStyle}" />
+
+                                        <Grid Margin="0,8,0,0">
+                                            <Rectangle Style="{StaticResource FilledSelectBorderStyle}"
+                                                       Visibility="{Binding HasEditorMask, Converter={StaticResource BoolToVis}}" />
+
+                                            <Rectangle Style="{StaticResource EmptySelectBorderStyle}"
+                                                       Visibility="{Binding HasEditorMask, Converter={StaticResource InverseBoolToVis}}" />
+
+                                            <ComboBox automation:AutomationProperties.Name="选择调度方案"
+                                                      ItemsSource="{Binding EditorMasks}"
+                                                      SelectedValuePath="Id"
+                                                      SelectedValue="{Binding EditorMaskId, Mode=TwoWay}"
+>
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource BareSelectStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasEditorMask}" Value="False">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="2"
+                                        Background="{DynamicResource WindowBgBrush}"
+                                        BorderBrush="{DynamicResource LineBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="14,12"
+                                        Margin="8,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="电源方案" Style="{StaticResource MonoLabelStyle}" />
+
+                                        <Grid Margin="0,8,0,0">
+                                            <Rectangle Style="{StaticResource FilledSelectBorderStyle}"
+                                                       Visibility="{Binding HasEditorPowerScheme, Converter={StaticResource BoolToVis}}" />
+
+                                            <Rectangle Style="{StaticResource EmptySelectBorderStyle}"
+                                                       Visibility="{Binding HasEditorPowerScheme, Converter={StaticResource InverseBoolToVis}}" />
+
+                                            <ComboBox automation:AutomationProperties.Name="选择电源方案"
+                                                      ItemsSource="{Binding EditorPowerSchemes}"
+                                                      SelectedValuePath="Id"
+                                                      SelectedValue="{Binding EditorPowerSchemeId, Mode=TwoWay}"
+>
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource BareSelectStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasEditorPowerScheme}" Value="False">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- 提交 -->
+                            <Grid Margin="0,22,0,0">
+                                <Border Style="{StaticResource FormDividerStyle}" />
+
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right"
+                                            Margin="0,20,0,0">
+                                    <Button Style="{StaticResource ActionButtonStyle}"
+                                            Command="{Binding CancelEditorCommand}">
+                                        <TextBlock Text="取消" />
+                                    </Button>
+
+                                    <Button Style="{StaticResource PrimaryButtonStyle}"
+                                            Margin="8,0,0,0"
+                                            automation:AutomationProperties.Name="保存规则"
+                                            Command="{Binding SaveEditorCommand}">
+                                        <TextBlock Text="保存规则" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,14">
+                    <TextBlock Text="已保存的规则" Style="{StaticResource SectionTitleStyle}" />
+                </Border>
+
+                <StackPanel>
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <!-- 总控关掉：整组变淡且不可操作，规则本身不清空 -->
+                                <DataTrigger Binding="{Binding SceneAutoSwitch}" Value="False">
+                                    <Setter Property="IsEnabled" Value="False" />
+                                    <Setter Property="Opacity" Value="0.4" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+
+                    <ItemsControl ItemsSource="{Binding Rules}"
+                                  ItemTemplate="{StaticResource RuleCardTemplate}"
+                                  automation:AutomationProperties.Name="规则列表" />
+
+                    <StackPanel Margin="0,48,0,0"
+                                HorizontalAlignment="Center"
+                                Visibility="{Binding HasRules, Converter={StaticResource InverseBoolToVis}}">
+                        <Path Width="44" Height="44"
+                              HorizontalAlignment="Center"
+                              Data="M13 2 L4 14 H11 L10 22 L20 9 H13 Z"
+                              Stroke="{DynamicResource TextTertiaryBrush}"
+                              StrokeThickness="1.2"
+                              StrokeLineJoin="Round" />
+
+                        <TextBlock Text="暂无自动化规则"
+                                   Margin="0,14,0,0"
+                                   HorizontalAlignment="Center"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

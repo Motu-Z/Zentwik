@@ -116,7 +116,8 @@ namespace Zentwik.Core.Services
         /// </summary>
         public void Stop()
         {
-            if (Interlocked.Exchange(ref _attached, 0) != 0)
+            // Exchange 返回的是旧值：旧值为 0 说明本来就没启动，才该直接返回。
+            if (Interlocked.Exchange(ref _attached, 0) == 0)
                 return;
 
             try

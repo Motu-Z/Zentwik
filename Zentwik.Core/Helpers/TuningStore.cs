@@ -70,6 +70,7 @@ namespace Zentwik.Core.Helpers
             catch (Exception ex)
             {
                 _log.Error($"保存调校配置失败: {ex.Message}");
+                throw;
             }
         }
 

@@ -2,35 +2,23 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="Zentwik.UI.app" />
 
-  <!--
-    UI 进程必须 asInvoker，不能 requireAdministrator。
-    docs/项目事实卡.md §5.1：UI 侧零提权，写 SMU / 注册任务计划 / 改注册表一律走 IPC 交给 Worker。
-    清单写成 requireAdministrator 之后 UI 自己就有管理员令牌，「必须走 IPC」这条架构约定
-    会在某次赶工时被绕过，而且绕过之后代码照样跑得通 —— 没有任何编译期或运行期信号。
-
-    uiAccess 必须为 false：为 true 需要代码签名证书，本仓库无签名（事实卡 §1.3）。
-  -->
-  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
-    <security>
-      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
-      </requestedPrivileges>
-    </security>
-  </trustInfo>
-
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
-      <!-- Windows 10 / Windows 11 共用同一个 supportedOS GUID，
-           Windows 11 没有独立 GUID，声明这一条即同时覆盖两者。 -->
+      <!-- Windows 10 / 11 -->
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
     </application>
   </compatibility>
 
-  <!-- WPF 需要 PerMonitorV2：不声明时高 DPI 屏上窗口会被位图拉伸，文字发虚。 -->
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
-      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <!--
+        Per-Monitor V2 DPI 感知。
+        无边框窗口用 WindowChrome + CornerRadius 实现圆角（AllowsTransparency=False），
+        不走 AllowsTransparency 那条路，正是为了保住这里的硬件缩放能力：
+        AllowsTransparency=True 会让 WPF 退回 System DPI，跨显示器时文字发虚且无法补救。
+      -->
       <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">permonitorv2,permonitor</dpiAwareness>
     </windowsSettings>
   </application>
 </assembly>

@@ -26,7 +26,7 @@ namespace Zentwik.Core.Helpers
 
     /// <summary>
     /// 自定义掩码持久化：保存到 %APPDATA%\Zentwik\masks.json。
-    /// 重启软件时由 <see cref="Load"/> 自动加载，下拉框与绑核规则都引用这里的配置。
+    /// 重启软件时由 <see cref="Load"/> 自动加载，下拉框与调度规则都引用这里的配置。
     /// </summary>
     public class MaskStore : IMaskStore
     {
@@ -105,6 +105,7 @@ namespace Zentwik.Core.Helpers
             catch (Exception ex)
             {
                 _log.Error($"保存自定义掩码失败: {ex.Message}");
+                throw;
             }
         }
 
@@ -123,17 +124,21 @@ namespace Zentwik.Core.Helpers
         }
 
         /// <summary>
-        /// 新增或覆盖一条掩码（按 Id 判断）。
-        /// </summary>
-        /// <returns>写入成功为 true；否则 false，具体原因见 <paramref name="error"/>。</returns>
-        /// <remarks>
-        /// 旧实现在这里对超长名称做静默 Substring 截断，绕过界面直接写入时用户
-        /// 不会收到任何提示，名字被悄悄砍掉。改为拒绝写入，由调用方弹出提示。
-        /// 上限口径统一取自 <see cref="MaskNamePolicy"/>。
+        /// 把写入失败的原因翻译成一句可直接给用户看的话。
         ///
-        /// 重名与套数上限也放在这里，而不是只写在窗口里 —— 窗口是可以绕过的
-        /// （以后加导入 / 迁移入口就会绕过去），存储层才是唯一可信的关卡。
-        /// </remarks>
+        /// 【为什么放在这里而不是调用方】
+        /// 失败原因由 <see cref="Upsert"/> 产生，文案必须与产生它的那一处同源。
+        /// Worker 曾经自己拼一份「名称不合法」的提示，而界面走另一条路径拼了
+        /// 「最多 6 个中文」——同一个失败在不同入口说法不同，用户会当成两种问题。
+        /// </summary>
+        public static string Describe(UpsertError error) => error switch
+        {
+            UpsertError.BadName => $"掩码名称不能为空，且{MaskNamePolicy.Hint}",
+            UpsertError.DuplicateName => MaskNamePolicy.DuplicateError,
+            UpsertError.TooMany => $"最多只能保存 {MaxCount} 套掩码",
+            _ => string.Empty
+        };
+
         /// <summary>
         /// 恢复出厂：清空全部自定义掩码并落盘。
         ///
@@ -152,6 +157,18 @@ namespace Zentwik.Core.Helpers
             _log.Info("全局重置：自定义掩码已清空");
         }
 
+        /// <summary>
+        /// 新增或按 Id 覆盖一条掩码。
+        /// </summary>
+        /// <returns>写入成功为 true；否则 false，具体原因见 <paramref name="error"/>。</returns>
+        /// <remarks>
+        /// 旧实现在这里对超长名称做静默 <c>Substring</c> 截断，绕过界面直接写入时用户
+        /// 不会收到任何提示，名字被悄悄砍掉。改为拒绝写入，由调用方弹出提示。
+        /// 上限口径统一取自 <see cref="MaskNamePolicy"/>。
+        ///
+        /// 重名与套数上限也放在这里，而不是只写在窗口里 —— 窗口是可以绕过的
+        /// （以后加导入 / 迁移入口就会绕过去），存储层才是唯一可信的关卡。
+        /// </remarks>
         public bool Upsert(CustomMask mask, out UpsertError error)
         {
             string name = (mask.Name ?? string.Empty).Trim();

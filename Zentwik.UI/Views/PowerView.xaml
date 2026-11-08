@@ -1,0 +1,592 @@
+<UserControl x:Class="Zentwik.UI.Views.PowerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+             xmlns:core="clr-namespace:Zentwik.Core.Services;assembly=Zentwik.Core"
+             xmlns:conv="clr-namespace:Zentwik.UI.Converters"
+             xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             xmlns:lm="clr-namespace:Zentwik.UI"
+             xmlns:views="clr-namespace:Zentwik.UI.Views"
+             FontFamily="{DynamicResource AppFontFamily}"
+             FontSize="13">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:IntEqualsBoolConverter x:Key="IntEqualsBool" />
+
+        <Style x:Key="UnsupportedTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!--
+            新建弹层里的每一行：整行可点、左对齐、hover 亮一档。
+            必须自带模板 —— 只把 Background 设成 Transparent 会落到系统 Aero2 模板，
+            悬停时画出浅蓝底，透过半透明面板显示成一块突兀的亮色。
+        -->
+        <Style x:Key="MenuRowButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource TopBarStyle}" Padding="32,0,124,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="电源" Style="{StaticResource PageTitleStyle}" />
+
+                <views:ProfileBar Kind="{x:Static core:PlanKind.Power}" Grid.Column="1"
+                                  Margin="16,0,0,0"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Style="{StaticResource ActionButtonStyle}"
+                            automation:AutomationProperties.Name="回读"
+                            Command="{Binding RefreshCommand}"
+>
+                        <TextBlock Text="回读" />
+                    </Button>
+
+                    <Button Style="{StaticResource ActionButtonStyle}"
+                            Margin="8,0,0,0"
+                            automation:AutomationProperties.Name="恢复默认"
+                            Command="{Binding RestoreDefaultsCommand}"
+>
+                        <TextBlock Text="恢复默认" />
+                    </Button>
+
+                    <Button Style="{StaticResource PrimaryButtonStyle}"
+                            Margin="8,0,0,0"
+                            automation:AutomationProperties.Name="应用电源策略"
+                            Command="{Binding ApplyCommand}"
+                            IsEnabled="{Binding CanApply}">
+                        <TextBlock Text="应用参数" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
+            <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
+                        Margin="32,32,32,32">
+
+                <!-- 段 1：系统电源方案 -->
+                <Border Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="WINDOWS POWER SCHEME / 系统电源方案"
+                                   Style="{StaticResource SectionTitleStyle}" />
+
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding SupplyLabel}"
+                                   FontFamily="{DynamicResource AppMonoFontFamily}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SuccessBrush}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <!--
+                    方案卡：固定宽度、自动换行。末尾那条「＋ 新建方案」也排在这个 ListBox 里 ——
+                    放到外面的话，方案一多换行，加号就跑到第二行开头去了。
+                -->
+                <ListBox x:Name="SchemeList"
+                         ItemsSource="{Binding Schemes}"
+                         SelectedItem="{Binding SelectedScheme, Mode=TwoWay}"
+                         Margin="0,0,-8,-8"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         automation:AutomationProperties.Name="系统电源方案">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+                            <Setter Property="Margin" Value="0,0,8,8" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Grid Width="196" Height="40">
+                                            <Border x:Name="Bd"
+                                                    Background="{DynamicResource PanelBrush}"
+                                                    BorderBrush="{DynamicResource LineBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6"
+                                                    SnapsToDevicePixels="True" />
+                                            <ContentPresenter HorizontalAlignment="Stretch"
+                                                              VerticalAlignment="Center" />
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource LineStrongBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                            </Trigger>
+
+                                            <!-- 「＋ 新建」那条自带虚线边框，容器底不能再画一层实线框 -->
+                                            <DataTrigger Binding="{Binding IsCreateNew}" Value="True">
+                                                <Setter TargetName="Bd" Property="Visibility" Value="Hidden" />
+                                                <Setter Property="Cursor" Value="Hand" />
+                                            </DataTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock x:Name="NameText"
+                                           Text="{Binding Name}"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Margin="14,0"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+
+                                <!-- 列表末尾的「＋ 新建方案」 -->
+                                <Button x:Name="CreateButton"
+                                        Style="{StaticResource GhostAddButtonStyle}"
+                                        Content="＋ 新建方案"
+                                        Visibility="Collapsed"
+                                        automation:AutomationProperties.Name="新建电源方案"
+                                        Command="{Binding DataContext.OpenCreateMenuCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+
+                                <!-- 行内改名：回车提交、Esc 取消、失焦也提交 -->
+                                <TextBox x:Name="NameBox"
+                                         Style="{StaticResource TextFieldStyle}"
+                                         Height="30"
+                                         Margin="6,0"
+                                         VerticalAlignment="Center"
+                                         conv:InputAssist.Watermark="方案名称"
+                                         automation:AutomationProperties.Name="电源方案名称"
+                                         Visibility="Collapsed"
+                                         Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                         KeyDown="OnSchemeRenameKeyDown"
+                                         LostFocus="OnSchemeRenameLostFocus" />
+
+                                <!-- 删除的二次确认：点一次删除图标先换成这两个字 -->
+                                <Button x:Name="ConfirmDelete"
+                                        Style="{StaticResource DangerButtonStyle}"
+                                        Content="确认删除"
+                                        FontSize="12"
+                                        Height="26"
+                                        Margin="6,0"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"
+                                        automation:AutomationProperties.Name="确认删除此电源方案"
+                                        Command="{Binding DataContext.ConfirmDeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                        CommandParameter="{Binding}" />
+
+                                <!-- 改名 / 删除就地挂在卡内，hover 才显形 -->
+                                <StackPanel x:Name="Actions"
+                                            Orientation="Horizontal"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,6,0"
+                                            Opacity="0"
+                                            IsHitTestVisible="False">
+                                    <Button Style="{StaticResource IconButtonStyle}"
+                                            automation:AutomationProperties.Name="重命名此电源方案"
+                                            Command="{Binding DataContext.BeginRenameCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}"
+>
+                                        <Path Style="{StaticResource IconGlyphStyle}"
+                                              Width="14" Height="14"
+                                              Data="M4 20 H8 L19 9 L15 5 L4 16 Z M14 6 L18 10"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    </Button>
+
+                                    <Button Style="{StaticResource DangerIconButtonStyle}"
+                                            automation:AutomationProperties.Name="删除此电源方案"
+                                            Command="{Binding DataContext.RequestDeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}"
+>
+                                        <Path Style="{StaticResource IconGlyphStyle}"
+                                              Width="14" Height="14"
+                                              Data="M4 6 H20 M9 6 V4 H15 V6 M6 6 L7 20 H17 L18 6"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding IsCreateNew}" Value="True">
+                                    <Setter TargetName="NameText" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="CreateButton" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+
+                                <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                    <Setter TargetName="NameText" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="NameBox" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+
+                                <DataTrigger Binding="{Binding IsConfirmingDelete}" Value="True">
+                                    <Setter TargetName="NameText" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="ConfirmDelete" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True" />
+                                        <Condition Binding="{Binding IsCreateNew}" Value="False" />
+                                        <Condition Binding="{Binding IsRenaming}" Value="False" />
+                                        <Condition Binding="{Binding IsConfirmingDelete}" Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter TargetName="Actions" Property="Opacity" Value="1" />
+                                    <Setter TargetName="Actions" Property="IsHitTestVisible" Value="True" />
+                                </MultiDataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- 新建弹层：四个内置模板，已存在的那几项置灰 -->
+                <Popup IsOpen="{Binding IsCreateMenuOpen, Mode=TwoWay}"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       PopupAnimation="Fade"
+                       Placement="Bottom"
+                       PlacementTarget="{Binding ElementName=SchemeList}"
+                       VerticalOffset="6">
+                    <Border Width="196"
+                            Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource LineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.45" Color="#000000" />
+                        </Border.Effect>
+
+                        <ItemsControl ItemsSource="{Binding Presets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource MenuRowButtonStyle}"
+                                            Height="32"
+                                            Content="{Binding Name}"
+                                            automation:AutomationProperties.Name="{Binding Name}"
+                                            Command="{Binding DataContext.CreateSchemeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </Popup>
+
+                <!-- 段 2：处理器策略。AC/DC 切换收进段头，不再单独占一块横幅 -->
+                <Border Style="{StaticResource SectionHeaderStyle}" Margin="0,40,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="PROCESSOR POLICY / 处理器策略"
+                                   Style="{StaticResource SectionTitleStyle}"
+                                   VerticalAlignment="Center" />
+
+                        <Border Grid.Column="1"
+                                Style="{StaticResource SegmentGroupStyle}"
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton GroupName="Supply"
+                                             Style="{StaticResource SegmentRadioButtonStyle}"
+                                             Height="28"
+                                             automation:AutomationProperties.Name="交流电策略"
+                                             IsChecked="{Binding IsAcMode, Mode=TwoWay}">
+                                    <TextBlock Text="交流电 (AC)" />
+                                </RadioButton>
+
+                                <RadioButton GroupName="Supply"
+                                             Style="{StaticResource SegmentRadioButtonStyle}"
+                                             Height="28"
+                                             automation:AutomationProperties.Name="电池策略"
+                                             IsChecked="{Binding IsBatteryMode, Mode=TwoWay}">
+                                    <TextBlock Text="电池 (DC)" />
+                                </RadioButton>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                    <!-- 能效偏好 -->
+                    <Border Style="{StaticResource RowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="能效偏好 (EPP)" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <Grid Grid.Column="1"
+                                  Visibility="{Binding EppSupported, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Slider Grid.Column="0"
+                                        Style="{StaticResource ThinSliderStyle}"
+                                        Minimum="0" Maximum="100"
+                                        Value="{Binding Epp, Mode=TwoWay}"
+                                        VerticalAlignment="Center" />
+
+                                <TextBlock Grid.Column="1"
+                                           Margin="16,0,0,0"
+                                           MinWidth="34"
+                                           TextAlignment="Right"
+                                           Text="{Binding Epp, Mode=OneWay}"
+                                           FontFamily="{DynamicResource AppMonoFontFamily}"
+                                           FontSize="20"
+                                           FontWeight="Bold"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding EppError}"
+                                       Visibility="{Binding EppSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 最大处理器状态 -->
+                    <Border Style="{StaticResource RowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="最大处理器状态" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <Grid Grid.Column="1"
+                                  Visibility="{Binding MaxProcessorStateSupported, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Slider Grid.Column="0"
+                                        Style="{StaticResource ThinSliderStyle}"
+                                        Minimum="{Binding MaxProcessorStateMinimum}"
+                                        Maximum="100"
+                                        Value="{Binding MaxProcessorState, Mode=TwoWay}"
+                                        VerticalAlignment="Center" />
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                            Margin="16,0,0,0" MinWidth="52" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding MaxProcessorState, Mode=OneWay}"
+                                               FontFamily="{DynamicResource AppMonoFontFamily}"
+                                               FontSize="20"
+                                               FontWeight="Bold"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="%"
+                                               FontSize="13"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="2,0,0,2" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding MaxProcessorStateError}"
+                                       Visibility="{Binding MaxProcessorStateSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 升频模式 -->
+                    <Border Style="{StaticResource RowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="升频模式 (Boost)" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource SegmentGroupStyle}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding BoostModeSupported, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="BoostMode" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=0}">
+                                        <TextBlock Text="关闭" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=1}">
+                                        <TextBlock Text="开启" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=2}">
+                                        <TextBlock Text="激进" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=3}">
+                                        <TextBlock Text="高效开启" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="BoostMode" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding BoostMode, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=4}">
+                                        <TextBlock Text="高效激进" />
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding BoostModeError}"
+                                       Visibility="{Binding BoostModeSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- PCIe ASPM -->
+                    <Border Style="{StaticResource RowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="PCIe 链路电源管理 (ASPM)" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource SegmentGroupStyle}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding AspmSupported, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="Aspm" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding Aspm, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=0}">
+                                        <TextBlock Text="关闭" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="Aspm" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding Aspm, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=1}">
+                                        <TextBlock Text="中等节能" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="Aspm" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding Aspm, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=2}">
+                                        <TextBlock Text="最大节能" />
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding AspmError}"
+                                       Visibility="{Binding AspmSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 空闲禁用 -->
+                    <Border Style="{StaticResource RowLastStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="空闲禁用 (C-State)" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <ToggleButton Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          IsChecked="{Binding IdleDisable, Mode=TwoWay}"
+                                          IsEnabled="{Binding IdleDisableSupported}"
+                                          Visibility="{Binding IdleDisableSupported, Converter={StaticResource BoolToVis}}"
+                                          automation:AutomationProperties.Name="空闲禁用" />
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding IdleDisableError}"
+                                       Visibility="{Binding IdleDisableSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

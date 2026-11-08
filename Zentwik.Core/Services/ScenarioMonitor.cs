@@ -30,10 +30,10 @@ namespace Zentwik.Core.Services
         private readonly ScenarioService _scenarios;
         private readonly ProcessRefresher _refresher;
         private readonly IProcessWatcher _watcher;
-        private readonly ProfileService _profiles;
+        private readonly PlanService _plans;
         private readonly PowerStatusWatcher _power;
 
-        public ScenarioMonitor(ILogService log, ScenarioService scenarios, ProcessRefresher refresher, IProcessWatcher watcher, ProfileService profiles, PowerStatusWatcher power)
+        public ScenarioMonitor(ILogService log, ScenarioService scenarios, ProcessRefresher refresher, IProcessWatcher watcher, PlanService plans, PowerStatusWatcher power)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -43,8 +43,8 @@ namespace Zentwik.Core.Services
             _refresher = refresher;
             ArgumentNullException.ThrowIfNull(watcher);
             _watcher = watcher;
-            ArgumentNullException.ThrowIfNull(profiles);
-            _profiles = profiles;
+            ArgumentNullException.ThrowIfNull(plans);
+            _plans = plans;
             ArgumentNullException.ThrowIfNull(power);
             _power = power;
         }
@@ -66,6 +66,17 @@ namespace Zentwik.Core.Services
         private bool _processHooked;
         private bool _powerHooked;
         private bool _active;
+
+        /// <summary>
+        /// 上一拍还活着、且被退出规则盯着的进程名。
+        ///
+        /// 【为什么会存在这个字段】
+        /// 其余触发都是「此刻成立不成立」的纯状态，进程退出是**差集**：
+        /// 不知道上一拍的名单，就无法区分「刚退出」和「一直没起来」。
+        /// 只记规则里写到的名字，不是全机器几百个进程 —— 差集的范围由规则决定。
+        /// 由 <see cref="Gate"/> 保护：写入在评估线程，清理在 <see cref="Sync"/> 调用方线程。
+        /// </summary>
+        private readonly HashSet<string> _lastSeen = new(StringComparer.OrdinalIgnoreCase);
 
 
 
@@ -99,7 +110,7 @@ namespace Zentwik.Core.Services
 
             // 【为什么「判断」和「执行」要分开】
             // Sync 的调用方不止一个（启动时一次、规则变更后从 Changed 再来一次），
-            // 而 Changed 是在 ProfileService.Apply 里触发的 —— 那可能从 UI 线程、
+            // 而 Changed 是在 PlanService.Apply 里触发的 —— 那可能从 UI 线程、
             // 也可能从场景自己的切换路径进来。若在锁外做「看了再改」，
             // 两个线程同时看到 _powerHooked == false 就会各订阅一次，
             // 同一条电源通知触发两轮评估。
@@ -138,9 +149,18 @@ namespace Zentwik.Core.Services
             }
 
             if (startProcess)
+            {
                 _watcher.ProcessSetChanged += OnProcessSetChanged;
+            }
             else if (stopProcess)
+            {
                 _watcher.ProcessSetChanged -= OnProcessSetChanged;
+
+                // 退订后再挂上时，上一拍的名单已经没有意义：留着它会把
+                // 监听暂停期间退出的进程补报成一次「刚刚退出」。
+                lock (Gate)
+                    _lastSeen.Clear();
+            }
 
             if (startPower)
             {
@@ -206,6 +226,7 @@ namespace Zentwik.Core.Services
                 return;
 
             List<(ScenarioTrigger Trigger, string Argument)> active = new();
+            HashSet<string>? seen = null;
 
             if (_scenarios.HasPowerRules)
             {
@@ -225,14 +246,14 @@ namespace Zentwik.Core.Services
                 catch (Exception ex)
                 {
                     // 采不到名单就不评估：带着一份残缺的名单去判定，
-                // 结果可能是「唯一命中的那条规则恰好没被采到」→ 误切成别的方案。
+                    // 结果可能是「唯一命中的那条规则恰好没被采到」→ 误切成别的方案。
                     _log.Warn($"场景评估：进程名单采集失败，本次跳过：{ex.Message}");
                     return;
                 }
 
                 // 同名进程（chrome、svchost 动辄十几个）去重后再上报，
                 // 否则规则匹配要对同一条规则重复比对几十次。
-                HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+                seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (ProcessRefresher.Entry entry in snapshot)
                 {
                     if (!string.IsNullOrEmpty(entry.Name) && seen.Add(entry.Name))
@@ -240,7 +261,49 @@ namespace Zentwik.Core.Services
                 }
             }
 
+            AppendExits(active, seen);
+
             _scenarios.Notify(active);
+        }
+
+        /// <summary>
+        /// 把「这一拍退出的进程」补进触发集合。
+        ///
+        /// 只对规则里写到的名字做差集：全量进程留一份上一拍名单，
+        /// 代价远大于它带来的收益。名单为空时顺手清掉基准，
+        /// 用户删掉最后一条退出规则后不该继续留着状态。
+        /// </summary>
+        private void AppendExits(List<(ScenarioTrigger Trigger, string Argument)> active, HashSet<string>? seen)
+        {
+            IReadOnlyList<string> watched = _scenarios.ProcessExitArguments;
+
+            lock (Gate)
+            {
+                if (watched.Count == 0)
+                {
+                    _lastSeen.Clear();
+                    return;
+                }
+
+                // 采不到名单就不判退出：把一次采集失败当成「全都退出了」，
+                // 会让退出规则集体误触发一次。
+                if (seen is null)
+                    return;
+
+                foreach (string name in watched)
+                {
+                    if (seen.Contains(name))
+                    {
+                        _lastSeen.Add(name);
+                        continue;
+                    }
+
+                    // 只有「上一拍在、这一拍不在」才算退出；
+                    // 一直没起来过就是没命中，不是「退出」。
+                    if (_lastSeen.Remove(name))
+                        active.Add((ScenarioTrigger.ProcessExited, name));
+                }
+            }
         }
     }
 }

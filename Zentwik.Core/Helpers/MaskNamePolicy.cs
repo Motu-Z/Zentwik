@@ -104,7 +104,7 @@ namespace Zentwik.Core.Helpers
         /// <summary>
         /// 完整校验：长度 + 重名。重名比较**忽略大小写**——
         /// 左栏就是一串纯文字，「Game」与「game」在列表里几乎分不出是哪条，
-        /// 允许并存只会让绑核规则指向一个用户自己也说不清的对象。
+        /// 允许并存只会让调度规则指向一个用户自己也说不清的对象。
         /// </summary>
         /// <param name="text">待校验名称。</param>
         /// <param name="others">

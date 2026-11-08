@@ -31,6 +31,9 @@ build/**/publish/
 build/**/bin/
 build/**/obj/
 
+# UI 冒烟探针的离屏渲染产物（PNG 已被下面的 *.png 规则覆盖，这里再挡掉日志）
+build/**/out/
+
 # 临时截图与图片（根目录排查截图等误提交；应用资源统一放 Assets/，不受此规则影响）
 *.png
 *.jpg
@@ -38,3 +41,7 @@ build/**/obj/
 *.bmp
 *.gif
 !Assets/**
+
+# 本地备份与助手工具目录，不进仓库
+.ai_backup_*/
+.workbuddy/
