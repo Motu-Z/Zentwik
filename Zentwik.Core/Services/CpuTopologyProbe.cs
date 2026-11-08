@@ -20,7 +20,6 @@ namespace Zentwik.Core.Services
     /// </summary>
     public static class CpuTopologyProbe
     {
-        /// <summary>RelationProcessorCore。</summary>
         private const int RelationProcessorCore = 0;
 
         /// <summary>单个 PROCESSOR_RELATIONSHIP 里第一组亲和性掩码的偏移（仅 64 位）。</summary>

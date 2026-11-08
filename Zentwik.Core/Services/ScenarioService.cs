@@ -241,13 +241,23 @@ namespace Zentwik.Core.Services
             {
                 lock (Sync)
                 {
-                    return _rules
-                        .Where(r => r.Enabled
-                                 && r.Trigger == ScenarioTrigger.ProcessExited
-                                 && !string.IsNullOrEmpty(r.Argument))
-                        .Select(r => r.Argument)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
+                    // 这份名单每次进程集合变化都会被重新取一次。直接一次遍历去重，
+                    // 省掉 Where / Select / Distinct 三层迭代器与中间数组。
+                    HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+                    List<string> result = new();
+
+                    foreach (ScenarioRule r in _rules)
+                    {
+                        if (r.Enabled
+                            && r.Trigger == ScenarioTrigger.ProcessExited
+                            && !string.IsNullOrEmpty(r.Argument)
+                            && seen.Add(r.Argument))
+                        {
+                            result.Add(r.Argument);
+                        }
+                    }
+
+                    return result.Count == 0 ? Array.Empty<string>() : result.ToArray();
                 }
             }
         }
@@ -365,7 +375,7 @@ namespace Zentwik.Core.Services
                 return;
 
             List<(ScenarioTrigger Trigger, string Argument)> snapshot = active.ToList();
-            ScenarioOutcome? outcome = ResolveOutcome(snapshot);
+            ScenarioOutcome? outcome = ResolveOutcomeCore(snapshot);
 
             // 没有规则命中时**刻意什么都不做**。
             // 场景只负责「切到某套」，不负责「切回去」——
@@ -561,14 +571,29 @@ namespace Zentwik.Core.Services
         /// </summary>
         public ScenarioOutcome? ResolveOutcome(IEnumerable<(ScenarioTrigger Trigger, string Argument)> active)
         {
-            List<(ScenarioTrigger Trigger, string Argument)> snapshot = active.ToList();
+            // 外部调用方可能在枚举过程中改动集合，这里仍复制一份；
+            // Notify 传进来的已是不可变快照，走 ResolveOutcomeCore 省掉第二次复制。
+            return ResolveOutcomeCore(active.ToList());
+        }
+
+        private ScenarioOutcome? ResolveOutcomeCore(
+            List<(ScenarioTrigger Trigger, string Argument)> snapshot)
+        {
             if (snapshot.Count == 0)
                 return null;
+
+            // 每条规则原来都要把全部触发线性扫一遍（进程名常有几百条）。
+            // 一次建集合，之后每条规则只查一次表。
+            HashSet<(ScenarioTrigger Trigger, string Argument)> activeSet =
+                new(ActiveTriggerComparer.Instance);
+
+            foreach ((ScenarioTrigger trigger, string argument) in snapshot)
+                activeSet.Add((trigger, argument));
 
             lock (Sync)
             {
                 foreach (ScenarioRule rule in _rules
-                             .Where(rule => rule.Enabled && Matches(rule, snapshot))
+                             .Where(rule => rule.Enabled && Matches(rule, activeSet))
                              .OrderBy(rule => rule.Priority))
                 {
                     bool hasAction = !string.IsNullOrEmpty(rule.ProfileId)
@@ -627,11 +652,28 @@ namespace Zentwik.Core.Services
             return parts.Count == 0 ? "无任何触发" : string.Join("、", parts);
         }
 
-        private bool Matches(ScenarioRule rule,
-                                    List<(ScenarioTrigger Trigger, string Argument)> active)
-            => active.Any(a =>
-                a.Trigger == rule.Trigger &&
-                string.Equals(a.Argument, rule.Argument, StringComparison.OrdinalIgnoreCase));
+        private static bool Matches(ScenarioRule rule,
+                                    HashSet<(ScenarioTrigger Trigger, string Argument)> active)
+            => active.Contains((rule.Trigger, rule.Argument));
+
+        /// <summary>
+        /// 与原来的 <c>string.Equals(..., OrdinalIgnoreCase)</c> 完全同口径，
+        /// 包括 null 与空串不相等 —— 所以这里不做 null 规整。
+        /// </summary>
+        private sealed class ActiveTriggerComparer : IEqualityComparer<(ScenarioTrigger Trigger, string Argument)>
+        {
+            public static readonly ActiveTriggerComparer Instance = new();
+
+            public bool Equals((ScenarioTrigger Trigger, string Argument) x,
+                               (ScenarioTrigger Trigger, string Argument) y)
+                => x.Trigger == y.Trigger &&
+                   string.Equals(x.Argument, y.Argument, StringComparison.OrdinalIgnoreCase);
+
+            public int GetHashCode((ScenarioTrigger Trigger, string Argument) obj)
+                => HashCode.Combine(
+                    (int)obj.Trigger,
+                    obj.Argument is null ? 0 : StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Argument));
+        }
 
         private int IndexOfId(string id)
         {

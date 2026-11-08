@@ -86,13 +86,11 @@ namespace Zentwik.Core.Services
             get { lock (Gate) return _active; }
         }
 
-        /// <summary>进程事件是否已挂上。</summary>
         public bool IsProcessSourceAttached
         {
             get { lock (Gate) return _processHooked; }
         }
 
-        /// <summary>电源监听是否已挂上。</summary>
         public bool IsPowerSourceAttached
         {
             get { lock (Gate) return _powerHooked; }

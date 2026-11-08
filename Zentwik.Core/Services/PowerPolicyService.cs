@@ -36,7 +36,6 @@ namespace Zentwik.Core.Services
         // 一个「最大处理器状态」被读成「最小处理器状态」的 bug，从功耗上看不出来。
         // GUID 是稳定的契约，名字只是给人看的。
 
-        /// <summary>「处理器电源管理」子组。</summary>
         public static readonly Guid SubProcessor = new("54533251-82be-4824-96c1-47b60b740d00");
 
         /// <summary>「PCI Express」子组。</summary>

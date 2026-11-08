@@ -530,12 +530,26 @@ namespace Zentwik.Core.Services
                         _directoryReady = true;
                     }
 
-                    // 按天分组，同一天的条目拼成一个字符串、只开一次文件
-                    foreach (IGrouping<string, LogEntry> group in batch.GroupBy(e => e.Time.ToString("yyyyMMdd", CultureInfo.InvariantCulture)))
+                    // 按天分组：一次遍历算好日期键，避免 GroupBy 为每条日志
+                    // 都分配分组对象、再把整批 StringBuilder 拷成一个大字符串。
+                    Dictionary<string, List<LogEntry>> byDay = new(StringComparer.Ordinal);
+
+                    foreach (LogEntry entry in batch)
+                    {
+                        string day = entry.Time.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+                        if (!byDay.TryGetValue(day, out List<LogEntry>? group))
+                        {
+                            group = new List<LogEntry>();
+                            byDay.Add(day, group);
+                        }
+                        group.Add(entry);
+                    }
+
+                    foreach (KeyValuePair<string, List<LogEntry>> group in byDay)
                     {
                         StringBuilder builder = new();
 
-                        foreach (LogEntry entry in group)
+                        foreach (LogEntry entry in group.Value)
                         {
                             builder.Append('[').Append(entry.Time.ToString("HH:mm:ss", CultureInfo.InvariantCulture)).Append("] [")
                                    .Append(entry.LevelText).Append("] ")
@@ -552,7 +566,7 @@ namespace Zentwik.Core.Services
                             FileShare.ReadWrite | FileShare.Delete);
 
                         using StreamWriter writer = new(stream, new UTF8Encoding(false));
-                        writer.Write(builder.ToString());
+                        writer.Write(builder);
                     }
                 }
             }

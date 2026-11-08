@@ -1,2 +1,0 @@
-# 占位：发布链要求该目录存在（Zentwik.iss [Files] 的 Source 指向这里）。
-# 实际内容由 dotnet publish 输出到 dist/portable/ 后填充。

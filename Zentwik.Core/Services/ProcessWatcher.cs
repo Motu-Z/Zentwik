@@ -731,7 +731,67 @@ namespace Zentwik.Core.Services
         {
             RefreshRulesIfStale();
 
-            return _scheduling.Profile.Rules.FirstOrDefault(rule => Matches(rule, name));
+            // 一次启动补扫 / 一轮降级轮询会给几百个进程各查一次规则。原来是
+            // 「每进程 × 每条规则」线性扫、每轮反复 Trim 两侧字符串。改成随规则
+            // 读盘窗口建一次索引，之后每进程只查一次表。
+            long stamp = Interlocked.Read(ref _lastRuleReloadTick);
+            RuleIndexSnapshot? snapshot = _ruleIndex;
+
+            if (snapshot is null || snapshot.Stamp != stamp)
+            {
+                lock (_ruleIndexGate)
+                {
+                    snapshot = _ruleIndex;
+                    if (snapshot is null || snapshot.Stamp != stamp)
+                    {
+                        snapshot = new RuleIndexSnapshot
+                        {
+                            Stamp = stamp,
+                            ByName = BuildRuleIndex(_scheduling.Profile.Rules),
+                        };
+                        _ruleIndex = snapshot;
+                    }
+                }
+            }
+
+            return snapshot.ByName.TryGetValue(name.Trim(), out ScheduleRule? rule) ? rule : null;
+        }
+
+        /// <summary>
+        /// 规则索引快照。Stamp 与 <see cref="_lastRuleReloadTick"/> 配对：规则一读盘
+        /// （或 ResetCache 让窗口失效）stamp 就变，索引随之重建。
+        /// 整个对象一次发布，避免读线程看到「新 stamp + 旧字典」的半成品。
+        /// </summary>
+        private sealed class RuleIndexSnapshot
+        {
+            public long Stamp;
+            public Dictionary<string, ScheduleRule> ByName = new(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private volatile RuleIndexSnapshot? _ruleIndex;
+
+        private readonly object _ruleIndexGate = new();
+
+        /// <summary>
+        /// 按进程名建规则索引（去首尾空格、忽略大小写）。同名保留第一条，
+        /// 与 <see cref="Matches"/> + FirstOrDefault 的「第一条命中」口径一致。
+        /// Worker 的 query-processes 复用它，避免两处匹配逻辑漂移。
+        /// </summary>
+        public static Dictionary<string, ScheduleRule> BuildRuleIndex(IReadOnlyList<ScheduleRule> rules)
+        {
+            Dictionary<string, ScheduleRule> index = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (ScheduleRule rule in rules)
+            {
+                if (rule.Enabled &&
+                    rule.Target != SchedulingTarget.None &&
+                    !string.IsNullOrWhiteSpace(rule.Name))
+                {
+                    index.TryAdd(rule.Name.Trim(), rule);
+                }
+            }
+
+            return index;
         }
 
         /// <summary>
@@ -770,6 +830,7 @@ namespace Zentwik.Core.Services
         private void InvalidateRuleCache()
         {
             Interlocked.Exchange(ref _lastRuleReloadTick, long.MinValue / 2);
+            _ruleIndex = null;
         }
 
         // ==================== 启动时的全量补扫 ====================

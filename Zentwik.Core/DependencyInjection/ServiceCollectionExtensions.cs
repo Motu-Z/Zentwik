@@ -82,7 +82,6 @@ namespace Zentwik.Core.DependencyInjection
             services.TryAddSingleton<LogThrottle>();
             services.TryAddSingleton<ProcessRefresher>();
             services.TryAddSingleton<PowerStatusWatcher>();
-            services.TryAddSingleton<MemoryTrimmer>();
             services.TryAddSingleton<AutoStartService>();
 
             services.TryAddSingleton<ProcessWatcher>();

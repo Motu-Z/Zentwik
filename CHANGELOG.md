@@ -4,6 +4,25 @@
 
 ---
 
+## [3.0.3]
+
+### Changed (修改)
+
+- **仓库清理**：移除 `Legacy/` 全部 114 个旧 WPF / WinUI 界面归档（约 1.9 万行，不在任何工程里）、`docs/` 历史开发笔记与清单、`AUTOMATION_PROGRESS.md`、`Zentwik.UI/README.md`。保留 README、CHANGELOG、LICENSE、`UI_Contract.md` 和四个工程源码。旧内容仍可从 git 历史找回。
+- **README 重写**：补齐双进程架构、运行要求、构建 / 发布流程、回归命令与清理后的仓库结构。
+- **代码清理**：删除四工程内从未被调用的 `MemoryTrimmer` 及其 DI 注册、`CpuSetScheduler` 中未使用的权限常量，以及若干只复述标识符、没有解释「为什么」的注释。必要的说明性注释全部保留。
+
+### Performance (性能)
+
+- **进程规则匹配**：`ProcessWatcher.FindRuleFor` 与 Worker 的 `query-processes` 原本是「每进程 × 每条规则」线性扫描、两侧字符串反复 Trim。改为随规则读盘窗口建一次按名字索引的字典（忽略大小写、同名保留首条），之后每进程只查一次表；Worker 复用同一份索引逻辑，匹配口径不变。
+- **场景仲裁**：`Notify` 不再对触发快照复制第二遍；每条规则的触发匹配由线性扫全量触发改为一次 HashSet 查表（含 null / 空串不等的原有语义）。
+- **`ProcessExitArguments`** 去掉 Where / Select / Distinct 三层迭代器；`ProcessRefresher` 把 CPU 窗口长度、路径重试间隔、逻辑处理器数提为静态常量，采样清理改为两次直接遍历，不再产生 LINQ 中间集合。
+- **日志批量落盘**：按天分桶不再为每条日志分配分组对象，`StreamWriter` 直接写 `StringBuilder`，省掉一次整批字符串拷贝。
+
+> 外部接口与行为不变：IPC 协议仍为版本 10，公开类型与方法签名未改，一连接一条消息、「完全退出 / 仅留服务」等关闭行为均未调整。
+
+---
+
 ## [2.0.2]
 
 ### Fixed (修复)

@@ -31,9 +31,9 @@
     <LangVersion>latest</LangVersion>
 
     <!-- 版本号口径统一由 Core 维护，各宿主工程不再各写一份 -->
-    <Version>2.0.2</Version>
-    <FileVersion>2.0.2.0</FileVersion>
-    <AssemblyVersion>2.0.2.0</AssemblyVersion>
+    <Version>3.0.3</Version>
+    <FileVersion>3.0.3.0</FileVersion>
+    <AssemblyVersion>3.0.3.0</AssemblyVersion>
 
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -61,8 +61,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- AOT 探针需要访问 AppJsonContext（internal）与 MemoryTrimmer（internal）
-         才能把这两条路径也纳入原生编译验证。只在构建期存在，不随产品发布。 -->
+    <!-- AOT 探针需要访问 AppJsonContext（internal）才能把源生成序列化纳入
+         原生编译验证。只在构建期存在，不随产品发布。 -->
     <InternalsVisibleTo Include="Zentwik.AotProbe" />
     <InternalsVisibleTo Include="Zentwik.Tests" />
   </ItemGroup>

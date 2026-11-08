@@ -6,7 +6,6 @@ using System.Runtime.InteropServices.Marshalling;
 
 namespace Zentwik.Core.Services
 {
-    /// <summary>一次绑定尝试的结果。</summary>
     public sealed class CpuSetScheduleResult
     {
         public bool Success { get; init; }
@@ -138,7 +137,6 @@ namespace Zentwik.Core.Services
         private static partial bool CloseHandle(IntPtr hObject);
 
         private const uint PROCESS_SET_INFORMATION = 0x0200;
-        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         /// <summary>
         /// SetProcessDefaultCpuSets 官方要求 PROCESS_SET_LIMITED_INFORMATION。

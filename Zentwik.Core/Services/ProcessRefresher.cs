@@ -302,6 +302,11 @@ namespace Zentwik.Core.Services
         /// <summary>路径解析失败后的重试间隔（秒）。</summary>
         private const double PathRetrySeconds = 30.0;
 
+        // 一轮采集要给几百个进程各算一次，这三个值都是常量，不必逐进程重算。
+        private static readonly long CpuWindowTicks = (long)(CpuWindowSeconds * Stopwatch.Frequency);
+        private static readonly long PathRetryTicks = (long)(PathRetrySeconds * Stopwatch.Frequency);
+        private static readonly int ProcessorCount = Math.Max(1, Environment.ProcessorCount);
+
         /// <summary>最新快照（只读副本）。</summary>
         public IReadOnlyList<Entry> Latest
         {
@@ -687,8 +692,7 @@ namespace Zentwik.Core.Services
             long total = sample.KernelTicks + sample.UserTicks;
             sample.CpuWindow.Enqueue((now, total));
 
-            long windowTicks = (long)(CpuWindowSeconds * Stopwatch.Frequency);
-            while (sample.CpuWindow.Count > 0 && now - sample.CpuWindow.Peek().Stamp > windowTicks)
+            while (sample.CpuWindow.Count > 0 && now - sample.CpuWindow.Peek().Stamp > CpuWindowTicks)
                 sample.CpuWindow.Dequeue();
 
             while (sample.CpuWindow.Count > MaxWindowPoints)
@@ -712,8 +716,7 @@ namespace Zentwik.Core.Services
             if (elapsedSeconds <= 0)
                 return 0.0;
 
-            int processorCount = Math.Max(1, Environment.ProcessorCount);
-            double pct = usedSeconds / elapsedSeconds / processorCount * 100.0;
+            double pct = usedSeconds / elapsedSeconds / ProcessorCount * 100.0;
 
             return pct < 0 ? 0 : (pct > 100 ? 100 : pct);
         }
@@ -734,8 +737,7 @@ namespace Zentwik.Core.Services
             if (sample.PathResolved)
                 return;
 
-            long retryTicks = (long)(PathRetrySeconds * Stopwatch.Frequency);
-            if (sample.PathFailStamp != 0 && now - sample.PathFailStamp < retryTicks)
+            if (sample.PathFailStamp != 0 && now - sample.PathFailStamp < PathRetryTicks)
                 return;
 
             string path = QueryImagePath(pid);
@@ -771,10 +773,24 @@ namespace Zentwik.Core.Services
                 if (_samples.Count <= result.Count)
                     return;
 
-                HashSet<int> alive = new(result.Select(e => e.Pid));
-                List<int> dead = _samples.Keys.Where(k => !alive.Contains(k)).ToList();
-                foreach (int k in dead)
-                    _samples.Remove(k);
+                // 一次遍历填存活集合、一次遍历收死亡 PID：省掉 Select / Where
+                // 两层迭代器与它们各自的中间分配。
+                HashSet<int> alive = new();
+                foreach (Entry e in result)
+                    alive.Add(e.Pid);
+
+                List<int>? dead = null;
+                foreach (int k in _samples.Keys)
+                {
+                    if (!alive.Contains(k))
+                        (dead ??= new List<int>()).Add(k);
+                }
+
+                if (dead is not null)
+                {
+                    foreach (int k in dead)
+                        _samples.Remove(k);
+                }
             }
         }
 

@@ -1121,11 +1121,14 @@ namespace Zentwik.Worker
         {
             List<ProcessEntryPayload> items = new(entries.Count);
 
+            // 与真正下发绑定时同一份索引：Enabled=false / Target=None 跳过、
+            // 双方 Trim、忽略大小写。原来每个条目都把规则表线性扫一遍，
+            // 这里一轮请求只建一次索引。
+            Dictionary<string, ScheduleRule> index = ProcessWatcher.BuildRuleIndex(rules);
+
             foreach (ProcessRefresher.Entry entry in entries)
             {
-                // 与真正下发绑定时同一份逻辑：Enabled=false / Target=None 跳过、
-                // 双方 Trim、忽略大小写。
-                ScheduleRule? rule = rules.FirstOrDefault(r => ProcessWatcher.Matches(r, entry.Name));
+                ScheduleRule? rule = index.TryGetValue(entry.Name.Trim(), out ScheduleRule? hit) ? hit : null;
 
                 items.Add(new ProcessEntryPayload
                 {
@@ -1141,7 +1144,6 @@ namespace Zentwik.Worker
             return items;
         }
 
-        /// <summary>日志快照一次最多回多少条。</summary>
         internal const int SnapshotLogLimit = 50;
 
         /// <summary>
