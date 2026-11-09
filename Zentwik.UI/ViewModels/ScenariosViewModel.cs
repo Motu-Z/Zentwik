@@ -61,11 +61,9 @@ public sealed class ScenariosViewModel : ViewModelBase
             SeedDemo();
     }
 
-
     public ObservableCollection<ScenarioRuleItem> Rules { get; } = new();
 
     public bool HasRules => Rules.Count > 0;
-
 
     public bool SceneAutoSwitch
     {
@@ -112,7 +110,6 @@ public sealed class ScenariosViewModel : ViewModelBase
         _sceneAutoSwitch = enabled;
         OnPropertyChanged(nameof(SceneAutoSwitch));
     }
-
 
     private bool _isEditorOpen;
 
@@ -336,7 +333,6 @@ public sealed class ScenariosViewModel : ViewModelBase
     public RelayCommand OpenProcessPickerCommand { get; }
     public RelayCommand PickProcessCommand { get; }
 
-
     /// <summary>页面首次显示时拉一次总闸、规则与动作候选。</summary>
     public async Task InitializeAsync()
     {
@@ -460,7 +456,6 @@ public sealed class ScenariosViewModel : ViewModelBase
     /// <summary>
     /// 拉一次进程表供搜索框用。
     ///
-    /// 【为什么不在页面初始化时拉】
     /// <c>query-processes</c> 要遍历全部进程并采一次 CPU，几十毫秒。
     /// 打开表单才需要这份数据，没打开表单的页面上付这个代价没有道理。
     /// 同名前缀（chrome、svchost）只留第一条：规则认的是进程名，
@@ -645,7 +640,6 @@ public sealed class ScenariosViewModel : ViewModelBase
             ? string.Empty
             : NameOf(EditorPowerSchemes, powerSchemeId, "（电源方案已删除）");
 
-
     /// <summary>打开表单。<paramref name="existing"/> 为空 = 新建。</summary>
     private void OpenEditor(ScenarioRuleItem? existing)
     {
@@ -794,7 +788,6 @@ public sealed class ScenariosViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasRules));
     }
 
-
     private void Delete(ScenarioRuleItem item)
     {
         int index = Rules.IndexOf(item);
@@ -897,19 +890,7 @@ public sealed class ScenariosViewModel : ViewModelBase
             ToastService.Instance.Show(message);
     }
 
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.Show(ex.Message);
-        }
-    }
+    private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 }
 
 /// <summary>触发源的大类（第一级下拉）。</summary>

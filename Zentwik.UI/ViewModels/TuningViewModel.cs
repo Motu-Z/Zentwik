@@ -12,11 +12,9 @@ namespace Zentwik.UI.ViewModels;
 /// 调校页视图模型：逐核 CO + FMax 的唯一状态与唯一出口。
 /// </summary>
 /// <remarks>
-/// 【值往哪去】
 /// 「应用参数」= 一条 save-plan（写盘 + 下发），顺序由 Worker 保证。
 /// 拆成「UI 先写盘、再发 apply-tuning」两步的话，中间任一步失败都会用旧值写硬件。
 ///
-/// 【三态而不是两态】
 /// 「后台服务没连上」「连上了但 SMU 不可写」「可写」必须分开：前两种在界面上
 /// 都是整页遮罩，但文案不同。把「Worker 没起来」说成「请安装 PawnIO 驱动」，
 /// 用户会去重装驱动，永远修不好。
@@ -46,7 +44,6 @@ public partial class TuningViewModel : ObservableObject
     /// </remarks>
     public static bool SuppressWorkerInit { get; set; }
 
-
     /// <summary>处理器型号。与侧栏同源，只在关于页与诊断里用。</summary>
     [ObservableProperty]
     private string _cpuName = CpuInfo.Name;
@@ -72,7 +69,6 @@ public partial class TuningViewModel : ObservableObject
     [ObservableProperty]
     private string _blockingDetail = SmuUnavailableHint;
 
-
     /// <summary>逐核偏移项。长度 = <see cref="CpuCoreCount"/>，核数变了整段重建。</summary>
     public ObservableCollection<CoreMarginItem> CoreMargins { get; } = new();
 
@@ -90,7 +86,6 @@ public partial class TuningViewModel : ObservableObject
 
     public int CoreMarginStep => 1;
 
-
     /// <summary>频率上限（MHz）。</summary>
     [ObservableProperty]
     private int _fMaxMHz;
@@ -99,7 +94,6 @@ public partial class TuningViewModel : ObservableObject
     /// FMax 输入框的文本。
     /// </summary>
     /// <remarks>
-    /// 【为什么是 string 而不是 int】
     /// 直接把 TextBox 双向绑到 int，用户敲第一个字符时 WPF 的转换器就会失败并拒绝输入。
     /// 这里用文本双向绑定、在本类里解析，XAML 侧用 <c>UpdateSourceTrigger=LostFocus</c>：
     /// 输入过程中不夹值，离开输入框时一次性解析 + 夹取。
@@ -148,7 +142,6 @@ public partial class TuningViewModel : ObservableObject
 
     public int FMaxStepMHz => 10;
 
-
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanOperate))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
@@ -178,7 +171,6 @@ public partial class TuningViewModel : ObservableObject
     /// 表现就是页面一打开就挂着「取消」。界面在 Loaded 之后再解冻。
     /// </remarks>
     public bool FreezeDirty { get; set; }
-
 
     /// <summary>上一次「已生效」的一组值。「取消」回到这里，「回读」后同步更新。</summary>
     private int[] _baselineMargins = Array.Empty<int>();
@@ -226,7 +218,6 @@ public partial class TuningViewModel : ObservableObject
             OnCurrentProfileChanged);
     }
 
-
     /// <summary>
     /// 与 Worker 对一次数：SMU 是否可写、硬件当前值、当前方案存的值。
     /// 只执行一次；重复调用直接返回（切页回来不会重复打硬件）。
@@ -253,7 +244,6 @@ public partial class TuningViewModel : ObservableObject
         await RefreshFromWorkerAsync(notifyOnFailure: false).ConfigureAwait(true);
     }
 
-
     /// <summary>回读：从硬件重读 CO / FMax，并把它作为新基线。</summary>
     [RelayCommand(CanExecute = nameof(CanOperate))]
     private async Task ReadbackAsync()
@@ -263,12 +253,10 @@ public partial class TuningViewModel : ObservableObject
     /// 应用参数：写进当前方案并立即下发。
     /// </summary>
     /// <remarks>
-    /// 【失败语义】
     /// 只有 Worker 明确回 <c>Success = true</c> 才清脏标记。skipped / failed
     /// （驱动没就绪、某一核被拒）都保留脏标记 —— 用户改的值还在，
     /// 重试一次就行，不必重新输入。
     ///
-    /// 【为什么不再自己写盘】
     /// Worker 那边的 save-plan 已经封装了「写 store → 下发 → 回读校验」。
     /// UI 再写一遍，两边就可能各持一份，重启后以谁为准说不清。
     /// </remarks>
@@ -357,7 +345,6 @@ public partial class TuningViewModel : ObservableObject
 
     [RelayCommand]
     private void StepFMaxDown() => FMaxMHz = Math.Max(FMaxMinimum, FMaxMHz - FMaxStepMHz);
-
 
     /// <summary>
     /// 与 Worker 对数，再把当前方案的值叠上去。三态在这里收敛，
@@ -642,20 +629,7 @@ public partial class TuningViewModel : ObservableObject
 
     private bool _recheckProfileOnIdle;
 
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.Show(ex.Message);
-        }
-    }
-
+    private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 
     private void RebuildCoreMargins(int coreCount, IReadOnlyList<int> values)
     {
@@ -824,7 +798,6 @@ public partial class TuningViewModel : ObservableObject
 /// 单个核心的 CO 偏移项。
 /// </summary>
 /// <remarks>
-/// 【为什么单独一个类】
 /// 逐核是集合驱动：核数一变，格子数跟着变，XAML 一行都不用改。
 /// 把 16 组控件写死在 XAML 里，遇到 12 核或 24 核就得改文档结构。
 /// </remarks>
@@ -898,7 +871,6 @@ public partial class CoreMarginItem : ObservableObject
     /// 输入框的文本。
     /// </summary>
     /// <remarks>
-    /// 【负数输入】
     /// CO 值有负号（-25）。把 TextBox 直接双向绑到 int，用户敲 "-" 的那一刻
     /// WPF 的转换器就失败，负号根本进不了框。所以这里绑定 string 自己解析：
     /// 逐键提交，输入中的 "-" 解析失败就原样留着，等用户补齐数字（"-25"）再夹取。

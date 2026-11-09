@@ -10,19 +10,16 @@ namespace Zentwik.Core.Services
     /// <see cref="IPowerPolicyApi"/> 的实装：<c>powrprof.dll</c> 的薄封装，
     /// 外加方案说明文字这一项只能走注册表的读写。
     ///
-    /// 【这一层只做三件事】
     /// 调 API、处理非托管内存、把错误码原样返回。任何「这个值合不合法」
     /// 「失败该显示什么」的判断都不在这里 —— 那些属于 <see cref="PowerPolicyService"/>，
     /// 因为它们要能被假数据驱动着测。
     ///
-    /// 【为什么每个 GUID 参数都要自己分配内存】
     /// 五个 API 的原型都是 <c>const GUID*</c>，不是按值传结构体。C# 的 <c>Guid</c> 是
     /// 托管结构，取地址要 <c>fixed</c>（需要 unsafe）或 <c>GCHandle</c>（要 Pin 且容易漏 Free）。
     /// 这里统一走 <c>Marshal.AllocHGlobal</c> + <c>StructureToPtr</c>：代价是 16 字节的
     /// 堆分配，收益是每条路径的释放点都能写在同一处 <c>finally</c> 里 ——
     /// 电源 API 一秒钟最多被调几次，这点分配不值得为它引入指针生命周期管理。
     ///
-    /// 【为什么 PowerGetActiveScheme 的输出用 LocalFree 而不是 FreeHGlobal】
     /// 那个指针是 API 内部用 <c>LocalAlloc</c> 分配的，不是我们分配的。
     /// 用 FreeHGlobal 释放 LocalAlloc 的内存是未定义行为（在启用了堆校验的环境下直接崩），
     /// 两者底层是不同的堆实现，必须配对。
@@ -51,7 +48,6 @@ namespace Zentwik.Core.Services
         {
             uint result = PowerGetActiveScheme(IntPtr.Zero, out IntPtr buffer);
 
-            // 【非 0 却给了指针也要还】
             // 正常实现里失败时 buffer 为 null，但「返回值与输出参数不自洽」
             // 是 P/Invoke 里最常见的泄漏来源之一（上一次调用的残留、或实现变更）。
             // 这里先判指针再判结果，两条路都不漏。
@@ -174,7 +170,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 枚举某个方案下的一层 GUID（子组或设置项）。
         ///
-        /// 【AccessFlags 决定枚举哪一层，不是开关】
         /// 16 枚举方案本身、17 枚举方案下的子组、18 枚举子组下的设置项。
         /// 传错常量不会报错，只会返回空集合 —— 表现为「这个方案一项设置都没有」。
         /// </summary>
@@ -398,13 +393,11 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 把 <c>PowerReadFriendlyName</c> 写出的 UTF-16 缓冲区解析成字符串。
         ///
-        /// 【为什么单独抽出来】
         /// 这是整条读取路径里唯一「可能悄悄出错但不抛异常」的一步：编码猜错会得到
         /// 一串乱码，长度算错会读到相邻内存。它又完全不需要 powrprof.dll ——
         /// 抽成静态方法之后，测试可以自己造一个 UTF-16 缓冲区把它钉住，
         /// 而不必去改真实电源方案的名字（那需要管理员权限，而且改完还得改回来）。
         ///
-        /// 【为什么要按字节数限长，而不是让 PtrToStringUni 自己找结尾】
         /// 不传长度的重载会一直读到第一个 <c>\0</c>。缓冲区是我们按
         /// <paramref name="byteCount"/> 分配的，一旦 API 没写结尾符（或写少了），
         /// 那个重载就会越过缓冲区继续读 —— 读到的是相邻堆块的内容，
@@ -421,7 +414,6 @@ namespace Zentwik.Core.Services
             int chars = (int)(byteCount / sizeof(char));
             string raw = Marshal.PtrToStringUni(buffer, chars) ?? string.Empty;
 
-            // 【必须自己截断，不能指望 PtrToStringUni 停在 \0】
             // 带长度参数的重载是「复制指定个数的字符」，不会在零结尾处停下 ——
             // 而 API 写出的长度是**含**结尾符的。不截断的话，方案名会带上一个
             // 看不见的 U+0000：界面上看不出异常，但它与任何字面量都不相等，

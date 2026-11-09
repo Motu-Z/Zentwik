@@ -17,7 +17,6 @@ public partial class ProfileOverlay : UserControl
 
     /// <summary>点面板空白处退出命名态；行内点击交给行自己的处理。</summary>
     /// <remarks>
-    /// 【输入框与按钮必须先排除】
     /// 这里是 Preview，早于控件自己的处理。点新建输入框或「创建」按钮时
     /// 命中源不在任何方案行里，于是被当成「点了空白」→ 取消新建 ——
     /// 表现为输入框刚点就消失、名字都打不进去。

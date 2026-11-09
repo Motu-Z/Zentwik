@@ -440,8 +440,8 @@ namespace Zentwik.Core.Services
         ///
         /// 分组依据：AMD Zen 的 CCD 划分无法直接从 CpuSet 结构拿到，
         /// 这里采用「逻辑处理器序号均分」策略——先取同一 Group 内的 CpuSet 总数，
-        /// 再按 CCD 数量等分。对 9955HX（16 核 / 32 线程 / 2 CCD）即为
-        /// 逻辑核 0-15 → CCD0，16-31 → CCD1，与实际 SMU 拓扑一致。
+        /// 再按 CCD 数量等分：16 核 / 32 线程 / 2 CCD 的布局下，
+        /// 逻辑核 0-15 归 CCD0、16-31 归 CCD1，与 SMU 拓扑一致。
         /// </summary>
         private void EnsureTopology()
         {
@@ -567,15 +567,12 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 推断 CCD 数量。
         ///
-        /// 【为什么不能只看逻辑处理器数】
-        /// 早先的实现是「物理核 ≥16 且能被 8 整除 → 每 CCD 8 核」，
-        /// 这在 9955HX（16 核 / 2 CCD）上成立，但碰到 6 核 CCX 的 APU、
-        /// 或 12 核 / 10 核这类非 8 整数倍的 SKU 就会算错：
-        /// 算出的 CCD 分区与 SMU 侧的核位域对不上，
-        /// 结果是「CCD0 绑定」和「CO 核 0-7」实际不是同一批核心——
-        /// 界面看起来一切正常，写下去却错位。
+        /// 只按「物理核 ≥16 且能被 8 整除 → 每 CCD 8 核」推断会算错：
+        /// 6 核 CCX 的 APU、12 核 / 10 核这类非 8 整数倍的 SKU，
+        /// 分区与 SMU 侧的核位域对不上，导致「CCD0 绑定」和「CO 核 0-7」
+        /// 不是同一批核心——界面看起来正常，写下去却错位。
         ///
-        /// 现在优先用 SMU 读到的 coresPerCcx（与写入掩码同源），
+        /// 因此优先用 SMU 读到的 coresPerCcx（与写入掩码同源），
         /// 拿不到时才退回按 8 核推断。
         /// </summary>
         private int DetectCcdCount(int logicalProcessors)

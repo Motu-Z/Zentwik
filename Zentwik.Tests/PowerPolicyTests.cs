@@ -13,13 +13,11 @@ namespace Zentwik.Tests
     /// <summary>
     /// 电源策略的两条 IPC：读快照与增量写入。
     ///
-    /// 【为什么全部走 FakePowerPolicyApi 而不碰真实系统】
     /// 这些测试会在开发机上跑几十次，而每一条写入路径都会改当前电源方案 ——
     /// 一个跑失败的测试可能把机器留在「最大处理器状态 50%」的状态里，
     /// 后续所有构建都跟着变慢，而且没人会想到是测试干的。
     /// 假实现把「改系统」这一步完全摘掉，同时保留「写进去再读回来」的因果。
     ///
-    /// 【断言的重点不是 JSON 形状，而是三件事】
     ///   1. 读不到某一项时，快照里是 Supported=false + 原因，而不是一个 0；
     ///   2. 批量写入只激活一次（CalledGuids.Count == 1），不是每项激活一次；
     ///   3. 失败文案分得清「没写成」与「写成了但没生效」—— 用户要做的事完全不同
@@ -200,7 +198,6 @@ namespace Zentwik.Tests
             PipeResponse response = PipeServerService.RunApplyPowerPolicy(
                 new PowerPolicyService(api), "{\"epp\":");
 
-            // 【必须与「没有要修改的字段」区分开】
             // 两者都是 Success = false，但一个是请求坏了、一个是请求空。
             // 混成一句会让排障的人去查 UI 表单，而真正的问题在序列化层。
             Assert.False(response.Success);

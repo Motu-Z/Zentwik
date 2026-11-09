@@ -11,17 +11,14 @@ namespace Zentwik.UI.Services;
 /// Worker 进程的拉起与就绪判定。
 /// </summary>
 /// <remarks>
-/// 【判定顺序：先 ping，再查互斥体】
 /// 管道能 ping 通是唯一可信的「已就绪」信号。进程活着不代表管道建好了
 /// （Worker 先跑宿主服务，管道监听排在后面），互斥体存在也不代表能通信。
 /// 两个信号合起来才分得清「没启动」「在启动」「已就绪」。
 ///
-/// 【等待上限 90 秒】
 /// 没有 PawnIO 时 Worker 启动会走 <c>ApplyFromStore → WaitForAvailability(60)</c>，
 /// 管道监听排在它之后，最长阻塞 60 秒。90 秒 = 60 秒最坏阻塞 + 30 秒余量。
 /// 按常规 3 秒算，没装驱动的机器上会稳定误报「未连接」。
 ///
-/// 【进程起不来的三种原因，日志里要能分开】
 /// 用户取消 UAC（Win32Exception 1223）、找不到 exe（FileNotFoundException）、
 /// 非提权进程硬调 CreateProcess（Win32Exception 740）。都写进
 /// <c>%TEMP%\zentwik-worker.log</c>，否则界面只能说「未连接」，没法排查。
@@ -50,7 +47,6 @@ public static class WorkerLauncher
     /// 本进程是否拉起过 Worker。<b>只置位、不清零</b>。
     /// </summary>
     /// <remarks>
-    /// 【为什么不能每次 <see cref="EnsureRunningAsync"/> 重新判定】
     /// 原来的实现每次进方法先置 false，ping 通之后也置 false。而
     /// <c>WorkerBridge.EnsureConnectedAsync</c> 是每条业务命令的前置调用 ——
     /// 第一次拉起的进程随后只要有任何一次 IPC，归属标记就被抹成「不是我拉的」，
@@ -170,7 +166,6 @@ public static class WorkerLauncher
     /// 单次连通性探测。
     /// </summary>
     /// <remarks>
-    /// 【每次新建 client】
     /// Worker 的管道服务端是「一个连接只处理一条消息」：读一行、回一行、关掉。
     /// 复用同一个客户端在第二条消息上必然读到流结束。
     /// </remarks>
@@ -205,14 +200,12 @@ public static class WorkerLauncher
     /// 同步请求 Worker 退出，返回是否真的把 shutdown 发出去了。
     /// </summary>
     /// <remarks>
-    /// 【为什么必须同步】
     /// 退出流程里原本是 <c>Task.Run</c> 发完就不管。而 WPF 在最后一个窗口关闭后
     /// 会立刻结束进程，线程池里那条任务经常还没跑到 <c>ConnectAsync</c> 就被砍掉 ——
     /// 于是 Worker 留了下来，只能靠托盘的「退出」再试一次（那条路径前面还有窗口销毁、
     /// 托盘释放等收尾工作，恰好给了任务几百毫秒，命中率看起来更高）。
     /// 这是「经常不随界面关闭」的直接原因。
     ///
-    /// 【为什么可以阻塞 UI 线程】
     /// 只在关闭路径上调用。管道就在本机，正常情况几十毫秒返回；Worker 不在时
     /// <c>ConnectAsync</c> 立即失败。每段超时可调，最坏耗时约两倍 <paramref name="timeout"/>。
     /// </remarks>

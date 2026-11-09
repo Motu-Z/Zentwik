@@ -3,13 +3,11 @@ namespace Zentwik.Core.Ipc
     /// <summary>
     /// 一条管道响应。
     ///
-    /// 【为什么失败也要返回对象，而不是抛异常】
     /// 「命令执行失败」是业务结果（例如 shutdown 被拒绝、载荷格式不对），
     /// 它必须能被记录、被展示、被重试；而「管道断了」才是传输层故障，
     /// 那一种由 <see cref="IpcTransportException"/> 抛出。两者混在一起，
     /// 调用方就分不清该重连还是该改参数。
     ///
-    /// 【实例化强制规则】
     /// 创建本类型实例时**必须**显式赋值
     /// <c>Version = WorkerPipeContract.ProtocolVersion</c>，不能依赖默认值。
     /// 默认值 0 会被 <see cref="WorkerPipeContract.ValidateVersion"/> 判定为版本不一致。
@@ -39,7 +37,6 @@ namespace Zentwik.Core.Ipc
         /// <summary>
         /// 命令载荷。ping 返回 <c>pong</c>，其余命令按需填充。
         ///
-        /// 【类型定案：<c>string?</c>，与 <see cref="PipeRequest.Payload"/> 同一条理由】
         /// 本机进程间通信、同版本强对齐，无跨语言 / 跨版本兼容压力。
         /// 载荷内容由 <c>Command</c> 决定，两端各自按命令字解析这段字符串。
         /// </summary>

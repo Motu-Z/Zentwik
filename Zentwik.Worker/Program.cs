@@ -17,13 +17,11 @@ namespace Zentwik.Worker
     /// <summary>
     /// Worker 进程入口。
     ///
-    /// 【它只做四件事】
     ///   1. 抢单实例互斥体（抢不到说明已有 Worker 在跑，直接退）；
     ///   2. 挂全局异常兜底（崩溃现场必须落盘，因为 WinExe 没有控制台可看）；
     ///   3. 建宿主、注册 Core 服务与两个 HostedService；
     ///   4. 跑起来，退出时释放互斥体。
     ///
-    /// 【为什么 Main 里一行业务逻辑都没有】
     /// Worker 的职责边界是「常驻 + 听管道 + 执行提权操作」。
     /// 启动顺序（Load → Apply → 探测 → 监听）属于宿主服务的职责，
     /// 放在 Main 里会让「先 Load 谁、后 Start 谁」散落在两个文件里。
@@ -60,7 +58,6 @@ namespace Zentwik.Worker
                 // （批次五实测：裸开关 -silent 并不会让 Worker 崩，所以这里不是为了「防崩」，
                 //   而是为了让参数归属清晰 —— 谁解析，谁消费。）
                 //
-                // 【两个开关的优先级】
                 // 同时出现时以 --open-ui 为准：「打开窗口」是更明确、用户感知更强的意图，
                 // 而 --tray 只表达「别开窗口」。计划任务不会同时写两个，这条规则防的是
                 // 用户手工敲错命令时得到一个既不弹窗也不建托盘的后台进程。
@@ -94,7 +91,6 @@ namespace Zentwik.Worker
                 // ApplicationStarted 在所有 IHostedService.StartAsync 完成之后触发，
                 // 此时管道监听已经就位，UI 一起来就能连上，不会看到「正在连接」再等一轮。
                 //
-                // 【为什么不用 host.Start() + host.Run()】
                 // Run() 内部自己会调 StartAsync()，先 Start 再 Run 会抛
                 // InvalidOperationException（Host already started）。
                 if (openUi || tray)
@@ -141,18 +137,15 @@ namespace Zentwik.Worker
         /// <summary>
         /// 第二个实例退出前留一行记录。
         ///
-        /// 【为什么不用 StartupCrashReporter】
         /// 它写的是完整异常堆栈。这里只是「已经有实例占着」这一条事实，
         /// 没有异常，写堆栈会让人误以为崩过一次。
         ///
-        /// 【为什么必须先 Directory.CreateDirectory】
         /// 本分支在 Host.CreateApplicationBuilder 之前执行，AppPaths 还没构造，
         /// 所以拿不到 IAppPaths —— 只能自己拼 %AppData%\Zentwik。
         /// 而首次运行时该目录可能不存在，File.AppendAllText 会抛
         /// DirectoryNotFoundException；此刻全局异常处理器尚未注册，
         /// 后果是「第二个实例崩溃退出」而不是静默退出，直接违背单实例设计。
         ///
-        /// 【为什么整体包 try/catch】
         /// 单实例的承诺是「静默退出」，不是「一定写得出日志」。
         /// 目录只读、磁盘满、被安全软件拦截时，写日志失败不该升级成崩溃。
         /// </summary>

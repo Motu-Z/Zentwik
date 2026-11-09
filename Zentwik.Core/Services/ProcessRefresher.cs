@@ -174,7 +174,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 「有人在看」的唤醒事件。计数从 0 变 1 时置位，采样线程随即醒来。
         ///
-        /// 【为什么是「专用后台线程 + AutoResetEvent」而不是 Task.Run 循环】
         /// 旧实现用 Task.Run 跑异步循环，循环里没有任何等待原语可被打断，
         /// 于是「没人看时彻底停采样」这件事根本做不到 —— 停下来的只有引用计数，
         /// 线程仍然按周期醒着遍历全系统进程，属于纯粹的常驻浪费。
@@ -182,11 +181,9 @@ namespace Zentwik.Core.Services
         /// 现在：一条命名后台线程 + AutoResetEvent，采样与回调都在它上面串行发生。
         /// 线程单元状态设为 MTA：纯后台无消息泵，不需要 STA。
         ///
-        /// 【订阅方必须自己切回自己的线程再碰控件】
         /// 事件在采样线程上同步触发，这里不做任何封送：常驻进程里没有可封送的界面线程。
         /// 见 ProcessBindingPage.OnProcessesRefreshed。
         ///
-        /// 【必须是 AutoResetEvent，不能用 ManualResetEvent】
         /// 1.0.2 的实测教训：这里原本是 ManualResetEventSlim，只 Set 从不 Reset，
         /// 于是「第一次打开进程页」把信号永久置位。之后无论有没有人看，
         /// 采样线程在「没人看」分支里的 WaitAny 都会**立刻返回**，变成：
@@ -272,7 +269,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 宿主窗口是否可见。false = 窗口已隐藏 / 最小化 / 收进托盘。
         ///
-        /// 【为什么还要这一层，不靠引用计数就够了？】
         /// 引用计数只能反映「有没有人主动在看列表」，反映不了「窗口根本看不见」。
         /// 窗口隐藏后，即使某个页面因为异常路径忘了 ReleaseWatch，
         /// 采样也必须停 —— 这里是硬闸门，不依赖任何人的 bookkeeping。
@@ -316,7 +312,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 采样完成事件（携带本轮快照）。
         ///
-        /// 【在采样线程（MTA 后台线程）上同步触发】
         /// 订阅方必须自行切回自己的线程再动任何控件或集合。
         /// 这里不做封送，是因为本类要能在完全没有界面线程的常驻进程里工作。
         /// </summary>
@@ -369,7 +364,6 @@ namespace Zentwik.Core.Services
                 Priority = ThreadPriority.BelowNormal,
             };
 
-            // 【MTA：纯后台无消息泵，不需要 STA】
             // 采样线程只做 Win32 调用与托管集合写入，不创建窗口、不跑消息循环。
             // STA 只对需要单元亲和性的 COM / 界面组件有意义，这里不存在那种对象。
             thread.SetApartmentState(ApartmentState.MTA);
@@ -404,7 +398,6 @@ namespace Zentwik.Core.Services
                     // 没人看 / 窗口不可见：挂在事件上，CPU 占用为零。
                     // 取消时 Stop() 会 Set 一次把它踢出。
                     //
-                    // 【两种信号必须一起等】
                     // ① _watchSignal：有人开始看列表；
                     // ② _sampleNowSignal：有人点名要一帧（降级轮询的补扫会用）。
                     // 只等 ① 的话，② 会在「没人看」时被丢掉，调用方只能白等一个超时，
@@ -548,7 +541,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 执行一次采样并广播结果。
         ///
-        /// 【公开方法，但只应在采样线程上调用】
         /// 唯一的例外是启动补扫（ProcessWatcher.TakeSnapshotForScan），它需要
         /// 「同步拿到结果」。那条路径在 WMI 回调线程上，同样是 MTA —— 所以它
         /// 现在也改成走 <see cref="SampleOnSamplerThread"/>。

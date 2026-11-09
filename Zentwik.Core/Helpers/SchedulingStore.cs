@@ -21,7 +21,6 @@ namespace Zentwik.Core.Helpers
         /// <summary>
         /// 自定义掩码：具体逻辑核集合由 <see cref="ScheduleRule.MaskId"/> 指向的掩码给出。
         ///
-        /// 【为什么叫 TargetMask 而不是 Mask】
         /// 与 <see cref="ScheduleRule.TargetMask"/>（快照值）同名同义：
         /// 一个是「目标是掩码这一类」，一个是「那个掩码的值是多少」。
         /// 旧名 Custom 说的是「自定义」，但真正的区分点是「有没有掩码」。
@@ -39,7 +38,6 @@ namespace Zentwik.Core.Helpers
         /// <summary>
         /// 规则 Id（32 位无横线 GUID）。删除与更新时的**唯一句柄**。
         ///
-        /// 【为什么现在必须有 Id】
         /// 规则的业务键一直是进程名（同名覆盖、同名唯一），删除也只传名字。
         /// 这在「一个进程一条规则」的前提下够用，但界面一旦要支持
         /// 「选中某一行、编辑、再删掉它」，名字就不够用了：
@@ -47,12 +45,10 @@ namespace Zentwik.Core.Helpers
         /// 按名字删会删不到（已改名），按名字改会多出一条（新旧名字都在）。
         /// Id 把「这条记录是谁」与「它调度哪个进程」分开。
         ///
-        /// 【为什么由初始化器生成，而不是读盘时补】
         /// schedules.json 是新文件名，不存在「老文件没有 id 键」的历史包袱；
         /// 本工程已裁定不做任何数据迁移，因此 Id 只有一条产生路径：
         /// 对象构造时生成，随下一次 Save 落盘。
         ///
-        /// 【为什么不是 int 自增】
         /// schedules.json 会被多台机器 / 多次重装共享（用户直接拷贝配置目录）。
         /// 自增序号在那种场景下必然撞号，而撞号的后果是删错规则。
         /// </summary>
@@ -131,7 +127,6 @@ namespace Zentwik.Core.Helpers
     /// 调度规则持久化：保存到 %APPDATA%\Zentwik\schedules.json。
     /// 键为进程名，值为目标 CCD 或自定义掩码引用。
     ///
-    /// 【为什么不再依赖 IMaskStore】
     /// 掩码名称的快照（<see cref="ScheduleRule.MaskName"/>）在 save-scheduling-rule
     /// 时由 Worker 一并写入，读盘时不需要反查掩码表。旧实现在这里反查，
     /// 只是为了让「掩码改名后旧规则显示新名字」—— 而那恰好与快照的设计意图相反

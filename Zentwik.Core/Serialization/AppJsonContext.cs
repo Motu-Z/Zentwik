@@ -13,12 +13,10 @@ namespace Zentwik.Core.Serialization
     /// 基于反射的重载会被裁剪掉，调用点直接抛异常。所有配置文件类型必须在这里登记，
     /// 由编译器在构建期生成读写代码。
     ///
-    /// 【为什么是 public】
     /// 两个程序集都要用：Core 内部的 JsonFile，以及 UI 侧直接读 profiles.json
     /// （配置列表不走 IPC，见调校页的配置下拉）。与 IpcJsonContext 同一条理由 ——
     /// 只对 Core 可见，UI 就只能自己再生成一份，于是「两端各有一套契约」又回来了。
     ///
-    /// 【命名策略不能改】
     /// 现有 ui.json / tuning.json / schedules.json 的键都是 PascalCase。
     /// 这里一旦加上 <c>PropertyNamingPolicy = CamelCase</c>，程序不会报错，
     /// 只会让老用户的所有配置读不出来并静默回落成默认值 ——

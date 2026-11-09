@@ -16,7 +16,6 @@ namespace Zentwik.Core.Services
     /// 其余级别先进内存环形缓冲，再由后台线程每 500ms 成批写文件 ——
     /// 每条日志都 CreateDirectory + AppendAllText 会让磁盘成为高频路径的瓶颈。
     ///
-    /// 【本类不持有任何 UI 调度器】
     /// 内存缓冲由内部锁保护，<see cref="EntryAdded"/> 在写入线程上同步触发。
     /// 需要回到界面线程由订阅方自己负责 —— 后台进程里根本不存在那个线程。
     /// </summary>

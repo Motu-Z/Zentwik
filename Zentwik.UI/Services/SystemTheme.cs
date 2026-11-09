@@ -7,13 +7,11 @@ namespace Zentwik.UI.Services;
 /// 系统主题与系统强调色的读取（全部走注册表，不依赖 WinRT）。
 /// </summary>
 /// <remarks>
-/// 【明暗判定】
 /// HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize
 ///   · AppsUseLightTheme   = 1 → 应用浅色，0 → 应用深色
 ///   · SystemUsesLightTheme = 系统设置界面自身的明暗
 /// 取 AppsUseLightTheme 作为「系统主题」判定依据 —— 它才是决定应用配色的那一个。
 ///
-/// 【系统强调色】
 /// 两个来源，优先用第一个：
 ///   1. HKCU\...\DWM\AccentColor
 ///      REG_DWORD，COLORREF 格式（0x00BBGGRR），注意是 BGR 不是 RGB。
@@ -22,7 +20,6 @@ namespace Zentwik.UI.Services;
 ///      32 字节数组，8 组 × 4 字节，每组是 **RGBA** 字节序（R,G,B,A）。
 ///      主色在 **索引 3**（第 4 组），不是索引 0。
 ///
-/// 【踩过的坑 —— 字节序 + 索引双重错误】
 /// AccentPalette 的 8 组依次是：
 ///   [0] 浅色1  [1] 浅色2  [2] 浅色3  [3] **主色**
 ///   [4] 深色1  [5] 深色2  [6] 深色3  [7] 对比色
@@ -34,7 +31,6 @@ namespace Zentwik.UI.Services;
 /// 两个来源交叉校验：DWM 的 RGB 必须等于 AccentPalette[3] 的 RGBA，
 /// 不一致时以 DWM 为准（DWM 是 DWM 合成器实际在用的值）。
 ///
-/// 【另一个坑】
 /// Explorer\Accent 下**没有** AccentColor 这个值（只有 AccentPalette /
 /// StartColorMenu / AccentColorMenu），早期误读成 AccentColor 会导致
 /// 永远读不到值、静默退回默认蓝。

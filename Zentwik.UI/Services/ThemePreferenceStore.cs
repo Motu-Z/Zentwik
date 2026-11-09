@@ -19,11 +19,9 @@ internal sealed class ThemePreference
 /// 外观偏好落盘：<c>%AppData%\Zentwik\theme.json</c>。
 /// </summary>
 /// <remarks>
-/// 【为什么不进 Worker 的 ui.json】
 /// 主题与强调色只决定这个进程怎么画，后台没有任何消费方。
 /// 与 ui-settings.json 分开存，是为了让外观配置坏了不牵连行为开关。
 ///
-/// 【为什么读失败要静默】
 /// 文件缺失或写坏时退回默认外观即可 —— 为一个配色问题挡住启动不值得。
 /// </remarks>
 internal static class ThemePreferenceStore

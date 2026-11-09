@@ -4,6 +4,25 @@
 
 ---
 
+## [2.1.2]
+
+### Fixed (修复)
+
+- **仓库内不再残留真实硬件型号、用户名与本地盘符路径**：CPU 型号示例统一为 `AMD Ryzen 9 XXXX`；侧栏小字在读不到注册表时回落 `Unknown CPU`，不再把某台机器的型号硬编码成兜底值；设置页落款由个人名改为项目名；平台代号换成通用描述（「AMD Ryzen 移动平台」）；文档里的部署路径改为「统一输出目录」。csproj 中的真实 `OutputPath` 属构建配置，未改动。
+
+### Changed (修改)
+
+- **注释去掉元叙述层**：清掉 386 处「【…】」式小标题 —— 它们只重复说「下面要解释为什么」，紧随其后的正文本身就在讲原因。协议版本号那段 61 行的逐版本历史压成 1 行索引，消息上限那段的三层解释压成 4 行。
+- **异步收口收敛到一处**：7 个 ViewModel 各自复制的 `Fire` / `RunSafeAsync`（14 行 × 7）合并为 `Services/AsyncRunner`，高级页的错误路径单独走 `FireError` 以保留「发生错误时弹出气泡」开关的约束；`IsInsideTextBox` 在两处视图里的同一份实现合并为 `Services/VisualTreeAssist`。
+- **更新日志按标准格式收口**：移除 `2.0.0-can1` / `can2` / `can3` 三段预览版记录（内容已并入 2.0.0 正式版，文件开头亦已注明预览版合并），全文只保留 Changed / Fixed / Added / Removed。
+
+### Removed (移除)
+
+- **`UI_Contract.md`**：这份文档是 WinUI 3 时代的反推稿，`{x:Bind}`、`TuningPage`、`ListView` + `ItemsWrapGrid`、`Cores` 集合、`ContentDialog` 等条目与当前 WPF 实现已完全脱节，文档自身也标注「已部分失效，仅作历史参考」。留着只会误导，故整份移除，README 的文档清单同步更新；接口以 `Zentwik.UI/ViewModels` 的实际成员为准。
+- **未调用的 `LogoPaletteFactory.ToSrgb`**：只有定义没有调用点。
+
+---
+
 ## [2.1.1]
 
 ### Fixed (修复)
@@ -24,7 +43,7 @@
 - **Worker 改为 Native AOT 发布，不再依赖 .NET 运行时**：发布产物从「托管 dll + runtimeconfig.json」变成单个原生 `Zentwik.Worker.exe`（约 11 MB），冷启动与常驻内存都优于 R2R，也不再要求用户为后台服务装运行时。UI（WPF）不支持 AOT，仍走框架依赖 + 单文件 + R2R，两端继续装在同一目录。
 - **WMI 实现从 `System.Management` 换成 `WmiLight`**：前者靠 `System.CodeDom` 在运行时生成 Wbem 包装类型，Native AOT 没有动态代码，`WbemContext` / `WbemObjectTextSrc` 之流在原生编译下是 invalid IL（ILC 报 IL3052）。换成官方指定的 `WmiLight` 后，进程创建 / 退出事件的订阅方式、`WITHIN 2` 粒度、启动补扫、3 秒降级轮询全都原样保留，**没有砍掉任何 WMI 能力**。`Zentwik.Core.csproj` 移除 `System.Management` 引用，并把 `WmiLight` 加进 `TrimmerRootAssembly`（它的属性访问由原生侧按名字回查，裁剪器看不见）。
 - **发布流水线分出两条 AOT 门禁**：`release.yml` 的 Worker 步骤改走 `PublishAot=true`，并在打包前校验「没有托管 dll / 没有 runtimeconfig.json / 两个原生依赖已落地」；`aot-probe.yml` 新增 `worker-aot` job，用 `-warnaserror` 把 IL2xxx / IL3xxx 直接变红。AOT 产物不再生成 45 MB 的 `.pdb`（`DebugType=None`），压缩包体积基本持平。
-- **AOT 运行时行为已在本机真机验证**：AOT Worker 启动后 SMU 初始化成功（AMD Ryzen 9 9955HX / GraniteRidge）、CO 16 核写入全部接受、WMI 事件模式订阅成功、启动补扫 271 个进程、CPU Set 绑定与优先级下发正常。CI 只做编译链接，不运行 Worker——它要提权、会写 SMU、会注册计划任务，公共 runner 不适合。
+- **AOT 运行时行为已在本机真机验证**：AOT Worker 启动后 SMU 初始化成功（AMD Ryzen 移动平台）、CO 16 核写入全部接受、WMI 事件模式订阅成功、启动补扫 271 个进程、CPU Set 绑定与优先级下发正常。CI 只做编译链接，不运行 Worker——它要提权、会写 SMU、会注册计划任务，公共 runner 不适合。
 
 ---
 
@@ -91,7 +110,7 @@
 - **协议 10（`query/save-ui-settings`、`reset-tuning-safe`、`factory-reset`）**：界面设置以 Worker 的 `ui.json` 为权威，界面侧改为远程镜像。
 - **高级页四个诊断动作**：恢复安全参数、运行自检并导出、导出全部日志、清除全部数据。
 - **行为页档位说明**：开机启动与关闭窗口两行随所选档位显示一句说明。
-- **部署目录合流**：两个工程的 Release 产物统一落到 `D:\Zentwik-App`，Debug 落子目录，杜绝 Worker 拉到别处的旧界面。
+- **部署目录合流**：两个工程的 Release 产物统一落到同一个输出目录，Debug 落子目录，杜绝 Worker 拉到别处的旧界面。
 - **自启任务路径自愈**：Worker 启动时比对任务里的可执行路径与自己，不一致就按原参数形态重写。
 
 ### Changed (修改)
@@ -109,7 +128,7 @@
 - **IPC 协议定为版本 10**：请求与响应均为源生成 JSON（键名保持 PascalCase，避免老配置静默丢失），两端版本号不一致直接拒绝服务，杜绝新旧版本混跑写出脏数据。
 - **后台走 Native AOT**：`Zentwik.Worker` 编译为原生二进制（约 11 MB，不依赖 .NET 运行时）；界面因 WPF 无法 AOT，保持框架依赖 + 单文件 + ReadyToRun。WMI 访问统一改用 `WmiLight`——`System.Management` 会在运行时用 CodeDom 生成 Wbem 包装，AOT 下即 `IL3052`。
 - **界面体系统一**：可折叠侧栏（72 / 220）+ 64 高顶栏 + 内容区；统一面板、行、输入框、开关、段头样式；色板固定为窗口 `#09090B` / 面板 `#111114` / 描边 `#27272A` / 强调 `#38BDF8`。进程与日志列表虚拟化，常驻元素不挂渲染特效。
-- **部署与依赖治理**：UI 与 Worker 统一输出到 `D:\Zentwik-App`（Release 平铺即安装目录，其它配置落 `Debug\` 子目录），Worker 找界面时自身目录优先；两端 NuGet 图必须同版本——DI 抽象 9.x / 10.x 混用会让 Worker 启动即崩，表现为界面只报连接超时。
+- **部署与依赖治理**：UI 与 Worker 统一输出到同一目录（Release 平铺即安装目录，其它配置落 `Debug\` 子目录），Worker 找界面时自身目录优先；两端 NuGet 图必须同版本——DI 抽象 9.x / 10.x 混用会让 Worker 启动即崩，表现为界面只报连接超时。
 
 ### Added (新增)
 
@@ -133,55 +152,6 @@
 ### Removed (移除)
 
 - **仓库瘦身**：移除 `Legacy/` 全部 114 个旧 WPF / WinUI 界面归档（约 1.9 万行，不在任何工程里）、`docs/` 历史笔记、`AUTOMATION_PROGRESS.md`、`Zentwik.UI/README.md`，仓库只保留 README、CHANGELOG、LICENSE、`UI_Contract.md` 与四个工程源码；同时清掉四工程内从未被调用的 `MemoryTrimmer` 及其 DI 注册。
-
----
-
-## [2.0.0-can3]
-
-### Fixed (修复)
-
-- **启动秒崩（异常代码 0xe0434352）**：依赖注入仅注册了接口（`ILogService` / `IAppPaths`），未注册具体类型（`LogService` / `AppPaths`），WPF 过渡桥与 `HeadlessHost` 按具体类型解析时抛 `InvalidOperationException`，导致双击 `Zentwik.exe` 无窗口直接退出；`--silent` 开机自启路径同样 100% 崩溃（静默失效，无窗口可观察）。现已改为「先注册具体类型、再把接口映射到同一实例」。
-- **WinUI 3 标题栏属性顺序崩溃（0xc000027b）**：`AppWindow.TitleBar.PreferredHeightOption` 必须在 `ExtendsContentIntoTitleBar = true` 且 `SetTitleBar(...)` 之后设置，否则在窗口构造期抛 `COMException`，被 WinUI 转为 stowed exception，进程崩在 `Microsoft.UI.Xaml.dll`，表面看不出根因。
-
-### Added (新增)
-
-- **启动崩溃取证（StartupCrashReporter）**：在 WPF / WinUI 的 `Main` 最外层与 WinUI `Application.UnhandledException` 接入；崩溃时向 `%AppData%\Zentwik\startup_crash.log` 追加写入完整堆栈、命令行、运行时、基目录与单文件解包目录。刻意不依赖 `ILogService` / `IAppPaths`（崩溃点常就在它们内部），弹框走 `LibraryImport` 的 `MessageBoxW`（AOT 安全），`--silent` 模式不弹框。
-
----
-
-## [2.0.0-can2]
-
-### Added (新增)
-
-- **WinUI 3 外壳（Zentwik.App）**：新增独立工程，采用非打包（Unpackaged）+ 自包含部署（.NET 运行时与 Windows App SDK 随包分发，用户机无需单独安装）；Mica 背景（不支持时降级为 Acrylic）+ 48px 原生自绘标题栏（Snap Layouts / 双击最大化等系统行为完整保留）；自定义 `Main` 支持 `--silent` 在加载 UI 前改道；DI 组合根（AppHost）+ `DelegatingUiDispatcher`（界面就绪前日志就地写入）。
-
-### Changed (修改)
-
-- **ZenStates-Core 升级为 AOT 友好版**：内部 `System.Management` 替换为 `WmiLight` 并移除导致 ILC 报错的反射，`IL2026` / `IL2075` 来源消失；主工程显式新增 `WmiLight 7.3.0` 包引用（裸 DLL 引用不传递依赖链，不补会在用户机首次调 SMU 时崩）。
-- **Native AOT 验证通过（CI）**：AOT 探针在 `-warnaserror` 下 **0 警告**，产出 5.78 MB 原生二进制，26 项检查全绿（含 AOT 产物内 `new Cpu(...)` 构造成功、JSON 往返、进程名 / 路径封送）。
-- **发布流水线**：canary 构建（标签含 `can`）自动标记为 prerelease，不再被当成正式版发布。
-
-### Removed (移除)
-
-- 删除 AOT 探针工程里针对 `IL2026` / `IL2075` 的 `NoWarn` 抑制，ILC / 裁剪分析告警恢复零容忍。
-
----
-
-## [2.0.0-can1]
-
-### Changed (修改)
-
-- **产品更名 `Zenwik` → `Zentwik`**：GitHub 仓库、全部命名空间、程序集标识、窗口标题与托盘提示等显示文案全量更新。
-- **配置目录三级迁移**：`%AppData%\ZenForge` 与 `%AppData%\Zenwik` 统一收敛到 `%AppData%\Zentwik`；迁移幂等，并持命名互斥体防止开机自启与手动双击并发导致配置分裂。
-- **Core 的 P/Invoke 全部迁移为源生成 `[LibraryImport]`**：`DllImport` 数量 31 → 0，开启 `AllowUnsafeBlocks`（三处需改写结构：`PROCESSENTRY32.szExeFile` 定长字符缓冲区、`QueryFullProcessImageNameW` 的 `char*` + `stackalloc`、封送特性命名空间）。WPF 遗留层 35 处 `DllImport` 保持不变（随 WPF 外壳下线一并移除）。
-- **依赖注入改造**：19 个有状态服务由静态类改为构造函数注入（新增 7 个接口）；JSON 改用源生成器（反射彻底消失，键名保持 PascalCase 以避免老配置静默丢失）；`SmuReader` 单例收归容器管理。
-
-### Fixed (修复)
-
-- **`LogService.Flush()` 虚假语义**：写盘线程抢先取走队列时 `Flush` 误判已刷完；新增写盘闸门，`Flush` 刷完队列后再抢锁等待当前批次落盘。
-- **`LogOptions.Directory` 不可配置**：原为 `init`，宿主回调无法设置日志目录；改为 `set`，并删除「逐字段抄对象」的绕路代码。
-
----
 
 ## [1.2.1]
 ### Changed (修改)

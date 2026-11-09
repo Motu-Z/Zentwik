@@ -14,12 +14,10 @@ namespace Zentwik.UI.ViewModels;
 /// 三类方案各自的会话状态：列表、当前选中、增删改名、应用。
 /// </summary>
 /// <remarks>
-/// 【为什么按类拆成三个实例，而不是一个全局会话】
 /// 用户的抱怨是「改一个方案，三页全跟着变」。一个全局「当前方案」必然导致这种耦合：
 /// 切调校方案就等于换了进程页的方案条。三类各自持有一份列表与选中项之后，
 /// 三页互不相干，场景规则引用的调校方案 Id 也不受另外两类影响。
 ///
-/// 【列表主副本在 Worker】
 /// UI 这份只是展示缓存。任何增删改都走 IPC，成功后重拉该类的列表 ——
 /// 本地先改再等回包，会出现「界面已经改名，盘上还是旧名」的中间态。
 /// </remarks>
@@ -480,7 +478,6 @@ public sealed class PlanScope : ViewModelBase
         // 有没落盘的改动时不能直接换人：换方案会按新方案重载页面值，那些改动
         // 一条都不会提示就没了。
         //
-        // 【为什么必须弹确认而不是一句 Toast】
         // 早先这里只弹一句「请先应用或放弃」就 return。Toast 一闪而过，用户以为
         // 已经切过去了，接着点「应用参数」—— 结果值全落进原来那份方案里。
         // 表现出来就是「我明明在调校 1 上改，重启后却是调校 2」。
@@ -898,19 +895,7 @@ public sealed class PlanScope : ViewModelBase
             ToastService.Instance.Show(message);
     }
 
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.Show(ex.Message);
-        }
-    }
+    private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 }
 
 /// <summary>三类方案的登记处。页面按类型取自己那一个。</summary>

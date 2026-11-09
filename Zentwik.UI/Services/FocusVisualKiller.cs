@@ -9,7 +9,6 @@ namespace Zentwik.UI.Services;
 ///
 /// </summary>
 /// <remarks>
-/// 【为什么需要它】
 /// WPF 的 FrameworkElement.FocusVisualStyle 默认值来自系统主题
 /// （SystemParameters.FocusVisualStyle），它画的是一圈**点划线**矩形。
 /// 这个默认值只会在两种情况下被替换：
@@ -25,12 +24,10 @@ namespace Zentwik.UI.Services;
 /// 这里用类处理器兜底：任何 FrameworkElement 进入视觉树（Loaded）时，
 /// 若它的 FocusVisualStyle 仍是系统默认那份，就替换成空模板样式。
 ///
-/// 【判定条件】
 /// 系统默认焦点样式的 TargetType 是 IFrameworkInputElement；
 /// 我们自己设的（NoFocusVisual / KeyboardFocusRing）TargetType 是 Control。
 /// 只替换前者 —— 否则会把我们自绘的焦点指示也抹掉。
 ///
-/// 【为什么 Loaded 时才处理】
 /// 焦点虚线在控件**获得键盘焦点**时才被绘制；
 /// Loaded 早于首次获得焦点，此时替换来得及。
 /// </remarks>

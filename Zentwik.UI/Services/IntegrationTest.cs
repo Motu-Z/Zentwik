@@ -19,7 +19,6 @@ namespace Zentwik.UI.Services;
 /// <remarks>
 /// 运行方式：dotnet run -- --itest
 ///
-/// 【为什么这份断言整体重写过一次】
 /// 2026-11-06 起 UI 语言整套换掉：中性色卡片 + 底部浮条 + 1180 居中
 /// 全部废弃，改成参考稿的分栏 + 面板 + 顶栏常驻动作。
 /// 旧断言指向的样式键（SettingTitleStyle / SettingsCardStyle /
@@ -2480,7 +2479,6 @@ public static class IntegrationTest
     /// 断言某个按钮在真实布局下能被点中。
     /// </summary>
     /// <remarks>
-    /// 【为什么非要量命中测试】
     /// 历史上出现过「按钮看着在那儿、点了没反应」：
     /// 顶栏整条是 WindowChrome 的 caption（拖动区），
     /// 里面的元素不标 IsHitTestVisibleInChrome 就没有可命中几何，

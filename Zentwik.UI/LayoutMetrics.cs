@@ -6,7 +6,6 @@ namespace Zentwik.UI;
 /// 全站布局契约。所有尺寸只在这里定义，XAML 通过 x:Static 引用。
 /// </summary>
 /// <remarks>
-/// 【口径来源】
 /// 2026-11-06 起全部改用用户提供的参考 HTML 的实测值：
 /// 侧栏 72、顶栏 64、页面左右 32、面板圆角 6、行上下留白 18。
 /// 旧的中性色卡片体系（页脚条 / SettingsCard / MaxWidth 1180）已整体废弃。

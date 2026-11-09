@@ -33,7 +33,6 @@ public partial class TrayMenu : UserControl
     /// <param name="screenY">屏幕 Y 坐标（物理像素）。</param>
     public void Open(double screenX, double screenY)
     {
-        // 【为什么要补 Margin】
         // Popup 的定位偏移是**Popup 窗口**的左上角，
         // 而 Child（面板）带 Margin=10（给阴影留白），
         // WPF 会把面板往内缩 margin —— 于是面板左上角会落在

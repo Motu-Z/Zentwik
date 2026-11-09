@@ -8,13 +8,11 @@ namespace Zentwik.UI.Converters;
 /// <summary>
 /// 输入框的统一附加行为：占位提示、错误态、Esc 清空、聚焦全选。
 ///
-/// 【为什么水印不能由页面自己叠一个 TextBlock】
 /// 页面原来把水印 TextBlock 压在 TextBox 上，用 VM 的「文本为空」属性控制显隐。
 /// 中文输入法合成期间 TextBox 已经显示拼音，Text 却还没提交，VM 属性仍是空，
 /// 水印就叠在正在输入的字上（截图里的现象）。这里改成由 TextBox 模板内
 /// MultiTrigger 控制：文本非空 **或** 已获得焦点就隐藏水印，与合成态无关。
 ///
-/// 【边界】
 /// 只处理视觉与键盘交互，不读写绑定源的业务数据；Esc 清空走 TextBox.Clear()，
 /// 与用户手动删字走的是同一条绑定回写路径。
 /// </summary>

@@ -17,7 +17,6 @@ namespace Zentwik.UI;
 /// 抓屏会受窗口遮挡、桌面缩放、多显示器影响，结果不可复现；
 /// RenderTargetBitmap 渲染的是控件树，结果只取决于布局与资源。
 ///
-/// 【为什么不能直接渲染 window】
 /// RenderTargetBitmap 渲染 Window 会得到空白 —— Window 不是普通的
 /// 布局容器，它的背景由系统合成。所以这里取 window.Content 作为渲染目标，
 /// 并把 Window 自身的 Background 垫在下面，保证截图包含窗口底色。
@@ -72,7 +71,6 @@ internal static class ScreenshotHelper
     /// 离屏截图 + 叠加一个 ToolTip 预览。
     /// </summary>
     /// <remarks>
-    /// 【为什么要单独做一个方法】
     /// ToolTip 真实运行时挂在 Popup 里 —— Popup 是独立的顶层窗口，
     /// 不在视觉树中，RenderTargetBitmap 根本拍不到它。
     /// 所以这里手工实例化一个 ToolTip，Measure/Arrange 让它套用模板，
@@ -245,7 +243,6 @@ internal static class ScreenshotHelper
     /// 离屏截图 + 叠加一个「方案面板」预览。
     /// </summary>
     /// <remarks>
-    /// 【为什么单独做】
     /// 方案面板真实运行时挂在 Popup 里。Popup 是独立的顶层窗口，
     /// 不在视觉树中，RenderTargetBitmap 拍不到（与 ToolTip 同一个坑）。
     /// 这里手工实例化一份、套上卡片外框单独渲染，再贴到页头方案条下方，

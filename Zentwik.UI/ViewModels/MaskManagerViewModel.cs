@@ -9,13 +9,11 @@ namespace Zentwik.UI.ViewModels;
 /// <summary>
 /// 自定义掩码管理器。
 ///
-/// 【数据全部来自后台】
 /// 网格的核数 / CCD 排布来自 <c>query-cpu-topology</c>，左栏列表与保存结果来自
 /// <c>query-masks</c> / <c>save-mask</c> / <c>delete-mask</c>。
 /// 界面不持有 <c>masks.json</c> 的任何副本：它在 Worker 手里是唯一主副本，
 /// 界面直读的话，下次后台写盘就会把界面看到的那份覆盖掉。
 ///
-/// 【诊断模式仍然本地造数据】
 /// 截图 / 自检没有 Worker（<see cref="ProcessViewModel.SuppressWorkerInit"/>），
 /// 用一个固定形状的拓扑与两条示例掩码保证界面可画、可断言。这些数据只在诊断路径出现。
 /// </summary>
@@ -53,7 +51,6 @@ public sealed class MaskManagerViewModel : ViewModelBase
         SaveCommand = new RelayCommand(_ => Save());
         CancelCommand = new RelayCommand(_ => ReturnToList());
     }
-
 
     private bool _isEditing;
 
@@ -97,7 +94,6 @@ public sealed class MaskManagerViewModel : ViewModelBase
         if (SelectedMask is not null)
             BeginEdit(SelectedMask);
     }
-
 
     public ObservableCollection<CcdGroup> CcdGroups { get; } = new();
 
@@ -157,7 +153,6 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
     public string SelectedCoreCountText => $"已选 {SelectedCoreCount} 个逻辑处理器";
 
-
     public RelayCommand NewMaskCommand { get; }
 
     public RelayCommand DeleteMaskCommand { get; }
@@ -177,7 +172,6 @@ public sealed class MaskManagerViewModel : ViewModelBase
     public RelayCommand SaveCommand { get; }
 
     public RelayCommand CancelCommand { get; }
-
 
     /// <summary>打开管理器时拉一次拓扑与掩码表。</summary>
     public async Task InitializeAsync()
@@ -255,7 +249,6 @@ public sealed class MaskManagerViewModel : ViewModelBase
         // 选中的那套已被删掉：网格停在当前勾选会让人以为它还存着。
         SetAll(false);
     }
-
 
     private void SetEditing(bool editing)
     {
@@ -446,7 +439,6 @@ public sealed class MaskManagerViewModel : ViewModelBase
     /// <summary>
     /// 按后台拓扑重建网格。
     ///
-    /// 【线程数取 1 的含义】
     /// 探测不到 SMT 宽度时一个逻辑处理器就是一个格子。位索引仍然等于逻辑处理器序号，
     /// 勾出来的掩码照样正确，只是少了 T0/T1 这一层分组 —— 这比按「每核两线程」硬猜安全。
     /// </summary>
@@ -495,24 +487,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
             ToastService.Instance.Show(message);
     }
 
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    /// <summary>
-    /// 异步动作的唯一收口：<see cref="RelayCommand"/> 是同步的，
-    /// 直接把 <c>async void</c> 挂上去，异常会落在 UI 线程的同步上下文上，
-    /// 表现为整个进程崩掉而不是一条提示。
-    /// </summary>
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.Show(ex.Message);
-        }
-    }
+    private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 }
 
 public sealed class SavedMaskItem : ViewModelBase

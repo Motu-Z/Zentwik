@@ -25,7 +25,6 @@ public enum AccentSource
 /// 应用级主题引擎 —— 全局唯一状态源。
 /// </summary>
 /// <remarks>
-/// 【为什么状态必须收敛到这里】
 /// 之前主题模式 / 色彩模式 / 强调色各存一份：一份在 AppThemeService，
 /// 一份在 SettingsViewModel 的 bool 字段里。
 /// ViewModel 每次随页面重建都会把 bool 重置为初值，于是：
@@ -38,13 +37,11 @@ public enum AccentSource
 /// ViewModel 的单选状态改成对这里的**投影**（getter 读服务），
 /// setter 才写回服务。按钮显示什么，永远等于服务里是什么。
 ///
-/// 【为什么改色是「替换实例」而不是「改 .Color」】
 /// 实测：ResourceDictionary 会对放入的 Freezable 自动冻结（省内存），
 /// 冻结后设置 .Color 会抛「无法在冻结的画刷上设置属性」。
 /// 而「用新画刷实例替换字典项」既能避开冻结，
 /// 又能触发 DynamicResource 绑定立即刷新（实测：红→绿→黄全部生效）。
 ///
-/// 【字典替换的实现】
 /// Application.Resources.MergedDictionaries 按顺序查找，索引靠前的优先。
 /// 我们把主题字典放在索引 0，切换时用 Replace 原地换掉这一项，
 /// 其余字典（Accent / Controls）索引不变，优先级关系保持稳定。
@@ -83,7 +80,6 @@ public sealed class AppThemeService
     /// <summary>
     /// 淡强调色画刷 —— 主题色背景的浅色版本（半透明）。
     ///
-    /// 【为什么需要单独一个画刷，而不是给 AccentBrush 加 Opacity】
     /// 强调色画刷是「实心底」，文字用 AccentForegroundBrush（按亮度取黑/白）。
     /// 但胶囊这类小面积底色如果也用实心强调色，文字与底色的对比度
     /// 完全取决于用户挑了什么颜色 —— 挑个亮黄就糊成一片。
@@ -100,7 +96,6 @@ public sealed class AppThemeService
     /// 颜色在这里组装，因此随强调色与明暗实时变化。
     /// </summary>
     /// <remarks>
-    /// 【为什么必须由代码构建】
     /// ResourceDictionary 里的 DrawingImage 属于 Freezable，
     /// 加载时会被 WPF 冻结；冻结会让内部的 DynamicResource 表达式
     /// **当场求值固化**。
@@ -171,7 +166,6 @@ public sealed class AppThemeService
     /// 按给定配色组装一份图标矢量内容。
     /// </summary>
     /// <remarks>
-    /// 【为什么需要「按需组装」而不是只有一份固定 drawing】
     /// 应用内图标与托盘图标用的是**同一份几何、不同的一套颜色**：
     ///   · 应用内 → 主体 = 用户挑的强调色（品牌识别）
     ///   · 托盘   → 主体 = 中性灰（任务栏背景由系统决定，
@@ -374,19 +368,16 @@ public sealed class AppThemeService
     /// 重新读取系统状态并应用 —— 由 WM_SETTINGCHANGE 触发。
     /// </summary>
     /// <remarks>
-    /// 【明暗与强调色必须各自独立判断】
     /// 之前写成 if / else-if，结果「主题=系统 且 色彩=系统」时
     /// 系统强调色永远不会被刷新 —— 用户改系统强调色，应用毫无反应。
     /// 现在两件事各判各的，互不排斥。
     ///
-    /// 【为什么手动选过深色就不再跟随】
     /// 只有 Mode == System 才应用系统明暗。用户显式选了深色/浅色，
     /// Mode 就是 Dark/Light，此时系统怎么改都不动 —— 这正是期望行为。
     /// </remarks>
     public void RefreshFromSystem()
     {
         // 系统（任务栏）明暗可能变了 —— 托盘图标配色依赖它。
-        // 【为什么不挂在 ThemeChanged 上】
         // ThemeChanged 表示「应用内明暗」，只有 Mode == System 时才会变。
         // 但任务栏的明暗是系统决定的，与应用内选浅色/深色无关 ——
         // 用户把应用设成深色、系统任务栏是浅色，托盘仍要用深色图标。

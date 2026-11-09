@@ -7,13 +7,11 @@ namespace Zentwik.Core.Ipc
     /// 场景规则在管道上的形状（<c>query-scenario-rules</c> 的返回元素、
     /// <c>save-scenario-rule</c> 的入参）。
     ///
-    /// 【为什么只有这些字段】
     /// <c>ScenarioRule</c> 上还有 <c>TriggerText</c> 与 <c>ProfileName</c>，两者都是
     /// <c>[JsonIgnore]</c> 的**展示派生值**：一个由 Trigger + Argument 拼出来，
     /// 一个要反查 profiles.json。把它们塞进协议，等于让 Worker 替 UI 决定文案，
     /// 而 UI 手上本来就有方案列表，自己拼更准（方案改名后 Worker 那份快照就旧了）。
     ///
-    /// 【Trigger 必须以字符串传输】
     /// 数字形态（0/1/2）在协议里不可读，且往枚举中间插一个值就是一次静默的语义漂移。
     /// 这里用 <see cref="JsonStringEnumConverter{TEnum}"/> 按属性声明，而不是给整个
     /// <c>IpcJsonContext</c> 打开 <c>UseStringEnumConverter</c>：

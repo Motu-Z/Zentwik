@@ -7,12 +7,10 @@ namespace Zentwik.Core.Services
     /// <summary>
     /// 从 Windows 处理器关系信息读物理核数与 SMT 宽度。
     ///
-    /// 【为什么不用 SMU 的 CoreCount】
     /// <c>SmuReader.CoreCount</c> 只有在一次完整快照探测之后才有值；Worker 冷启动时
     /// 只访问 <c>IsAvailable</c>，不读快照，于是它是 0。靠它建掩码网格，
     /// 拿到的会是「逻辑处理器数 = 核数、每核 1 线程」——界面上 32 个互不相关的格子。
     ///
-    /// 【为什么不用 Environment.ProcessorCount】
     /// 那是逻辑处理器数，且会被作业对象的 CPU 限制改写。掩码按逻辑处理器位排布，
     /// 需要的是「有几个物理核、每核几个线程」这层结构。
     ///

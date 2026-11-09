@@ -119,7 +119,6 @@ public sealed class StringEmptyToVisibilityConverter : IValueConverter
 /// 电源页的 Boost / ASPM 是 int，用 <see cref="IntEqualsBoolConverter"/>；
 /// 进程页的优先级是字符串（「高」「高于标准」…），用这个。
 ///
-/// 【ConvertBack 必须返回 DoNothing】
 /// 同一组按钮会自动取消其他项，取消时回写 false；
 /// 若把 false 当成「值 = 空串」，刚点中的档位会被兄弟项的取消动作改掉。
 /// </remarks>
@@ -147,12 +146,10 @@ public sealed class StringEqualsBoolConverter : IValueConverter
 /// 排序键相等 → Visibility（用于表头的 ▼ 指示箭头）。
 /// </summary>
 /// <remarks>
-/// 【为什么不直接把箭头写死在表头里】
 /// 排序箭头只能出现在「当前排序列」上，而且要跟着升降序换方向。
 /// 写成转换器后，表头只要声明「我的键是 xxx」，
 /// 箭头显示与否由绑定自动决定 —— 加一列不用改任何逻辑。
 ///
-/// 【为什么箭头方向不用转换器管】
 /// 升 / 降序用同一个向下三角 + 旋转实现（见 XAML 里的 RotateTransform），
 /// 方向信息在 SortDescending 里，不额外占一个键。
 /// </remarks>
@@ -181,7 +178,6 @@ public sealed class SortKeyEqualsConverter : IValueConverter
 /// 而 Boost / ASPM 这类设置在契约里是 int（0–4 / 0–2）。
 /// <c>ConverterParameter</c> 写要匹配的下标，例如 <c>ConverterParameter=2</c>。
 ///
-/// 【ConvertBack 必须返回 DoNothing，不能返回 false】
 /// 同一 GroupName 内的 RadioButton 会**自动取消**其他项的选中，
 /// 于是被取消的那一项会拿 false 回写。
 /// 若把 false 当成「值 = 0」，刚点中「激进」就会被兄弟项的取消动作改回「关闭」——
@@ -218,7 +214,6 @@ public sealed class IntEqualsBoolConverter : IValueConverter
 /// 可用宽度 → 受限宽度：<c>Min(可用宽度, Parameter)</c>。
 /// </summary>
 /// <remarks>
-/// 【为什么需要它】
 /// WPF 的 <c>MaxWidth</c> 只封顶、不负责对齐：子元素在 Stretch 下被压到 MaxWidth 后，
 /// 剩余空间会被平均分到两侧 —— 表现就是「设了 MaxWidth 的卡片自己跑到中间」，
 /// 左边缘与下方的列表对不齐。想要「左侧对齐、最多 900、窗口变窄时跟着缩」，

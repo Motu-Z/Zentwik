@@ -26,7 +26,6 @@ namespace Zentwik.Core.Services
     ///   · /XML 能把触发器、主体、设置一次写全，不受 schtasks 参数缺省值影响；
     ///   · 路径带空格时 XML 的 &lt;Command&gt; 是独立元素，不用跟 /TR 的引号规则搏斗。
     ///
-    /// 【主体写法是这套方案唯一容易搞错、且错了就完全不触发的地方】
     ///   必须是 UserId + LogonType=InteractiveToken + RunLevel=HighestAvailable：
     ///     · UserId 用当前用户的 SID —— 登录触发器和主体都指向同一个人，
     ///       计划任务服务才能把「该用户登录」这个事件落到这个任务上；
@@ -56,7 +55,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 登录自启的启动参数：拉起 Worker 后由 Worker 再把 UI 叫起来。
         ///
-        /// 【为什么不是 -silent】
         /// 双进程架构下任务只负责拉起 Worker（常驻 + 写 SMU），「要不要显示界面」是
         /// Worker 启动后按配置决定的事，不再是启动参数能表达的语义。旧常量
         /// <c>SilentArgument = "-silent"</c> 在 Worker 侧没有任何解析点（`Program.Main`
@@ -64,7 +62,6 @@ namespace Zentwik.Core.Services
         /// 批次五实测 `Zentwik.Worker.exe -silent` **不会崩**（进程存活、管道 ping 通、
         /// `startup_crash.log` 无新增），所以删除理由是「语义无效」而不是「会崩」。
         ///
-        /// 【为什么是 --open-ui 而不是 IPC 的 open-ui】
         /// 这里是**命令行开关**，不是管道命令。管道命令 `WorkerPipeContract.CommandOpenUi`
         /// 的值是 `"open-ui"`（无横线），两者不可混用：一个是进程启动参数，一个是协议字段。
         /// </summary>
@@ -73,12 +70,10 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 登录自启的启动参数：只拉起 UI 的托盘，不开主窗口。
         ///
-        /// 【为什么托盘也走命令行而不是 IPC】
         /// 与 <see cref="OpenUiArgument"/> 同理：这是**进程启动参数**，决定 UI 进程
         /// 一起来是建窗口还是只建托盘。托盘图标由 UI 进程持有（事实卡 §7.2：
         /// Worker 不持有任何托盘），所以 Worker 只能把「别开窗口」这件事作为参数传下去。
         ///
-        /// 【与 --open-ui 互斥】
         /// 两者同时出现时以 <see cref="OpenUiArgument"/> 为准（见 Worker 的参数解析），
         /// 因为「打开窗口」是更明确、用户感知更强的意图。
         /// </summary>
@@ -87,7 +82,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 把形态翻译成 Worker 的命令行参数。纯函数，便于单元测试逐个钉住四种形态。
         ///
-        /// 【None 与 WorkerOnly 都返回空串，但含义不同】
         /// None 根本不该创建计划任务（<see cref="Enable(AutoStartMode)"/> 会直接拒绝）；
         /// WorkerOnly 则**要**创建任务，只是不带任何参数 —— 计划任务只拉 Worker，
         /// Worker 起来后因为没收到开关而不去拉 UI。两者在命令行层面无法区分，
@@ -258,12 +252,10 @@ namespace Zentwik.Core.Services
         /// 计划任务里的可执行路径与当前进程不一致时就地改写。
         /// </summary>
         /// <remarks>
-        /// 【为什么需要这一步】
         /// 计划任务保存的是绝对路径。应用换了安装目录（例如从构建输出目录搬到正式部署目录）后，
         /// 任务仍然指着旧位置 —— 开机拉起的是旧构建里的 Worker，再由那个 Worker 拉起旧界面。
         /// 用户看到的现象是「开机自启开的是老 UI」，而设置页里的开关还是「已开启」。
         ///
-        /// 【只在路径真的不同的时候写】
         /// 每次都重写会让任务的「上次运行结果」等状态被清掉，也白白多一次提权写操作。
         /// 形态（参数）沿用任务里原有的，不擅自替用户改「要不要开界面」。
         /// </remarks>

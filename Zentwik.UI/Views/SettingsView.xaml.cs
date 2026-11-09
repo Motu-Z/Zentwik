@@ -15,7 +15,6 @@ namespace Zentwik.UI.Views;
 /// 视图只负责绑定与事件转发 —— 状态切换与颜色计算全在 SettingsViewModel。
 /// 这里的两个事件处理仅做一件事：把「用户何时提交了 HEX」转交给 ViewModel。
 ///
-/// 【彩虹面板的展开/收起动画为什么放在 View 层】
 /// 判定「该不该展开」是 ViewModel 的职责（IsColorPanelVisible），
 /// 但「怎么展开」是纯表现层的事：Storyboard 要 TargetName 到具体元素，
 /// 而 DataTrigger 内的 Storyboard 在页面级 Style 里 TargetName 解析不可靠。

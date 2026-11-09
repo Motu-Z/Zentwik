@@ -11,7 +11,6 @@ namespace Zentwik.Core.Helpers
     /// <summary>
     /// 界面设置（主题 / 强调色），持久化到 %APPDATA%\Zentwik\ui.json
     ///
-    /// 【为什么实现 INotifyPropertyChanged】
     /// 托盘图标的有无由 <see cref="AutoStartMode"/> 与 <see cref="CloseBehavior"/> 共同决定
     /// （见 <see cref="TrayPolicy"/>）。这两个值有三个写入点：行为页的两个下拉、
     /// 主窗口侧边栏的自启复选框、以及 <c>App.ChangeAutoStartAsync</c> 的 IPC 成功路径。
@@ -66,7 +65,6 @@ namespace Zentwik.Core.Helpers
         /// 开机自启的形态（是否已注册计划任务 ZentwikAutoStart，以及拉起哪些进程）。
         /// 真实状态以计划任务是否存在为准，本字段仅作缓存与界面回显。
         ///
-        /// 【为什么显式写默认值】
         /// 枚举的默认值是 0。这里 0 恰好是 <see cref="AutoStartMode.None"/>，
         /// 但如果将来有人往枚举里插一个值而不改数字，默认值就会悄悄变成「开机自启」。
         /// 显式赋值是让「默认不自启」这条产品决定钉在代码里，而不是靠枚举顺序碰巧成立。
@@ -90,7 +88,6 @@ namespace Zentwik.Core.Helpers
         /// <summary>
         /// 点主窗口 X 时的行为。
         ///
-        /// 【为什么从 App 的静态字段搬到这里】
         /// 旧实现是 <c>App.CurrentCloseBehavior</c> —— 一个编译期写死的静态属性，
         /// 用户改不了，手工验收也只能改源码重编。行为设置是用户设置，必须能选、能存。
         /// </summary>
@@ -116,7 +113,6 @@ namespace Zentwik.Core.Helpers
         /// <summary>
         /// 后台常驻调度：为 true 时按 schedules.json 的规则给新进程自动调度。
         ///
-        /// 【它不是「要不要有后台」的总闸】
         /// 双进程架构下，后台进程（Worker）由谁拉起、要不要常驻，由
         /// <see cref="AutoStartMode"/> 与 <see cref="CloseBehavior"/> 决定 ——
         /// 前者管开机时拉什么，后者管关窗口时留什么。本项只表达

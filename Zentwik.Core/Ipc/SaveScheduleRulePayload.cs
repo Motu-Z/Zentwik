@@ -5,14 +5,12 @@ namespace Zentwik.Core.Ipc
     /// <summary>
     /// <c>save-scheduling-rule</c> 的 Payload 形状。
     ///
-    /// 【为什么 targetType 与 targetValue 是两个字符串，而不是直接传枚举 + ulong】
     /// UI 侧的下拉框是「不调度 / CCD0 / CCD1 / 各自定义掩码」平铺，
     /// 选中的是一个**文本**目标。让 UI 自己判断「这是 CCD 还是掩码、掩码值是多少」，
     /// 等于把 <c>masks.json</c> 的解析逻辑复制一份到界面进程 —— 而 UI 手上那份掩码列表
     /// 可能是几秒前的快照，掩码被删掉时它会传上来一个不存在的值。
     /// 这里只传「哪一类 + 哪个」两个词，由持有主副本的 Worker 去查、去快照。
     ///
-    /// 【priority 用字符串而不是枚举】
     /// 落盘的就是 "High" / "Above Normal" 这些英文常量（见 <c>ProcessPriority</c>），
     /// 引入枚举会让 schedules.json 出现第二套表示法，旧规则反序列化时直接对不上。
     /// </summary>
@@ -21,12 +19,10 @@ namespace Zentwik.Core.Ipc
         /// <summary>
         /// 要更新的规则 Id。留空 = 按进程名新增或覆盖（旧版行为）。
         ///
-        /// 【什么时候需要它】
         /// 用户在规则列表里选中一行改掩码 / 改优先级时，界面上那行的身份是 Id。
         /// 只按进程名覆盖也能成立，但一旦这次编辑顺带改了进程名，就会变成
         /// 「旧名字那条还在、新名字多出一条」。带上 Id 才能表达「改的是这一条」。
         ///
-        /// 【留空时仍然按进程名匹配】
         /// 这是旧 UI 的唯一写法，必须继续支持：升级途中两个 exe 混搭是常态。
         /// </summary>
         [JsonPropertyName("id")]
@@ -54,7 +50,6 @@ namespace Zentwik.Core.Ipc
         /// <summary>
         /// 规则是否启用。留空（null）= 保持该规则原值，新建时为 true。
         ///
-        /// 【为什么要补这个字段】
         /// <c>query-scheduling-rules</c> 一直会返回 <c>enabled</c>，而保存侧没有对应入参，
         /// 于是「查出来 → 改一个字段 → 存回去」这条路走不通：任何一次保存都会把
         /// 一条已禁用的规则悄悄改回启用。协议两个方向必须能对上。

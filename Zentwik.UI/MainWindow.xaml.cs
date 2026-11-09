@@ -50,12 +50,10 @@ public partial class MainWindow : Window
     /// 启动后把 Worker 拉起来并刷新状态灯。
     /// </summary>
     /// <remarks>
-    /// 【为什么不等窗口先上屏】
     /// Worker 的清单是 requireAdministrator，拉起会弹 UAC；没有 PawnIO 时它还会
     /// 在初始化里阻塞最多 60 秒。这一段必须异步跑在窗口显示之后，
     /// 否则用户看到的是「点了图标，窗口一分钟不出来」。
     ///
-    /// 【为什么失败不处理】
     /// 拉不起来就把状态灯留在「未连接」，业务页各自以遮罩降级。
     /// 这里弹窗反而会盖住界面 —— 用户点一下状态灯就能重试。
     /// </remarks>
@@ -135,7 +133,6 @@ public partial class MainWindow : Window
     /// 侧栏宽度过渡。展开 220 / 收缩 72，300ms 缓出。
     /// </summary>
     /// <remarks>
-    /// 【为什么宽度动画放在 code-behind，而不是 XAML 的 DataTrigger 里】
     /// 离屏截图只能拍一帧 —— 触发器里的 Storyboard 会拍到中间态（实测拍到 196），
     /// 放在这里才能让截图模式一次性落到终值。
     /// </remarks>
@@ -227,13 +224,11 @@ public partial class MainWindow : Window
     /// 离开有未保存改动的页面时拦住导航。
     /// </summary>
     /// <remarks>
-    /// 【为什么是「拒绝 + Toast」而不是「弹确认」】
     /// 全项目只有三项高危操作配确认层（清全部数据 / 停用全部功能 / 清空规则）。
     /// 切页属于高频动作，每次都弹窗比直接放行更烦人；而放行会让用户
     /// 以为刚拖的曲线已经生效（其实只在界面上，没下发 SMU）。
     /// 所以取中间态：**拦下来 + 告知原因**，改动本身一条都不丢，用户回来接着调。
     ///
-    /// 【为什么把导航项勾回原位】
     /// Checked 事件发出时单选状态已经改了。不勾回去，界面会显示「已经切到进程页」
     /// 而内容区还停在调校页。
     /// </remarks>
@@ -439,7 +434,6 @@ public partial class MainWindow : Window
 
         if (action == WindowCloseAction.ExitAll)
         {
-            // 【必须在这里同步发，不能留给 App.Exit】
             // 窗口关掉之后 WPF 立刻结束进程，fire-and-forget 的关闭请求经常还没连上
             // 管道就被砍掉 —— Worker 就留在了后台。同步发的代价是退出多几十毫秒。
             //

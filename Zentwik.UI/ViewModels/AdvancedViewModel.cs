@@ -157,19 +157,7 @@ public class AdvancedViewModel : ViewModelBase
         OnPropertyChanged(nameof(SmartHibernateAware));
     }
 
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.ShowError(ex.Message);
-        }
-    }
+    private static void Fire(Func<Task> action) => Services.AsyncRunner.FireError(action);
 
     /// <summary>恢复默认安全参数：CO 归零、FMax 回基线，后台负责写盘并下发。</summary>
     private static async Task RestoreSafeDefaultsAsync()

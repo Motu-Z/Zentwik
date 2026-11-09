@@ -6,12 +6,10 @@ namespace Zentwik.Core.Ipc
     /// <summary>
     /// <c>query-smu-snapshot</c> 的 Payload 形状：从硬件读回当前 CO / FMax。
     ///
-    /// 【为什么不含 Success】
     /// 成功与否由 <c>PipeResponse.Success</c> + <c>Message</c> 表达；本类只承载
     /// 「读到的值」这一件事。把 Success 同时放进两个地方，迟早会出现
     /// 「外层 true、内层 false」的矛盾态，而消费方不知道该信哪个。
     ///
-    /// 【为什么是 public】
     /// 与 <see cref="SmuStatusPayload"/> 同一条理由：Worker 序列化、UI 反序列化、
     /// 源生成上下文三处共用同一份类型。
     /// </summary>

@@ -11,7 +11,6 @@ namespace Zentwik.UI.Services;
 /// 系统托盘图标。
 /// </summary>
 /// <remarks>
-/// 【为什么不用 NotifyIcon 之类的第三方库】
 /// WPF 没有内置托盘控件，加第三方包会带来依赖与体积问题。
 /// 而托盘本身只需要三样东西：
 ///   1. 一个能收消息的窗口（托盘回调消息要发给它）
@@ -19,13 +18,11 @@ namespace Zentwik.UI.Services;
 ///   3. 一个 Win32 弹出菜单
 /// 全部是几十行 P/Invoke，自己写反而更可控。
 ///
-/// 【消息窗口为什么不复用 MainWindow】
 /// 主窗口是 WPF Window，它的 WndProc 已经在处理拖拽与最大化修正，
 /// 再往里塞托盘消息会让外壳层职责变杂。
 /// 这里单独建一个 1×1 的不可见 HwndSource 当消息泵，
 /// 生命周期跟服务走，互不干扰。
 ///
-/// 【图标为什么是矢量渲染而不是 .ico 文件】
 /// 见 TrayIconRenderer 的说明：
 ///   · .ico 取帧靠「挑最接近的一帧再缩放」，125% / 175% 下必然发虚
 ///   · 矢量按目标物理像素 1:1 渲染，任意缩放比例都锐利
@@ -276,11 +273,9 @@ public sealed class TrayIconService : IDisposable
     /// 弹出 Win32 原生弹出菜单（TrackPopupMenuEx）。
     /// </summary>
     /// <remarks>
-    /// 【为什么从自绘改成原生】
     /// 自绘菜单要自己处理 DPI、阴影、动画、键盘导航、点击外部关闭 —— 每一处都能出 bug。
     /// 原生菜单这些全由系统负责，并且跟着系统主题、缩放、辅助功能走。
     ///
-    /// 【三处必须是这个写法】
     ///   · SetForegroundWindow：不切前台的话，点菜单外面菜单不会消失（Win32 的老毛病）
     ///   · TPM_BOTTOMALIGN：托盘在屏幕底部，菜单得往上长
     ///   · TPM_RETURNCMD：同步拿到命令 ID，省掉 WM_COMMAND 分支

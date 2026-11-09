@@ -10,12 +10,10 @@ namespace Zentwik.Worker
     /// <summary>
     /// Worker 的后端宿主服务：把 Core 的服务按固定顺序拉起来，退出时按相反顺序停掉。
     ///
-    /// 【为什么是 IHostedService 而不是 BackgroundService】
     /// 本服务没有自己的执行循环 —— 它的全部工作是「启动时按顺序做一串同步动作，
     /// 退出时做一串清理」。继承 BackgroundService 会凭空多出一个 ExecuteAsync，
     /// 里面只能写 await Task.Delay(Timeout.Infinite)，那是一个假的循环。
     ///
-    /// 【顺序为什么不能调换】
     ///   ① 各 store 必须先 Load：后面的 profiles / scenarios / 调校都从它们读盘；
     ///   ② profiles 先于 scenarios：场景规则指向方案 Id，方案表没加载完无法校验；
     ///   ③ 采样线程（ProcessRefresher）先于 ProcessWatcher.Start()：

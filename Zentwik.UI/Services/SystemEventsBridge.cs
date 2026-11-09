@@ -10,13 +10,11 @@ namespace Zentwik.UI.Services;
 /// Windows 在用户切换系统明暗 / 强调色时，会向顶层窗口广播 WM_SETTINGCHANGE
 /// （lParam = "ImmersiveColorSet" / "SystemUsesLightTheme" 等字符串）。
 ///
-/// 【为什么钩主窗口而不是用 Microsoft.Win32.SystemEvents】
 /// 1. SystemEvents.UserPreferenceChanged 在部分 Windows 版本上对「系统深浅色」
 ///    并不可靠；直接钩 WM_SETTINGCHANGE 是确定性最高的做法。
 /// 2. 钩主窗口天然发生在 UI 线程，不需要跨线程 marshalling，
 ///    也不会引入额外的消息窗口与线程生命周期问题。
 ///
-/// 【生命周期】
 /// 钩子随窗口销毁自动失效，无需显式卸载。
 /// </remarks>
 internal static class SystemEventsBridge

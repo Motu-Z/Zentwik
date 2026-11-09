@@ -7,7 +7,6 @@ namespace Zentwik.Core.Ipc
     /// 业务数据该进 <see cref="Payload"/> 并自带序列化类型，
     /// 而不是给每个新功能在请求体上开一个平铺字段 —— 那样两端字段集合会长期对不齐。
     ///
-    /// 【实例化强制规则】
     /// 创建本类型实例时**必须**显式赋值 <c>Version = WorkerPipeContract.ProtocolVersion</c>，
     /// 不能依赖默认值。默认值 0 会被 <see cref="WorkerPipeContract.ValidateVersion"/>
     /// 判定为版本不一致。
@@ -24,7 +23,6 @@ namespace Zentwik.Core.Ipc
         /// 协议版本。<b>默认值为 0，表示「未赋值」</b>，由调用方显式填
         /// <see cref="WorkerPipeContract.ProtocolVersion"/>。
         ///
-        /// 【为什么默认值不是 ProtocolVersion】
         /// 默认成合法版本号会让两个不同的事实变得不可区分：
         /// ①「调用方明确声明了版本 1」；②「调用方根本没填，字段缺失」。
         /// 而 System.Text.Json 反序列化时，JSON 里缺字段会保留初始化器的值 ——
@@ -44,7 +42,6 @@ namespace Zentwik.Core.Ipc
         /// <summary>
         /// 命令载荷。无参数的命令（ping / shutdown）留空。
         ///
-        /// 【类型定案：<c>string?</c>，不用 <c>JsonElement</c> 也不用 <c>object</c>】
         /// 本协议只跑在本机两个进程之间，两个 exe 由同一次发布产出、版本由
         /// <see cref="WorkerPipeContract.ProtocolVersion"/> 强制对齐，不存在
         /// 「对端是未知语言 / 未知版本」的情况。用弱类型节点只会把解析责任推给运行时，

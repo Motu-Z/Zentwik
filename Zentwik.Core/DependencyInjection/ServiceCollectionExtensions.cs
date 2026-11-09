@@ -18,7 +18,6 @@ namespace Zentwik.Core.DependencyInjection
         /// <summary>
         /// 注册 Core 的全部服务。
         ///
-        /// 【没有 dispatcher 形参】
         /// Core 不持有任何 UI 线程调度器：日志与场景服务的内部集合由各自的锁保证
         /// 并发安全，通知以纯 C# 事件在原线程上同步触发。需要回到界面线程由 UI 进程负责。
         /// </summary>
@@ -33,7 +32,6 @@ namespace Zentwik.Core.DependencyInjection
             // ---------- 基础设施 ----------
             // 先登记具体类型，再把接口映射到同一个实例。
             //
-            // 【为什么必须两个都登记，不能只写 TryAddSingleton<IAppPaths, AppPaths>()】
             // 那种写法只登记接口，具体类型不在容器里。WPF 过渡桥（Svc.Paths）与
             // HeadlessHost 都是按具体类型取的，取不到就抛
             // InvalidOperationException: No service for type ... —— 而且是在

@@ -23,7 +23,6 @@ public enum LogFilterMode
 /// 不做本地落盘 —— 日志的主副本在 Worker 那边，界面只负责显示与筛选。
 /// </summary>
 /// <remarks>
-/// 【为什么刷新是手动 + 进页自动，而不是订阅推送】
 /// 管道是「一个连接一条消息」，没有推送通道。要做实时日志得再加一条长连接协议，
 /// 而日志页的价值在于「出问题后回来看」，不在于盯着滚动。手动刷新够用。
 /// </remarks>
@@ -430,19 +429,7 @@ public sealed class LogsViewModel : ViewModelBase
 
     // ==================== 内部 ====================
 
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.Show(ex.Message);
-        }
-    }
+    private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 
     private void NotifyCounts()
     {

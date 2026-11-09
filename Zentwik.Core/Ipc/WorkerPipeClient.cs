@@ -11,16 +11,13 @@ namespace Zentwik.Core.Ipc
     /// <summary>
     /// 管道客户端：UI 进程用它连上 Worker 并下发命令。
     ///
-    /// 【本类只做客户端】
     /// 服务端在 Worker 进程内实现。两端共享的只有 <see cref="WorkerPipeContract"/> 与
     /// 三个消息类型，任何一端都没有对方的实现引用 —— 这是两个独立 exe 之间唯一正确的耦合方式。
     ///
-    /// 【一问一答，串行发送】
     /// 管道是字节流，没有请求 ID 可以配对响应。并发发送会让两个响应的字节交错，
     /// 解析出的是两段各自都不合法的 JSON。因此用一个信号量把发送串行化：
     /// 同一时刻只允许一个请求在飞。控制类命令的频率本就极低，串行没有性能问题。
     ///
-    /// 【失败语义】
     /// 连不上 / 超时 / 对端关闭 / 版本不符 / 超限 一律抛 <see cref="IpcTransportException"/>，
     /// 绝不返回 null 让调用方去猜。任何一次传输失败之后本实例的连接都不可信，
     /// 内部会立即丢弃流状态，调用方必须重新 <see cref="ConnectAsync"/>。
@@ -237,19 +234,16 @@ namespace Zentwik.Core.Ipc
         /// <summary>
         /// 归还发送信号量 —— <b>所有</b>获取路径的唯一归还点。
         ///
-        /// 【为什么不用裸 Release】
         /// <see cref="DisposeAsync"/> 结束时会把信号量释放掉，而另一个调用方可能已通过
         /// <c>_disposed</c> 检查、正停在 finally 里等待归还。裸 <c>Release()</c> 在已释放的
         /// 信号量上抛 <see cref="ObjectDisposedException"/>，而且是从 finally 抛出 ——
         /// 它会顶掉原始异常，让调用方拿到一个与被放弃对象无关的崩溃。
         ///
-        /// 【覆盖范围】
         /// <see cref="ConnectAsync"/>、<see cref="SendAsync"/>、<see cref="DisposeAsync"/>
         /// 三个方法的 finally 全部走这里：超时、对端关闭、JSON 非法、外部取消、
         /// 对象已释放，任意一条异常路径都不会漏掉归还，也就不会把后续请求永久卡在
         /// <c>WaitAsync</c> 上（UI 侧表现为「Ping 一次超时之后再也不响应」）。
         ///
-        /// 【为什么不静默吞掉】
         /// 这条分支意味着「<see cref="DisposeAsync"/> 在本方法持有者仍在飞的时候就走完了」，
         /// 属于生命周期顺序问题 —— 吞掉它就等于把这类 bug 永久藏起来。
         /// 但本类不持有日志服务（Core 的 Ipc 层刻意不依赖 Services 层），

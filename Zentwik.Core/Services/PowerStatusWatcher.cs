@@ -8,13 +8,11 @@ namespace Zentwik.Core.Services
     /// <summary>
     /// 供电状态监听（电池 / 交流）。
     ///
-    /// 【为什么自己包一层，而不是让 ScenarioService 直接读 SystemInformation.PowerStatus】
     /// 供电状态是**场景自动切换的两个电源类触发源**的输入。读一次状态只要一次系统调用，
     /// 但「状态什么时候变了」需要有人盯着 —— 而这个「盯着」的生命周期（什么时候开始、
     /// 什么时候停、停了要不要留兜底）不该混进判定逻辑里。本类只负责「报告状态变了」，
     /// 判定归 ScenarioService。
     ///
-    /// 【为什么不用 System.Windows.Forms.SystemInformation】
     /// 那要引 System.Windows.Forms，为一个字段把整个 WinForms 拖进一个纯 WPF 工程
     /// 不值得 —— 它背后也只是 GetSystemPowerStatus，这里直接调同一个 API。
     /// </summary>
@@ -49,7 +47,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 兜底轮询间隔。
         ///
-        /// 【为什么还需要轮询】
         /// SystemEvents.PowerModeChanged 依赖消息泵：WPF 主窗口在时它有，
         /// 但静默模式（-silent，无窗口）下不一定有。更麻烦的是它本来就漏事件 ——
         /// 部分 OEM 的电源管理不广播 StatusChange，插拔电源只有 WMI/轮询能看到。

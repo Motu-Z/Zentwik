@@ -21,7 +21,6 @@ public sealed class SettingsViewModel : ViewModelBase
 
         // 服务状态变化 → 刷新投影出来的单选态与派生属性。
         //
-        // 【为什么 ThemeModeChanged 与 ThemeChanged 要分开】
         // ThemeChanged 是「解析后的明暗」（系统模式下会自己变），
         // ThemeModeChanged 是「用户选了什么」（只有用户操作才变）。
         // 分段控件的选中态必须跟后者，否则系统主题一变，

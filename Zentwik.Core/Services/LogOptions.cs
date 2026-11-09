@@ -5,7 +5,6 @@ namespace Zentwik.Core.Services
     /// <summary>
     /// 日志服务的构造参数。
     ///
-    /// 【属性是 set 而不是 init】
     /// 这份对象由宿主分两步填：先跑宿主的 configureLog 回调，回调里没给
     /// Directory 才回落到 <c>%AppData%\Zentwik\Logs</c>。init-only 会让第一步
     /// 无法改写目录 —— 回调能设上限、能开 Verbose，唯独改不了最该改的那一项。
@@ -38,7 +37,6 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 日志文件名前缀，实际文件名为 <c>{FilePrefix}{yyyyMMdd}.log</c>。
         ///
-        /// 【为什么必须是可配置项】
         /// 双进程架构下 UI 与 Worker 共用 <c>%AppData%\Zentwik\Logs</c> 一个目录。
         /// 若两边写同一个文件名，先打开的那个持有追加句柄，后者每次写入都要
         /// 撞 FileShare 竞争 —— 表现为随机丢日志或随机抛 IOException。

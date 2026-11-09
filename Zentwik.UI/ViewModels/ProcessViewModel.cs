@@ -92,7 +92,6 @@ public class ProcessViewModel : ViewModelBase
         }
     }
 
-
     private string _sortKey = "cpu";
 
     public string SortKey
@@ -953,11 +952,9 @@ public class ProcessViewModel : ViewModelBase
     /// 把界面上改动过的一批目标写进后台。
     /// </summary>
     /// <remarks>
-    /// 【为什么整批写完才刷新一次】
     /// 每次保存都会触发后台重扫并写一次盘。逐个刷新会让列表在一次操作里重建多次，
     /// 用户看到的是勾选与滚动位置反复跳动。
     ///
-    /// 【为什么失败要继续往下走】
     /// 批量改十个进程时，其中有一个是受保护进程很常见。中途 return 会让后面的
     /// 目标全都不生效，而用户以为自己改的都是同一批。
     /// </remarks>
@@ -986,7 +983,6 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>
     /// 只重新拉规则与掩码，不重建进程表。
     ///
-    /// 【为什么不复用 RefreshAsync】
     /// 用户刚在某一行的下拉里选了值，重建整张表会让那一行连同焦点一起消失 ——
     /// 表现是「选完立刻弹回顶部」。进程行的显示已经在改动发生时就同步过了，
     /// 这里只需要把规则区对齐。
@@ -1114,24 +1110,11 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>
     /// 把异步动作塞进同步命令里。
     ///
-    /// 【为什么不能直接写成 async void 的事件处理器】
     /// <see cref="RelayCommand"/> 收的是 <c>Action</c>，写 <c>async</c> 进去就是一个
     /// async void —— 里面任何异常都会直接抛到 UI 线程上，进程随即崩掉。
     /// 这里统一收口：异常转成 Toast，至少用户能看到发生了什么。
     /// </summary>
-    private static void Fire(Func<Task> action) => _ = RunSafeAsync(action);
-
-    private static async Task RunSafeAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            ToastService.Instance.Show(ex.Message);
-        }
-    }
+    private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 
     private bool _isMaskDialogOpen;
 
@@ -1536,7 +1519,6 @@ public sealed class MaskOption : ViewModelBase
     /// <summary>
     /// 自定义掩码的 Id，只有 <see cref="TargetType"/> = <c>mask</c> 且来自后台时才有值。
     ///
-    /// 【为什么单独存一份，不直接拿 TargetValue 当 Id】
     /// 查询给的 TargetValue 是掩码 **值**（位图），保存规则要的却是掩码 **Id**。
     /// 两者不能互换：值会重复（两套掩码选了同样的核），Id 才是身份。
     /// 界面按值显示与匹配，下发时换成 Id。

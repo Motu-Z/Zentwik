@@ -522,7 +522,6 @@ public partial class App : Application
     /// 跑一次调校页初始化，把结果写进 <c>%TEMP%\zentwik-tuningprobe.txt</c>。
     /// </summary>
     /// <remarks>
-    /// 【为什么不用控制台】
     /// WinExe 没有自带控制台，<c>AttachConsole</c> 在 CI / 重定向场景下时灵时不灵。
     /// 状态查询与快照查询都是异步的，用 <c>GetAwaiter().GetResult()</c> 直接在
     /// UI 线程上等会死锁（延续要回到被阻塞的调度器），所以整段放进线程池：
@@ -666,7 +665,7 @@ public partial class App : Application
                     return;
                 }
 
-                // 四个内置模板 + 用户自建的 ayo / XOS 电源计划。
+                // 保留四个内置模板，其余（用户自建的）一并清掉。
                 var keep = new HashSet<Guid>
                 {
                     Zentwik.Core.Services.PowerSchemePresets.Balanced.Guid,
@@ -1780,7 +1779,6 @@ public partial class App : Application
         window.MinimizeToTrayEnabled = true;
 
         // 系统任务栏明暗变化 → 托盘图标跟着换配色。
-        // 【为什么不是订阅 ThemeChanged】
         // ThemeChanged 表示「应用内明暗」；而任务栏明暗是系统决定的，
         // 用户把应用设成深色、系统任务栏是浅色时，托盘仍需要深色图标。
         theme.SystemThemeChanged += (_, _) =>

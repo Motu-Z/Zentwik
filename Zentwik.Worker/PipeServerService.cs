@@ -20,23 +20,19 @@ namespace Zentwik.Worker
     /// <summary>
     /// 命名管道服务端：请求-响应模式，一行 JSON 一条消息。
     ///
-    /// 【为什么一个连接只处理一条消息】
     /// 协议按行切分，但服务端不做长连接复用：读完一行、写回一行、关掉本次实例。
     /// 单实例上限 1 个，因此同一时刻只有一个客户端在处理，不存在两条响应交错的风险。
     /// 代价是每次请求多一次连接建立（本机管道，微秒级）。
     ///
-    /// 【管道的访问控制：显式 DACL，不用 PipeOptions.CurrentUserOnly】
     /// 实测（批次三收尾）：Worker 以管理员身份运行时，CurrentUserOnly 创建的管道
     /// 拒绝中完整性（非提权）客户端连接，而这正是 UI 进程的形态 —— 用 CurrentUserOnly
     /// 会导致「UI 永远连不上 Worker」。改为显式 DACL：只授予当前用户 SID 的 ReadWrite。
     /// 语义与 CurrentUserOnly 相同（仍然只有同一个 Windows 用户能连），
     /// 但不会带上那层导致跨完整性级别拒绝的附加限制。
     ///
-    /// 【为什么不是 BuiltinUsers】
     /// 那是「所有本地用户」组。多用户机器上等于允许别的登录用户向提权 Worker
     /// 发 shutdown —— 与 CurrentUserOnly 的初衷相反。当前用户 SID 才是等价物。
     ///
-    /// 【命令清单不在这里重复】
     /// 唯一出处是 <see cref="WorkerPipeContract"/> 里的 <c>Command*</c> 常量，
     /// 分派见 <see cref="HandleAsync"/>。在这里再抄一份必然漏改 ——
     /// 曾经那份手写清单就把已删除的命令留了整整一轮。
@@ -176,7 +172,6 @@ namespace Zentwik.Worker
         {
             while (!token.IsCancellationRequested)
             {
-                // 【为什么用 NamedPipeServerStreamAcl.Create 而不是创建后再 SetAccessControl】
                 // PipesAclExtensions.SetAccessControl 作用在「已经创建好的管道句柄」上，
                 // 实测抛异常（句柄没有 WRITE_DAC），且异常发生在 try 之外，会把整个
                 // accept 循环打挂、管道直接消失。Create 在创建时就带上安全描述符，
@@ -282,12 +277,10 @@ namespace Zentwik.Worker
         /// <summary>
         /// 管道的 DACL：只允许当前用户 SID 读写。
         ///
-        /// 【为什么是 ReadWrite 而不是 FullControl】
         /// 实测四种权限位里 ReadWrite 已经足够客户端完成「写一条请求 + 读一条响应」；
         /// 授 FullControl 会把 WRITE_DAC / WRITE_OWNER 也交给客户端，
         /// 等于让 UI 能改这条管道的安全描述符 —— 没有理由给。
         ///
-        /// 【为什么不写 SACL】
         /// 显式 DACL + 不设 SACL 时，管道不带强制完整性标签，
         /// 中完整性客户端因此可以连上；这正是显式 DACL 与 CurrentUserOnly 的差别所在。
         /// </summary>
@@ -304,7 +297,6 @@ namespace Zentwik.Worker
         /// <summary>
         /// 命令分派。命令清单见类注释；未登记的命令一律「未知命令」。
         ///
-        /// 【为什么是 async 而不是同步】
         /// 注册 / 注销开机自启会同步调用 schtasks.exe（内部 15 秒超时，且要回查一次），
         /// 最长可能占用几十秒。放在接受循环线程上同步执行会把整条管道卡住，
         /// 连 ping 都进不来；丢到线程池后至少接受循环本身不会被业务阻塞。
@@ -474,13 +466,11 @@ namespace Zentwik.Worker
         /// <summary>
         /// 解析 <c>register-autostart</c> 的 Payload：AutoStartMode 的名称。
         ///
-        /// 【空 Payload 为什么算合法】
         /// 旧版 UI 发的是空 Payload，语义固定为「拉起 Worker + 打开主界面」。
         /// 升级中途新旧混搭是常态（用户目录里两个 exe 未必同时替换），
         /// 把空 Payload 判成错误，表现就是「点了开关、任务计划没变、只弹一句协议错误」。
         /// 按旧语义继续工作，比严格校验更有用。
         ///
-        /// 【为什么不接受数字】
         /// <c>Enum.TryParse</c> 默认接受 "3" 这样的数值。这里显式拒绝：
         /// 数值形态没有任何可读性，出现它只可能是调用方拼错，静默接受等于让
         /// 「传了 3」和「传了 WorkerWithUI」在日志里长得一模一样。
@@ -516,7 +506,6 @@ namespace Zentwik.Worker
         /// UI 侧看到的是「通信中断」，而不是「权限不足」或「被组策略锁定」。
         /// 真实原因同时写进 Worker 日志（AutoStartService 内部已经记了 Error）。
         ///
-        /// 【为什么 None 走 Disable】
         /// 「形态 = None」与「注销」是同一件事的两种说法。让 Enable(None) 返回失败
         /// 会逼调用方在发请求前先判断一次，而那个判断结果对端本来就知道。
         /// </summary>
@@ -862,7 +851,6 @@ namespace Zentwik.Worker
         /// <c>save-plan</c>：新建或按 Id 覆盖一份方案。
         /// </summary>
         /// <remarks>
-        /// 【调度方案的内容由 Worker 自己抓】
         /// 调度方案存的就是「保存那一刻的规则集」。让 UI 把几十条规则序列化送回来，
         /// 既多一次不同步的机会，也会漏掉「规则里带的掩码快照」这类只有本端算得出来的字段。
         /// </remarks>
@@ -1188,7 +1176,6 @@ namespace Zentwik.Worker
         /// <summary>
         /// 取回最近的日志快照。
         ///
-        /// 【为什么必须限条数】
         /// 日志是**批量**响应。不设上限时，一次刷新可能是几十万字符，
         /// 直接撞 MaxMessageBytes，日志页每次打开都报错。50 条足够看清最近发生了什么，
         /// 也让 Payload 稳定在几十 KB 以内。
@@ -1300,18 +1287,15 @@ namespace Zentwik.Worker
         /// <summary>
         /// 新增或覆盖一条调度规则，然后立刻重扫一次。
         ///
-        /// 【匹配顺序：先 Id、再进程名】
         ///   · 带 <c>id</c> 且能找到 → 就地更新那一条（改进程名也还是同一条记录）；
         ///   · 不带 <c>id</c>（旧 UI）或 Id 找不到 → 按进程名匹配，命中就覆盖，否则追加。
         /// 旧写法必须继续成立：升级途中新旧两个 exe 混搭是常态，
         /// 把「没传 id」判成错误，表现就是「点了保存、规则没变、只弹一句协议错误」。
         ///
-        /// 【为什么保存之后必须 ReapplyNow】
         /// 后台监听只在「进程集合发生变化」时才对**新**进程下发规则。
         /// 用户改一条已经开着的游戏的规则，如果只写盘不重扫，那条规则要等到
         /// 游戏下次启动才生效 —— 用户看到的是「点了保存，什么也没发生」。
         ///
-        /// 【为什么写盘与重扫放在同一个 Task.Run 里】
         /// 两者是有序的两半：先有新的 <c>schedules.json</c>，重扫才有意义。
         /// 拆成两个 await 会让中间状态（已重扫、尚未写盘）有机会被别的请求观察到。
         /// </summary>
@@ -1440,13 +1424,11 @@ namespace Zentwik.Worker
         /// <summary>
         /// 删除一条调度规则并重扫。Payload 是规则 Id；找不到时退回按进程名匹配。
         ///
-        /// 【为什么先 Id 再名字】
         /// Id 是「这条记录是谁」，名字是「它绑哪个进程」。用户在列表里选中一行删除时，
         /// 唯一能确定他删的是哪一行的只有 Id —— 名字可以被上一步编辑改掉。
         /// 而旧 UI 只会发名字，所以保留名字回退。两条路都是单向判断：
         /// Id 一旦命中就绝不再看名字，不做二义性猜测。
         ///
-        /// 【为什么删完也要 ReapplyNow】
         /// 删规则不会自动解绑已经绑上的进程（解绑需要显式恢复系统默认 CPU Set，
         /// 见 <see cref="IProcessWatcher.ClearAllSchedules"/>）。重扫的作用是让**之后的**
         /// 新进程不再命中这条规则；已经在跑的进程保持现状，直到用户去进程页解绑。
@@ -1526,7 +1508,6 @@ namespace Zentwik.Worker
         /// 优先级档位归一化：空串合法（表示不碰优先级），其余必须命中
         /// <see cref="ProcessPriority.Options"/> 里的英文常量，并回写成标准大小写。
         ///
-        /// 【为什么必须归一化而不是原样存】
         /// <c>ProcessPriority.ClassOf</c> 是大小写敏感的 switch，存进 "high" 会让
         /// 这条规则在下发时静默失败（ClassOf 返回 0 = 未知档位），而用户看到的是
         /// 「规则存下来了」。归一化把错误挡在写入之前。
@@ -1599,12 +1580,10 @@ namespace Zentwik.Worker
         /// <c>query-cpu-topology</c>：掩码网格的格子数来源。
         /// </summary>
         /// <remarks>
-        /// 【核数与 SMT 宽度来自系统，不来自 SMU】
         /// <c>SmuReader.CoreCount</c> 要跑完一次完整快照才有值，冷启动时是 0。
         /// 用它建网格会得到「每个逻辑处理器一个核」的平铺形状 —— 位编号仍然对，
         /// 但用户看不出哪些是同一个物理核的两个线程。
         ///
-        /// 【每 CCD 核数只能靠 SMU 或均分】
         /// Windows 的处理器关系信息里没有 CCD 这一层。SMU 探测到了就用它，
         /// 否则按 CCD 数均分 —— 这只影响分组标签，不影响任何一位的含义。
         /// </remarks>
@@ -1665,7 +1644,6 @@ namespace Zentwik.Worker
         /// <c>save-mask</c>：新增或按 Id 覆盖一套自定义掩码，成功后回整份列表。
         /// </summary>
         /// <remarks>
-        /// 【id 非空但找不到就失败，不静默当新建】
         /// 界面拿到的 Id 来自上一次查询；若那套掩码已被别处删掉，继续写入就会
         /// 变成「改名没生效，反而多出一条」。用户不可能从结果里分辨这两件事。
         /// </remarks>
@@ -1842,12 +1820,10 @@ namespace Zentwik.Worker
         /// <summary>
         /// 新增或覆盖一条场景规则。<c>Id</c> 为空 = 新建。
         ///
-        /// 【Id 为空时不能写 rule.Id = ""】
         /// <c>ScenarioRule.Id</c> 的初始化器会生成 Guid，赋空串会把它覆盖掉 ——
         /// 结果是一条 Id 为空的规则：落盘后下一次 Save 又把它当新规则，
         /// 列表里会长出一堆互相无法区分的空 Id 条目。
         ///
-        /// 【非空 Id 必须是已存在的规则】
         /// 把「传了一个不存在的 Id」当成新建，会让调用方的一个笔误变成一条影子规则：
         /// 他以为自己改了 A，实际新增了 B，而界面上 B 又排在别处。
         /// </summary>
@@ -2065,7 +2041,6 @@ namespace Zentwik.Worker
         /// <summary>
         /// <c>create-power-scheme</c>：派生一份新方案，改名，然后立刻切过去。
         ///
-        /// 【为什么切换失败仍然算成功】
         /// 方案已经真实存在于系统里了，用户在系统设置里也看得见。
         /// 把它报成「新建失败」只会让用户再点一次，于是又建出第二份同名方案。
         /// 事实是「建成了、但没切过去」，Message 里说清楚即可。
@@ -2231,20 +2206,17 @@ namespace Zentwik.Worker
         /// <summary>
         /// <c>apply-power-policy</c>：逐项写、逐项报，最后统一激活一次。
         ///
-        /// 【为什么失败原因要去重】
         /// 取不到活动方案时，五项写入会各自返回同一句「无法读取当前电源方案」。
         /// 直接 join 出来的消息会把这句重复五遍 —— 用户看到的像是程序在结巴，
         /// 而真正的原因只有一个。去重后既保留了「所有项都没写成」的事实，
         /// 又不会把一句话刷屏。
         ///
-        /// 【Message 的分隔符为什么是「内逗号、外分号」】
         /// 逐项错误之间用逗号（「能效偏好（EPP）写入失败（错误 87），ASPM 写入失败（错误 87）」），
         /// 「逐项错误」与「激活失败」这两段之间用分号。
         /// 两类信息如果共用一种分隔符，读的人无法判断「后面那句是第三项错误，
         /// 还是整批操作的另一类失败」；分号把「哪些项没写成」与「整体有没有生效」
         /// 分成两层，语义上不会串。
         ///
-        /// 【失败时为什么还要回 Payload】
         /// 只要有至少一项写成功，系统里的值就已经变了。UI 拿着旧值画界面，
         /// 用户会看到「提示失败、但滑块还停在旧位置」，下一次点应用又会把
         /// 已经生效的项重写一遍。回快照让界面能立刻对齐真实状态 ——
@@ -2262,7 +2234,6 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                // 【为什么必须与「没有要修改的字段」分开】
                 // 两者都会导致 Success = false，但原因完全不同：一个是请求本身坏了
                 // （调用方拼错、协议错配），一个是请求合法但什么都没填（UI 缺陷）。
                 // 混成一句「没有要修改的字段」，排障的人会去查 UI 表单，
@@ -2365,7 +2336,6 @@ namespace Zentwik.Worker
         /// <summary>
         /// 失败路径上的快照兜底：读得到就序列化，读不到就回 null。
         ///
-        /// 【为什么把「降级快照」也当读不到】
         /// 降级快照（<c>ActiveSchemeGuid == Guid.Empty</c>）表达的是「连方案都没有」。
         /// 把它回给 UI 等于用一份「五项全不支持」的数据去覆盖界面 ——
         /// 而此刻系统里的值其实已经改了，只是读不回来。
@@ -2421,11 +2391,9 @@ namespace Zentwik.Worker
         /// <summary>
         /// 应用调校。
         ///
-        /// 【Payload 约定（本轮定案，未改 PipeResponse 字段类型）】
         /// · 空 / null：按当前 <c>tuning.json</c> 应用。UI 先写盘，再发空 Payload。
         /// · 非空：方案 Id，走 <see cref="RunApplyTuningByIdAsync"/> 按方案应用。
         ///
-        /// 【为什么状态要放进 Payload】
         /// <see cref="TuningApplyOutcome.Skipped"/> 与「写入失败」都是 <c>Success = false</c>，
         /// 只靠 Success 无法区分。PipeResponse 现有四个字段里，Payload 是唯一留给
         /// 命令自定义的位置；用一个状态字（applied / skipped / failed）即可，
@@ -2441,7 +2409,6 @@ namespace Zentwik.Worker
                 // ApplyFromStore 内部可能阻塞到 60 秒（WaitForAvailability），
                 // 与 schtasks 同理必须离开接受循环线程，否则整条管道连 ping 都进不来。
                 //
-                // 【为什么先 Load 一次】
                 // TuningStore 把 Profile 缓存在内存里，Worker 启动时 Load 过一份。
                 // UI 之后写的 tuning.json 不会自动进这个缓存 —— 不重读就会出现
                 // 「界面上改了、点了应用、硬件没变」。读盘很便宜，放在这里最稳。
@@ -2615,7 +2582,6 @@ namespace Zentwik.Worker
         /// <summary>
         /// 读一行，硬上限 <see cref="WorkerPipeContract.MaxMessageBytes"/>（512 KB）。
         ///
-        /// 【为什么不用 StreamReader.ReadLineAsync】
         /// 它没有长度上限：对端持续发送而不换行，内存会一直涨。
         /// 本协议只承载控制指令，超限即协议错误，不该当成「大消息」去容忍。
         /// </summary>

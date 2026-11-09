@@ -264,7 +264,7 @@
                                    FontSize="11"
                                    TextAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Text="// ZMotu"
+                        <TextBlock Text="// Zentwik"
                                    Margin="0,2,0,0"
                                    FontFamily="{DynamicResource AppCommentFontFamily}"
                                    FontSize="11"

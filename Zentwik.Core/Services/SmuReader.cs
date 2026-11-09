@@ -37,7 +37,6 @@ namespace Zentwik.Core.Services
         ///   而 ZenStates-Core 内部的 PCI 总线互斥只在单个方法调用期间生效。
         ///   并发进入会互相踩踏总线，导致回读校验读到写了一半的状态。
         ///
-        /// 【为什么是 static】
         ///   SMU 邮箱是进程级硬件资源，不是实例级资源。即便容器保证了单实例，
         ///   这把锁也不该随对象走：将来若出现第二个访问通道（诊断工具、独立进程内嵌），
         ///   实例锁会让两者各持一把，等于没有互斥——页面探测与后台写入同时碰同一个
@@ -307,7 +306,7 @@ namespace Zentwik.Core.Services
                 // ---------- 2. 每核 Curve Optimizer 当前值 ----------
                 uint coresPerCcd = cpu.info.topology.coresPerCcx;
                 if (coresPerCcd == 0)
-                    coresPerCcd = 8; // GraniteRidge（9955HX / Fire Range）为 1 CCX × 8 核 per CCD
+                    coresPerCcd = 8; // 取不到拓扑时按 8 核每 CCD 兜底
 
                 int coreCount = (int)cpu.info.topology.physicalCores;
                 snapshot.CoreMargins = new int[coreCount];

@@ -3,12 +3,10 @@ namespace Zentwik.Core.Helpers
     /// <summary>
     /// 关闭主窗口时的行为。对应事实卡 §7.3 组二（B1 / B2 / B3）。
     ///
-    /// 【为什么这个枚举在 Core 而不是 UI】
     /// 它要落进 ui.json（<see cref="UiSettings.CloseBehavior"/>），而 ui.json 走
     /// <c>AppJsonContext</c> 的源生成序列化 —— 那个上下文在 Core 里，Core 不能引用 UI。
     /// 放在 UI 侧就只能退化成「存字符串再解析」，那等于把类型安全换成一次运行时 switch。
     ///
-    /// 【为什么三个值就是全部】
     /// 这三个值对应「点 X 之后还剩什么」的三种可能结局：
     ///   什么都不剩（Exit）/ 剩托盘和进程（Tray）/ 只剩后台服务（WorkerOnly）。
     /// 再细分下去都是这三者的组合，组合本身属于「开机自启形态」的问题，
@@ -29,7 +27,6 @@ namespace Zentwik.Core.Helpers
     /// <summary>
     /// 一次关闭动作的判定结果。
     ///
-    /// 【为什么要一个结构而不是在 OnClosing 里写 switch】
     /// 「能不能关」「要不要 Shutdown」「要不要清 MainWindow」是三件互相独立的事，
     /// 而 WPF 的 Closing 事件里一旦写错顺序（比如先 Shutdown 再置空 MainWindow），
     /// 表现是「关掉窗口后进程还在」或「托盘点开弹出两个窗口」这类只能靠手工发现的故障。
@@ -51,12 +48,10 @@ namespace Zentwik.Core.Helpers
     /// <summary>
     /// 关闭行为的判定规则。纯函数，不碰任何 WPF 类型，因此可以被单元测试直接驱动。
     ///
-    /// 【Exit 与 WorkerOnly 在这里的判定完全相同，日志却必须分开写】
     /// 两者都是「窗口关掉、UI 进程退出」，差别只在 <c>App.OnExit</c> 里要不要
     /// 给 Worker 发 shutdown。如果日志都写成「已退出」，用户排障时无法区分
     /// 「后台被我关了」和「后台还在跑」—— 而这正是这两个选项存在的唯一意义。
     ///
-    /// 【还有一个同名陷阱】
     /// <see cref="AutoStartMode.WorkerOnly"/>（开机只拉后台，不拉界面）与
     /// <see cref="CloseBehavior.WorkerOnly"/>（关窗口只留后台）是**两个不同维度**的设置。
     /// 日志里必须写清是哪一个，否则同一句「WorkerOnly」会指向两件不相干的事。

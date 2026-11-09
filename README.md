@@ -25,7 +25,7 @@ dotnet build Zentwik.slnx -c Release                    # Core / Worker / Tests
 dotnet build Zentwik.UI/Zentwik.UI.csproj -c Release   # 界面（不在 slnx 里）
 ```
 
-两个可执行工程的 `OutputPath` 都指向 `D:\Zentwik-App\`（Release 平铺为安装目录，Debug 落子目录），必须保持同目录，否则 Worker 会拉到别处的旧界面。
+两个可执行工程的 `OutputPath` 指向同一输出目录（Release 平铺为安装目录，Debug 落子目录），必须保持同目录，否则 Worker 会拉到别处的旧界面。
 
 推送 `v*` tag 会触发 `.github/workflows/release.yml`：UI 走框架依赖 + 单文件 + R2R（WPF 不支持 AOT），Worker 走 **Native AOT**（原生 exe，不依赖 .NET 运行时），两端装进同一目录后打成一个 zip 附到 Release。打包前会校验 AOT 产物形态（不存在托管 dll / runtimeconfig.json）。`aot-probe.yml` 独立跑两条 AOT 门禁：Core 探针（编译 + 运行）与 Worker（编译 + 链接，`-warnaserror`）。
 
@@ -53,7 +53,6 @@ Zentwik.UI.exe --perf               # 10 秒静置 CPU / 内存
 | `libs/` | ZenStates-Core 原生依赖 |
 | `tools/` | XAML 静态检查脚本 |
 | `.github/workflows/` | 发布与 AOT 门禁 |
-| `UI_Contract.md` | 前后端接口契约存档 |
 | `CHANGELOG.md` | 更新日志 |
 
 见 [CHANGELOG.md](CHANGELOG.md)。

@@ -7,7 +7,6 @@ namespace Zentwik.Core.Ipc
     /// 全部集中在这里 —— 两端各写一份字面量，改名时必然漏掉一处，
     /// 表现为「UI 一直显示未连接」这种没有任何报错的故障。
     ///
-    /// 【协议形态】
     /// UTF-8 无 BOM 的单行 JSON：一条消息 = 一行，以 <c>\n</c> 结尾。
     /// 单行而不是定长帧：管道是字节流，没有消息边界，靠换行切分是最省事的边界定义，
     /// 代价是消息体里不能出现裸换行 —— JSON 序列化会把换行转义成 <c>\n</c>，天然满足。
@@ -15,66 +14,17 @@ namespace Zentwik.Core.Ipc
     public static class WorkerPipeContract
     {
         /// <summary>
-        /// 协议版本。任一端收到不匹配的版本必须拒绝而不是猜测兼容性：
-        /// UI 与 Worker 是两个独立部署的 exe，用户目录里出现新旧混搭是常态。
+        /// 协议版本。任一端收到不匹配的版本必须拒绝，不做兼容降级 ——
+        /// UI 与 Worker 同一次发布产出、装进同一目录，版本不一致只可能被手工替换，
+        /// 此时按旧字段猜语义，等于让一个不确定的进程去写 SMU。
         ///
-        /// 【版本协商规则只有两条，没有第三条】
-        ///   1. <c>received == ProtocolVersion</c>：正常处理该请求 / 响应。
-        ///   2. <c>received != ProtocolVersion</c>（含字段缺失被反序列化成 0、含任意非法值）：
-        ///      一律返回 <see cref="PipeResponse"/> 且 <c>Success = false</c>、
-        ///      <c>Message = </c><see cref="VersionMismatchMessage"/>，
-        ///      **不做任何兼容降级**。
-        ///
-        /// 【为什么不降级】
-        /// 版本号的作用是检测「文件混用 / 被替换 / 篡改」，不是向后兼容。
-        /// 本项目没有远程服务端，UI 与 Worker 由同一次发布产出、装进同一个目录；
-        /// 出现版本不一致只可能是用户手工替换了其中一个 exe。
-        /// 此时继续按旧字段猜测语义，等于让一个不确定的进程去写 SMU —— 宁可直接失败。
-        ///
-        /// 两端都必须调用 <see cref="ValidateVersion"/> 判断，不得自己比较整数：
-        /// 文案与失败响应形状集中在这里，才不会出现「UI 提示重装、Worker 只说 invalid」。
+        /// 任何新增 / 修改 / 删除命令都必须递增版本号：不递增的后果一律是静默错误
+        /// （旧 Worker 忽略不认识的字段照样回 Success，界面以为已经写成功）。
+        /// 版本历史：1 初始 ｜ 2 电源策略 DC 字段 ｜ 3 电源方案增删改 ｜ 4 query-masks ｜
+        /// 5 掩码与场景命令（删 apply-process-priority）｜ 6 clear-logs ｜ 7 场景三动作 ｜
+        /// 8 ProcessExited 触发源 ｜ 9 方案拆三类 ｜ 10 界面设置读写与 factory-reset。
+        /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        /// <remarks>
-        /// 【版本历史】
-        ///   1 —— 初始版本。
-        ///   2 —— 电源策略增加 DC（电池）一套字段与 <c>query-power-schemes</c> /
-        ///        <c>set-active-scheme</c> 两条命令。
-        ///        不递增的后果是静默错误：旧 Worker 会忽略它不认识的 <c>dc*</c> 字段、
-        ///        照样回 Success，用户以为改好了电池策略，实际一项都没写。
-        ///   3 —— 电源方案增加 <c>create-power-scheme</c> / <c>rename-power-scheme</c> /
-        ///        <c>delete-power-scheme</c>。旧 Worker 会把这些命令落到「未知命令」，
-        ///        但版本一致时新版 UI 会以为「新建失败是系统拒绝」，看不出真实原因。
-        ///   4 —— 进程页增加 <c>query-masks</c>。旧 Worker 回「未知命令」，
-        ///        界面表现为「自定义掩码一条都没有」，用户会以为掩码被清空了。
-        ///   5 —— 掩码增加 <c>save-mask</c> / <c>delete-mask</c> / <c>query-cpu-topology</c>，
-        ///        场景增加 <c>query-scenario-state</c> / <c>set-scenario-enabled</c>；
-        ///        同时删除从未被界面使用的 <c>apply-process-priority</c>。
-        ///        旧 Worker 对前五条一律回「未知命令」：掩码存不进去、总闸拨不动，
-        ///        而界面会把这些当成业务拒绝，看不出是版本问题。
-        ///   6 —— 日志页增加 <c>snapshot-logs</c> 的配套写命令 <c>clear-logs</c>。
-        ///        不递增的后果是「点了清空、刷新后日志全回来」：旧 Worker 回未知命令，
-        ///        界面只清了自己那份缓存，后台缓冲原封不动。
-        ///   7 —— 场景规则从「单一 profileId」扩成三个独立动作
-        ///        （<c>profileId</c> / <c>maskId</c> / <c>powerSchemeId</c>）。
-        ///        旧 Worker 会忽略 <c>maskId</c> / <c>powerSchemeId</c> 并存下一条只有调校的规则，
-        ///        用户看到的是「调度和电源明明选了，命中后却没生效」。
-        ///   8 —— 场景触发源增加 <c>ProcessExited</c>（进程退出）。
-        ///        旧 Worker 反序列化不认识的枚举名会整条请求失败，或者更糟：
-        ///        退回默认值 <c>ProcessRunning</c>，把「退出时切回平衡」变成
-        ///        「进程一跑就切平衡」—— 语义完全相反，且没有任何报错。
-        ///   9 —— 方案拆成三类独立列表（调校 / 调度 / 电源）。
-        ///        旧的 <c>query-profiles</c> / <c>create-profile</c> / <c>rename-profile</c> /
-        ///        <c>delete-profile</c> / <c>save-profile-tuning</c> 下线，换成
-        ///        <c>query-plans</c> / <c>save-plan</c> / <c>delete-plan</c> /
-        ///        <c>rename-plan</c> / <c>apply-plan</c>（都带 <c>kind</c>）。
-        ///        **不能兼容**：旧 Worker 收到 <c>query-plans</c> 只会回「未知命令」，
-        ///        用户看到的是方案列表永远空着、点新建没反应。
-        ///   10 —— 界面设置可读写（<c>query-ui-settings</c> / <c>save-ui-settings</c>），
-        ///        新增 <c>reset-tuning-safe</c>（恢复默认安全参数）与
-        ///        <c>factory-reset</c>（清除全部用户数据）。
-        ///        在此之前行为页的三个开关只改界面自己的文件，Worker 那份 <c>ui.json</c>
-        ///        从未被写过 —— 用户看到的是「开关拨了、后台该干的事一件没变」。
-        /// </remarks>
         public const int ProtocolVersion = 10;
 
         /// <summary>
@@ -83,17 +33,10 @@ namespace Zentwik.Core.Ipc
         public const string VersionMismatchMessage = "UI 与 Worker 版本不一致，请重新安装";
 
         /// <summary>
-        /// 单条消息上限（512 KB）。超过即视为协议错误，而不是「大消息」——
-        /// 无上限读取等于把对端的内存安全交给对端的实现质量。
-        ///
-        /// 【为什么从 64 KB 提到 512 KB】
-        /// 进程列表与日志快照是**批量**响应：几百个进程、或几十条带路径的日志行，
-        /// 64 KB 会稳定超限，界面直接报「响应超过单条上限」。512 KB 足够容纳
-        /// 千级进程条目 + 50 条日志，同时仍是一个能兜住实现缺陷的硬上限。
-        ///
-        /// 【跨版本注意】旧版 Worker 仍按 64 KB 判定，新版 UI 连旧 Worker 时
-        /// 大响应会被对端拒绝。部署上要求两端同版本安装包；若用户在升级中途遇到，
-        /// 提示「请重启后台服务」即可（重启后加载的是新版 Worker）。
+        /// 单条消息上限（512 KB）。超过即视为协议错误 —— 无上限读取等于把对端的内存
+        /// 安全交给对端的实现质量。进程列表与日志快照是批量响应（几百个进程、
+        /// 几十条带路径的日志行），64 KB 会稳定超限；512 KB 够用且仍能兜住实现缺陷。
+        /// 旧版 Worker 仍按 64 KB 判定，连旧 Worker 时大响应会被拒绝：两端须同版本安装。
         /// </summary>
         public const int MaxMessageBytes = 512 * 1024;
 
@@ -125,7 +68,6 @@ namespace Zentwik.Core.Ipc
         /// 旧版 UI 就是这么发的（任务固定带 <c>--open-ui</c>），保留这条是为了让
         /// 升级中途的新旧混搭不至于把用户的自启静默关掉。
         ///
-        /// 【为什么是裸字符串而不是 JSON】
         /// Payload 本身就是 <c>string?</c>，一个枚举名不需要再套一层
         /// <c>{"mode":"..."}</c>；而且裸字符串让 <c>JsonStringEnumConverter</c> 完全不必参与
         /// 协议层 —— 那个转换器管的是 ui.json 的落盘形状，与管道无关。
@@ -153,12 +95,10 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 表示已发起拉起（**不表示** UI 已完成启动）；
         /// <c>false</c> 表示当前组合下 Worker 不负责拉 UI，或 UI 可执行文件缺失。
         ///
-        /// 【只在两种组合下由 Worker 主动拉 UI】
         ///   · 开机自启 = 启动 Worker + 启动 UI 窗口；
         ///   · 开机自启 = 启动 Worker + 托盘常驻（托盘交互负责再唤起窗口）。
         /// 其余组合（自启关闭、自启仅启动 UI、用户手动启动）Worker 一律不主动拉 UI。
         ///
-        /// 【为什么要把这条写死】
         /// Worker 的职责是常驻并写 SMU，不是第二个启动器。在不该拉的组合里拉了，
         /// 用户看到的现象是「已经关掉的程序自己又弹出来」—— 这类故障无法从日志归因，
         /// 只能靠契约提前排除。
@@ -189,7 +129,6 @@ namespace Zentwik.Core.Ipc
         /// <c>Payload</c> = JSON <c>{"available":bool,"error":string?}</c>，
         /// <c>error</c> 是 <c>ISmuReader.LastError</c> 原文，可用时为 null。
         ///
-        /// 【为什么不直接用 Success 表达可用性】
         /// 「查询失败」与「查到了，SMU 不可用」是两件事：前者 UI 要显示「无法检测」，
         /// 后者要显示「不可用 + 原因」。混进 Success 会让这两种状态再次不可区分。
         /// </summary>
@@ -203,7 +142,6 @@ namespace Zentwik.Core.Ipc
         /// <c>{"coreMargins":int[],"fmaxMhz":uint,"error":string?}</c>；
         /// <c>Success = false</c> 时 <c>Message</c> 为读取失败原因，<c>Payload</c> 为 null。
         ///
-        /// 【与 query-smu-status 的分工】
         /// status 只回答「能不能写」（IsAvailable / LastError，不触发探测）；
         /// snapshot 才去真正读一次硬件。两者分开，是为了让界面能在不碰硬件的前提下
         /// 显示可用性，也让「刷新」这个动作的代价（一次完整探测）显式可见。
@@ -217,7 +155,6 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Payload</c> = JSON <c>{"activeId":string?,"plans":[...]}</c>
         /// （<see cref="PlanListPayload"/>）。
         ///
-        /// 【为什么按类别分开查】
         /// 三页各管各的方案。合成一次查询会让「切了调校方案，进程页的方案条也跟着变」，
         /// 而用户要的正是「改一块不影响另外两块」。
         /// </summary>
@@ -231,11 +168,9 @@ namespace Zentwik.Core.Ipc
         /// （<see cref="SavePlanPayload"/>）。<c>id</c> 为空 = 新建。
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = 新方案的 Id。
         ///
-        /// 【调校值要传，调度规则不传】
         /// 调校页的值可能还没应用，必须由界面送上来；调度方案的内容就是当前全局规则集，
         /// Worker 自己抓一份即可 —— 让 UI 把几十条规则序列化再送回来只会多一个不同步的机会。
         ///
-        /// 【电源方案的 powerSchemeGuid 是可选的】
         /// 它只表达「应用时是否顺手切到某份系统计划」，不是方案的载体。
         /// 参数存在 <c>powerPolicy</c> 快照里；不传 GUID 就不切换系统方案，
         /// 更不会为了存一份软件方案去派生新的 Windows 电源计划。
@@ -263,7 +198,6 @@ namespace Zentwik.Core.Ipc
         ///
         /// 参数：<c>Payload</c> = JSON <c>{"kind":...,"id":"..."}</c>（<see cref="PlanRefPayload"/>）。
         ///
-        /// 【只写自己那一块】
         /// 调校方案只写 TuningStore 并下发 SMU；调度方案只写 SchedulingStore 并触发重扫；
         /// 电源方案只调 <c>PowerSetActiveScheme</c>。合并式方案的「切一次写三处」
         /// 正是「改一个地方，另外两处跟着变」的来源。
@@ -278,7 +212,6 @@ namespace Zentwik.Core.Ipc
         /// <c>[{pid,name,path,cpu,priority,matchedRuleName?}, ...]</c>
         /// （<see cref="ProcessEntryPayload"/>）。
         ///
-        /// 【matchedRuleName 由 Worker 算】
         /// 匹配用的是 <c>ProcessWatcher.Matches</c> —— 与真正下发调度时**同一份**逻辑
         /// （含 Enabled=false 跳过、Target=None 跳过、去空格、忽略大小写）。
         /// 让 UI 自己再实现一遍，两处规则迟早会漂，界面显示的和实际生效的就会不一致。
@@ -313,7 +246,6 @@ namespace Zentwik.Core.Ipc
         ///
         /// 参数：<c>Payload = null</c>。返回：<c>Success = true</c> 表示已清空。
         ///
-        /// 【为什么清空必须走后台】
         /// 日志的主副本在 Worker 的 <c>LogService</c> 里（内存环形缓冲 + 按天落盘）。
         /// 界面自己把列表清掉，下一次 <c>snapshot-logs</c> 会把同样的条目再拉回来 ——
         /// 用户看到的是「清空按钮没用」，而这不会报任何错。
@@ -334,7 +266,6 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 表示已写入 <c>schedules.json</c> 并触发一次重扫。
         /// 同名规则（进程名，忽略大小写）视为覆盖，不产生第二条。
         ///
-        /// 【为什么由 Worker 写而不是 UI 直接改文件】
         /// <c>schedules.json</c> 的主副本在 <c>SchedulingStore</c> 的内存里，且后台监听每轮
         /// <c>Reload()</c> 都会重读盘。UI 直接写文件会让「内存 → 盘」和「盘 → 内存」
         /// 两个方向打架，表现为规则偶发丢失。走 IPC 则写入与重扫是同一个动作的两半。
@@ -348,12 +279,10 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 表示已删除并触发一次重扫；
         /// <c>false</c> 时 <c>Message</c> 说明「规则不存在」。
         ///
-        /// 【为什么从「传进程名」改成「传 Id」】
         /// 按名字删只在「用户不会改名字」的前提下成立。规则编辑一旦支持改进程名，
         /// 界面上那一行的身份就变了：按旧名字删会失败，按新名字删又可能命中另一条。
         /// Id 把「这条记录是谁」与「它绑哪个进程」分开，改名不影响删除。
         ///
-        /// 【仍然接受进程名的原因（向后兼容）】
         /// 旧版 UI 发的是名字。升级途中新旧两个 exe 混搭是常态，把旧写法直接判错，
         /// 表现就是「点了删除、规则还在、只弹一句协议错误」。Worker 先按 Id 精确匹配，
         /// 匹配不到再退回按进程名匹配（忽略大小写与首尾空白）。
@@ -370,7 +299,6 @@ namespace Zentwik.Core.Ipc
         /// <c>[{id,processName,targetType,targetValue,priority,enabled,path}, ...]</c>
         /// （<see cref="ScheduleRulePayload"/>，格式约定见该类注释）。
         ///
-        /// 【为什么读内存而不重读盘】
         /// <c>schedules.json</c> 的唯一写入方是本进程（save / delete 都立刻写盘并更新内存），
         /// 每次查询都 <c>Load()</c> 只是白做一次 IO，还会在文件被外部改坏时
         /// 把内存里的正确状态覆盖成空表。
@@ -385,7 +313,6 @@ namespace Zentwik.Core.Ipc
         /// <c>{"masks":[{id,name,mask,coreCount}, ...], "limit":10}</c>
         /// （<see cref="MaskListPayload"/>）。
         ///
-        /// 【为什么界面需要这条】
         /// <c>save-scheduling-rule</c> 的 <c>targetType=mask</c> 要求传掩码 **Id**，
         /// 而 Id 只有持有 <c>masks.json</c> 的这一侧知道。界面拿不到列表，
         /// 那个下拉就只能列「CCD0 / CCD1 / 全部核心」，用户存过的掩码一条也选不到。
@@ -402,7 +329,6 @@ namespace Zentwik.Core.Ipc
         /// （掩码管理器保存后要立刻显示新列表，省一次往返）。
         /// 失败时 <c>Message</c> 说明是「名称为空 / 超长」「重名」还是「已达 10 套上限」。
         ///
-        /// 【为什么校验在 Worker 而不是界面】
         /// 重名与套数上限是 <c>masks.json</c> 的约束，不是界面的约束。
         /// 界面自己判一遍只是提前提示，真正的关卡必须在持有唯一主副本的这一侧 ——
         /// 否则绕过界面（以后的导入 / 迁移）就能写进第十一套。
@@ -416,7 +342,6 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = 删除后的 <see cref="MaskListPayload"/>；
         /// <c>false</c> 时 <c>Message</c> 说明「掩码不存在」。
         ///
-        /// 【删除不会动已绑定的规则】
         /// <c>schedules.json</c> 里的规则存的是掩码**值**的快照，掩码删掉之后
         /// 那条规则仍然按快照生效。这是刻意的：删一套掩码不该顺手把用户的绑核规则废掉。
         /// 但该规则在界面上的掩码名会退回数字区间 —— 名字已经不存在了。
@@ -431,7 +356,6 @@ namespace Zentwik.Core.Ipc
         /// <c>{"cores":16,"coresPerCcd":8,"threadsPerCore":2}</c>
         /// （<see cref="CpuTopologyPayload"/>）。
         ///
-        /// 【为什么不让界面写死 16 核】
         /// 掩码是「位 i = 逻辑处理器 i」，位数直接来自拓扑。界面按 16 核画格子，
         /// 在 8 核机器上会画出不存在的核 —— 勾上就是一次写不进去的保存。
         /// </summary>
@@ -445,7 +369,6 @@ namespace Zentwik.Core.Ipc
         /// <c>[{id,trigger,argument,profileId,priority,enabled}, ...]</c>
         /// （<see cref="ScenarioRulePayload"/>）。<c>trigger</c> 是枚举**名称**。
         ///
-        /// 【不含总闸】
         /// 场景自动切换的总闸（<c>ScenarioFile.Enabled</c>）不在这条命令的返回里：
         /// 它是「功能开没开」，与「有哪些规则」是两个问题。混进数组会让 UI 分不清
         /// 「没有规则」和「有规则但总闸关着」。
@@ -467,7 +390,6 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = false</c> 时 <c>Message</c> 说明「方案 / 掩码不存在」
         /// 「规则不存在」或「进程类触发缺少 argument」。
         ///
-        /// 【为什么校验三个目标都存在】
         /// 存一条指向不存在目标的规则，等于让它命中时静默少做一件事 ——
         /// 用户看到的是「场景切了但没反应」，而日志里只有一句「目标不存在」。
         /// </summary>
@@ -488,7 +410,6 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = JSON <c>{"enabled":bool}</c>
         /// （<see cref="ScenarioStatePayload"/>）。
         ///
-        /// 【为什么要单独一条，而不是并进 query-scenario-rules】
         /// 总闸是「功能开没开」，规则是「有哪些规则」。并进数组的返回体里，
         /// 界面就得从同一个对象上读出两件事，而其中一件在规则为零时恰恰最重要 ——
         /// 「一条规则都没有」和「有规则但总闸关着」是两种完全不同的处置。
@@ -501,7 +422,6 @@ namespace Zentwik.Core.Ipc
         /// 参数：<c>Payload</c> = JSON <c>{"enabled":true}</c>（<see cref="ScenarioStatePayload"/>）。
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = 写入后的状态。
         ///
-        /// 【为什么总闸必须由 Worker 写】
         /// 它落在 <c>scenarios.json</c> 的 <c>enabled</c> 字段，而 Worker 的
         /// <see cref="Services.ScenarioMonitor"/> 依据它决定要不要订阅进程 / 电源事件。
         /// 界面直接改文件，监听线程要等到下一次规则变更才会重新对齐 ——
@@ -516,14 +436,12 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 表示**查询本身**成功，
         /// <c>Payload</c> = JSON <see cref="Services.PowerPolicySnapshot"/>。
         ///
-        /// 【为什么读不到方案也算 Success = true】
         /// 「查询失败」与「查到了，但这台机器现在没有可用方案」是两件事。
         /// 后者是有效信息：界面据此把五项都画成「不可用」并显示原因。
         /// 把它判成失败会让 UI 走错误分支，弹一句「查询电源策略失败」，
         /// 而真正该显示的是「无法获取当前电源方案」以及为什么。
         /// 这与 query-smu-status 的口径一致（Success 表达查询本身，不表达目标可用性）。
         ///
-        /// 【每项都带 Supported / Error】
         /// 这五项不是每台机器都有（台式机常缺 ASPM，部分主板不暴露 Boost 档位）。
         /// 只回值的话，「读到 0」与「读不到」在界面上无法区分，详见
         /// <see cref="Services.PowerPolicySnapshot"/> 的类注释。
@@ -547,13 +465,11 @@ namespace Zentwik.Core.Ipc
         ///   · <c>Success = false</c> + 逐项错误：范围校验不通过、或 API 返回非 0
         ///     （含错误码，例如主板不接受某个 Boost 档位）。
         ///
-        /// 【为什么写完要重新激活一次】
         /// <c>PowerWriteACValueIndex</c> 只改方案里的存储值，系统不会立刻按新值调度。
         /// 必须对同一方案再调 <c>PowerSetActiveScheme</c>，电源管理器才会重新加载。
         /// 少了这一步的表现是「界面显示已改、实际功耗没变、重启后才生效」——
         /// 用户会认为程序没保存。
         ///
-        /// 【为什么一项失败不影响其他项】
         /// 用户一次可能改了五个滑块，其中一项本机不支持。整体回滚没有意义
         /// （已经写进去的项也没有「原值」可回），全部放弃又等于什么都没做。
         /// 所以逐项写、逐项报，最后把失败项的原因合起来回传。
@@ -566,7 +482,6 @@ namespace Zentwik.Core.Ipc
         /// 参数：无（<c>Payload</c> 忽略）。
         /// 返回：<c>Success = true</c>，<c>Payload</c> = JSON <see cref="PowerSchemeListPayload"/>。
         ///
-        /// 【为什么必须由 Worker 提供，UI 不能写死】
         /// 方案 GUID 随机器而变：只有「平衡 / 高性能 / 节能」三个是 Windows 内置的，
         /// 「卓越性能」默认隐藏、需要手动开启，OEM 还会预置自己的方案。
         /// UI 里写死四个 GUID 的结果是：点到一个本机不存在的方案，系统返回失败，
@@ -580,7 +495,6 @@ namespace Zentwik.Core.Ipc
         /// 参数：<c>Payload</c> = 方案 GUID 的字符串形式（<c>D</c> 格式）。
         /// 返回：<c>Success = false</c> 时 <c>Message</c> 说明是格式错还是系统拒绝。
         ///
-        /// 【为什么切换方案与改值是两条命令】
         /// 改值只动当前活动方案里的存储项；切换方案换的是「哪一份方案生效」。
         /// 合成一条会让「只想切方案」的调用也必须带一份改值请求，
         /// 而改值请求一旦为空又会触发「没有要修改的字段」。
@@ -597,12 +511,10 @@ namespace Zentwik.Core.Ipc
         /// （含新方案的 GUID 与新的活动方案），UI 不必再查一次。
         /// 失败时 <c>Message</c> 说明是名字不合法、模板不存在，还是系统拒绝了复制。
         ///
-        /// 【为什么模板可以是「内置预设」而这个预设未必在方案列表里】
         /// 四个内置方案的模板键一直在注册表里，哪怕对应方案已被删除、或从未在界面出现过
         /// （卓越性能默认隐藏，节能与高性能在新版 Windows 里被移除了入口）。
         /// 实测四个 GUID 都能成功派生，因此不需要「先启用再新建」的中间步骤。
         ///
-        /// 【为什么派生而不是自己造一套参数】
         /// 一个方案有几十项设置，本工具只负责其中五项。凭空造出来的方案，
         /// 剩下几十项落在什么值上取决于系统默认，得不到「节能」「高性能」应有的完整行为。
         /// </summary>
@@ -626,12 +538,10 @@ namespace Zentwik.Core.Ipc
         /// 参数：<c>Payload</c> = 方案 GUID 的字符串形式（<c>D</c> 格式）。
         /// 返回：<c>Success = true</c> + 刷新后的 <see cref="PowerSchemeListPayload"/>。
         ///
-        /// 【内置方案一律拒绝删除】
         /// 删掉之后系统里再也没有对应模式的模板，用户无法通过「新建」把它找回来 ——
         /// 只能重装系统或用 <c>powercfg -restoredefaultschemes</c> 重置全部电源设置。
         /// 这种不可逆的破坏不该由一个「删除」按钮承担。
         ///
-        /// 【删除活动方案之后活动方案是谁，我们说了不算】
         /// 系统会自行回落到别的方案。因此响应里必须带回重新枚举的列表与活动 GUID，
         /// 而不是让 UI 自己猜「大概切到了第一个」。
         /// </summary>
@@ -643,7 +553,6 @@ namespace Zentwik.Core.Ipc
         /// 参数：<c>Payload = null</c>。
         /// 返回：<c>Payload</c> = JSON <see cref="UiSettingsPayload"/>（全字段有值）。
         ///
-        /// 【为什么设置的主副本在 Worker】
         /// <c>ui.json</c> 的三个后台开关由 Worker 消费（启动时应用调校、进程监听）。
         /// 界面各存一份的结果是两边永远不同步 —— 用户在界面上关掉「监听进程」，
         /// 后台仍按旧值继续调度。
@@ -656,7 +565,6 @@ namespace Zentwik.Core.Ipc
         /// 参数：<c>Payload</c> = JSON <see cref="UiSettingsPayload"/>。
         /// 返回：<c>Payload</c> = 写入后的全量设置，界面据此回显。
         ///
-        /// 【写盘失败回 false，但内存不回滚】
         /// 回滚内存会让「界面显示已关、后台还在跑」重现；把失败原因原样回给界面，
         /// 用户至少知道这次没保存成功，可以重试。
         /// </summary>
@@ -678,7 +586,6 @@ namespace Zentwik.Core.Ipc
         /// 返回：<c>Success = true</c> 表示已删除并重置；<c>false</c> 时 <c>Message</c>
         /// 说明卡在哪一步。
         ///
-        /// 【为什么必须由 Worker 做】
         /// 这些文件的主副本都在 Worker 的内存里（各自 store 缓存）。界面直接删文件，
         /// 下一次保存会把内存里的旧内容整份写回去 —— 用户看到「清了又回来」。
         /// </summary>

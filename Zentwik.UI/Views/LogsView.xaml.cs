@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Zentwik.UI.Services;
 using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
@@ -31,23 +32,10 @@ public partial class LogsView : UserControl
     /// </summary>
     private void OnSurfacePreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (IsInsideTextBox(e.OriginalSource as DependencyObject))
+        if (VisualTreeAssist.IsInsideTextBox(e.OriginalSource as DependencyObject))
             return;
 
         Keyboard.ClearFocus();
-    }
-
-    private static bool IsInsideTextBox(DependencyObject? source)
-    {
-        while (source is not null)
-        {
-            if (source is TextBox)
-                return true;
-
-            source = VisualTreeHelper.GetParent(source);
-        }
-
-        return false;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

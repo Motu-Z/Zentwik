@@ -15,7 +15,6 @@ namespace Zentwik.Tests
     /// <summary>
     /// apply-tuning 分派的三态映射（applied / skipped / failed）。
     ///
-    /// 【为什么不 mock TuningApplyService】
     /// 它是具体类、<c>ApplyFromStore</c> 不是 virtual，没有可替换的接口。
     /// 这里用真实的 TuningApplyService + 四个 Fake 依赖驱动，比 mock 更贴近实际：
     /// 尤其「PawnIO 未就绪」这条路径，它返回的是**失败**而不是 Skipped ——
@@ -843,7 +842,6 @@ namespace Zentwik.Tests
         /// <summary>
         /// 三种目标形态的编码约定：ccd 给索引数字、mask 给掩码值、none 给空串。
         ///
-        /// 【为什么这条必须钉住】
         /// UI 侧按 targetType 决定用 int.Parse 还是 ulong.Parse。编码一变，
         /// UI 那边是**运行时异常**而不是编译错误 —— 列表页会直接崩在解析上。
         /// </summary>
@@ -1097,7 +1095,6 @@ namespace Zentwik.Tests
         /// <summary>
         /// 按进程名覆盖时必须保留原 Id。
         ///
-        /// 【为什么这条是关键】
         /// Id 是「这条记录是谁」。保存一次就换一个 Id，界面刚拿到的 Id 立刻失效，
         /// 下一次按 Id 删除会 404 —— 表现是「删了没反应，刷新一下规则还在」。
         /// </summary>

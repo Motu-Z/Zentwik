@@ -9,13 +9,13 @@ namespace Zentwik.UI.Services;
 /// </summary>
 public static class CpuInfo
 {
-    private const string Fallback = "AMD Ryzen 9 9955HX";
+    private const string Fallback = "Unknown CPU";
 
     /// <summary>注册表里的原始串（ToolTip 用）。</summary>
     /// <remarks>声明顺序即在先：Name 由它派生，字段按声明顺序初始化。</remarks>
     public static string RawName { get; } = ReadRaw();
 
-    /// <summary>精简型号，例如 “AMD Ryzen 9 9950X”。</summary>
+    /// <summary>精简型号，例如 “AMD Ryzen 9 XXXX”。</summary>
     public static string Name { get; } = Shorten(RawName);
 
     private static string ReadRaw()
@@ -39,7 +39,7 @@ public static class CpuInfo
     }
 
     /// <summary>
-    /// “AMD Ryzen 9 9950X 16-Core Processor” → “AMD Ryzen 9 9950X”
+    /// “AMD Ryzen 9 XXXX 16-Core Processor” → “AMD Ryzen 9 XXXX”
     /// “... w/ Radeon Graphics” → 去掉核显尾巴
     /// </summary>
     private static string Shorten(string raw)

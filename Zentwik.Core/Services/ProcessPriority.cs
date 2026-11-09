@@ -26,7 +26,6 @@ namespace Zentwik.Core.Services
     /// <summary>
     /// 进程优先级的下发统一出口。
     ///
-    /// 【为什么必须收到一处】
     /// 之前有两份实现：
     ///   · Views/ProcessBindingPage.xaml.cs 里的 ApplyPriority(members, label)
     ///   · Services/ProcessWatcher.cs 里的 ApplyPriority(pid, label)
@@ -174,7 +173,6 @@ namespace Zentwik.Core.Services
 
         private static (bool Ok, int Code, string Error) ApplyOne(int pid, uint cls)
         {
-            // 【两种访问权都要】
             // 只有 SET_INFORMATION 时，OpenProcess 可能成功而 SetPriorityClass 报 5，
             // 原因是内核在判定「受保护进程」时需要查询权限（见类注释）。
             IntPtr handle = OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION,

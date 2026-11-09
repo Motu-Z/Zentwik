@@ -47,7 +47,6 @@ public static class LogoPaletteFactory
         var (h, s, l) = ColorMath.RgbToHsl(color.R, color.G, color.B);
 
         // 原色已经达标 → 直接用，不做任何改动。
-        // 【为什么不直接改色相或饱和度】
         // 图标的主体色就是「用户挑的那个强调色」。
         // 一旦改了色相，用户看到的图标就不是他选的颜色了 ——
         // 品牌识别被破坏，这正是之前方案难看的原因。
@@ -90,7 +89,6 @@ public static class LogoPaletteFactory
     /// 生成阴影色。
     /// </summary>
     /// <remarks>
-    /// 【关键设计决定：阴影保持同一色相，只压暗】
     /// 之前的做法把阴影层也映射到品牌色调色板里的另一个颜色，
     /// 结果阴影变成了「另一种颜色的色块」—— 那不是阴影，是拼贴。
     ///
@@ -140,14 +138,6 @@ public static class LogoPaletteFactory
         double lo = Math.Min(la, lb);
         return (hi + 0.05) / (lo + 0.05);
     }
-
-    /// <summary>线性亮度 → sRGB 字节值。</summary>
-    private static double ToSrgb(double linear)
-    {
-        if (linear <= 0.0031308) return linear * 12.92;
-        return 1.055 * Math.Pow(linear, 1 / 2.4) - 0.055;
-    }
-
 
     /// <summary>
     /// 托盘图标配色 —— 不跟随强调色，只跟随任务栏明暗。

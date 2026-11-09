@@ -5,17 +5,14 @@ namespace Zentwik.Core.Ipc
     /// <summary>
     /// <c>query-scheduling-rules</c> 的返回元素形状：一条调度规则的**只读投影**。
     ///
-    /// 【为什么不直接序列化 ScheduleRule】
     /// 它是落盘模型：有 <c>MaskId</c> / <c>MaskName</c> 这类只在 Worker 内部有意义的字段，
     /// 还有 <c>Label</c> 这种派生属性。直接把落盘模型当协议模型用，等于把
     /// schedules.json 的字段演进绑死到 IPC 上 —— 改一个存储字段就破坏一次协议。
     ///
-    /// 【targetType / targetValue 的格式约定（UI 侧按此解析）】
     ///   · <c>"ccd"</c>  → targetValue 是 CCD 索引的十进制字符串（"0" / "1"），UI 用 int.Parse；
     ///   · <c>"mask"</c> → targetValue 是掩码的十进制字符串（ulong，如 "65280"），UI 用 ulong.Parse；
     ///   · <c>"none"</c> → targetValue 为空串。
     ///
-    /// 【注意：这与 save-scheduling-rule 的入参格式**不同**】
     /// 保存时 <c>targetValue</c> 取 <c>"CCD0"</c> / <c>"CCD1"</c> 或**掩码 Id**；
     /// 查询时给的是索引数字与掩码**值**。两者不对称是有意的：
     ///   · 查询要的是「这条规则现在绑到哪」，用值最直观，UI 不必再反查 masks.json；

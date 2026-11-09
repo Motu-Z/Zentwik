@@ -8,7 +8,6 @@ namespace Zentwik.Tests
     /// <summary>
     /// 单条消息上限的边界测试。
     ///
-    /// 【为什么不是端到端管道测试】
     /// <see cref="WorkerPipeClient"/> 连的是固定管道名 <c>Zentwik.Worker</c>。测试进程里
     /// 再起一个同名服务端并不能保证客户端连到测试实例上（同名多实例时连接是任意的），
     /// 机器上真有 Worker 在跑时还会互相干扰 —— 那种测试会随机通过或随机失败。
