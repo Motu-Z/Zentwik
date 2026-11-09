@@ -13,6 +13,7 @@ namespace Zentwik.UI.Views;
 public partial class ProcessView : UserControl
 {
     private bool _initialized;
+    private bool _refreshing;
     public ProcessView()
     {
         InitializeComponent();
@@ -48,11 +49,31 @@ public partial class ProcessView : UserControl
 
         SnapDrawer(ViewModel.IsDrawerOpen);
 
-        if (_initialized)
+        if (!_initialized)
+        {
+            // 首次要连拓扑一起拉：下拉里的 CCD 条数由它决定。
+            _initialized = true;
+            _ = ViewModel.InitializeAsync();
+            return;
+        }
+
+        // 页面实例被缓存，切回来不会再走 InitializeAsync。不重拉一次，
+        // 程序启动之后才开的进程就永远进不了这张表。
+        if (_refreshing)
             return;
 
-        _initialized = true;
-        _ = ViewModel.InitializeAsync();
+        _refreshing = true;
+        AsyncRunner.Fire(async () =>
+        {
+            try
+            {
+                await ViewModel.RefreshAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                _refreshing = false;
+            }
+        });
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
