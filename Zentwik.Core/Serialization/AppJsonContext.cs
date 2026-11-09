@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Zentwik.Core.Helpers;
+using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
 
 namespace Zentwik.Core.Serialization
@@ -32,6 +33,9 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(SchedulingProfile))]
     [JsonSerializable(typeof(List<CustomMask>))]
     [JsonSerializable(typeof(PlanFile))]
+    // PlanEntry.PowerPolicy 复用了 IPC 的载荷类型。源生成上下文必须显式登记，
+    // 否则 AOT 下写 plans.json 时这整块会被静默跳过，方案里的参数快照全丢。
+    [JsonSerializable(typeof(ApplyPowerPolicyPayload))]
     [JsonSerializable(typeof(LegacyProfileFile))]
     [JsonSerializable(typeof(ScenarioFile))]
     public sealed partial class AppJsonContext : JsonSerializerContext

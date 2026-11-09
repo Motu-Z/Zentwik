@@ -1406,12 +1406,12 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 走一遍「方案面板新建电源方案」：派生系统方案 → 登记成方案 → 清理。
+    /// 走一遍「方案面板新建电源方案」：只登记方案，系统电源计划列表必须原样不变。
     /// </summary>
     /// <remarks>
-    /// 这条路径曾经只发 <c>save-plan</c> 而不带 GUID，被后台以
-    /// 「电源方案必须指定一个有效的方案 GUID」直接拒掉。探针留作回归护栏：
-    /// 钩子一被摘掉，这里立刻变 <c>id=(null)</c>。
+    /// 旧实现会在系统里派生一份 Windows 计划，用户每建一次控制面板就多一个。
+    /// 探针留作回归护栏：前后各查一次方案数，一旦有人把派生逻辑加回来，
+    /// <c>schemes</c> 立刻从 N 变 N+1；<c>policy</c> 则守住「方案自带参数快照」。
     /// </remarks>
     private static async Task AppendPlanCreateRoundtrip(StringBuilder sb)
     {
@@ -1419,7 +1419,6 @@ public partial class App : Application
 
         string name = "__probe 新建__" + Guid.NewGuid().ToString("N")[..4];
         string? planId = null;
-        Guid schemeGuid = Guid.Empty;
 
         try
         {
@@ -1429,26 +1428,34 @@ public partial class App : Application
                 return;
             }
 
-            planId = await ViewModels.PlanHub.Power.CreateHandler(name).ConfigureAwait(false);
-
-            IpcOutcome<Zentwik.Core.Ipc.PowerSchemeListPayload> schemes = await bridge
+            IpcOutcome<Zentwik.Core.Ipc.PowerSchemeListPayload> before = await bridge
                 .QueryPowerSchemesAsync()
                 .ConfigureAwait(false);
 
-            Zentwik.Core.Ipc.PowerSchemeEntry? entry = schemes.Value?.Schemes
-                .FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            int countBefore = before.Value?.Schemes.Count ?? -1;
 
-            schemeGuid = entry?.Guid ?? Guid.Empty;
+            planId = await ViewModels.PlanHub.Power.CreateHandler(name).ConfigureAwait(false);
+
+            IpcOutcome<Zentwik.Core.Ipc.PowerSchemeListPayload> after = await bridge
+                .QueryPowerSchemesAsync()
+                .ConfigureAwait(false);
+
+            int countAfter = after.Value?.Schemes.Count ?? -1;
 
             // 登记是否真的落到 plans.json，要问后台；页面缓存要等下一次刷新才更新。
             IpcOutcome<Zentwik.Core.Ipc.PlanListPayload> plans = await bridge
                 .QueryPlansAsync(Zentwik.Core.Services.PlanKind.Power)
                 .ConfigureAwait(false);
 
-            bool listed = planId is not null
-                && (plans.Value?.Plans ?? new()).Any(p => p.Id == planId);
+            List<Zentwik.Core.Ipc.PlanEntryPayload> entries = plans.Value?.Plans ?? new();
 
-            sb.AppendLine($"planCreate: id={planId ?? "(null)"} scheme={schemeGuid:D} listed={listed}");
+            bool listed = planId is not null && entries.Any(p => p.Id == planId);
+            bool hasPolicy = entries.Any(
+                p => p.Id == planId && p.PowerPolicy is not null && !p.PowerPolicy.IsEmpty);
+
+            sb.AppendLine(
+                $"planCreate: id={planId ?? "(null)"} listed={listed} policy={hasPolicy} " +
+                $"schemes={countBefore}->{countAfter}");
         }
         catch (Exception ex)
         {
@@ -1460,11 +1467,6 @@ public partial class App : Application
             {
                 await bridge.DeletePlanAsync(Zentwik.Core.Services.PlanKind.Power, planId)
                     .ConfigureAwait(false);
-            }
-
-            if (schemeGuid != Guid.Empty)
-            {
-                await bridge.DeletePowerSchemeAsync(schemeGuid).ConfigureAwait(false);
             }
         }
     }

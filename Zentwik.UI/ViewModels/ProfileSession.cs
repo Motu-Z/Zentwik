@@ -359,6 +359,7 @@ public sealed class PlanScope : ViewModelBase
             item.RuleCount = entry.RuleCount;
             item.PowerSchemeGuid = entry.PowerSchemeGuid;
             item.PowerSchemeName = entry.PowerSchemeName;
+            item.PowerPolicy = entry.PowerPolicy;
             item.Summary = DescribePlan(Kind, item);
 
             Items.Add(item);
@@ -413,10 +414,42 @@ public sealed class PlanScope : ViewModelBase
                 return item.RuleCount > 0 ? $"{item.RuleCount} 条规则" : "未设置规则";
 
             default:
-                return string.IsNullOrWhiteSpace(item.PowerSchemeName)
+            {
+                string scheme = string.IsNullOrWhiteSpace(item.PowerSchemeName)
                     ? "未指定系统方案"
                     : item.PowerSchemeName;
+
+                // 方案现在自带参数快照，摘要要能看出「这份存了参数」而不只是
+                // 指向哪份系统计划 —— 同一个计划下可以有多套参数。
+                int count = CountPowerValues(item.PowerPolicy);
+                return count > 0 ? $"{scheme} · {count} 项参数" : scheme;
+            }
         }
+    }
+
+    /// <summary>只数 AC 那五项：界面摘要表达的是「这套策略调了几项」，DC 不重复计。</summary>
+    private static int CountPowerValues(ApplyPowerPolicyPayload? policy)
+    {
+        if (policy is null)
+            return 0;
+
+        int count = 0;
+        if (policy.Epp is not null) count++;
+        if (policy.BoostMode is not null) count++;
+        if (policy.MaxProcessorState is not null) count++;
+        if (policy.Aspm is not null) count++;
+        if (policy.IdleDisable is not null) count++;
+        return count;
+    }
+
+    /// <summary>
+    /// 不重拉列表，只按本地最新值重算当前行的摘要。
+    /// 页面应用完参数后调它：重拉列表会 <c>Items.Clear()</c>，把编辑状态冲掉。
+    /// </summary>
+    public void UpdateCurrentSummary()
+    {
+        if (Current is not null)
+            Current.Summary = DescribePlan(Kind, Current);
     }
 
     // ==================== 增删改 ====================
@@ -980,6 +1013,9 @@ public sealed class PlanItem : ViewModelBase
     public string PowerSchemeGuid { get; set; } = string.Empty;
 
     public string PowerSchemeName { get; set; } = string.Empty;
+
+    /// <summary>电源方案的五项参数快照；null = 这份方案只引用系统计划。</summary>
+    public ApplyPowerPolicyPayload? PowerPolicy { get; set; }
 
     public PlanItem(string id, string name, bool isActive)
     {

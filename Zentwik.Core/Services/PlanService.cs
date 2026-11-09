@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Zentwik.Core.Helpers;
+using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
 
 namespace Zentwik.Core.Services
@@ -24,7 +25,7 @@ namespace Zentwik.Core.Services
         /// <summary>调度方案：一组进程绑核规则。</summary>
         Scheduling = 1,
 
-        /// <summary>电源方案：指向一个 Windows 电源方案的 GUID。</summary>
+        /// <summary>电源方案：五项电源策略的参数快照 + 可选的 Windows 电源方案引用。</summary>
         Power = 2
     }
 
@@ -57,7 +58,16 @@ namespace Zentwik.Core.Services
         /// <summary>绑核规则快照。仅 <see cref="PlanKind.Scheduling"/> 使用。</summary>
         public List<ScheduleRule> ScheduleRules { get; set; } = new();
 
-        /// <summary>Windows 电源方案 GUID。仅 <see cref="PlanKind.Power"/> 使用。</summary>
+        /// <summary>
+        /// 可选的 Windows 电源方案 GUID。仅 <see cref="PlanKind.Power"/> 使用。
+        /// 空 = 不切换系统方案，只把参数快照写到当前活动方案上。
+        /// </summary>
+        /// <remarks>
+        /// 【为什么改成可选】
+        /// 曾经「新建一份软件方案」等价于「派生一份 Windows 电源计划」，
+        /// 用户每建一份，控制面板里就多一个永远删不掉的计划。现在方案自带参数快照，
+        /// 系统计划只是「应用时要不要顺手切过去」的附加选项，不再是方案的载体。
+        /// </remarks>
         public string PowerSchemeGuid { get; set; } = string.Empty;
 
         /// <summary>
@@ -65,6 +75,16 @@ namespace Zentwik.Core.Services
         /// 应用时以 GUID 为准，名字变了不算失效。
         /// </summary>
         public string PowerSchemeName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 五项电源策略的参数快照（AC / DC 各一套，可空项 = 不改）。
+        /// 仅 <see cref="PlanKind.Power"/> 使用；null 表示这份方案只引用系统计划。
+        /// </summary>
+        /// <remarks>
+        /// 复用 <c>apply-power-policy</c> 的载荷类型：应用时直接把它交给同一条写入路径，
+        /// 不需要在方案与协议之间再做一层字段映射。
+        /// </remarks>
+        public ApplyPowerPolicyPayload? PowerPolicy { get; set; }
 
         /// <summary>当前生效标记。由服务统一刷新，不落盘。</summary>
         [System.Text.Json.Serialization.JsonIgnore]
@@ -92,11 +112,11 @@ namespace Zentwik.Core.Services
     /// 【应用只写自己那一份 store】
     /// 合并式方案切换时会把调校与调度一起写回，导致「换个负压，绑核被清空」。
     /// 这里按 <see cref="PlanKind"/> 分流，调校只碰 TuningStore、调度只碰 SchedulingStore、
-    /// 电源只调 <c>PowerSetActiveScheme</c>。谁都不会顺手改别人。
+    /// 电源只按需切一次系统方案（参数快照由分派层写）。谁都不会顺手改别人。
     ///
     /// 【硬件动作用现成的服务】
     /// 调校交给 <see cref="TuningApplyService"/>（已封装「写 SMU + 回读校验」），
-    /// 调度交给后台的 ProcessWatcher 重扫，电源走 <see cref="IPowerPolicyApi"/>。
+    /// 调度交给后台的 ProcessWatcher 重扫，电源由分派层写入参数快照并按需切系统方案。
     /// 本类不直接 P/Invoke，避免长出第二套行为。
     /// </remarks>
     public class PlanService
@@ -341,8 +361,8 @@ namespace Zentwik.Core.Services
 
             if (!result.Plans.Any(p => p.Kind == PlanKind.Power))
             {
-                // 电源方案必须指向一个真实存在的系统方案，否则「应用」必然失败。
-                // 拿不到活动方案时留空 GUID —— 界面上显示「未绑定」，用户自己挑一个。
+                // 默认那份顺手记下当前活动系统方案，方便用户想「连系统计划一起切」时用。
+                // 拿不到就留空 GUID：应用时照样能把参数快照写到当前活动方案上。
                 Guid? active = null;
 
                 try
@@ -570,25 +590,31 @@ namespace Zentwik.Core.Services
 
                 default:
                 {
-                    if (!Guid.TryParse(entry.PowerSchemeGuid, out Guid guid))
-                        return new PlanApplyResult(false, "这份方案还没有绑定电源方案", "failed");
-
-                    bool exists = false;
-
-                    try
+                    // 系统计划是可选的：GUID 为空时只把参数快照写到「当前活动方案」上，
+                    // 不切换、更不新建任何 Windows 电源计划。参数写入由调用方
+                    // （apply-plan 的分派层）在完成切换后执行，复用同一条写入路径。
+                    if (!string.IsNullOrWhiteSpace(entry.PowerSchemeGuid))
                     {
-                        exists = _power.EnumerateSchemes().Any(s => s.Guid == guid);
-                    }
-                    catch (Exception ex)
-                    {
-                        return new PlanApplyResult(false, $"读取电源方案失败：{ex.Message}", "failed");
-                    }
+                        if (!Guid.TryParse(entry.PowerSchemeGuid, out Guid guid))
+                            return new PlanApplyResult(false, "这份方案绑定的电源方案 GUID 无效", "failed");
 
-                    if (!exists)
-                        return new PlanApplyResult(false, "这个电源方案已被系统删除，请重新指定", "failed");
+                        bool exists = false;
 
-                    if (!_power.SetActiveScheme(guid))
-                        return new PlanApplyResult(false, "电源方案切换失败，请重启系统后重试", "failed");
+                        try
+                        {
+                            exists = _power.EnumerateSchemes().Any(s => s.Guid == guid);
+                        }
+                        catch (Exception ex)
+                        {
+                            return new PlanApplyResult(false, $"读取电源方案失败：{ex.Message}", "failed");
+                        }
+
+                        if (!exists)
+                            return new PlanApplyResult(false, "这个电源方案已被系统删除，请重新指定", "failed");
+
+                        if (!_power.SetActiveScheme(guid))
+                            return new PlanApplyResult(false, "电源方案切换失败，请重启系统后重试", "failed");
+                    }
 
                     break;
                 }

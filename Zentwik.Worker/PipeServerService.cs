@@ -854,7 +854,8 @@ namespace Zentwik.Worker
             FMaxMHz = entry.FMaxMHz,
             RuleCount = entry.ScheduleRules?.Count ?? 0,
             PowerSchemeGuid = entry.PowerSchemeGuid,
-            PowerSchemeName = entry.PowerSchemeName
+            PowerSchemeName = entry.PowerSchemeName,
+            PowerPolicy = entry.PowerPolicy
         };
 
         /// <summary>
@@ -927,34 +928,47 @@ namespace Zentwik.Worker
 
                         default:
                         {
-                            if (string.IsNullOrWhiteSpace(guid) || !Guid.TryParse(guid, out Guid scheme))
-                                return (false, "电源方案必须指定一个有效的方案 GUID", (string?)null);
-
-                            bool exists = false;
-                            string systemName = string.Empty;
-
-                            try
+                            // 系统计划是可选的：给了就校验它在系统里真实存在并记下名字；
+                            // 不给则沿用 target 的原值（新建时留空）。
+                            // 从前这里强制要求 GUID，等于逼着「新建一份软件方案」
+                            // 必须先派生一份 Windows 电源计划 —— 控制面板里越攒越多。
+                            if (!string.IsNullOrWhiteSpace(guid))
                             {
-                                foreach ((Guid itemGuid, string? itemName) in _power.ListSchemes())
+                                if (!Guid.TryParse(guid, out Guid scheme))
+                                    return (false, "电源方案 GUID 无效", (string?)null);
+
+                                bool exists = false;
+                                string systemName = string.Empty;
+
+                                try
                                 {
-                                    if (itemGuid != scheme)
-                                        continue;
+                                    foreach ((Guid itemGuid, string? itemName) in _power.ListSchemes())
+                                    {
+                                        if (itemGuid != scheme)
+                                            continue;
 
-                                    exists = true;
-                                    systemName = itemName ?? string.Empty;
-                                    break;
+                                        exists = true;
+                                        systemName = itemName ?? string.Empty;
+                                        break;
+                                    }
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                return (false, $"读取电源方案失败：{ex.Message}", (string?)null);
+                                catch (Exception ex)
+                                {
+                                    return (false, $"读取电源方案失败：{ex.Message}", (string?)null);
+                                }
+
+                                if (!exists)
+                                    return (false, "这个电源方案不存在（可能已被系统删除）", (string?)null);
+
+                                entry.PowerSchemeGuid = scheme.ToString("D");
+                                entry.PowerSchemeName = systemName;
                             }
 
-                            if (!exists)
-                                return (false, "这个电源方案不存在（可能已被系统删除）", (string?)null);
+                            // 五项参数由界面送上来：这份方案存的就是「保存那一刻的界面值」。
+                            // 不传表示只改名 / 只改 GUID，沿用原有快照。
+                            if (request.PowerPolicy is not null)
+                                entry.PowerPolicy = request.PowerPolicy;
 
-                            entry.PowerSchemeGuid = scheme.ToString("D");
-                            entry.PowerSchemeName = systemName;
                             break;
                         }
                     }
@@ -1051,7 +1065,8 @@ namespace Zentwik.Worker
         /// </summary>
         /// <remarks>
         /// 只写自己那一块：调校写 TuningStore 并下发 SMU、调度写 SchedulingStore 并重扫、
-        /// 电源切系统方案。合并式方案的「切一次写三处」正是「改一处、另外两处跟着变」的来源。
+        /// 电源按需切系统方案后写入它自带的五项参数快照。合并式方案的「切一次写三处」
+        /// 正是「改一处、另外两处跟着变」的来源。
         /// </remarks>
         internal async Task<PipeResponse> RunApplyPlanAsync(string? payload, CancellationToken token)
         {
@@ -1077,16 +1092,40 @@ namespace Zentwik.Worker
 
             string id = request.Id.Trim();
 
-            PlanApplyResult result = await Task.Run(
-                () => _plans.Apply(kind, id, ignoreStartupGate: true),
+            (bool success, string message, string status) = await Task.Run(
+                () =>
+                {
+                    PlanApplyResult result = _plans.Apply(kind, id, ignoreStartupGate: true);
+                    if (!result.Success)
+                        return (false, result.Message, result.Status);
+
+                    if (kind != PlanKind.Power)
+                        return (true, result.Message, result.Status);
+
+                    // 方案的参数快照要在「切完系统计划之后」写：PowerPolicyService
+                    // 永远写当前活动方案，顺序反了就会写进上一份计划里。
+                    // 复用 apply-power-policy 的同一条写入路径，范围校验、
+                    // 部分失败汇总与重新激活都不另写一套。
+                    ApplyPowerPolicyPayload? patch = _plans.Find(PlanKind.Power, id)?.PowerPolicy;
+                    if (patch is null || patch.IsEmpty)
+                        return (true, result.Message, result.Status);
+
+                    PipeResponse write = RunApplyPowerPolicy(
+                        _power,
+                        JsonSerializer.Serialize(patch, IpcJsonContext.Default.ApplyPowerPolicyPayload));
+
+                    return write.Success
+                        ? (true, result.Message, result.Status)
+                        : (false, $"{result.Message}；{write.Message}", "failed");
+                },
                 token).ConfigureAwait(false);
 
             return new PipeResponse
             {
                 Version = WorkerPipeContract.ProtocolVersion,
-                Success = result.Success,
-                Message = result.Message,
-                Payload = result.Status
+                Success = success,
+                Message = message,
+                Payload = status
             };
         }
 

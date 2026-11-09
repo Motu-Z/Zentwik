@@ -492,6 +492,11 @@ public partial class PowerViewModel : ObservableObject
                 ApplySnapshot(outcome.Value);
             }
 
+            // 应用成功顺手把这一套值记进当前选中的方案，否则「方案存参数」
+            // 只在新建那一刻发生过，之后改参数方案里永远是旧值。
+            if (outcome.Success)
+                await PersistCurrentPlanAsync().ConfigureAwait(true);
+
             if (!outcome.Success)
             {
                 // 原因里带着哪几项没写成（含 Win32 错误码），原样给用户看。
@@ -647,12 +652,13 @@ public partial class PowerViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 顶栏方案面板的「新建」：先以当前活动方案为模板派生一份系统方案，再登记成电源方案。
+    /// 顶栏方案面板的「新建」：把当前五项参数存成一份方案，不动系统电源计划列表。
     /// </summary>
     /// <remarks>
-    /// 电源方案存的是「参数写到哪份 Windows 方案上」，没有真实方案可挂时
-    /// 后台会以「必须指定一个有效的方案 GUID」拒掉 —— 所以这里不能只写盘。
-    /// 模板取当前活动方案而非内置预设：用户点新建的意图通常是「在现在这套上再开一份」。
+    /// 旧实现先 <c>create-power-scheme</c> 派生一份 Windows 计划、再拿它的 GUID 登记，
+    /// 于是「在软件里建一份方案」等于「控制面板里多一个计划」，越攒越多。
+    /// 现在方案自带参数快照，系统计划只是「应用时是否顺手切过去」的可选记录：
+    /// 新建只记下当前活动方案的 GUID，绝不新建。
     /// </remarks>
     /// <returns>新方案 Id；失败返回 null。</returns>
     private async Task<string?> CreatePlanAsync(string requestedName)
@@ -664,68 +670,31 @@ public partial class PowerViewModel : ObservableObject
 
         try
         {
-            Guid template = ActiveSchemeGuid != Guid.Empty
-                ? ActiveSchemeGuid
-                : PowerSchemePresets.Balanced.Guid;
-
-            string schemeName = BuildUniqueSchemeName(requestedName);
-
-            IpcOutcome<PowerSchemeListPayload> created = await WorkerBridge.Instance
-                .CreatePowerSchemeAsync(template, schemeName, ApplyTimeoutMs)
-                .ConfigureAwait(true);
-
-            if (created.TransportFailed)
-            {
-                MarkWorkerUnreachable();
-                ToastService.Instance.ShowError("后台服务未连接，无法新建电源方案");
-                return null;
-            }
-
-            if (!created.Success || created.Value is null)
-            {
-                ToastService.Instance.ShowError(
-                    string.IsNullOrEmpty(created.Message) ? "新建电源方案失败" : created.Message);
-
-                return null;
-            }
-
-            ApplySchemeList(created.Value);
-
-            // 从回包里按名字找新方案，不要用 ActiveGuid：切换失败时它仍是旧方案，
-            // 方案记录就挂到了别人的身上。
-            PowerSchemeEntry? entry = created.Value.Schemes.FirstOrDefault(
-                s => string.Equals(s.Name, schemeName, StringComparison.OrdinalIgnoreCase));
-
-            if (entry is null)
-            {
-                ToastService.Instance.ShowError("电源方案已创建，但没能从系统列表里读回来");
-                return null;
-            }
+            // 记下当前活动方案，纯粹为了让「应用」能连系统计划一起切回去。
+            // 拿不到就留空：那时照样能把参数写到当前活动方案上。
+            string? schemeGuid = ActiveSchemeGuid != Guid.Empty
+                ? ActiveSchemeGuid.ToString("D")
+                : null;
 
             IpcOutcome<string> saved = await WorkerBridge.Instance
                 .SavePlanAsync(
                     PlanKind.Power,
                     null,
-                    schemeName,
-                    powerSchemeGuid: entry.Guid.ToString("D"),
+                    requestedName,
+                    powerSchemeGuid: schemeGuid,
+                    powerPolicy: BuildFullSnapshot(),
                     timeoutMs: ApplyTimeoutMs)
                 .ConfigureAwait(true);
 
             if (!saved.Success || string.IsNullOrEmpty(saved.Value))
             {
-                // 系统方案已经存在，只是没进列表：说清楚，别让用户以为白建了一次。
                 ToastService.Instance.ShowError(
-                    string.IsNullOrEmpty(saved.Message) ? "系统方案已创建，但未能加入方案列表" : saved.Message);
-
+                    string.IsNullOrEmpty(saved.Message) ? "新建电源方案失败" : saved.Message);
                 return null;
             }
 
-            _refreshTask = null;
-            await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
-
-            // 系统那边已经切到这份新方案了，生效标记也要补齐 ——
-            // 否则面板把它显示成「未生效」，用户以为没切过去。
-            // 失败不另行提示：方案本身已经建好，下次点应用会补上。
+            // 对齐「生效中」：新建的就是当前这套参数，与系统现状一致。
+            // 失败不另行提示，方案本身已经建好。
             await WorkerBridge.Instance
                 .ApplyPlanAsync(PlanKind.Power, saved.Value, ApplyTimeoutMs)
                 .ConfigureAwait(true);
@@ -740,6 +709,69 @@ public partial class PowerViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 存进方案的是完整的一套值，不是 <see cref="BuildPatch"/> 那样只挑改动项：
+    /// 方案要能独立还原，缺项就意味着应用时那一项保持现状。
+    /// 本机不支持的项不入快照，否则应用时会被写成失败项。
+    /// </summary>
+    private ApplyPowerPolicyPayload BuildFullSnapshot()
+    {
+        ApplyPowerPolicyPayload payload = new();
+
+        if (_ac.EppSupported) payload.Epp = _ac.Epp;
+        if (_ac.BoostModeSupported) payload.BoostMode = _ac.BoostMode;
+        if (_ac.MaxProcessorStateSupported) payload.MaxProcessorState = _ac.MaxProcessorState;
+        if (_ac.IdleDisableSupported) payload.IdleDisable = _ac.IdleDisable;
+        if (_ac.AspmSupported) payload.Aspm = _ac.Aspm;
+
+        if (!HasBattery)
+            return payload;
+
+        if (_dc.EppSupported) payload.DcEpp = _dc.Epp;
+        if (_dc.BoostModeSupported) payload.DcBoostMode = _dc.BoostMode;
+        if (_dc.MaxProcessorStateSupported) payload.DcMaxProcessorState = _dc.MaxProcessorState;
+        if (_dc.IdleDisableSupported) payload.DcIdleDisable = _dc.IdleDisable;
+        if (_dc.AspmSupported) payload.DcAspm = _dc.Aspm;
+
+        return payload;
+    }
+
+    /// <summary>
+    /// 把当前生效的一套值记进当前选中的方案，方案才有内容可还原。
+    /// 不刷新列表：<c>Items.Clear()</c> 会触发 <c>CurrentChanged</c>，冲掉编辑状态。
+    /// 静默：这一步只是顺手记账，不该把一次成功的写入报成失败。
+    /// </summary>
+    private async Task PersistCurrentPlanAsync()
+    {
+        PlanItem? current = PlanHub.Power.Current;
+        if (current is null || current.IsLocal || PlanHub.SuppressWorkerInit)
+            return;
+
+        try
+        {
+            ApplyPowerPolicyPayload snapshot = BuildFullSnapshot();
+
+            IpcOutcome<string> saved = await WorkerBridge.Instance
+                .SavePlanAsync(
+                    PlanKind.Power,
+                    current.Id,
+                    current.Name,
+                    powerPolicy: snapshot,
+                    timeoutMs: ApplyTimeoutMs)
+                .ConfigureAwait(true);
+
+            if (!saved.Success)
+                return;
+
+            current.PowerPolicy = snapshot;
+            PlanHub.Power.UpdateCurrentSummary();
+        }
+        catch (Exception)
+        {
+            // 主流程是「写系统」，记账失败不打扰用户。
         }
     }
 

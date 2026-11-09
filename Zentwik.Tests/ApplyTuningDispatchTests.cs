@@ -391,6 +391,46 @@ namespace Zentwik.Tests
             Assert.Equal(new[] { -5, -6 }, created.CurveOptimizer);
         }
 
+        /// <summary>
+        /// 电源方案不再以「必须先有一份 Windows 计划 GUID」为前提。
+        /// 旧实现在这里会回「电源方案必须指定一个有效的方案 GUID」，
+        /// 逼着界面去派生一份系统计划 —— 用户每建一次方案，控制面板就多一个。
+        /// </summary>
+        [Fact]
+        public async Task CreatePowerPlan_WithoutSchemeGuid_StoresPolicy()
+        {
+            FakeTuningStore tuning = new();
+            TuningApplyService apply = new(
+                new FakeLogService(),
+                new FakeUiSettingsStore(),
+                tuning,
+                new StubSmuReader(true));
+
+            PlanService plans = BuildPlans(tuning, apply);
+            plans.Load();
+
+            PipeServerService service = BuildServer(apply, new StubSmuReader(true), tuning, plans);
+
+            string payload = JsonSerializer.Serialize(
+                new SavePlanPayload
+                {
+                    Kind = PlanKinds.Power,
+                    Name = "只存参数",
+                    PowerPolicy = new ApplyPowerPolicyPayload { Epp = 42, BoostMode = 2 }
+                },
+                IpcJsonContext.Default.SavePlanPayload);
+
+            PipeResponse response = await service.RunSavePlanAsync(payload, CancellationToken.None);
+
+            Assert.True(response.Success, response.Message);
+
+            PlanEntry? created = plans.Items(PlanKind.Power).FirstOrDefault(p => p.Name == "只存参数");
+            Assert.NotNull(created);
+            Assert.True(string.IsNullOrEmpty(created!.PowerSchemeGuid));
+            Assert.Equal(42, created.PowerPolicy?.Epp);
+            Assert.Equal(2, created.PowerPolicy?.BoostMode);
+        }
+
         [Fact]
         public async Task CreateProfile_EmptyName_Fails()
         {

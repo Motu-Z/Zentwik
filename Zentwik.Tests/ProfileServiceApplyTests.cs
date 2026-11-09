@@ -1,5 +1,6 @@
 using System.IO;
 using Zentwik.Core.Helpers;
+using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
 using Zentwik.Core.Services;
 using Zentwik.Tests.Fakes;
@@ -137,6 +138,27 @@ namespace Zentwik.Tests
         {
             Assert.True(_plans.Apply(PlanKind.Power, "w1").Success);
             Assert.Contains(FakePowerPolicyApi.BalancedScheme, _powerApi.CalledGuids);
+        }
+
+        /// <summary>
+        /// 只带参数快照、没有绑定系统计划的方案也要能应用：
+        /// 系统计划是「要不要顺手切过去」的可选项，不是方案的载体。
+        /// </summary>
+        [Fact]
+        public void Apply_power_without_bound_scheme_still_succeeds()
+        {
+            _plans.Save(new PlanEntry
+            {
+                Id = "w2",
+                Kind = PlanKind.Power,
+                Name = "仅参数",
+                PowerPolicy = new ApplyPowerPolicyPayload { Epp = 30 }
+            });
+
+            PlanApplyResult result = _plans.Apply(PlanKind.Power, "w2");
+
+            Assert.True(result.Success, result.Message);
+            Assert.Equal("w2", _plans.ActiveId(PlanKind.Power));
         }
 
         [Fact]

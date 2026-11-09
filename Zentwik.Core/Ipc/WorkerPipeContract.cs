@@ -227,13 +227,18 @@ namespace Zentwik.Core.Ipc
         /// 新建或覆盖一份方案。
         ///
         /// 参数：<c>Payload</c> = JSON
-        /// <c>{"kind":...,"id":string?,"name":...,"coreMargins":int[]?,"fmaxMhz":N?,"powerSchemeGuid":string?}</c>
+        /// <c>{"kind":...,"id":string?,"name":...,"coreMargins":int[]?,"fmaxMhz":N?,"powerSchemeGuid":string?,"powerPolicy":object?}</c>
         /// （<see cref="SavePlanPayload"/>）。<c>id</c> 为空 = 新建。
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = 新方案的 Id。
         ///
         /// 【调校值要传，调度规则不传】
         /// 调校页的值可能还没应用，必须由界面送上来；调度方案的内容就是当前全局规则集，
         /// Worker 自己抓一份即可 —— 让 UI 把几十条规则序列化再送回来只会多一个不同步的机会。
+        ///
+        /// 【电源方案的 powerSchemeGuid 是可选的】
+        /// 它只表达「应用时是否顺手切到某份系统计划」，不是方案的载体。
+        /// 参数存在 <c>powerPolicy</c> 快照里；不传 GUID 就不切换系统方案，
+        /// 更不会为了存一份软件方案去派生新的 Windows 电源计划。
         /// </summary>
         public const string CommandSavePlan = "save-plan";
 

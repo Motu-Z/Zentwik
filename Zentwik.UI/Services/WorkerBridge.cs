@@ -269,7 +269,7 @@ public sealed class WorkerBridge
     /// <param name="id">null = 新建。</param>
     /// <remarks>
     /// <c>coreMargins</c> / <c>fMaxMHz</c> 只对调校方案有意义；
-    /// <c>powerSchemeGuid</c> 只对电源方案有意义。传 null 表示「不动这一块」。
+    /// <c>powerSchemeGuid</c> / <c>powerPolicy</c> 只对电源方案有意义。传 null 表示「不动这一块」。
     /// </remarks>
     public async Task<IpcOutcome<string>> SavePlanAsync(
         PlanKind kind,
@@ -278,6 +278,7 @@ public sealed class WorkerBridge
         int[]? coreMargins = null,
         uint? fMaxMHz = null,
         string? powerSchemeGuid = null,
+        ApplyPowerPolicyPayload? powerPolicy = null,
         int timeoutMs = 5_000,
         CancellationToken cancellationToken = default)
     {
@@ -290,6 +291,7 @@ public sealed class WorkerBridge
                 CoreMargins = coreMargins,
                 FMaxMHz = fMaxMHz,
                 PowerSchemeGuid = powerSchemeGuid,
+                PowerPolicy = powerPolicy,
             },
             IpcJsonContext.Default.SavePlanPayload);
 

@@ -86,6 +86,12 @@ namespace Zentwik.Core.Ipc
         /// <summary>存入时的系统名，仅用于显示。</summary>
         [JsonPropertyName("powerSchemeName")]
         public string PowerSchemeName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 五项电源策略的参数快照。仅电源方案使用；null = 这份方案只引用系统计划。
+        /// </summary>
+        [JsonPropertyName("powerPolicy")]
+        public ApplyPowerPolicyPayload? PowerPolicy { get; set; }
     }
 
     /// <summary><c>query-plans</c> 的请求体：只取某一类方案。</summary>
@@ -135,9 +141,19 @@ namespace Zentwik.Core.Ipc
         [JsonPropertyName("fmaxMhz")]
         public uint? FMaxMHz { get; set; }
 
-        /// <summary>绑定的 Windows 电源方案 GUID。仅电源方案使用。</summary>
+        /// <summary>
+        /// 可选的 Windows 电源方案 GUID。仅电源方案使用；
+        /// 不传表示「不动这一块」，新建时留空即「应用时不切换系统方案」。
+        /// </summary>
         [JsonPropertyName("powerSchemeGuid")]
         public string? PowerSchemeGuid { get; set; }
+
+        /// <summary>
+        /// 五项电源策略的参数快照。仅电源方案使用；
+        /// 不传表示沿用原有快照，传了就整份覆盖。
+        /// </summary>
+        [JsonPropertyName("powerPolicy")]
+        public ApplyPowerPolicyPayload? PowerPolicy { get; set; }
     }
 
     /// <summary><c>delete-plan</c> / <c>apply-plan</c> 的请求体。</summary>
