@@ -51,6 +51,11 @@ public partial class ProcessView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (!ProcessViewModel.SuppressWorkerInit)
+        {
+            _autoRefreshTimer.Start();
+        }
+
         if (ViewModel is not { } vm)
         {
             return;
@@ -60,11 +65,6 @@ public partial class ProcessView : UserControl
         vm.DrawerStateChanged += OnDrawerStateChanged;
 
         SnapDrawer(vm.IsDrawerOpen);
-
-        if (!ProcessViewModel.SuppressWorkerInit)
-        {
-            _autoRefreshTimer.Start();
-        }
 
         if (!_initialized)
         {
@@ -96,13 +96,9 @@ public partial class ProcessView : UserControl
             return;
         }
 
-        // 有未提交的改动、抽屉开着、下拉正展开时都不动列表，
-        // 否则重建会把用户刚选的值冲掉。
-        if (_refreshing
-            || vm.IsDrawerOpen
-            || vm.RunningProcesses.Any(p => p.IsDirty)
-            || vm.SavedRules.Any(r => r.IsDirty)
-            || VisualTreeAssist.HasOpenDropDown(this))
+        // 增量同步复用行对象：只写占用、增删行，不碰掩码与优先级，也不重建抽屉里的掩码表。
+        // 所以抽屉默认展开或有未提交的选择时都照常刷新；下拉正展开才跳过，避免 Move 把候选带走。
+        if (_refreshing || VisualTreeAssist.HasOpenDropDown(this))
         {
             return;
         }
