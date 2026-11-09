@@ -455,6 +455,31 @@ namespace Zentwik.Core.Services
                 return _items.FirstOrDefault(p => p.Kind == kind && p.Id == id);
         }
 
+        /// <summary>
+        /// 按绑定的系统电源方案 GUID 反查电源方案；没有方案绑它就返回 null。
+        /// </summary>
+        /// <remarks>
+        /// 界面在页面卡片上直接切系统方案时，生效归属只能靠这一步反查 ——
+        /// 切的是系统内置计划（没人绑）就该把「生效中」清空，
+        /// 否则面板会一直显示上一份方案生效，而系统其实已经在别处。
+        /// </remarks>
+        public PlanEntry? FindPowerByScheme(Guid schemeGuid)
+        {
+            lock (Sync)
+            {
+                foreach (PlanEntry entry in _items)
+                {
+                    if (entry.Kind != PlanKind.Power)
+                        continue;
+
+                    if (Guid.TryParse(entry.PowerSchemeGuid, out Guid bound) && bound == schemeGuid)
+                        return entry;
+                }
+
+                return null;
+            }
+        }
+
         /// <summary>同名检查。新建与改名都要过这一道。</summary>
         public bool NameExists(PlanKind kind, string name, string? exceptId = null)
         {

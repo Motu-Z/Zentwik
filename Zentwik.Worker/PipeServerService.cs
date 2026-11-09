@@ -437,7 +437,7 @@ namespace Zentwik.Worker
                     return RunQueryPowerSchemes(_power);
 
                 case WorkerPipeContract.CommandSetActivePowerScheme:
-                    return RunSetActivePowerScheme(_power, request.Payload);
+                    return RunSetActivePowerScheme(_power, _plans, request.Payload);
 
                 case WorkerPipeContract.CommandCreatePowerScheme:
                     return RunCreatePowerScheme(_power, request.Payload);
@@ -2168,7 +2168,10 @@ namespace Zentwik.Worker
         /// <summary>
         /// <c>set-active-scheme</c>：只换「哪一份方案生效」，不碰方案里的任何值。
         /// </summary>
-        internal static PipeResponse RunSetActivePowerScheme(PowerPolicyService power, string? payload)
+        internal static PipeResponse RunSetActivePowerScheme(
+            PowerPolicyService power,
+            PlanService plans,
+            string? payload)
         {
             if (string.IsNullOrWhiteSpace(payload))
                 return Fail(PowerPolicyService.EmptySchemeIdMessage);
@@ -2180,15 +2183,30 @@ namespace Zentwik.Worker
 
             (bool success, string? error) = power.SetActiveScheme(guid);
 
-            return success
-                ? new PipeResponse
-                {
-                    Version = WorkerPipeContract.ProtocolVersion,
-                    Success = true,
-                    Message = "已切换电源方案",
-                    Payload = null
-                }
-                : Fail(error ?? PowerPolicyService.ActivateFailedMessage);
+            if (!success)
+                return Fail(error ?? PowerPolicyService.ActivateFailedMessage);
+
+            // 系统计划换人了，方案层面的「生效中」要跟着走：
+            // 有方案绑着这份计划就标它，点的是系统内置计划（没人绑）就清空。
+            // 不这么做，界面在卡片上切完方案，面板还写着上一份「生效中」——
+            // 用户看到的就是「切了没反应」。
+            try
+            {
+                plans.MarkActive(PlanKind.Power, plans.FindPowerByScheme(guid)?.Id);
+            }
+            catch (Exception)
+            {
+                // 记账失败不影响「系统已经切过去了」这件事，别把切换报成失败。
+                // 顺手一步的标记丢了，界面下次刷新会按系统实际状态纠正回来。
+            }
+
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = true,
+                Message = "已切换电源方案",
+                Payload = null
+            };
         }
 
         /// <summary><c>query-power-policy</c>：读一份快照。</summary>

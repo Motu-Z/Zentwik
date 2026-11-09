@@ -345,6 +345,13 @@ public partial class PowerViewModel : ObservableObject
             nameof(PlanScope.Applied),
             OnPlanApplied);
 
+        // 面板里换选一份方案 = 本页换一组值，与调校页、调度页同一套体验。
+        // 「选中 ≠ 生效」不变：换的只是显示，真正切系统计划仍要按面板底部的应用。
+        System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
+            PlanHub.Power,
+            nameof(PlanScope.CurrentChanged),
+            OnPlanSelectionChanged);
+
         if (SuppressWorkerInit)
         {
             // 截图模式按笔记本的形态画（有电池、交流电供电），
@@ -376,6 +383,10 @@ public partial class PowerViewModel : ObservableObject
         try
         {
             await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+            // 系统值只是兜底。方案列表若已就绪，界面显示选中方案存的那一套 ——
+            // 与调校页一致：进来看到的是「我正在编辑的方案」，不是「机器现在的值」。
+            LoadSelectedPlanValues();
         }
         finally
         {
@@ -400,6 +411,87 @@ public partial class PowerViewModel : ObservableObject
 
         _refreshTask = null;
         _ = RefreshCoreAsync(notifyOnFailure: false);
+    }
+
+    /// <summary>面板换选了一份电源方案：把它的五项参数摆到界面上。</summary>
+    private void OnPlanSelectionChanged(object? sender, EventArgs e) => LoadSelectedPlanValues();
+
+    /// <summary>
+    /// 把选中的那份方案存的五项参数搬到界面上（不动系统、不切计划、不标脏）。
+    /// </summary>
+    /// <remarks>
+    /// 这三页的体验必须一致：调校页换方案就换一组值，电源页原先换方案毫无反应，
+    /// 用户只能看到「系统现在是什么」，看不到「这份方案里存的是什么」，
+    /// 于是没法判断自己选的对不对。真正生效仍然靠面板底部的「应用」。
+    ///
+    /// 方案没存过快照（老数据、或新建时本机不支持这些项）时保持现状 ——
+    /// 半截覆盖比不动更让人困惑。
+    /// </remarks>
+    private void LoadSelectedPlanValues()
+    {
+        if (SuppressWorkerInit)
+            return;
+
+        PlanItem? item = PlanHub.Power.Current;
+
+        if (item is null || item.IsLocal || item.PowerPolicy is null)
+            return;
+
+        _suppressDirty = true;
+
+        try
+        {
+            ApplyPolicyFields(item.PowerPolicy);
+
+            // 换过来的是「这份方案的值」，不是用户改出来的草稿，
+            // 基线一起搬过去 —— 界面不该一换方案就显示成「有未保存改动」。
+            _appliedAc.CopyFrom(_ac);
+            _appliedDc.CopyFrom(_dc);
+        }
+        finally
+        {
+            _suppressDirty = false;
+        }
+
+        NotifyAllValues();
+        IsDirty = false;
+    }
+
+    /// <summary>按方案快照覆盖两项值；快照里为 null 的项保持现状（增量语义）。</summary>
+    private void ApplyPolicyFields(ApplyPowerPolicyPayload policy)
+    {
+        if (policy.Epp is not null)
+            _ac.Epp = policy.Epp.Value;
+
+        if (policy.BoostMode is not null)
+            _ac.BoostMode = policy.BoostMode.Value;
+
+        if (policy.MaxProcessorState is not null)
+            _ac.MaxProcessorState = policy.MaxProcessorState.Value;
+
+        if (policy.Aspm is not null)
+            _ac.Aspm = policy.Aspm.Value;
+
+        if (policy.IdleDisable is not null)
+            _ac.IdleDisable = policy.IdleDisable.Value;
+
+        if (!HasBattery)
+            return;
+
+        if (policy.DcEpp is not null)
+            _dc.Epp = policy.DcEpp.Value;
+
+        if (policy.DcBoostMode is not null)
+            _dc.BoostMode = policy.DcBoostMode.Value;
+
+        if (policy.DcMaxProcessorState is not null)
+            _dc.MaxProcessorState = policy.DcMaxProcessorState.Value;
+
+        if (policy.DcAspm is not null)
+            _dc.Aspm = policy.DcAspm.Value;
+
+        if (policy.DcIdleDisable is not null)
+            _dc.IdleDisable = policy.DcIdleDisable.Value;
     }
 
     /// <summary>首帧是否已经读过一次系统状态。</summary>
@@ -1016,6 +1108,10 @@ public partial class PowerViewModel : ObservableObject
             // 换了方案，五项的值全变了，必须重读，不能只改名字。
             _refreshTask = null;
             await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+            // 方案层的「生效中」也跟着变：后台已按这份计划反查归属并记账，
+            // 这里重拉一次列表把标记取回来，否则面板会一直写着上一份。
+            await PlanHub.Power.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
