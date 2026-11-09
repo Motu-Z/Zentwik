@@ -10,13 +10,8 @@
 
 - **Worker 改为 Native AOT 发布，不再依赖 .NET 运行时**：发布产物从「托管 dll + runtimeconfig.json」变成单个原生 `Zentwik.Worker.exe`（约 11 MB），冷启动与常驻内存都优于 R2R，也不再要求用户为后台服务装运行时。UI（WPF）不支持 AOT，仍走框架依赖 + 单文件 + R2R，两端继续装在同一目录。
 - **WMI 实现从 `System.Management` 换成 `WmiLight`**：前者靠 `System.CodeDom` 在运行时生成 Wbem 包装类型，Native AOT 没有动态代码，`WbemContext` / `WbemObjectTextSrc` 之流在原生编译下是 invalid IL（ILC 报 IL3052）。换成官方指定的 `WmiLight` 后，进程创建 / 退出事件的订阅方式、`WITHIN 2` 粒度、启动补扫、3 秒降级轮询全都原样保留，**没有砍掉任何 WMI 能力**。`Zentwik.Core.csproj` 移除 `System.Management` 引用，并把 `WmiLight` 加进 `TrimmerRootAssembly`（它的属性访问由原生侧按名字回查，裁剪器看不见）。
-- **发布流水线分出两条 AOT 门禁**：`release.yml` 的 Worker 步骤改走 `PublishAot=true`，并在打包前校验「没有托管 dll / 没有 runtimeconfig.json / 两个原生依赖已落地」；`aot-probe.yml` 新增 `worker-aot` job，用 `-warnaserror` 把 IL2xxx / IL3xxx 直接变红。
-
-### Notes
-
-- **运行时行为已在本机真机验证**（非 CI，CI 只做编译链接）：AOT Worker 启动后 SMU 初始化成功（AMD Ryzen 9 9955HX / GraniteRidge）、CO 16 核写入全部接受、WMI 事件模式订阅成功、启动补扫 271 个进程、CPU Set 绑定与优先级下发正常。CI 上不运行 Worker 的原因写在 `aot-probe.yml` 里：它要提权、会写 SMU、会注册计划任务，公共 runner 不适合。
-- IPC 协议仍是版本 10，本次无载荷变更。
-- AOT 产物不再生成 45 MB 的 `.pdb`（发布参数里 `DebugType=None`），压缩包体积基本持平。
+- **发布流水线分出两条 AOT 门禁**：`release.yml` 的 Worker 步骤改走 `PublishAot=true`，并在打包前校验「没有托管 dll / 没有 runtimeconfig.json / 两个原生依赖已落地」；`aot-probe.yml` 新增 `worker-aot` job，用 `-warnaserror` 把 IL2xxx / IL3xxx 直接变红。AOT 产物不再生成 45 MB 的 `.pdb`（`DebugType=None`），压缩包体积基本持平。
+- **AOT 运行时行为已在本机真机验证**：AOT Worker 启动后 SMU 初始化成功（AMD Ryzen 9 9955HX / GraniteRidge）、CO 16 核写入全部接受、WMI 事件模式订阅成功、启动补扫 271 个进程、CPU Set 绑定与优先级下发正常。CI 只做编译链接，不运行 Worker——它要提权、会写 SMU、会注册计划任务，公共 runner 不适合。
 
 ---
 
@@ -29,8 +24,7 @@
 ### Changed (修改)
 
 - **版本号归位 2.0.x**：3.0.3 / 3.0.4 属误升主版本，本次发布为 2.0.5；原两段内容保留，标题改回 2.0.3 / 2.0.4。
-
-> IPC 协议仍是版本 10：`save-plan` / `query-plans` 新增的 `powerPolicy` 是可选字段，`powerSchemeGuid` 由必填改为可选，旧载荷形状照常可读。
+- **IPC 载荷向后兼容**：`save-plan` / `query-plans` 新增的 `powerPolicy` 是可选字段，`powerSchemeGuid` 由必填改为可选，旧载荷形状照常可读，协议版本仍是 10。
 
 ---
 
@@ -38,9 +32,7 @@
 
 ### Fixed (修复)
 
-- **电源页「+ 新建方案」必然失败**：面板的通用新建对调校 / 调度 / 电源三类方案走同一条 `save-plan`，只带一个名字；而后台在电源方案的新建分支强制要求 `PowerSchemeGuid` 非空且在系统里真实存在（电源方案的本质是「这套参数写到哪份 Windows 方案上」），于是每次都被拒，界面回显「电源方案必须指定一个有效的方案 GUID」。现在电源页自己接管新建：以**当前活动方案**为模板派生一份系统方案 → 按回包里的名字取回 GUID → `save-plan` 登记 → 补一次应用把「生效中」标记对齐。GUID 不从 `ActiveGuid` 取，因为切换失败时它仍是旧方案，记录会挂到别人身上。
-
-> 仅改 UI 侧绑定，IPC 协议仍是版本 10，后台与公开接口未动。预期行为：新建会真实多出一份同名 Windows 电源方案（与卡片区四个模板新建一致）。
+- **电源页「+ 新建方案」必然失败**：面板的通用新建对调校 / 调度 / 电源三类方案走同一条 `save-plan`，只带一个名字；而后台在电源方案的新建分支强制要求 `PowerSchemeGuid` 非空且在系统里真实存在（电源方案的本质是「这套参数写到哪份 Windows 方案上」），于是每次都被拒，界面回显「电源方案必须指定一个有效的方案 GUID」。现在电源页自己接管新建：以**当前活动方案**为模板派生一份系统方案 → 按回包里的名字取回 GUID → `save-plan` 登记 → 补一次应用把「生效中」标记对齐。GUID 不从 `ActiveGuid` 取，因为切换失败时它仍是旧方案，记录会挂到别人身上。仅改 UI 侧绑定，后台与公开接口未动；系统里会真实多出一份同名电源方案（与卡片区模板新建一致），协议版本仍是 10。
 
 ---
 
@@ -51,15 +43,10 @@
 - **仓库清理**：移除 `Legacy/` 全部 114 个旧 WPF / WinUI 界面归档（约 1.9 万行，不在任何工程里）、`docs/` 历史开发笔记与清单、`AUTOMATION_PROGRESS.md`、`Zentwik.UI/README.md`。保留 README、CHANGELOG、LICENSE、`UI_Contract.md` 和四个工程源码。旧内容仍可从 git 历史找回。
 - **README 重写**：补齐双进程架构、运行要求、构建 / 发布流程、回归命令与清理后的仓库结构。
 - **代码清理**：删除四工程内从未被调用的 `MemoryTrimmer` 及其 DI 注册、`CpuSetScheduler` 中未使用的权限常量，以及若干只复述标识符、没有解释「为什么」的注释。必要的说明性注释全部保留。
-
-### Performance (性能)
-
 - **进程规则匹配**：`ProcessWatcher.FindRuleFor` 与 Worker 的 `query-processes` 原本是「每进程 × 每条规则」线性扫描、两侧字符串反复 Trim。改为随规则读盘窗口建一次按名字索引的字典（忽略大小写、同名保留首条），之后每进程只查一次表；Worker 复用同一份索引逻辑，匹配口径不变。
 - **场景仲裁**：`Notify` 不再对触发快照复制第二遍；每条规则的触发匹配由线性扫全量触发改为一次 HashSet 查表（含 null / 空串不等的原有语义）。
 - **`ProcessExitArguments`** 去掉 Where / Select / Distinct 三层迭代器；`ProcessRefresher` 把 CPU 窗口长度、路径重试间隔、逻辑处理器数提为静态常量，采样清理改为两次直接遍历，不再产生 LINQ 中间集合。
 - **日志批量落盘**：按天分桶不再为每条日志分配分组对象，`StreamWriter` 直接写 `StringBuilder`，省掉一次整批字符串拷贝。
-
-> 外部接口与行为不变：IPC 协议仍为版本 10，公开类型与方法签名未改，一连接一条消息、「完全退出 / 仅留服务」等关闭行为均未调整。
 
 ---
 
@@ -231,8 +218,6 @@
 - **`ScenarioService`（场景自动切换）**：支持进程运行、电池供电、交流供电三类触发；多规则同时命中按 `Priority` 仲裁；`Notify` 传“此刻全部成立的触发”。
 - **配置页接上数据源**：列表、开关、动作接服务；规则库双列继续灰置。
 
-### 已实装
-
 - **`ProcessWatcher.ProcessSetChanged` + `ReapplyNow()`**：进程创建/退出时广播集合变化；方案切换后重扫覆盖已运行进程，不做解绑；降级轮询仅在存活 PID 集合变化时广播。
 - **`PowerStatusWatcher`**：`PowerModeChanged` 为主，30 秒轮询兜底；使用 `GetSystemPowerStatus`；读不到状态时按插电处理。
 - **`ScenarioMonitor`**：不启用零占用、按需订阅、调用侧 800ms 防抖。
@@ -378,7 +363,7 @@
 
 > *注：由于本地分支归档失误，该阶段的详细更新记录已丢失。以下为根据代码提交历史总结的核心变更概要。*
 
-### Refactor (重构)
+### Changed (修改)
 
 - **底层架构深度重构**：对核心业务逻辑进行了大规模梳理与解耦，大幅提升了代码的可维护性与执行效率。
 - **清理历史技术债务**：全面移除前期迭代遗留的废弃代码与冗余模块，精简了工程体积。
