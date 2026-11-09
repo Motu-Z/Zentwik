@@ -30,6 +30,9 @@ public partial class ProcessView : UserControl
         if (VisualTreeAssist.IsInsideTextBox(e.OriginalSource as DependencyObject))
             return;
 
+        if (VisualTreeAssist.IsInsideInteractiveControl(e.OriginalSource as DependencyObject))
+            return;
+
         Keyboard.ClearFocus();
     }
 

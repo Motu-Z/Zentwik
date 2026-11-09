@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace Zentwik.UI.Services;
@@ -16,6 +17,24 @@ public static class VisualTreeAssist
         while (source is not null)
         {
             if (source is TextBox)
+                return true;
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 该元素是否位于需要保留焦点的交互控件内部。
+    /// ComboBox 候选项在 Popup 里，选中的那一刻若被外部清走键盘焦点，
+    /// 下拉会先关闭、选择随之回滚，界面表现为「选完文字没变」。
+    /// </summary>
+    public static bool IsInsideInteractiveControl(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is ComboBox or ComboBoxItem or ButtonBase or ScrollBar or Slider)
                 return true;
 
             source = VisualTreeHelper.GetParent(source);
