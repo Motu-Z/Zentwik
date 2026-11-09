@@ -337,6 +337,14 @@ public partial class PowerViewModel : ObservableObject
         // 顶栏的「新建」因此改走派生流程，与卡片区的模板新建殊途同归。
         PlanHub.Power.CreateHandler = CreatePlanAsync;
 
+        // 从方案面板应用电源方案，系统计划会被切走 —— 本页必须重读。
+        // 弱事件订阅：页面实例由外壳缓存，但自检会造很多个，普通订阅会在
+        // 单例上留下一串永不释放的强引用（与调校页同一套写法）。
+        System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
+            PlanHub.Power,
+            nameof(PlanScope.Applied),
+            OnPlanApplied);
+
         if (SuppressWorkerInit)
         {
             // 截图模式按笔记本的形态画（有电池、交流电供电），
@@ -376,6 +384,42 @@ public partial class PowerViewModel : ObservableObject
             _initialized = true;
             _refreshTask = null;
         }
+    }
+
+    /// <summary>
+    /// 方案面板应用了一份电源方案：系统计划与五项参数都变了，整页重读。
+    /// </summary>
+    /// <remarks>
+    /// 这里不拦未保存改动：应用是显式动作，系统状态已经变了，
+    /// 继续显示旧的一套值就是在骗人。页内自己的「应用参数」不走这条路径。
+    /// </remarks>
+    private void OnPlanApplied(object? sender, EventArgs e)
+    {
+        if (SuppressWorkerInit)
+            return;
+
+        _refreshTask = null;
+        _ = RefreshCoreAsync(notifyOnFailure: false);
+    }
+
+    /// <summary>首帧是否已经读过一次系统状态。</summary>
+    public bool IsInitialized => _initialized;
+
+    /// <summary>
+    /// 切回本页时对齐一次系统状态。
+    /// </summary>
+    /// <remarks>
+    /// 场景规则切电源方案发生在后台，界面收不到任何事件；不加这一步，
+    /// 只要不重启，卡片高亮就永远是第一次进页时的样子。
+    /// 有未保存改动时不重读 —— 那会把用户正在调的值冲掉。
+    /// </remarks>
+    public Task ReloadOnShownAsync()
+    {
+        if (SuppressWorkerInit || !_initialized || IsDirty || IsBusy)
+            return Task.CompletedTask;
+
+        _refreshTask = null;
+        return RefreshCoreAsync(notifyOnFailure: false);
     }
 
     /// <summary>「回读」：丢弃界面改动，重新读一次系统当前值。</summary>

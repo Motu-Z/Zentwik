@@ -119,6 +119,16 @@ public sealed class PlanScope : ViewModelBase
     /// <summary>当前方案换人了。调校页靠它把界面切到那一份。</summary>
     public event EventHandler? CurrentChanged;
 
+    /// <summary>
+    /// 方案应用成功（系统状态已变）。电源页靠它重读系统方案与五项参数。
+    /// </summary>
+    /// <remarks>
+    /// 不能用 <see cref="CurrentChanged"/> 顶替：列表重拉时选中项会被复用，
+    /// 应用一份方案并不换人，那个事件根本不会触发 —— 系统计划已经切走了，
+    /// 界面却还高亮着原来那张卡。
+    /// </remarks>
+    public event EventHandler? Applied;
+
     public string CurrentName => Current?.Name ?? EmptyText;
 
     public bool HasCurrent => Current is not null;
@@ -811,6 +821,11 @@ public sealed class PlanScope : ViewModelBase
 
             // 生效标记以 Worker 为准，重拉列表。
             await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+            // 列表刷新只改「谁生效」，页面上那份系统状态还是旧的。
+            // 电源方案会顺手切走系统计划，必须让页面重读一次，否则卡片高亮
+            // 与五项参数全停在上一份上，看起来像「点了应用什么都没发生」。
+            Applied?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {

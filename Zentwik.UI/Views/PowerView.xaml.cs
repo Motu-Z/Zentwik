@@ -15,7 +15,15 @@ public partial class PowerView : UserControl
 
         // 窗口先上屏再发 IPC：查询要在管道上排在 Worker 前面那条命令之后，
         // 放进构造函数会把首帧卡住。
-        Loaded += async (_, _) => await vm.InitializeAsync();
+        // 外壳缓存了本页实例，切走再切回来只是重新挂进可视树 —— Loaded 会再触发一次，
+        // 那一次只做「对齐」（有未保存改动就跳过），不会重复首帧那一整套初始化。
+        Loaded += async (_, _) =>
+        {
+            if (vm.IsInitialized)
+                await vm.ReloadOnShownAsync();
+            else
+                await vm.InitializeAsync();
+        };
     }
 
     private void OnSchemeRenameKeyDown(object sender, KeyEventArgs e)
