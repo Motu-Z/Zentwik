@@ -127,6 +127,17 @@ public partial class PowerViewModel : ObservableObject
     /// <summary>程序性改动选中项时为 true，避免列表刷新触发一次方案切换。</summary>
     private bool _suppressSchemeSwitch;
 
+    /// <summary>
+    /// 刷新方案面板期间为 true，期间不按方案快照覆盖页面值。
+    /// </summary>
+    /// <remarks>
+    /// 面板刷新走 <c>Items.Clear()</c>，会触发 <c>CurrentChanged</c>。若此时照样
+    /// <see cref="LoadSelectedPlanValues"/>，就会用方案里的旧快照把刚从系统读回来的
+    /// 真实值盖掉 —— 用户看到的是「方案存的」而不是「机器现在的」。
+    /// 只有用户手动换选方案时才该加载方案值。
+    /// </remarks>
+    private bool _suppressPlanLoad;
+
     private Task? _refreshTask;
 
     private bool _initialized;
@@ -159,7 +170,44 @@ public partial class PowerViewModel : ObservableObject
             return;
         }
 
+        // 切换会重读系统值，页面上还没应用的改动会被一并冲掉 —— 与面板换方案同一套口径：
+        // 先确认再切，别让用户以为改动跟着过去了。
+        if (IsDirty)
+        {
+            PowerScheme target = value;
+            SyncSelectedScheme();
+
+            ConfirmService.Instance.Request(
+                "当前参数还没应用",
+                new[]
+                {
+                    $"切到「{target.Name}」会丢弃页面上的改动",
+                    "想保留就先点「应用参数」，再回来切",
+                },
+                () => SwitchConfirmed(target),
+                "丢弃并切换");
+
+            return;
+        }
+
         _ = SwitchSchemeAsync(value);
+    }
+
+    /// <summary>确认丢弃改动之后真正切过去。先抑制一次选中回调，避免再弹一遍确认。</summary>
+    private void SwitchConfirmed(PowerScheme scheme)
+    {
+        _suppressSchemeSwitch = true;
+
+        try
+        {
+            SelectedScheme = scheme;
+        }
+        finally
+        {
+            _suppressSchemeSwitch = false;
+        }
+
+        _ = SwitchSchemeAsync(scheme);
     }
 
     [ObservableProperty]
@@ -300,6 +348,8 @@ public partial class PowerViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanApply));
         ApplyCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanSaveToPlan));
+        SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>后台服务是否可写。false 时应用参数禁用。</summary>
@@ -310,6 +360,8 @@ public partial class PowerViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanApply));
         ApplyCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanSaveToPlan));
+        SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
@@ -414,7 +466,16 @@ public partial class PowerViewModel : ObservableObject
     }
 
     /// <summary>面板换选了一份电源方案：把它的五项参数摆到界面上。</summary>
-    private void OnPlanSelectionChanged(object? sender, EventArgs e) => LoadSelectedPlanValues();
+    private void OnPlanSelectionChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(CanSaveToPlan));
+        SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
+
+        if (_suppressPlanLoad)
+            return;
+
+        LoadSelectedPlanValues();
+    }
 
     /// <summary>
     /// 把选中的那份方案存的五项参数搬到界面上（不动系统、不切计划、不标脏）。
@@ -912,6 +973,92 @@ public partial class PowerViewModel : ObservableObject
     }
 
     /// <summary>
+    /// 「保存到当前方案」：把界面上这套参数存进选中的方案，并让它认领当前这份系统计划。
+    /// </summary>
+    /// <remarks>
+    /// 与「应用参数」分工明确：应用参数是写到 Windows，本命令是写到方案。
+    ///
+    /// 【为什么需要这个入口】
+    /// 用户在卡片上换了系统计划（平衡 → 节能）之后，方案记录仍指回旧计划，
+    /// 而页面此时没有任何改动，<see cref="CanApply"/> 为 false —— 按钮全灰，
+    /// 于是「改了系统方案却存不进方案」。这里把「当前这套 + 当前这份系统计划」
+    /// 一次性记进选中的方案。
+    ///
+    /// 【为什么不重拉列表】
+    /// <c>Items.Clear()</c> 会触发 <c>CurrentChanged</c>，页面值被按方案再刷一遍，
+    /// 用户正在调的东西就没了。方案行的字段就地更新即可。
+    /// </remarks>
+    [RelayCommand(CanExecute = nameof(CanSaveToPlan))]
+    private async Task SaveToCurrentPlanAsync()
+    {
+        PlanItem? current = PlanHub.Power.Current;
+
+        if (IsBusy || current is null || current.IsLocal || PlanHub.SuppressWorkerInit)
+            return;
+
+        IsBusy = true;
+
+        try
+        {
+            ApplyPowerPolicyPayload snapshot = BuildFullSnapshot();
+            bool hasScheme = ActiveSchemeGuid != Guid.Empty;
+            string? schemeGuid = hasScheme ? ActiveSchemeGuid.ToString("D") : null;
+
+            IpcOutcome<string> saved = await WorkerBridge.Instance
+                .SavePlanAsync(
+                    PlanKind.Power,
+                    current.Id,
+                    current.Name,
+                    powerSchemeGuid: schemeGuid,
+                    powerPolicy: snapshot,
+                    timeoutMs: ApplyTimeoutMs)
+                .ConfigureAwait(true);
+
+            if (saved.TransportFailed)
+            {
+                MarkWorkerUnreachable();
+                ToastService.Instance.ShowError("后台服务未连接，参数未存入方案");
+                return;
+            }
+
+            if (!saved.Success)
+            {
+                ToastService.Instance.ShowError(
+                    string.IsNullOrEmpty(saved.Message) ? "保存到方案失败" : saved.Message);
+                return;
+            }
+
+            current.PowerPolicy = snapshot;
+
+            if (hasScheme)
+            {
+                current.PowerSchemeGuid = schemeGuid!;
+                current.PowerSchemeName = ActiveSchemeName;
+            }
+
+            PlanHub.Power.UpdateCurrentSummary();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Instance.ShowError($"保存到方案失败：{ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 有方案可写、后台在线、且不在忙时才允许保存 —— 与「应用参数」不同，
+    /// 不要求有脏改动：这个入口本来就是给「没改动、但换了系统计划」用的。
+    /// </summary>
+    public bool CanSaveToPlan =>
+        !IsBusy
+        && IsWorkerAvailable
+        && !PlanHub.SuppressWorkerInit
+        && PlanHub.Power.Current is { IsLocal: false };
+
+    /// <summary>
     /// 在模板名后面加序号，避让本机已有的同名方案。
     /// </summary>
     /// <remarks>
@@ -1111,7 +1258,17 @@ public partial class PowerViewModel : ObservableObject
 
             // 方案层的「生效中」也跟着变：后台已按这份计划反查归属并记账，
             // 这里重拉一次列表把标记取回来，否则面板会一直写着上一份。
-            await PlanHub.Power.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+            // 期间屏蔽方案回填：页面此时显示的是刚读到的系统真值，不能被方案快照盖掉。
+            _suppressPlanLoad = true;
+
+            try
+            {
+                await PlanHub.Power.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+            }
+            finally
+            {
+                _suppressPlanLoad = false;
+            }
         }
         catch (Exception ex)
         {

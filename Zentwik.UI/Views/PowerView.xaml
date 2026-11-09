@@ -100,6 +100,13 @@
                         <TextBlock Text="恢复默认" />
                     </Button>
 
+                    <Button Style="{StaticResource ActionButtonStyle}"
+                            Margin="8,0,0,0"
+                            automation:AutomationProperties.Name="把当前参数存到选中方案"
+                            Command="{Binding SaveToCurrentPlanCommand}">
+                        <TextBlock Text="存到方案" />
+                    </Button>
+
                     <Button Style="{StaticResource PrimaryButtonStyle}"
                             Margin="8,0,0,0"
                             automation:AutomationProperties.Name="应用电源策略"
