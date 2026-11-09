@@ -770,6 +770,7 @@ public partial class App : Application
 
                 await AppendSchemeRoundtrip(sb).ConfigureAwait(false);
                 await AppendUltimateSchemeCheck(sb).ConfigureAwait(false);
+                await AppendPlanCreateRoundtrip(sb).ConfigureAwait(false);
             }).GetAwaiter().GetResult();
         }
         catch (Exception ex)
@@ -1400,6 +1401,70 @@ public partial class App : Application
                     .ConfigureAwait(false);
 
                 sb.AppendLine($"cleanup: success={cleanup.Success} msg={cleanup.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 走一遍「方案面板新建电源方案」：派生系统方案 → 登记成方案 → 清理。
+    /// </summary>
+    /// <remarks>
+    /// 这条路径曾经只发 <c>save-plan</c> 而不带 GUID，被后台以
+    /// 「电源方案必须指定一个有效的方案 GUID」直接拒掉。探针留作回归护栏：
+    /// 钩子一被摘掉，这里立刻变 <c>id=(null)</c>。
+    /// </remarks>
+    private static async Task AppendPlanCreateRoundtrip(StringBuilder sb)
+    {
+        Services.WorkerBridge bridge = Services.WorkerBridge.Instance;
+
+        string name = "__probe 新建__" + Guid.NewGuid().ToString("N")[..4];
+        string? planId = null;
+        Guid schemeGuid = Guid.Empty;
+
+        try
+        {
+            if (ViewModels.PlanHub.Power.CreateHandler is null)
+            {
+                sb.AppendLine("planCreate: handler=(null)");
+                return;
+            }
+
+            planId = await ViewModels.PlanHub.Power.CreateHandler(name).ConfigureAwait(false);
+
+            IpcOutcome<Zentwik.Core.Ipc.PowerSchemeListPayload> schemes = await bridge
+                .QueryPowerSchemesAsync()
+                .ConfigureAwait(false);
+
+            Zentwik.Core.Ipc.PowerSchemeEntry? entry = schemes.Value?.Schemes
+                .FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+
+            schemeGuid = entry?.Guid ?? Guid.Empty;
+
+            // 登记是否真的落到 plans.json，要问后台；页面缓存要等下一次刷新才更新。
+            IpcOutcome<Zentwik.Core.Ipc.PlanListPayload> plans = await bridge
+                .QueryPlansAsync(Zentwik.Core.Services.PlanKind.Power)
+                .ConfigureAwait(false);
+
+            bool listed = planId is not null
+                && (plans.Value?.Plans ?? new()).Any(p => p.Id == planId);
+
+            sb.AppendLine($"planCreate: id={planId ?? "(null)"} scheme={schemeGuid:D} listed={listed}");
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine("planCreate failed: " + ex.Message);
+        }
+        finally
+        {
+            if (planId is not null)
+            {
+                await bridge.DeletePlanAsync(Zentwik.Core.Services.PlanKind.Power, planId)
+                    .ConfigureAwait(false);
+            }
+
+            if (schemeGuid != Guid.Empty)
+            {
+                await bridge.DeletePowerSchemeAsync(schemeGuid).ConfigureAwait(false);
             }
         }
     }

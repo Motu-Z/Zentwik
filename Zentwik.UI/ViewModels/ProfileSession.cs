@@ -234,6 +234,16 @@ public sealed class PlanScope : ViewModelBase
     public RelayCommand CancelDeleteCommand { get; }
     public RelayCommand ApplyCommand { get; }
 
+    /// <summary>
+    /// 由页面自己完成的新建，返回新方案 Id；null 表示失败（已给过回执）。
+    /// </summary>
+    /// <remarks>
+    /// 电源方案不能空白新建：它存的是「参数要写到哪份 Windows 方案上」，
+    /// 没有真实方案可挂时后台会直接拒掉。电源页据此把「新建」变成
+    /// 「派生一份系统方案 + 登记成方案」，其余两页不需要这个钩子。
+    /// </remarks>
+    public Func<string, Task<string?>>? CreateHandler { get; set; }
+
     // ==================== 与 Worker 对齐 ====================
 
     /// <summary>拉这一类方案的列表。失败保留当前内容，不弹提示。</summary>
@@ -512,6 +522,25 @@ public sealed class PlanScope : ViewModelBase
             return;
         }
 
+        // 有派生要求的类（电源）先在系统里造出载体，再回来登记方案。
+        if (CreateHandler is not null)
+        {
+            string? createdId = await RunCreateHandlerAsync(name).ConfigureAwait(true);
+
+            if (createdId is null)
+                return;
+
+            await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+            PlanItem? newItem = Items.FirstOrDefault(p => p.Id == createdId)
+                                ?? Items.FirstOrDefault(p => p.Name == name);
+
+            if (newItem is not null)
+                Current = newItem;
+
+            return;
+        }
+
         try
         {
             IpcOutcome<string> outcome = await WorkerBridge.Instance
@@ -546,6 +575,30 @@ public sealed class PlanScope : ViewModelBase
             NewName = name;
             InputError = ex.Message;
             ToastService.Instance.Show(ex.Message);
+        }
+    }
+
+    /// <summary>页面的新建钩子：失败把名字还给输入行，异常也当失败。</summary>
+    private async Task<string?> RunCreateHandlerAsync(string name)
+    {
+        try
+        {
+            string? createdId = await CreateHandler!(name).ConfigureAwait(true);
+
+            if (createdId is not null)
+                return createdId;
+
+            IsCreating = true;
+            NewName = name;
+            return null;
+        }
+        catch (Exception ex)
+        {
+            IsCreating = true;
+            NewName = name;
+            InputError = ex.Message;
+            ToastService.Instance.Show(ex.Message);
+            return null;
         }
     }
 

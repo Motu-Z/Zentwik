@@ -333,6 +333,10 @@ public partial class PowerViewModel : ObservableObject
             Presets.Add(new PresetOption(preset));
         }
 
+        // 电源方案不能空白新建：记录里存的是「参数写到哪份 Windows 方案上」。
+        // 顶栏的「新建」因此改走派生流程，与卡片区的模板新建殊途同归。
+        PlanHub.Power.CreateHandler = CreatePlanAsync;
+
         if (SuppressWorkerInit)
         {
             // 截图模式按笔记本的形态画（有电池、交流电供电），
@@ -635,6 +639,103 @@ public partial class PowerViewModel : ObservableObject
         catch (Exception ex)
         {
             ToastService.Instance.ShowError($"新建电源方案失败：{ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 顶栏方案面板的「新建」：先以当前活动方案为模板派生一份系统方案，再登记成电源方案。
+    /// </summary>
+    /// <remarks>
+    /// 电源方案存的是「参数写到哪份 Windows 方案上」，没有真实方案可挂时
+    /// 后台会以「必须指定一个有效的方案 GUID」拒掉 —— 所以这里不能只写盘。
+    /// 模板取当前活动方案而非内置预设：用户点新建的意图通常是「在现在这套上再开一份」。
+    /// </remarks>
+    /// <returns>新方案 Id；失败返回 null。</returns>
+    private async Task<string?> CreatePlanAsync(string requestedName)
+    {
+        if (IsBusy)
+            return null;
+
+        IsBusy = true;
+
+        try
+        {
+            Guid template = ActiveSchemeGuid != Guid.Empty
+                ? ActiveSchemeGuid
+                : PowerSchemePresets.Balanced.Guid;
+
+            string schemeName = BuildUniqueSchemeName(requestedName);
+
+            IpcOutcome<PowerSchemeListPayload> created = await WorkerBridge.Instance
+                .CreatePowerSchemeAsync(template, schemeName, ApplyTimeoutMs)
+                .ConfigureAwait(true);
+
+            if (created.TransportFailed)
+            {
+                MarkWorkerUnreachable();
+                ToastService.Instance.ShowError("后台服务未连接，无法新建电源方案");
+                return null;
+            }
+
+            if (!created.Success || created.Value is null)
+            {
+                ToastService.Instance.ShowError(
+                    string.IsNullOrEmpty(created.Message) ? "新建电源方案失败" : created.Message);
+
+                return null;
+            }
+
+            ApplySchemeList(created.Value);
+
+            // 从回包里按名字找新方案，不要用 ActiveGuid：切换失败时它仍是旧方案，
+            // 方案记录就挂到了别人的身上。
+            PowerSchemeEntry? entry = created.Value.Schemes.FirstOrDefault(
+                s => string.Equals(s.Name, schemeName, StringComparison.OrdinalIgnoreCase));
+
+            if (entry is null)
+            {
+                ToastService.Instance.ShowError("电源方案已创建，但没能从系统列表里读回来");
+                return null;
+            }
+
+            IpcOutcome<string> saved = await WorkerBridge.Instance
+                .SavePlanAsync(
+                    PlanKind.Power,
+                    null,
+                    schemeName,
+                    powerSchemeGuid: entry.Guid.ToString("D"),
+                    timeoutMs: ApplyTimeoutMs)
+                .ConfigureAwait(true);
+
+            if (!saved.Success || string.IsNullOrEmpty(saved.Value))
+            {
+                // 系统方案已经存在，只是没进列表：说清楚，别让用户以为白建了一次。
+                ToastService.Instance.ShowError(
+                    string.IsNullOrEmpty(saved.Message) ? "系统方案已创建，但未能加入方案列表" : saved.Message);
+
+                return null;
+            }
+
+            _refreshTask = null;
+            await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+            // 系统那边已经切到这份新方案了，生效标记也要补齐 ——
+            // 否则面板把它显示成「未生效」，用户以为没切过去。
+            // 失败不另行提示：方案本身已经建好，下次点应用会补上。
+            await WorkerBridge.Instance
+                .ApplyPlanAsync(PlanKind.Power, saved.Value, ApplyTimeoutMs)
+                .ConfigureAwait(true);
+
+            return saved.Value;
+        }
+        catch (Exception ex)
+        {
+            ToastService.Instance.ShowError($"新建电源方案失败：{ex.Message}");
+            return null;
         }
         finally
         {
