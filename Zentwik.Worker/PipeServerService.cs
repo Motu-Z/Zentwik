@@ -55,6 +55,8 @@ namespace Zentwik.Worker
         private readonly ScenarioService _scenarios;
         private readonly PowerPolicyService _power;
         private readonly IUiSettingsStore _settings;
+        private readonly SleepResumeWatcher _sleepWatcher;
+        private readonly IBootGuard _bootGuard;
 
         private CancellationTokenSource? _stopToken;
         private Task? _acceptLoop;
@@ -74,7 +76,9 @@ namespace Zentwik.Worker
             ICpuSetScheduler cpuSets,
             ScenarioService scenarios,
             PowerPolicyService power,
-            IUiSettingsStore settings)
+            IUiSettingsStore settings,
+            SleepResumeWatcher sleepWatcher,
+            IBootGuard bootGuard)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -143,6 +147,15 @@ namespace Zentwik.Worker
             // 界面必须经这里读写，各存一份必然不同步。
             ArgumentNullException.ThrowIfNull(settings);
             _settings = settings;
+
+            // 休眠感知的启停在这里做：设置页改开关走的就是本服务的 save-ui-settings。
+            // 监听本身的恢复回调由 BackendHostService 订阅，这边只管挂/摘系统事件。
+            ArgumentNullException.ThrowIfNull(sleepWatcher);
+            _sleepWatcher = sleepWatcher;
+
+            // 护栏状态只有 Worker 知道（boot-guard.json），界面要显示真实计数就得问一次。
+            ArgumentNullException.ThrowIfNull(bootGuard);
+            _bootGuard = bootGuard;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -446,6 +459,9 @@ namespace Zentwik.Worker
                 case WorkerPipeContract.CommandSaveUiSettings:
                     return RunSaveUiSettings(request.Payload);
 
+                case WorkerPipeContract.CommandQueryBootGuard:
+                    return RunQueryBootGuard();
+
                 case WorkerPipeContract.CommandResetTuningSafe:
                     return await RunResetTuningSafeAsync(token);
 
@@ -653,6 +669,17 @@ namespace Zentwik.Worker
             if (request.ToastSeconds is { } toastSeconds)
                 settings.ToastSeconds = Math.Clamp(toastSeconds, 1, 30);
 
+            if (request.SmartAntiBrick is { } antiBrick)
+                settings.SmartAntiBrick = antiBrick;
+
+            bool hibernateChanged = false;
+
+            if (request.SmartHibernateAware is { } hibernate && hibernate != settings.SmartHibernateAware)
+            {
+                settings.SmartHibernateAware = hibernate;
+                hibernateChanged = true;
+            }
+
             bool watchChanged = false;
 
             if (request.WatchProcessBinding is { } watch && watch != settings.WatchProcessBinding)
@@ -680,7 +707,37 @@ namespace Zentwik.Worker
                 _log.Info($"进程监听已{(settings.WatchProcessBinding ? "启动" : "停止")}");
             }
 
+            if (hibernateChanged)
+            {
+                if (settings.SmartHibernateAware)
+                    _sleepWatcher.Start();
+                else
+                    _sleepWatcher.Stop();
+            }
+
             return UiSettingsResponse("ok");
+        }
+
+        /// <summary><c>query-boot-guard</c>：读启动护栏状态（连续异常启动次数 / 是否已拦截）。</summary>
+        private PipeResponse RunQueryBootGuard()
+        {
+            BootGuardStatus status = _bootGuard.Read();
+
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = true,
+                Message = "ok",
+                Payload = JsonSerializer.Serialize(
+                    new BootGuardStatusPayload
+                    {
+                        Failures = status.Failures,
+                        Blocked = status.Blocked,
+                        LastAttemptAt = status.LastAttemptAt,
+                        BlockedAt = status.BlockedAt
+                    },
+                    IpcJsonContext.Default.BootGuardStatusPayload)
+            };
         }
 
         private PipeResponse UiSettingsResponse(string message)
@@ -700,7 +757,9 @@ namespace Zentwik.Worker
                         ApplyTuningOnStartup = s.ApplyTuningOnStartup,
                         WatchProcessBinding = s.WatchProcessBinding,
                         NotifyOnError = s.NotifyOnError,
-                        ToastSeconds = s.ToastSeconds
+                        ToastSeconds = s.ToastSeconds,
+                        SmartAntiBrick = s.SmartAntiBrick,
+                        SmartHibernateAware = s.SmartHibernateAware
                     },
                     IpcJsonContext.Default.UiSettingsPayload)
             };
@@ -755,6 +814,16 @@ namespace Zentwik.Worker
 
                 // 设置回到默认（监听开启），监听线程要跟着起来。
                 _watcher.Start();
+
+                // 参数已被重置为安全值，护栏攒下的失败次数不再指向现状：
+                // 不清零的话，清完数据界面还会显示「已拦截」，下次开机也不肯自动应用。
+                _bootGuard.MarkHealthy();
+
+                // 休眠感知的默认值是开，重置后要按新设置重新对齐一次。
+                if (_settings.Settings.SmartHibernateAware)
+                    _sleepWatcher.Start();
+                else
+                    _sleepWatcher.Stop();
 
                 // 数据清了，硬件还停在旧参数上：再下发一次默认安全值。
                 try
@@ -1001,11 +1070,20 @@ namespace Zentwik.Worker
             string id = request.Id.Trim();
             bool deleted = await Task.Run(() => _plans.Delete(kind, id), token).ConfigureAwait(false);
 
+            // 方案没了，引用它的场景规则就永远应用不成功 —— 命中一次失败一次，
+            // 用户只看到「这条规则不生效」。这里顺手把对应动作置为「保持原样」，
+            // 规则本身与另外两个动作保留。
+            int detached = deleted ? _scenarios.DetachPlan(kind, id) : 0;
+
             return new PipeResponse
             {
                 Version = WorkerPipeContract.ProtocolVersion,
                 Success = deleted,
-                Message = deleted ? "已删除方案" : $"方案不存在：{id}",
+                Message = deleted
+                    ? (detached > 0
+                        ? $"已删除方案，{detached} 条场景规则解除引用"
+                        : "已删除方案")
+                    : $"方案不存在：{id}",
                 Payload = null
             };
         }

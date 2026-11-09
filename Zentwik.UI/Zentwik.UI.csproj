@@ -41,9 +41,9 @@
     <TieredPGO>true</TieredPGO>
 
     <!-- 版本号唯一真源：侧栏显示的版本文本从这里派生，不硬编码。与 Zentwik.Core 同一口径。 -->
-    <Version>2.1.2</Version>
-    <FileVersion>2.1.2.0</FileVersion>
-    <AssemblyVersion>2.1.2.0</AssemblyVersion>
+    <Version>2.1.3</Version>
+    <FileVersion>2.1.3.0</FileVersion>
+    <AssemblyVersion>2.1.3.0</AssemblyVersion>
 
     <!--
       应用图标：Windows 任务栏 / 资源管理器 / Alt-Tab 都用它。
@@ -55,11 +55,11 @@
     <!--
       产物直接落到部署目录，与 Zentwik.Worker 同目录（两工程 OutputPath 必须一致）。
       分开输出时 Worker 找不到同目录的 UI，就会回退到主仓库的旧构建 —— 开机自启因此
-      一直拉起老界面。Release 平铺到 D:\Zentwik-App（安装目录），Debug 落子目录。
+      一直拉起老界面。Release 平铺到 D:\Projects\Zentwik-App（安装目录），Debug 落子目录。
     -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Zentwik-App\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Zentwik-App\$(Configuration)\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Projects\Zentwik-App\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Projects\Zentwik-App\$(Configuration)\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>

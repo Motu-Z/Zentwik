@@ -776,6 +776,14 @@ public sealed class PlanScope : ViewModelBase
                 return;
             }
 
+            // 删除会顺带解除场景规则里对它的引用，而场景页不在当前页面：
+            // 不提示就等于悄悄改了用户没看见的那部分数据。
+            if (!string.IsNullOrEmpty(outcome.Message)
+                && outcome.Message.Contains("解除引用", StringComparison.Ordinal))
+            {
+                ToastService.Instance.Show(outcome.Message);
+            }
+
             await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
         }
         catch (Exception ex)

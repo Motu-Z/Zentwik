@@ -138,6 +138,12 @@ public sealed class AppSettings : ViewModelBase
 
             if (remote.ToastSeconds is { } toast)
                 ToastDurationSeconds = toast;
+
+            if (remote.SmartAntiBrick is { } antiBrick)
+                SmartAntiBrick = antiBrick;
+
+            if (remote.SmartHibernateAware is { } hibernate)
+                SmartHibernateAware = hibernate;
         }
         finally
         {
@@ -177,6 +183,8 @@ public sealed class AppSettings : ViewModelBase
         WatchProcessBinding = _watchProcesses,
         NotifyOnError = _errorBubble,
         ToastSeconds = _toastDurationSeconds,
+        SmartAntiBrick = _smartAntiBrick,
+        SmartHibernateAware = _smartHibernateAware,
     };
 
     private static string ToWire(StartupBehavior value) => value switch

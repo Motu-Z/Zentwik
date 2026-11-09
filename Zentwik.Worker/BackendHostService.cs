@@ -41,6 +41,7 @@ namespace Zentwik.Worker
         private readonly IProcessWatcher _watcher;
         private readonly ProcessRefresher _refresher;
         private readonly AutoStartService _autoStart;
+        private readonly SleepResumeWatcher _sleepWatcher;
 
         public BackendHostService(
             ILogService log,
@@ -56,7 +57,8 @@ namespace Zentwik.Worker
             ISmuReader smu,
             IProcessWatcher watcher,
             ProcessRefresher refresher,
-            AutoStartService autoStart)
+            AutoStartService autoStart,
+            SleepResumeWatcher sleepWatcher)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -99,6 +101,9 @@ namespace Zentwik.Worker
 
             ArgumentNullException.ThrowIfNull(autoStart);
             _autoStart = autoStart;
+
+            ArgumentNullException.ThrowIfNull(sleepWatcher);
+            _sleepWatcher = sleepWatcher;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -133,6 +138,16 @@ namespace Zentwik.Worker
             // 这一次一条都不写，让机器以出厂参数起来。
             BootGuardSnapshot guard = _bootGuard.Enter();
 
+            // 「启动异常自动拦截」关掉时，计数照记（关了再开还能接上），但这次不拦。
+            if (guard.Blocked && !_settings.Settings.SmartAntiBrick)
+            {
+                _log.Warn(
+                    $"启动护栏本应拦截（连续 {guard.Failures} 次写入后未正常完成），" +
+                    "但「启动异常自动拦截」已关闭：本次仍应用调校");
+
+                guard = guard with { Blocked = false };
+            }
+
             // 拦截时不删 tuning.json：数据留着，用户在调校页手动点「应用参数」即可恢复
             //（那条路径不经过启动闸门，成功后会 MarkHealthy 把计数清零）。
             if (!guard.Blocked && _settings.Settings.ApplyTuningOnStartup)
@@ -145,6 +160,16 @@ namespace Zentwik.Worker
                 if (!outcome.Success)
                     _log.Warn($"启动时应用调校未完成：{outcome.Summary}");
             }
+
+            // ---------- 4b. 休眠感知 ----------
+            // 睡眠只冻结进程，唤醒后它还活着；丢的是 SMU 里的寄存器值。
+            // 这里挂上恢复回调，醒来后把 tuning.json 再写一遍。
+            // 订阅无条件挂、监听才受开关控制：设置页中途打开开关时由 PipeServerService
+            // 调 Start，回调这边不用再补一次订阅。
+            _sleepWatcher.Resumed += OnResumedFromSleep;
+
+            if (_settings.Settings.SmartHibernateAware)
+                _sleepWatcher.Start();
 
             // ---------- 5. SMU 探测 ----------
             // 只读一次属性触发探测。异常只 Warn，绝不 throw、绝不 Environment.Exit。
@@ -171,11 +196,45 @@ namespace Zentwik.Worker
         public Task StopAsync(CancellationToken cancellationToken)
         {
             // 先停消费者（ProcessWatcher 不再要快照），再停生产者（采样线程），最后刷日志。
+            _sleepWatcher.Resumed -= OnResumedFromSleep;
+            _sleepWatcher.Stop();
             _watcher.Stop();
             _refresher.Stop();
             _log.Flush();
 
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 从睡眠 / 休眠恢复：把当前调校重新写进 SMU。
+        /// </summary>
+        /// <remarks>
+        /// 在系统电源事件线程上同步触发，所以整段丢到线程池执行 ——
+        /// 写 SMU 要几十到上百毫秒，堵住那个线程会拖慢系统对其他恢复事件的广播。
+        ///
+        /// 延迟 3 秒：刚唤醒的那一瞬间显卡、驱动都还在恢复，SMU 接口未必就绪，
+        /// 立刻写会拿到「不可用」然后白写一次。3 秒是「用户还没看到桌面就补完」的量级。
+        /// </remarks>
+        private void OnResumedFromSleep()
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+
+                    TuningApplyOutcome outcome = _tuningApply.ApplyFromStore();
+
+                    if (outcome.Success)
+                        _log.Info("休眠感知：已从睡眠恢复，调校参数重新下发");
+                    else
+                        _log.Warn($"休眠感知：恢复后重新应用调校未完成：{outcome.Summary}");
+                }
+                catch (Exception ex)
+                {
+                    _log.Warn($"休眠感知：恢复后应用调校异常：{ex.Message}");
+                }
+            });
         }
     }
 }

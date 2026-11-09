@@ -14,17 +14,17 @@
     <!--
       产物直接落到部署目录，和 UI 同目录 —— 这是「开机跑的是老 UI」的根因所在：
       Worker 拉起界面时优先找自己所在目录，两者分居两地就必然各拉各的版本。
-      Release 平铺到 D:\Zentwik-App（安装目录，计划任务指向这里）；
+      Release 平铺到 D:\Projects\Zentwik-App（安装目录，计划任务指向这里）；
       Debug 落到子目录，避免调试构建覆盖安装目录。
     -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Zentwik-App\</OutputPath>
-    <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Zentwik-App\$(Configuration)\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Projects\Zentwik-App\</OutputPath>
+    <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Projects\Zentwik-App\$(Configuration)\</OutputPath>
 
     <!-- 与 Zentwik.Core / Zentwik.UI 同一口径，任务管理器里能对上版本 -->
-    <Version>2.1.2</Version>
-    <FileVersion>2.1.2.0</FileVersion>
-    <AssemblyVersion>2.1.2.0</AssemblyVersion>
+    <Version>2.1.3</Version>
+    <FileVersion>2.1.3.0</FileVersion>
+    <AssemblyVersion>2.1.3.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

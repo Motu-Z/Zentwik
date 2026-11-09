@@ -1,4 +1,8 @@
+using System;
 using System.IO;
+using System.Threading.Tasks;
+using Zentwik.Core.Ipc;
+using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
@@ -36,10 +40,38 @@ public class AdvancedViewModel : ViewModelBase
 
     // ==================== 防砖计数 ====================
 
-    /// <summary>连续异常启动次数由 Worker 的 BootGuard 维护，界面暂不展示该值。</summary>
-    public int BootCount => 0;
+    private int _bootFailures;
+
+    /// <summary>连续异常启动次数。由 Worker 的 BootGuard 维护，进页时问一次。</summary>
+    public int BootCount => _bootFailures;
 
     public string BootCountText => $"{BootCount} 次";
+
+    /// <summary>读一次护栏计数。诊断模式与后台未连上时保持原值。</summary>
+    public async Task RefreshBootGuardAsync()
+    {
+        if (!Services.WorkerBridge.AllowAutoStart)
+            return;
+
+        try
+        {
+            IpcOutcome<BootGuardStatusPayload> outcome =
+                await Services.WorkerBridge.Instance.QueryBootGuardAsync().ConfigureAwait(true);
+
+            // 老版本 Worker 不认识这条命令：保持 0 而不是报错，界面不该为此弹气泡。
+            if (!outcome.Success || outcome.Value is null || outcome.Value.Failures == _bootFailures)
+                return;
+
+            _bootFailures = outcome.Value.Failures;
+
+            OnPropertyChanged(nameof(BootCount));
+            OnPropertyChanged(nameof(BootCountText));
+        }
+        catch (Exception)
+        {
+            // 读不到就维持原值：这是展示信息，不值得打断用户。
+        }
+    }
 
     // ==================== 显示 ====================
 

@@ -105,6 +105,10 @@ namespace Zentwik.Core.DependencyInjection
             services.TryAddSingleton<ScenarioSelfCheck>();
             services.TryAddSingleton<SmuDiagnostics>();
 
+            // 休眠恢复监听：Worker 启动路径与设置页开关共用同一个实例，
+            // 两处分别 Start / Stop 会打架，所以只注册单例。
+            services.TryAddSingleton<SleepResumeWatcher>();
+
             return services;
         }
     }

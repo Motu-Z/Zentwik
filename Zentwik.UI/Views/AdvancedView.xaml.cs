@@ -13,5 +13,14 @@ public partial class AdvancedView : System.Windows.Controls.UserControl
     public AdvancedView()
     {
         InitializeComponent();
+
+        // 连续异常启动次数只有后台知道，进页时问一次。
+        // 外壳缓存本页实例，切走再切回来会重新触发 Loaded —— 每次重读正好反映了
+        // 期间可能发生的启动失败。
+        Loaded += async (_, _) =>
+        {
+            if (DataContext is ViewModels.AdvancedViewModel vm)
+                await vm.RefreshBootGuardAsync();
+        };
     }
 }

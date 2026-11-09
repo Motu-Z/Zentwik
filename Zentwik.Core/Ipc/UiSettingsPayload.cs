@@ -39,5 +39,13 @@ namespace Zentwik.Core.Ipc
         /// <summary>提示停留秒数（1–30）。</summary>
         [JsonPropertyName("toastSeconds")]
         public int? ToastSeconds { get; set; }
+
+        /// <summary>启动异常自动拦截（Worker 启动路径与 TuningApplyService 消费）。</summary>
+        [JsonPropertyName("smartAntiBrick")]
+        public bool? SmartAntiBrick { get; set; }
+
+        /// <summary>智能休眠感知：恢复后重下发调校（Worker 的休眠监听消费）。</summary>
+        [JsonPropertyName("smartHibernateAware")]
+        public bool? SmartHibernateAware { get; set; }
     }
 }

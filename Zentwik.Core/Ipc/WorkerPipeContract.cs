@@ -592,6 +592,17 @@ namespace Zentwik.Core.Ipc
         public const string CommandFactoryReset = "factory-reset";
 
         /// <summary>
+        /// 读取启动护栏状态（连续异常启动次数 / 是否已触发拦截）。
+        ///
+        /// 参数：<c>Payload = null</c>。
+        /// 返回：Payload 是 <see cref="BootGuardStatusPayload"/>。
+        ///
+        /// 这个计数只有 Worker 知道（它写在 boot-guard.json），界面要显示真实值
+        /// 而不是写死 0，就必须问一次。
+        /// </summary>
+        public const string CommandQueryBootGuard = "query-boot-guard";
+
+        /// <summary>
         /// 两端共用的编码。显式无 BOM：管道另一头如果有 BOM，
         /// 第一行 JSON 的开头会多出三个字节，解析直接失败。
         /// </summary>

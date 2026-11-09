@@ -241,7 +241,9 @@ namespace Zentwik.Tests
                 cpuSets ?? new FakeCpuSetScheduler(),
                 scenarios ?? new ScenarioService(new FakeLogService(), plans, new FakeAppPaths()),
                 power ?? new PowerPolicyService(new FakePowerPolicyApi()),
-                settings ?? new FakeUiSettingsStore());
+                settings ?? new FakeUiSettingsStore(),
+                new SleepResumeWatcher(new FakeLogService()),
+                new BootGuard(new FakeLogService(), new FakeAppPaths()));
 
         /// <summary>
         /// apply-tuning 的 id 路径：Worker 调 PlanService.Apply，把方案写进 tuning.json 再写 SMU。

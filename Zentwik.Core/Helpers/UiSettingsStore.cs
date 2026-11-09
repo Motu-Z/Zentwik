@@ -138,6 +138,23 @@ namespace Zentwik.Core.Helpers
         public int ToastSeconds { get; set; } = 3;
 
         /// <summary>
+        /// 启动异常自动拦截：连续多次「写入调校后没走到完成」时，跳过下次开机自动调校。
+        ///
+        /// 数据一分不删，只是这一次不往 SMU 写。关掉它等于放弃这层兜底 ——
+        /// 一套真让机器起不来的参数会每次开机都重演。
+        /// </summary>
+        public bool SmartAntiBrick { get; set; } = true;
+
+        /// <summary>
+        /// 智能休眠感知：从睡眠 / 休眠恢复后重新下发当前调校参数。
+        ///
+        /// 进程本身在睡眠里只是被冻结，唤醒后照常活着；丢的是 SMU 里的
+        /// CO 偏移、FMax 这些寄存器值 —— 主板在 S3 / 休眠时会把它们清回默认。
+        /// 所以这里要做的不是「重启进程」，是「醒来后再写一遍」。
+        /// </summary>
+        public bool SmartHibernateAware { get; set; } = true;
+
+        /// <summary>
         /// 广播属性变更。只由本类的 setter 调用。
         /// <c>[CallerMemberName]</c> 让调用点不必写字面量，属性改名时不会漏。
         /// </summary>

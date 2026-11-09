@@ -31,6 +31,9 @@ namespace Zentwik.Core.Services
     /// <param name="RecoveredFromCrash">上次启动是否在写入后没走完。</param>
     public readonly record struct BootGuardSnapshot(bool Blocked, int Failures, bool RecoveredFromCrash);
 
+    /// <summary>当前护栏状态（只读视图，供界面查询）。</summary>
+    public readonly record struct BootGuardStatus(int Failures, bool Blocked, string? LastAttemptAt, string? BlockedAt);
+
     /// <summary>
     /// 防砖护栏。开机静默应用调校是唯一会在用户看不见的时候写硬件的动作 ——
     /// 如果那套参数本身让机器起不来，用户就会被锁在一个「每次开机都更砖」的循环里。
@@ -55,6 +58,9 @@ namespace Zentwik.Core.Services
 
         /// <summary>已安全走完：清除标记与计数。</summary>
         void MarkHealthy();
+
+        /// <summary>读当前状态，不产生任何副作用（不写盘、不改计数）。</summary>
+        BootGuardStatus Read();
     }
 
     /// <inheritdoc cref="IBootGuard"/>
@@ -131,6 +137,19 @@ namespace Zentwik.Core.Services
             _state.BlockedAt = null;
 
             Save();
+        }
+
+        public BootGuardStatus Read()
+        {
+            // 每次读盘：factory-reset 会把 boot-guard.json 一起清掉，
+            // 只认内存里的旧值会让界面在清空之后仍显示「已拦截」。
+            Load();
+
+            return new(
+                _state.Failures,
+                _state.Failures >= MaxConsecutiveFailures,
+                _state.LastAttemptAt,
+                _state.BlockedAt);
         }
 
         private void Load()

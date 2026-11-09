@@ -50,6 +50,7 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(CreatePowerSchemePayload))]
     [JsonSerializable(typeof(RenamePowerSchemePayload))]
     [JsonSerializable(typeof(UiSettingsPayload))]
+    [JsonSerializable(typeof(BootGuardStatusPayload))]
     public sealed partial class IpcJsonContext : JsonSerializerContext
     {
     }

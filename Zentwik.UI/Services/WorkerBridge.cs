@@ -384,6 +384,20 @@ public sealed class WorkerBridge
         return ToOutcome(response, IpcJsonContext.Default.UiSettingsPayload);
     }
 
+    /// <summary><c>query-boot-guard</c>：读启动护栏状态（连续异常启动次数 / 是否已拦截）。</summary>
+    public async Task<IpcOutcome<BootGuardStatusPayload>> QueryBootGuardAsync(
+        int timeoutMs = 5_000,
+        CancellationToken cancellationToken = default)
+    {
+        PipeResponse? response = await SendAsync(
+            WorkerPipeContract.CommandQueryBootGuard,
+            null,
+            timeoutMs,
+            cancellationToken).ConfigureAwait(false);
+
+        return ToOutcome(response, IpcJsonContext.Default.BootGuardStatusPayload);
+    }
+
     /// <summary><c>reset-tuning-safe</c>：恢复默认安全参数并下发一次。</summary>
     public async Task<IpcOutcome<string>> ResetTuningSafeAsync(
         int timeoutMs = 75_000,

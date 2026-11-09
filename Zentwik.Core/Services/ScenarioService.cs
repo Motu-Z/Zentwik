@@ -342,6 +342,66 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
+        /// 方案被删除后，解除规则里对它的引用。
+        /// </summary>
+        /// <remarks>
+        /// 只把对应那一个动作置空（空串 = 保持原样），规则本身与另外两个动作都不动。
+        /// 留着失效 Id 的后果不是「看起来有个名字」——仲裁仍会选中它、应用仍会失败，
+        /// 每次命中都在日志里刷一条失败，用户体验上等于这条规则莫名失效。
+        /// </remarks>
+        /// <returns>被解除引用的规则条数。</returns>
+        public int DetachPlan(PlanKind kind, string planId)
+        {
+            if (string.IsNullOrEmpty(planId))
+                return 0;
+
+            int affected = 0;
+
+            lock (Sync)
+            {
+                foreach (ScenarioRule rule in _rules)
+                {
+                    bool hit = kind switch
+                    {
+                        PlanKind.Tuning => string.Equals(rule.ProfileId, planId, StringComparison.Ordinal),
+                        PlanKind.Scheduling => string.Equals(rule.MaskId, planId, StringComparison.Ordinal),
+                        PlanKind.Power => string.Equals(rule.PowerSchemeId, planId, StringComparison.Ordinal),
+                        _ => false
+                    };
+
+                    if (!hit)
+                        continue;
+
+                    switch (kind)
+                    {
+                        case PlanKind.Tuning:
+                            rule.ProfileId = string.Empty;
+                            break;
+                        case PlanKind.Scheduling:
+                            rule.MaskId = string.Empty;
+                            break;
+                        case PlanKind.Power:
+                            rule.PowerSchemeId = string.Empty;
+                            break;
+                    }
+
+                    affected++;
+                }
+
+                if (affected > 0)
+                    Persist();
+            }
+
+            if (affected > 0)
+            {
+                _log.Info($"方案已删除：{affected} 条场景规则解除了对它的引用，对应动作改为「保持原样」");
+                Changed?.Invoke();
+            }
+
+            return affected;
+        }
+
+        /// <summary>
         /// 外部事件源的唯一入口：告诉服务「此刻有哪些场景成立」。
         ///
         /// 传的是**全部当前成立的触发**而不是单个事件：进程 A 退出时，
