@@ -42,4 +42,24 @@ public static class VisualTreeAssist
 
         return false;
     }
+
+    /// <summary>树里是否有正展开的下拉。自动刷新前查一次，避免重建列表把候选项收走。</summary>
+    public static bool HasOpenDropDown(DependencyObject? root)
+    {
+        if (root is null)
+            return false;
+
+        if (root is ComboBox { IsDropDownOpen: true })
+            return true;
+
+        int count = VisualTreeHelper.GetChildrenCount(root);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (HasOpenDropDown(VisualTreeHelper.GetChild(root, i)))
+                return true;
+        }
+
+        return false;
+    }
 }

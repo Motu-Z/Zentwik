@@ -1197,14 +1197,17 @@ namespace Zentwik.Worker
 
 
         /// <summary>
-        /// 进程列表 + 规则命中情况。数据来自 ProcessRefresher 的最近一次采样快照
-        /// （Worker 侧已在 BackendHostService 里 Start 过，这里只读）。
+        /// 进程列表 + 规则命中情况。查询即现场采一帧：采样器平时挂在事件上
+        /// （没人 AcquireWatch 就不会周期采样），只读 Latest 会一直拿到启动补扫那份旧快照。
+        /// 有人查就说明有人在看列表，用查询本身驱动采样，不额外记观察者。
         /// </summary>
         internal Task<PipeResponse> RunQueryProcessesAsync()
         {
-            // 直接读内存：save/delete 已经更新过，重读盘会在文件损坏时把规则表冲成空表。
+            IReadOnlyList<ProcessRefresher.Entry> snapshot =
+                _refresher.SampleOnSamplerThread(TimeSpan.FromSeconds(2));
+
             List<ProcessEntryPayload> items = BuildProcessEntries(
-                _refresher.Latest,
+                snapshot,
                 _scheduling.Profile.Rules);
 
             return Task.FromResult(new PipeResponse

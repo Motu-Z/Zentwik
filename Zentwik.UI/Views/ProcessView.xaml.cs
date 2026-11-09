@@ -1,9 +1,11 @@
 using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Zentwik.UI.Services;
 using Zentwik.UI.ViewModels;
 
@@ -12,8 +14,12 @@ namespace Zentwik.UI.Views;
 /// <summary>进程页。</summary>
 public partial class ProcessView : UserControl
 {
+    private const int AutoRefreshSeconds = 3;
+
     private bool _initialized;
     private bool _refreshing;
+    private readonly DispatcherTimer _autoRefreshTimer;
+
     public ProcessView()
     {
         InitializeComponent();
@@ -21,6 +27,12 @@ public partial class ProcessView : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         PreviewMouseLeftButtonDown += OnSurfacePreviewMouseDown;
+
+        _autoRefreshTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(AutoRefreshSeconds)
+        };
+        _autoRefreshTimer.Tick += OnAutoRefreshTick;
     }
 
     private ProcessViewModel? ViewModel => DataContext as ProcessViewModel;
@@ -39,49 +51,88 @@ public partial class ProcessView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (ViewModel is null)
+        if (ViewModel is not { } vm)
         {
             return;
         }
 
-        ViewModel.DrawerStateChanged -= OnDrawerStateChanged;
-        ViewModel.DrawerStateChanged += OnDrawerStateChanged;
+        vm.DrawerStateChanged -= OnDrawerStateChanged;
+        vm.DrawerStateChanged += OnDrawerStateChanged;
 
-        SnapDrawer(ViewModel.IsDrawerOpen);
+        SnapDrawer(vm.IsDrawerOpen);
+
+        if (!ProcessViewModel.SuppressWorkerInit)
+        {
+            _autoRefreshTimer.Start();
+        }
 
         if (!_initialized)
         {
             // 首次要连拓扑一起拉：下拉里的 CCD 条数由它决定。
             _initialized = true;
-            _ = ViewModel.InitializeAsync();
+            RequestRefresh(quiet: false, () => vm.InitializeAsync());
             return;
         }
 
-        // 页面实例被缓存，切回来不会再走 InitializeAsync。不重拉一次，
-        // 程序启动之后才开的进程就永远进不了这张表。
-        if (_refreshing)
+        // 页面实例被缓存，切回来不会再走 InitializeAsync，手动切排序也是全量刷新。
+        RequestRefresh(quiet: false, () => vm.RefreshAsync());
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _autoRefreshTimer.Stop();
+
+        if (ViewModel is not null)
+        {
+            ViewModel.DrawerStateChanged -= OnDrawerStateChanged;
+        }
+    }
+
+    /// <summary>停留在本页时定时采一次占用；切走即停，不做常驻轮询。</summary>
+    private void OnAutoRefreshTick(object? sender, EventArgs e)
+    {
+        if (ViewModel is not { } vm)
+        {
             return;
+        }
+
+        // 有未提交的改动、抽屉开着、下拉正展开时都不动列表，
+        // 否则重建会把用户刚选的值冲掉。
+        if (_refreshing
+            || vm.IsDrawerOpen
+            || vm.RunningProcesses.Any(p => p.IsDirty)
+            || vm.SavedRules.Any(r => r.IsDirty)
+            || VisualTreeAssist.HasOpenDropDown(this))
+        {
+            return;
+        }
+
+        RequestRefresh(quiet: true, () => vm.RefreshProcessesLightAsync(quiet: true));
+    }
+
+    private void RequestRefresh(bool quiet, Func<Task> action)
+    {
+        if (_refreshing)
+        {
+            return;
+        }
 
         _refreshing = true;
         AsyncRunner.Fire(async () =>
         {
             try
             {
-                await ViewModel.RefreshAsync().ConfigureAwait(true);
+                await action().ConfigureAwait(true);
+            }
+            catch when (quiet)
+            {
+                // 后台没就绪时不每轮弹一次气泡。
             }
             finally
             {
                 _refreshing = false;
             }
         });
-    }
-
-    private void OnUnloaded(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel is not null)
-        {
-            ViewModel.DrawerStateChanged -= OnDrawerStateChanged;
-        }
     }
 
     private void OnDrawerStateChanged(bool open)

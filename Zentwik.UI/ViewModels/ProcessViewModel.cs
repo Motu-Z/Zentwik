@@ -247,7 +247,7 @@ public class ProcessViewModel : ViewModelBase
         {
             if (UseWorker)
             {
-                Fire(RefreshAsync);
+                Fire(() => RefreshAsync());
                 return;
             }
 
@@ -512,7 +512,7 @@ public class ProcessViewModel : ViewModelBase
     /// 三份数据必须一起刷新：进程行显示的掩码来自规则，规则里的掩码名又来自掩码表。
     /// 只刷其中一份，界面上就会出现「进程指向一条不存在的规则」这种自相矛盾的行。
     /// </remarks>
-    public async Task RefreshAsync()
+    public async Task RefreshAsync(bool quiet = false)
     {
         if (!UseWorker)
         {
@@ -542,12 +542,44 @@ public class ProcessViewModel : ViewModelBase
 
         if (!processes.Success || processes.Value is null)
         {
-            ToastService.Instance.ShowError(
-                processes.Message.Length > 0 ? processes.Message : "取不到进程列表");
+            if (!quiet)
+            {
+                ToastService.Instance.ShowError(
+                    processes.Message.Length > 0 ? processes.Message : "取不到进程列表");
+            }
+
             return;
         }
 
         ApplyProcesses(processes.Value);
+    }
+
+    /// <summary>
+    /// 定时心跳。只查进程表：PID 集合没变就完全不碰 UI，
+    /// 有增减才走一次完整刷新，避免每轮重建几百行。
+    /// </summary>
+    public async Task RefreshProcessesLightAsync(bool quiet = false)
+    {
+        if (!UseWorker)
+        {
+            return;
+        }
+
+        IpcOutcome<List<ProcessEntryPayload>> processes = await WorkerBridge.Instance
+            .QueryProcessesAsync().ConfigureAwait(true);
+
+        if (!processes.Success || processes.Value is null)
+        {
+            if (!quiet)
+            {
+                ToastService.Instance.ShowError(
+                    processes.Message.Length > 0 ? processes.Message : "取不到进程列表");
+            }
+
+            return;
+        }
+
+        ApplyProcessSnapshot(processes.Value);
     }
 
     /// <summary>
@@ -674,35 +706,7 @@ public class ProcessViewModel : ViewModelBase
 
             foreach (ProcessEntryPayload entry in payload)
             {
-                RunningProcessItem item = new(
-                    entry.Pid,
-                    entry.Name,
-                    entry.Path,
-                    entry.Cpu,
-                    ProcessPriority.DisplayOf(ProcessPriority.FromBasePriority(entry.Priority)),
-                    IsSystemProcess(entry));
-
-                if (byName.TryGetValue(entry.Name, out ScheduleRuleItem? matched))
-                {
-                    item.ApplyMask(matched.MaskLabel ?? "不调度", matched.TargetType, matched.TargetValue);
-                    item.Priority = matched.Priority;
-                }
-
-                item.IsSelected = selectedPids.Contains(item.Pid);
-
-                item.PropertyChanged += (_, e) =>
-                {
-                    if (e.PropertyName == nameof(RunningProcessItem.IsSelected))
-                    {
-                        SelectedCount = FilteredProcesses.Count(p => p.IsSelected);
-                        OnPropertyChanged(nameof(AreAllSelected));
-                        return;
-                    }
-
-                    OnTargetChanged(item, e.PropertyName ?? string.Empty);
-                };
-
-                RunningProcesses.Add(item);
+                RunningProcesses.Add(CreateProcessItem(entry, byName, selectedPids));
             }
         }
         finally
@@ -711,6 +715,90 @@ public class ProcessViewModel : ViewModelBase
         }
 
         ApplyFilterAndSort();
+    }
+
+    /// <summary>
+    /// 定时心跳落地：行对象就地复用，只更新采样值、删掉退出的、把新进程追加到末端。
+    /// 不 Clear 整表，勾选、展开状态和滚动位置都不丢。
+    /// </summary>
+    private void ApplyProcessSnapshot(List<ProcessEntryPayload> payload)
+    {
+        Dictionary<int, RunningProcessItem> byPid = RunningProcesses.ToDictionary(p => p.Pid);
+        HashSet<int> seen = new(payload.Count);
+
+        foreach (ProcessEntryPayload entry in payload)
+        {
+            seen.Add(entry.Pid);
+
+            if (byPid.TryGetValue(entry.Pid, out RunningProcessItem? item))
+            {
+                item.Cpu = entry.Cpu;
+            }
+        }
+
+        for (int i = RunningProcesses.Count - 1; i >= 0; i--)
+        {
+            if (!seen.Contains(RunningProcesses[i].Pid))
+            {
+                RunningProcesses.RemoveAt(i);
+            }
+        }
+
+        Dictionary<string, ScheduleRuleItem> byName = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ScheduleRuleItem rule in SavedRules)
+        {
+            byName[rule.ProcessName] = rule;
+        }
+
+        foreach (ProcessEntryPayload entry in payload)
+        {
+            if (!byPid.ContainsKey(entry.Pid))
+            {
+                RunningProcesses.Add(CreateProcessItem(entry, byName, null));
+            }
+        }
+
+        ApplyFilterAndSort(incremental: true);
+    }
+
+    private RunningProcessItem CreateProcessItem(
+        ProcessEntryPayload entry,
+        Dictionary<string, ScheduleRuleItem> byName,
+        HashSet<int>? selectedPids)
+    {
+        RunningProcessItem item = new(
+            entry.Pid,
+            entry.Name,
+            entry.Path,
+            entry.Cpu,
+            ProcessPriority.DisplayOf(ProcessPriority.FromBasePriority(entry.Priority)),
+            IsSystemProcess(entry));
+
+        if (byName.TryGetValue(entry.Name, out ScheduleRuleItem? matched))
+        {
+            item.ApplyMask(matched.MaskLabel ?? "不调度", matched.TargetType, matched.TargetValue);
+            item.Priority = matched.Priority;
+        }
+
+        if (selectedPids is not null)
+        {
+            item.IsSelected = selectedPids.Contains(item.Pid);
+        }
+
+        item.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(RunningProcessItem.IsSelected))
+            {
+                SelectedCount = FilteredProcesses.Count(p => p.IsSelected);
+                OnPropertyChanged(nameof(AreAllSelected));
+                return;
+            }
+
+            OnTargetChanged(item, e.PropertyName ?? string.Empty);
+        };
+
+        return item;
     }
 
     /// <summary>
@@ -1149,7 +1237,7 @@ public class ProcessViewModel : ViewModelBase
             Fire(MaskManager.InitializeAsync);
     }
 
-    private void ApplyFilterAndSort()
+    private void ApplyFilterAndSort(bool incremental = false)
     {
         var list = RunningProcesses.Where(Matches).ToList();
 
@@ -1168,14 +1256,64 @@ public class ProcessViewModel : ViewModelBase
             list.Reverse();
         }
 
-        FilteredProcesses.Clear();
-
-        foreach (var item in list)
+        if (incremental)
         {
-            FilteredProcesses.Add(item);
+            SyncFiltered(list);
+        }
+        else
+        {
+            FilteredProcesses.Clear();
+
+            foreach (var item in list)
+            {
+                FilteredProcesses.Add(item);
+            }
         }
 
         RefreshSelectionState();
+    }
+
+    /// <summary>
+    /// 增量对齐显示集合：删掉不该在的，新项一律追加到末端，
+    /// 其余用 Move 挪到新排序位置（占用升高往前、降低往后）。
+    /// 行对象不重建，所以勾选、下拉状态和滚动位置都不受影响。
+    /// </summary>
+    private void SyncFiltered(List<RunningProcessItem> target)
+    {
+        HashSet<RunningProcessItem> wanted = new(target);
+
+        for (int i = FilteredProcesses.Count - 1; i >= 0; i--)
+        {
+            if (!wanted.Contains(FilteredProcesses[i]))
+            {
+                FilteredProcesses.RemoveAt(i);
+            }
+        }
+
+        HashSet<RunningProcessItem> present = new(FilteredProcesses);
+
+        foreach (RunningProcessItem item in target)
+        {
+            if (present.Add(item))
+            {
+                FilteredProcesses.Add(item);
+            }
+        }
+
+        for (int i = 0; i < target.Count; i++)
+        {
+            if (ReferenceEquals(FilteredProcesses[i], target[i]))
+            {
+                continue;
+            }
+
+            int from = FilteredProcesses.IndexOf(target[i]);
+
+            if (from > i)
+            {
+                FilteredProcesses.Move(from, i);
+            }
+        }
     }
 
     private static int PriorityRank(string priority) => priority switch
@@ -1425,7 +1563,21 @@ public class RunningProcessItem : AffinityTarget
     public int Pid { get; }
     public string Name { get; }
     public string CpuText => Cpu.ToString("0.0", CultureInfo.InvariantCulture) + "%";
-    public double Cpu { get; }
+
+    private double _cpu;
+
+    public double Cpu
+    {
+        get => _cpu;
+        set
+        {
+            if (SetProperty(ref _cpu, value))
+            {
+                OnPropertyChanged(nameof(CpuText));
+            }
+        }
+    }
+
     public override string ProcessName => Name;
     public override string Path { get; }
 
