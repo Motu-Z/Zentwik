@@ -4,6 +4,22 @@
 
 ---
 
+## [2.1.0]
+
+### Changed (修改)
+
+- **Worker 改为 Native AOT 发布，不再依赖 .NET 运行时**：发布产物从「托管 dll + runtimeconfig.json」变成单个原生 `Zentwik.Worker.exe`（约 11 MB），冷启动与常驻内存都优于 R2R，也不再要求用户为后台服务装运行时。UI（WPF）不支持 AOT，仍走框架依赖 + 单文件 + R2R，两端继续装在同一目录。
+- **WMI 实现从 `System.Management` 换成 `WmiLight`**：前者靠 `System.CodeDom` 在运行时生成 Wbem 包装类型，Native AOT 没有动态代码，`WbemContext` / `WbemObjectTextSrc` 之流在原生编译下是 invalid IL（ILC 报 IL3052）。换成官方指定的 `WmiLight` 后，进程创建 / 退出事件的订阅方式、`WITHIN 2` 粒度、启动补扫、3 秒降级轮询全都原样保留，**没有砍掉任何 WMI 能力**。`Zentwik.Core.csproj` 移除 `System.Management` 引用，并把 `WmiLight` 加进 `TrimmerRootAssembly`（它的属性访问由原生侧按名字回查，裁剪器看不见）。
+- **发布流水线分出两条 AOT 门禁**：`release.yml` 的 Worker 步骤改走 `PublishAot=true`，并在打包前校验「没有托管 dll / 没有 runtimeconfig.json / 两个原生依赖已落地」；`aot-probe.yml` 新增 `worker-aot` job，用 `-warnaserror` 把 IL2xxx / IL3xxx 直接变红。
+
+### Notes
+
+- **运行时行为已在本机真机验证**（非 CI，CI 只做编译链接）：AOT Worker 启动后 SMU 初始化成功（AMD Ryzen 9 9955HX / GraniteRidge）、CO 16 核写入全部接受、WMI 事件模式订阅成功、启动补扫 271 个进程、CPU Set 绑定与优先级下发正常。CI 上不运行 Worker 的原因写在 `aot-probe.yml` 里：它要提权、会写 SMU、会注册计划任务，公共 runner 不适合。
+- IPC 协议仍是版本 10，本次无载荷变更。
+- AOT 产物不再生成 45 MB 的 `.pdb`（发布参数里 `DebugType=None`），压缩包体积基本持平。
+
+---
+
 ## [2.0.5]
 
 ### Fixed (修复)

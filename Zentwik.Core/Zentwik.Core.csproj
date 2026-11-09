@@ -10,7 +10,7 @@
        PresentationFramework / WindowsBase / System.Drawing，代码里只要出现
        System.Windows.* 就直接编译失败 —— 红线是编译器守的，不是靠自觉。
     2. TargetFramework 用 net10.0-windows 而不是 net10.0：P/Invoke 与注册表
-       在哪个 TFM 都能跑，但 System.Management（WMI）与 registry API 的可用性
+       在哪个 TFM 都能跑，但 registry / 任务栏 / 电源状态这些 Win32 封装的可用性
        标注在 windows TFM 上，换成跨平台 TFM 会引入一堆 CA1416 平台警告。
        注意：net10.0-windows **不含** WPF，只有 UseWPF=true 才会把 WPF 装进来。
     3. 想验证这条红线，敲一行就够：
@@ -31,9 +31,9 @@
     <LangVersion>latest</LangVersion>
 
     <!-- 版本号口径统一由 Core 维护，各宿主工程不再各写一份 -->
-    <Version>2.0.5</Version>
-    <FileVersion>2.0.5.0</FileVersion>
-    <AssemblyVersion>2.0.5.0</AssemblyVersion>
+    <Version>2.1.0</Version>
+    <FileVersion>2.1.0.0</FileVersion>
+    <AssemblyVersion>2.1.0.0</AssemblyVersion>
 
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -116,6 +116,17 @@
       真正的验证只有一条：AOT 产物里跑通一次 SendMessageTest。
     -->
     <TrimmerRootAssembly Include="ZenStates-Core" />
+
+    <!--
+      WmiLight 同样整份保留。
+
+      【为什么 WmiLight 也需要】
+      它的对象模型是「托管壳 + 原生 WmiLight.Native.dll」，壳里的属性/枚举器
+      由 native 侧按名字回查（GetPropertyValue(string) 这类），
+      裁剪器看不到「谁在用哪个成员」。官方 README 在 Native AOT 一节明确要求
+      把 WmiLight 加进 TrimmerRootAssembly，否则运行到事件订阅才炸。
+    -->
+    <TrimmerRootAssembly Include="WmiLight" />
   </ItemGroup>
 
   <ItemGroup>
@@ -158,13 +169,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- WMI：只剩 ProcessWatcher 自己的进程快照与事件订阅在用。
-         ZenStates-Core 1.93.1-AOT 起已剥离 System.Management，
-         这条引用不再为它存在。 -->
-    <PackageReference Include="System.Management" Version="9.0.0" />
-
     <!--
-      WmiLight：ZenStates-Core 1.93.1-AOT 的新依赖。
+      WmiLight：WMI 的唯一入口（ProcessWatcher 的进程事件订阅 + ZenStates-Core 的 SMU 探测）。
+
+      【为什么不用 System.Management】
+      System.Management 靠 System.CodeDom 在运行时生成 Wbem* 包装类型，
+      Native AOT 没有动态代码 —— 构造 WbemObjectTextSrc / WbemContext 之流会直接
+      invalid IL 抛出来，ILC 会报 IL3052。官方 README 明确写着
+      「System.Management does not support Native AOT deployment. Use WmiLight instead」。
 
       【为什么必须显式引】
       ZenStates-Core.dll 是裸 DLL 引用，没有 nuspec，它的依赖链不会传递过来。

@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Management;
 using System.Threading;
+using WmiLight;
 using Zentwik.Core.Helpers;
 
 namespace Zentwik.Core.Services
@@ -51,9 +51,16 @@ namespace Zentwik.Core.Services
         private CancellationTokenSource? _cts;
         private System.Threading.Tasks.Task? _loop;
 
+        /// <summary>
+        /// WMI 连接（事件模式下非 null）。两个订阅器共用它，Stop 时才关。
+        /// 用 WmiLight 而不是 System.Management：后者靠 CodeDom 运行时代码生成，
+        /// Native AOT 下构造 Wbem* 包装类型会直接抛，官方点名让换 WmiLight。
+        /// </summary>
+        private WmiConnection? _connection;
+
         /// <summary>WMI 事件订阅器（事件模式下非 null）。</summary>
-        private ManagementEventWatcher? _creationWatcher;
-        private ManagementEventWatcher? _deletionWatcher;
+        private WmiEventWatcher? _creationWatcher;
+        private WmiEventWatcher? _deletionWatcher;
 
         /// <summary>
         /// 当前运行模式。true = WMI 事件驱动（首选）；false = 定时轮询（降级）。
@@ -221,32 +228,47 @@ namespace Zentwik.Core.Services
                 "SELECT * FROM __InstanceDeletionEvent WITHIN 2 " +
                 "WHERE TargetInstance ISA 'Win32_Process'";
 
-            ManagementEventWatcher? creation = null;
-            ManagementEventWatcher? deletion = null;
+            WmiConnection? connection = null;
+            WmiEventWatcher? creation = null;
+            WmiEventWatcher? deletion = null;
 
             try
             {
                 // 订阅前先做一次连通性探测：事件查询失败往往要等到 Start() 才抛，
                 // 提前用一次轻量查询把这些情况（服务停用、权限不足）识别出来，
                 // 避免建好一半订阅器又得回滚。
-                using (ManagementObjectSearcher probe = new("SELECT ProcessId FROM Win32_Process WHERE ProcessId = 4"))
+                connection = new WmiConnection();
+                connection.Open();
+
+                WmiObjectEnumerator probe = connection.ExecuteQuery(
+                    connection.CreateQuery("SELECT ProcessId FROM Win32_Process WHERE ProcessId = 4"));
+
+                try
                 {
-                    using ManagementObjectCollection results = probe.Get();
+                    // 只要确认这条查询能跑通，取到第一条就够（PID 4 恒存在）。
+                    if (probe.MoveNext())
+                        probe.Current?.Dispose();
+                }
+                finally
+                {
+                    probe.Dispose();
                 }
 
-                creation = new ManagementEventWatcher(new WqlEventQuery(CreationQuery));
+                creation = connection.CreateEventWatcher(CreationQuery);
                 creation.EventArrived += OnProcessCreated;
 
-                deletion = new ManagementEventWatcher(new WqlEventQuery(DeletionQuery));
+                deletion = connection.CreateEventWatcher(DeletionQuery);
                 deletion.EventArrived += OnProcessExited;
 
                 creation.Start();
                 deletion.Start();
 
+                _connection = connection;
                 _creationWatcher = creation;
                 _deletionWatcher = deletion;
 
                 // 交给字段持有，不要再进 catch 的清理分支。
+                connection = null;
                 creation = null;
                 deletion = null;
                 return true;
@@ -257,6 +279,7 @@ namespace Zentwik.Core.Services
                 // StopEventMode() 够不着它们，漏掉一个就是一份永久的 WMI 订阅。
                 ReleaseWatcher(ref creation, OnProcessCreated);
                 ReleaseWatcher(ref deletion, OnProcessExited);
+                connection?.Dispose();
 
                 _log.Warn($"WMI 事件订阅失败：{ex.Message}");
                 return false;
@@ -265,18 +288,27 @@ namespace Zentwik.Core.Services
 
         private void StopEventMode()
         {
-            ManagementEventWatcher? creation = _creationWatcher;
-            ManagementEventWatcher? deletion = _deletionWatcher;
+            WmiEventWatcher? creation = _creationWatcher;
+            WmiEventWatcher? deletion = _deletionWatcher;
+            WmiConnection? connection = _connection;
             _creationWatcher = null;
             _deletionWatcher = null;
+            _connection = null;
 
             ReleaseWatcher(ref creation, OnProcessCreated);
             ReleaseWatcher(ref deletion, OnProcessExited);
+
+            // 订阅器停干净了才关连接：连接先关会让正在投递的事件回调拿到已释放的 COM 指针。
+            if (connection != null)
+            {
+                try { connection.Close(); } catch { /* 已断开时 Close 会抛 */ }
+                connection.Dispose();
+            }
         }
 
         private static void ReleaseWatcher(
-            ref ManagementEventWatcher? watcher,
-            EventArrivedEventHandler handler)
+            ref WmiEventWatcher? watcher,
+            EventHandler<WmiEventArrivedEventArgs> handler)
         {
             if (watcher is null)
                 return;
@@ -476,12 +508,12 @@ namespace Zentwik.Core.Services
         /// DBNull（进程刚好在查询与投递之间退出）还会抛 InvalidCastException。
         /// 事件是高频路径，不该靠外层 catch 处理这种可预期的缺失。
         /// </summary>
-        private int ReadPid(ManagementBaseObject target)
+        private int ReadPid(WmiObject target)
         {
             object? raw = null;
             try
             {
-                raw = target["ProcessId"];
+                raw = target.GetPropertyValue("ProcessId");
             }
             catch
             {
@@ -504,15 +536,15 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 新进程创建。回调在 WMI 自己的工作线程上，不能碰 UI。
         /// </summary>
-        private void OnProcessCreated(object sender, EventArrivedEventArgs e)
+        private void OnProcessCreated(object? sender, WmiEventArrivedEventArgs e)
         {
             try
             {
-                if (e.NewEvent?["TargetInstance"] is not ManagementBaseObject target)
+                if (e.NewEvent?.GetPropertyValue("TargetInstance") is not WmiObject target)
                     return;
 
                 int pid = ReadPid(target);
-                string name = target["Name"] as string ?? string.Empty;
+                string name = target.GetPropertyValue("Name") as string ?? string.Empty;
                 if (pid <= 0)
                     return;
 
@@ -529,11 +561,11 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 进程退出。只做 PID 回收，避免 PID 复用后被误判为「已绑定」而跳过。
         /// </summary>
-        private void OnProcessExited(object sender, EventArrivedEventArgs e)
+        private void OnProcessExited(object? sender, WmiEventArrivedEventArgs e)
         {
             try
             {
-                if (e.NewEvent?["TargetInstance"] is not ManagementBaseObject target)
+                if (e.NewEvent?.GetPropertyValue("TargetInstance") is not WmiObject target)
                     return;
 
                 int pid = ReadPid(target);

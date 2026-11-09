@@ -5,7 +5,7 @@ AMD 平台本地调校工具（曾用名 Zenwik / ZenForge）。可调各核 Cur
 ## 运行要求
 
 - Windows 10 1709 及以上，x64
-- .NET 10 Desktop Runtime（发布包不含运行时）
+- .NET 10 Desktop Runtime（界面需要；后台服务是 Native AOT 原生 exe，不再依赖运行时）
 - 写 SMU（CO / FMax）需要 PawnIO 驱动；未安装时进程调度、电源方案、场景切换、日志仍可用
 - 首次启动会为后台服务请求一次管理员权限
 
@@ -27,7 +27,9 @@ dotnet build Zentwik.UI/Zentwik.UI.csproj -c Release   # 界面（不在 slnx �
 
 两个可执行工程的 `OutputPath` 都指向 `D:\Zentwik-App\`（Release 平铺为安装目录，Debug 落子目录），必须保持同目录，否则 Worker 会拉到别处的旧界面。
 
-推送 `v*` tag 会触发 `.github/workflows/release.yml`：两端各自单文件发布（`PublishSingleFile` + `PublishReadyToRun`，依赖系统运行时），装进同一目录后打成一个 zip 附到 Release。`aot-probe.yml` 独立验证 Core 在 Native AOT 下的 JSON 往返。
+推送 `v*` tag 会触发 `.github/workflows/release.yml`：UI 走框架依赖 + 单文件 + R2R（WPF 不支持 AOT），Worker 走 **Native AOT**（原生 exe，不依赖 .NET 运行时），两端装进同一目录后打成一个 zip 附到 Release。打包前会校验 AOT 产物形态（不存在托管 dll / runtimeconfig.json）。`aot-probe.yml` 独立跑两条 AOT 门禁：Core 探针（编译 + 运行）与 Worker（编译 + 链接，`-warnaserror`）。
+
+Worker 能 AOT 的前提是 WMI 走 `WmiLight` 而不是 `System.Management`（后者依赖运行时代码生成）。改进程监听时不要把它换回去。
 
 ## 回归
 

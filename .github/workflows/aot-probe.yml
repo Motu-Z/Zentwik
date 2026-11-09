@@ -3,9 +3,10 @@ name: AOT Probe
 # Native AOT 的回归门禁。
 #
 # 为什么单独一个工作流、而不是并进 release.yml：
-#   · Release 走的是 WPF 主工程，那一条链路本来就不做 AOT；
 #   · AOT 探针失败应该是一条独立的红灯，而不是让发版整体失败 ——
 #     发版失败会掩盖「到底是包没打出来，还是只掉了一条裁剪告警」。
+#   · 但 release.yml 的 Worker 那一步已经是 AOT 了，所以这里的 job 是
+#     「发版之前就能看见的红灯」，而不是唯一的验证。
 #
 # 为什么不放在本地构建：
 #   Windows 上 Native AOT 必须链到 Windows SDK 的 kernel32.lib / ucrt.lib。
@@ -19,12 +20,14 @@ on:
     branches: [main]
     paths:
       - 'Zentwik.Core/**'
+      - 'Zentwik.Worker/**'
       - 'build/Zentwik.AotProbe/**'
       - '.github/workflows/aot-probe.yml'
 
   pull_request:
     paths:
       - 'Zentwik.Core/**'
+      - 'Zentwik.Worker/**'
       - 'build/Zentwik.AotProbe/**'
 
 jobs:
@@ -68,4 +71,59 @@ jobs:
         with:
           name: Zentwik-AotProbe-win-x64
           path: publish/
+          retention-days: 14
+
+  # Worker 是真正要发出去的 AOT 产物，但它在 CI 里不能运行：
+  #   · app.manifest 是 requireAdministrator，GitHub 的 runner 没有可交互提权；
+  #   · 启动就会初始化 SMU、注册计划任务、重绑进程 CPU Set —— 在公共 runner 上是
+  #     不可接受的副作用；
+  #   · 没有 AMD 硬件时 SMU 那条路径本来也走不到。
+  # 所以门禁只做「编译 + 链接 + 产物形态校验」。运行时行为由本机真机验证
+  # （2026-11-09 已验证：SMU 初始化、CO 写入、WMI 事件订阅、271 进程补扫全部通过）。
+  worker-aot:
+    name: Build & link Worker under Native AOT
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # TrimmerSingleWarn=false：把「整包只有一个警告」压扁成一条摘要时，
+      # 真正的 IL2xxx / IL3xxx 会被藏起来，-warnaserror 也就无从拦截。
+      - name: Publish Worker (Native AOT, warnings as errors)
+        run: >
+          dotnet publish Zentwik.Worker/Zentwik.Worker.csproj
+          -c Release
+          -r win-x64
+          -p:PublishAot=true
+          -p:TrimmerSingleWarn=false
+          -p:SuppressTrimAnalysisWarnings=false
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -warnaserror
+          -o publish-worker
+
+      # 原生 exe 不会同时留下托管 dll 与 runtimeconfig.json —— 这是判断
+      # 「AOT 真的生效」而不是「参数被静默忽略」的唯一可靠依据。
+      - name: Verify native output
+        run: |
+          if (-not (Test-Path ./publish-worker/Zentwik.Worker.exe)) { throw "Zentwik.Worker.exe 缺失" }
+          if (Test-Path ./publish-worker/Zentwik.Worker.dll) { throw "仍是托管产物（存在 .dll），Native AOT 未生效" }
+          if (Test-Path ./publish-worker/Zentwik.Worker.runtimeconfig.json) { throw "存在 runtimeconfig.json，Native AOT 未生效" }
+          foreach ($n in 'WmiLight.Native.dll', 'WinIo32.dll') {
+            if (-not (Test-Path "./publish-worker/$n")) { throw "$n 未随包落地" }
+          }
+          $exe = Get-Item ./publish-worker/Zentwik.Worker.exe
+          Write-Host ("Worker native exe: {0:N2} MB" -f ($exe.Length / 1MB))
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zentwik-Worker-Aot-win-x64
+          path: publish-worker/
           retention-days: 14

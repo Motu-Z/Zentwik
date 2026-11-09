@@ -34,21 +34,39 @@ jobs:
     # 两条 publish 必须指向同一个 -o —— 只发一个 exe 的包，UI 启动时会拉不起 Worker，
     # 表现为「永远显示未连接」，且没有任何报错。
     #
-    # 两端参数一致，逐项理由：
+    # 【UI：框架依赖 + 单文件 + R2R】
     #   · --self-contained false：产品口径是「用户自装 .NET 10 Runtime」，不随包带运行时；
-    #   · PublishSingleFile=true：每端只出一个 exe，安装目录干净；
-    #   · WinIo32.dll 不会被打进单文件 —— Core 的 csproj 对它标了 ExcludeFromSingleFile=true，
-    #     它必须与 exe 同目录落地（ZenStates-Core 按文件名自己 LoadLibrary，不认单文件
-    #     解包目录）。两个工程各引用一次 Core，会各写一份内容相同的副本到同一目录，
-    #     后写的覆盖先写的，无副作用。因此不需要给 Worker 单独加 ExcludeFromSingleFile。
-    #   · PublishReadyToRun：UI 冷启动收益明确，Worker 是登录后常驻进程、同样受益，保持一致。
+    #   · PublishSingleFile=true：只出一个 exe，安装目录干净；
+    #   · PublishReadyToRun：冷启动收益明确。
+    #   · WPF 不支持 Native AOT（XAML 需要运行时代码生成），这一端只能停在这里。
+    #
+    # 【Worker：Native AOT，且必须自带运行时】
+    #   · PublishAot=true 隐含 self-contained=true，不能再叠 --self-contained false /
+    #     PublishSingleFile / PublishReadyToRun —— 三者在 AOT 下都会被 SDK 报错或静默忽略；
+    #   · 产物是原生 exe（约 11MB）+ 同目录 WinIo32.dll / WmiLight.Native.dll，
+    #     不依赖 .NET 运行时，也不需要 runtimeconfig.json；
+    #   · DebugType=None：Native AOT 会额外生成 45MB 的 pdb，发布包里毫无用处；
+    #   · WinIo32.dll 由 Core 的 ExcludeFromSingleFile 标记落到同目录（AOT 下本就没有
+    #     单文件概念，两条路殊途同归），ZenStates-Core 按文件名 LoadLibrary 找得到。
     - name: Publish UI
       run: |
         dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -o ./publish
 
-    - name: Publish Worker
+    - name: Publish Worker (Native AOT)
       run: |
-        dotnet publish Zentwik.Worker/Zentwik.Worker.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -o ./publish
+        dotnet publish Zentwik.Worker/Zentwik.Worker.csproj -c Release -r win-x64 -p:PublishAot=true -p:TrimmerSingleWarn=false -p:DebugType=None -p:DebugSymbols=false -o ./publish
+
+    # 打包前的硬校验：AOT 成功与「参数被静默忽略」在日志上都写着 build succeeded。
+    # 唯一可靠的判据是产物形态 —— 原生 exe 不会同时留下托管 dll 与 runtimeconfig.json。
+    - name: Verify AOT Worker
+      run: |
+        if (-not (Test-Path ./publish/Zentwik.Worker.exe)) { throw "Zentwik.Worker.exe 缺失" }
+        if (Test-Path ./publish/Zentwik.Worker.dll) { throw "Worker 仍是托管产物（存在 .dll），Native AOT 未生效" }
+        if (Test-Path ./publish/Zentwik.Worker.runtimeconfig.json) { throw "存在 runtimeconfig.json，Native AOT 未生效" }
+        if (-not (Test-Path ./publish/WmiLight.Native.dll)) { throw "WmiLight.Native.dll 未随包落地" }
+        if (-not (Test-Path ./publish/WinIo32.dll)) { throw "WinIo32.dll 未随包落地" }
+        $w = (Get-Item ./publish/Zentwik.Worker.exe).Length
+        Write-Host ("Worker native exe: {0:N2} MB" -f ($w / 1MB))
 
     - name: Create Zip Archive
       run: |
