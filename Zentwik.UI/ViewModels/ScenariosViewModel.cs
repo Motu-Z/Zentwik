@@ -52,7 +52,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         SaveEditorCommand = new RelayCommand(_ => SaveEditor());
         CancelEditorCommand = new RelayCommand(_ => IsEditorOpen = false);
 
-        OpenProcessPickerCommand = new RelayCommand(_ => OpenProcessPicker());
+        OpenProcessPickerCommand = new RelayCommand(_ => Fire(OpenProcessPickerAsync));
         PickProcessCommand = new RelayCommand(p => { if (p is ScenarioProcessOption option) PickProcess(option); });
 
         // 诊断模式在启动早期就置好了开关：种子里直接放规则，截图拿到的不是空列表。
@@ -453,14 +453,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 拉一次进程表供搜索框用。
-    ///
-    /// <c>query-processes</c> 要遍历全部进程并采一次 CPU，几十毫秒。
-    /// 打开表单才需要这份数据，没打开表单的页面上付这个代价没有道理。
-    /// 同名前缀（chrome、svchost）只留第一条：规则认的是进程名，
-    /// 同一个名字列十遍只会让人挑花眼。
-    /// </summary>
+    /// <summary>拉一次进程表。Worker 侧每次调用都现采，不走缓存。</summary>
     private async Task LoadProcessesAsync()
     {
         if (SuppressWorkerInit)
@@ -507,8 +500,9 @@ public sealed class ScenariosViewModel : ViewModelBase
         }
     }
 
-    private void OpenProcessPicker()
+    private async Task OpenProcessPickerAsync()
     {
+        await LoadProcessesAsync().ConfigureAwait(true);
         FilterProcesses();
         IsProcessPickerOpen = ProcessSuggestions.Count > 0;
     }
