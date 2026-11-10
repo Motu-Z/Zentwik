@@ -24,39 +24,77 @@ jobs:
       with:
         fetch-depth: 0
         ref: ${{ github.event.inputs.tag_name || github.ref }}
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
 
-    - name: Publish UI
+    - name: Resolve version
+      id: ver
       run: |
-        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -o ./publish
+        $tag = "${{ github.event.inputs.tag_name || github.ref_name }}"
+        $v = $tag -replace '^v', ''
+        "version=$v" >> $env:GITHUB_OUTPUT
+        Write-Host "Version: $v"
 
     - name: Publish Worker (Native AOT)
       run: |
-        dotnet publish Zentwik.Worker/Zentwik.Worker.csproj -c Release -r win-x64 -p:PublishAot=true -p:TrimmerSingleWarn=false -p:DebugType=None -p:DebugSymbols=false -o ./publish
+        dotnet publish Zentwik.Worker/Zentwik.Worker.csproj -c Release -r win-x64 -p:PublishAot=true -p:TrimmerSingleWarn=false -p:DebugType=None -p:DebugSymbols=false -p:OutputPath=./obj/worker-out/ -o ./worker
 
     - name: Verify AOT Worker
       run: |
-        if (-not (Test-Path ./publish/Zentwik.Worker.exe)) { throw "Zentwik.Worker.exe 缺失" }
-        if (Test-Path ./publish/Zentwik.Worker.dll) { throw "Worker 仍是托管产物（存在 .dll），Native AOT 未生效" }
-        if (Test-Path ./publish/Zentwik.Worker.runtimeconfig.json) { throw "存在 runtimeconfig.json，Native AOT 未生效" }
-        if (-not (Test-Path ./publish/WmiLight.Native.dll)) { throw "WmiLight.Native.dll 未随包落地" }
-        if (-not (Test-Path ./publish/WinIo32.dll)) { throw "WinIo32.dll 未随包落地" }
-        $w = (Get-Item ./publish/Zentwik.Worker.exe).Length
+        if (-not (Test-Path ./worker/Zentwik.Worker.exe)) { throw "Zentwik.Worker.exe 缺失" }
+        if (Test-Path ./worker/Zentwik.Worker.dll) { throw "Worker 仍是托管产物（存在 .dll），Native AOT 未生效" }
+        if (Test-Path ./worker/Zentwik.Worker.runtimeconfig.json) { throw "存在 runtimeconfig.json，Native AOT 未生效" }
+        if (-not (Test-Path ./worker/WmiLight.Native.dll)) { throw "WmiLight.Native.dll 未随包落地" }
+        if (-not (Test-Path ./worker/WinIo32.dll)) { throw "WinIo32.dll 未随包落地" }
+        $w = (Get-Item ./worker/Zentwik.Worker.exe).Length
         Write-Host ("Worker native exe: {0:N2} MB" -f ($w / 1MB))
 
-    - name: Create Zip Archive
+    - name: Publish UI (portable)
       run: |
-        Compress-Archive -Path ./publish/* -DestinationPath ./Zentwik-win-x64.zip
+        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -p:OutputPath=./obj/ui-portable/ -o ./pkg-portable
+
+    - name: Publish UI (standalone)
+      run: |
+        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:OutputPath=./obj/ui-standalone/ -o ./pkg-standalone
+
+    - name: Assemble packages
+      run: |
+        $worker = 'Zentwik.Worker.exe','WmiLight.Native.dll','WinIo32.dll'
+        foreach ($dir in './pkg-portable','./pkg-standalone') {
+          foreach ($f in $worker) { Copy-Item "./worker/$f" $dir -Force }
+        }
+        foreach ($dir in './pkg-portable','./pkg-standalone') {
+          if (-not (Test-Path "$dir/Zentwik.UI.exe")) { throw "$dir 缺少 Zentwik.UI.exe" }
+          if (-not (Test-Path "$dir/Zentwik.Worker.exe")) { throw "$dir 缺少 Zentwik.Worker.exe" }
+          Write-Host ("--- {0} ---" -f $dir)
+          Get-ChildItem $dir | Select-Object Name,Length | Format-Table -AutoSize | Out-String | Write-Host
+        }
+
+    - name: Create archives
+      run: |
+        $v = "${{ steps.ver.outputs.version }}"
+        Compress-Archive -Path ./pkg-portable/* -DestinationPath "./Zentwik-$v-Portable.zip"
+        Compress-Archive -Path ./pkg-standalone/* -DestinationPath "./Zentwik-$v-Standalone.zip"
+        Get-ChildItem ./Zentwik-*.zip | Select-Object Name,Length | Format-Table -AutoSize | Out-String | Write-Host
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.event.inputs.tag_name || github.ref_name }} # 手动触发用 input，推送触发用 ref_name
-        files: ./Zentwik-win-x64.zip
+        tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+        files: |
+          ./Zentwik-${{ steps.ver.outputs.version }}-Portable.zip
+          ./Zentwik-${{ steps.ver.outputs.version }}-Standalone.zip
         generate_release_notes: true
+        body: |
+          | 包 | 说明 | 体积 |
+          |---|---|---|
+          | `Zentwik-${{ steps.ver.outputs.version }}-Portable.zip` | 需要本机安装 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) | 小 |
+          | `Zentwik-${{ steps.ver.outputs.version }}-Standalone.zip` | 内置 .NET 10 运行时，解压即用 | 大 |
+
+          两个包内容一致：`Zentwik.UI.exe` + `Zentwik.Worker.exe`（Native AOT）+ `WinIo32.dll` + `WmiLight.Native.dll`。
         prerelease: ${{ contains(github.ref_name, 'can') || contains(github.event.inputs.tag_name, 'can') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
