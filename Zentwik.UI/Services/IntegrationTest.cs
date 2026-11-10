@@ -1618,7 +1618,7 @@ public static class IntegrationTest
 
             vm.SelectedKind = vm.TriggerKinds[1];
             Check("场景：切到系统电源后状态换成电源两档",
-                  vm.TriggerStates.Select(s => s.Label).SequenceEqual(new[] { "拔下电源时", "接通电源时" })
+                  vm.TriggerStates.Select(s => s.Label).SequenceEqual(new[] { "拔下时", "接通时" })
                   && vm.EditorTrigger == ScenarioTrigger.OnBattery,
                   string.Join("/", vm.TriggerStates.Select(s => s.Label)));
             Check("场景：系统电源下不显示进程搜索框", !vm.IsProcessKind);

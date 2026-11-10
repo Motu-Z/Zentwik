@@ -129,7 +129,7 @@ public sealed class ScenariosViewModel : ViewModelBase
     // 把 SelectedItem 回写成 null，选中的那项凭空消失。
 
     private static readonly ScenarioKindOption ProcessKind = new(ScenarioTrigger.ProcessRunning, "进程");
-    private static readonly ScenarioKindOption PowerKind = new(ScenarioTrigger.OnBattery, "系统电源");
+    private static readonly ScenarioKindOption PowerKind = new(ScenarioTrigger.OnBattery, "电源");
 
     public IReadOnlyList<ScenarioKindOption> TriggerKinds { get; } = new[] { ProcessKind, PowerKind };
 
@@ -141,8 +141,8 @@ public sealed class ScenariosViewModel : ViewModelBase
 
     private static readonly ScenarioStateOption[] PowerStates =
     {
-        new(ScenarioTrigger.OnBattery, "拔下电源时"),
-        new(ScenarioTrigger.OnAcPower, "接通电源时")
+        new(ScenarioTrigger.OnBattery, "拔下时"),
+        new(ScenarioTrigger.OnAcPower, "接通时")
     };
 
     private ScenarioKindOption _selectedKind = ProcessKind;

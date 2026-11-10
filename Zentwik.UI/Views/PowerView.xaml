@@ -94,17 +94,18 @@
 
                     <Button Style="{StaticResource ActionButtonStyle}"
                             Margin="8,0,0,0"
-                            automation:AutomationProperties.Name="恢复默认"
-                            Command="{Binding RestoreDefaultsCommand}"
+                            automation:AutomationProperties.Name="取消电源改动"
+                            Command="{Binding DiscardCommand}"
+                            Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}"
 >
-                        <TextBlock Text="恢复默认" />
+                        <TextBlock Text="取消" />
                     </Button>
 
                     <Button Style="{StaticResource ActionButtonStyle}"
                             Margin="8,0,0,0"
-                            automation:AutomationProperties.Name="把当前参数存到选中方案"
+                            automation:AutomationProperties.Name="把当前参数保存到选中方案"
                             Command="{Binding SaveToCurrentPlanCommand}">
-                        <TextBlock Text="存到方案" />
+                        <TextBlock Text="保存至" />
                     </Button>
 
                     <Button Style="{StaticResource PrimaryButtonStyle}"

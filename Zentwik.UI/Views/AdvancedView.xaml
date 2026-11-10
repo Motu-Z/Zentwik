@@ -113,6 +113,29 @@
                             </Button>
                         </Grid>
                     </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0"
+                                       Text="电源策略恢复默认"
+                                       Style="{StaticResource RowTitleStyle}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,24,0" />
+
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    VerticalAlignment="Center"
+                                    automation:AutomationProperties.Name="电源参数恢复默认"
+                                    Command="{Binding RestorePowerDefaultsCommand}">
+                                <TextBlock Text="恢复" />
+                            </Button>
+                        </Grid>
+                    </Border>
                 </StackPanel>
 
                 <!-- ==================== 诊断与排障 ==================== -->

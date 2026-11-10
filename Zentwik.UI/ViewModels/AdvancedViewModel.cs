@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Zentwik.Core.Ipc;
+using Zentwik.Core.Services;
 using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
@@ -97,6 +98,8 @@ public class AdvancedViewModel : ViewModelBase
 
     public RelayCommand RestoreSafeDefaultsCommand { get; }
 
+    public RelayCommand RestorePowerDefaultsCommand { get; }
+
     public RelayCommand RunSelfTestCommand { get; }
 
     public RelayCommand ExportLogsCommand { get; }
@@ -155,6 +158,7 @@ public class AdvancedViewModel : ViewModelBase
                 "清除"));
 
         RestoreSafeDefaultsCommand = new RelayCommand(_ => Fire(RestoreSafeDefaultsAsync));
+        RestorePowerDefaultsCommand = new RelayCommand(_ => Fire(RestorePowerDefaultsAsync));
         RunSelfTestCommand = new RelayCommand(_ => Fire(ExportSelfTestAsync));
         ExportLogsCommand = new RelayCommand(_ => Fire(ExportLogsAsync));
     }
@@ -190,6 +194,37 @@ public class AdvancedViewModel : ViewModelBase
     }
 
     private static void Fire(Func<Task> action) => Services.AsyncRunner.FireError(action);
+
+    /// <summary>电源策略五项写回出厂折中值（AC 50 / DC 80），直接落盘并回读。</summary>
+    private static async Task RestorePowerDefaultsAsync()
+    {
+        PowerPolicyDefaults ac = PowerPolicyDefaults.Ac;
+        PowerPolicyDefaults dc = PowerPolicyDefaults.Dc;
+
+        ApplyPowerPolicyPayload payload = new()
+        {
+            Epp = ac.Epp,
+            BoostMode = ac.BoostMode,
+            MaxProcessorState = ac.MaxProcessorState,
+            Aspm = ac.Aspm,
+            IdleDisable = ac.IdleDisable,
+            DcEpp = dc.Epp,
+            DcBoostMode = dc.BoostMode,
+            DcMaxProcessorState = dc.MaxProcessorState,
+            DcAspm = dc.Aspm,
+            DcIdleDisable = dc.IdleDisable
+        };
+
+        IpcOutcome<PowerPolicySnapshot> outcome = await Services.WorkerBridge.Instance
+            .ApplyPowerPolicyAsync(payload).ConfigureAwait(true);
+
+        if (!outcome.Success)
+        {
+            ToastService.Instance.ShowError(string.IsNullOrEmpty(outcome.Message)
+                ? "恢复电源默认值失败"
+                : outcome.Message);
+        }
+    }
 
     /// <summary>恢复默认安全参数：CO 归零、FMax 回基线，后台负责写盘并下发。</summary>
     private static async Task RestoreSafeDefaultsAsync()
