@@ -31,9 +31,9 @@
     <LangVersion>latest</LangVersion>
 
     <!-- 版本号口径统一由 Core 维护，各宿主工程不再各写一份 -->
-    <Version>2.1.6</Version>
-    <FileVersion>2.1.6.0</FileVersion>
-    <AssemblyVersion>2.1.6.0</AssemblyVersion>
+    <Version>2.1.7</Version>
+    <FileVersion>2.1.7.0</FileVersion>
+    <AssemblyVersion>2.1.7.0</AssemblyVersion>
 
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
