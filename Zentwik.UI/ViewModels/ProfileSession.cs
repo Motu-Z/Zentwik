@@ -53,6 +53,13 @@ public sealed class PlanScope : ViewModelBase
         ConfirmDeleteCommand = new RelayCommand(p => { if (p is PlanItem item) Fire(() => DeleteAsync(item)); });
         CancelDeleteCommand = new RelayCommand(p => { if (p is PlanItem item) item.IsConfirmingDelete = false; });
         ApplyCommand = new RelayCommand(p => Fire(() => ApplyAsync(p as PlanItem ?? Current)));
+        ApplyOrSaveCommand = new RelayCommand(_ =>
+        {
+            if (HasUnsavedChanges && SavePending is not null)
+                SavePending();
+            else
+                ApplyCommand.Execute(null);
+        });
     }
 
     public PlanKind Kind { get; }
@@ -91,7 +98,7 @@ public sealed class PlanScope : ViewModelBase
 
             OnPropertyChanged(nameof(CurrentName));
             OnPropertyChanged(nameof(HasCurrent));
-            OnPropertyChanged(nameof(ApplyLabel));
+            RefreshApplyState();
             OnPropertyChanged(nameof(CanApplyCurrent));
             CurrentChanged?.Invoke(this, EventArgs.Empty);
 
@@ -108,7 +115,7 @@ public sealed class PlanScope : ViewModelBase
     private void OnCurrentItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(PlanItem.Name))
-            OnPropertyChanged(nameof(ApplyLabel));
+            RefreshApplyState();
 
         if (e.PropertyName == nameof(PlanItem.IsActive))
             OnPropertyChanged(nameof(CanApplyCurrent));
@@ -145,17 +152,40 @@ public sealed class PlanScope : ViewModelBase
     public bool HasUnsavedChanges
     {
         get => _hasUnsavedChanges;
-        private set => SetProperty(ref _hasUnsavedChanges, value);
+        private set
+        {
+            if (!SetProperty(ref _hasUnsavedChanges, value))
+                return;
+
+            RefreshApplyState();
+        }
+    }
+
+    /// <summary>脏值时底部按钮改走「只存方案」，由页面挂钩子接管。</summary>
+    public Func<bool>? CanSavePending { get; set; }
+
+    public Action? SavePending { get; set; }
+
+    public void RefreshApplyState()
+    {
+        OnPropertyChanged(nameof(ApplyLabel));
+        OnPropertyChanged(nameof(CanApplyOrSave));
     }
 
     /// <summary>页面同步脏标记。</summary>
     public void SetUnsaved(bool value) => HasUnsavedChanges = value;
 
-    /// <summary>面板底部应用按钮的文案，带上方案名 —— 点哪个、应用哪个，一眼对上。</summary>
-    public string ApplyLabel => Current is null ? "应用" : $"应用「{Current.Name}」";
+    /// <summary>面板底部按钮文案：没改动时「应用」，改过时「保存至」，都带方案名。</summary>
+    public string ApplyLabel => Current is null
+        ? "应用"
+        : HasUnsavedChanges ? $"保存至「{Current.Name}」" : $"应用「{Current.Name}」";
 
     /// <summary>当前方案正在生效时，应用按钮没有意义。</summary>
     public bool CanApplyCurrent => Current is not null && !Current.IsActive;
+
+    public bool CanApplyOrSave => HasUnsavedChanges
+        ? CanSavePending?.Invoke() ?? false
+        : CanApplyCurrent;
 
     /// <summary>列表是否已与 Worker 对齐。false 时可能只有本地占位。</summary>
     public bool IsSynced { get; private set; }
@@ -241,6 +271,7 @@ public sealed class PlanScope : ViewModelBase
     public RelayCommand ConfirmDeleteCommand { get; }
     public RelayCommand CancelDeleteCommand { get; }
     public RelayCommand ApplyCommand { get; }
+    public RelayCommand ApplyOrSaveCommand { get; }
 
     /// <summary>
     /// 由页面自己完成的新建，返回新方案 Id；null 表示失败（已给过回执）。
@@ -388,7 +419,7 @@ public sealed class PlanScope : ViewModelBase
         else
             OnPropertyChanged(nameof(CanApplyCurrent));
 
-        OnPropertyChanged(nameof(ApplyLabel));
+        RefreshApplyState();
     }
 
     /// <summary>

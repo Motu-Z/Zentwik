@@ -346,6 +346,7 @@ public partial class PowerViewModel : ObservableObject
         OnPropertyChanged(nameof(CanApply));
         ApplyCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveToPlan));
+        PlanHub.Power.RefreshApplyState();
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
     }
 
@@ -358,6 +359,7 @@ public partial class PowerViewModel : ObservableObject
         OnPropertyChanged(nameof(CanApply));
         ApplyCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveToPlan));
+        PlanHub.Power.RefreshApplyState();
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
     }
 
@@ -385,6 +387,10 @@ public partial class PowerViewModel : ObservableObject
         // 电源方案不能空白新建：记录里存的是「参数写到哪份 Windows 方案上」。
         // 顶栏的「新建」因此改走派生流程，与卡片区的模板新建殊途同归。
         PlanHub.Power.CreateHandler = CreatePlanAsync;
+
+        // 面板底部按钮脏值时改成「保存至」：只写 plans.json，不碰系统。
+        PlanHub.Power.CanSavePending = () => CanSaveToPlan;
+        PlanHub.Power.SavePending = () => _ = SaveToCurrentPlanAsync();
 
         // 从方案面板应用电源方案，系统计划会被切走 —— 本页必须重读。
         // 弱事件订阅：页面实例由外壳缓存，但自检会造很多个，普通订阅会在
@@ -466,6 +472,7 @@ public partial class PowerViewModel : ObservableObject
     private void OnPlanSelectionChanged(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(CanSaveToPlan));
+        PlanHub.Power.RefreshApplyState();
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
 
         if (_suppressPlanLoad)

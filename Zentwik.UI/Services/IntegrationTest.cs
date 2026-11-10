@@ -1442,6 +1442,13 @@ public static class IntegrationTest
             Check("方案：生效方案的应用按钮不可点", !session.CanApplyCurrent,
                   $"active={first.IsActive}");
 
+            session.SetUnsaved(true);
+            Check("方案：脏值时底部按钮改成保存",
+                  session.ApplyLabel == $"保存至「{first.Name}」", session.ApplyLabel);
+            session.SetUnsaved(false);
+            Check("方案：存完恢复成应用",
+                  session.ApplyLabel == $"应用「{first.Name}」", session.ApplyLabel);
+
             // 有未保存改动时切别的方案：必须先弹确认。早先只弹一句 Toast 就 return，
             // 用户以为已经切过去了，接着点「应用参数」，值全落进原来那份方案里 ——
             // 表现就是「我明明在调校 1 上改，重启后却是调校 2」。

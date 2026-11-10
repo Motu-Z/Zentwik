@@ -277,10 +277,10 @@
                     Height="32"
                     HorizontalAlignment="Stretch"
                     FontSize="12"
-                    automation:AutomationProperties.Name="应用当前方案"
+                    automation:AutomationProperties.Name="应用或保存当前方案"
                     Content="{Binding ApplyLabel}"
-                    IsEnabled="{Binding CanApplyCurrent}"
-                    Command="{Binding ApplyCommand}" />
+                    IsEnabled="{Binding CanApplyOrSave}"
+                    Command="{Binding ApplyOrSaveCommand}" />
         </Grid>
     </Grid>
 </UserControl>
