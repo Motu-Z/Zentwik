@@ -41,9 +41,9 @@
     <TieredPGO>true</TieredPGO>
 
     <!-- 版本号唯一真源：侧栏显示的版本文本从这里派生，不硬编码。与 Zentwik.Core 同一口径。 -->
-    <Version>2.1.9</Version>
-    <FileVersion>2.1.9.0</FileVersion>
-    <AssemblyVersion>2.1.9.0</AssemblyVersion>
+    <Version>2.1.10</Version>
+    <FileVersion>2.1.10.0</FileVersion>
+    <AssemblyVersion>2.1.10.0</AssemblyVersion>
 
     <!--
       应用图标：Windows 任务栏 / 资源管理器 / Alt-Tab 都用它。

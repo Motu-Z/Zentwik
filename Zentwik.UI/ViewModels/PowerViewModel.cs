@@ -343,6 +343,7 @@ public partial class PowerViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanOperate));
         OnPropertyChanged(nameof(CanApply));
         ApplyCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveToPlan));
@@ -374,6 +375,8 @@ public partial class PowerViewModel : ObservableObject
     private string _unavailableText = "本机不支持";
 
     public bool CanApply => IsDirty && !IsBusy && IsWorkerAvailable;
+
+    public bool CanOperate => !IsBusy;
 
     // ==================== 初始化 ====================
 

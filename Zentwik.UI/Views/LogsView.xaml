@@ -94,50 +94,6 @@
         </Style>
 
         <!--
-            顶栏「控制中心」开关。
-            展开 = 强调色描边 + 淡底 + 强调色文字（参考稿的常驻 accent 态）；
-            收起 = 退回中性描边，这样一眼能看出当前是哪一态。
-        -->
-        <Style x:Key="StatsToggleStyle" TargetType="ToggleButton">
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="14,0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Bd"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="4"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              TextElement.Foreground="{TemplateBinding Foreground}" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!--
             一条日志：时间 / 级别 / 正文。
             错误与警告把 3px 竖条贴到行最左缘（参考稿的 border-left），
             正文靠行内 padding 让出这 3px，保证文字左缘与页标题对齐。
@@ -236,21 +192,13 @@
                 <TextBlock Grid.Column="0" Text="日志" Style="{StaticResource PageTitleStyle}" />
 
                 <ToggleButton Grid.Column="2"
-                              Style="{StaticResource StatsToggleStyle}"
+                              Style="{StaticResource TopBarToggleStyle}"
                               VerticalAlignment="Center"
                               shell:WindowChrome.IsHitTestVisibleInChrome="True"
                               automation:AutomationProperties.Name="控制中心"
                               IsChecked="{Binding IsStatsOpen, Mode=TwoWay}"
 >
-                    <StackPanel Orientation="Horizontal">
-                        <Path Width="14" Height="14"
-                              VerticalAlignment="Center"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
-                              StrokeThickness="1.4"
-                              StrokeLineJoin="Round"
-                              Data="M5 20 V11 M12 20 V4 M19 20 V14" />
-                        <TextBlock Text="控制中心" Margin="8,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
+                    <TextBlock Text="控制中心" />
                 </ToggleButton>
             </Grid>
         </Border>

@@ -47,9 +47,24 @@
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center"
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <!-- 调度方案的应用：把当前选中的方案写回规则表并重扫，改一处不影响调校与电源 -->
+                        <ToggleButton Style="{StaticResource TopBarToggleStyle}"
+                                      automation:AutomationProperties.Name="展开规则与掩码"
+                                      IsChecked="{Binding IsDrawerOpen, Mode=TwoWay}"
+                                      Visibility="{Binding IsDrawerClosed, Converter={StaticResource BoolToVis}}"
+>
+                            <TextBlock Text="规则与掩码" />
+                        </ToggleButton>
+
+                        <Button Style="{StaticResource DangerButtonStyle}"
+                                Margin="8,0,0,0"
+                                automation:AutomationProperties.Name="解除全部绑核"
+                                Command="{Binding ReleaseAllCommand}"
+>
+                            <TextBlock Text="全部解绑" />
+                        </Button>
+
                         <Button Style="{StaticResource PrimaryButtonStyle}"
-                                Margin="0,0,8,0"
+                                Margin="8,0,0,0"
                                 automation:AutomationProperties.Name="应用调度方案"
                                 Command="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=ApplyCommand}"
                                 CommandParameter="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=Current}"
@@ -57,22 +72,6 @@
 >
                             <TextBlock Text="应用方案" />
                         </Button>
-
-                        <Button Style="{StaticResource DangerButtonStyle}"
-                                automation:AutomationProperties.Name="解除全部绑核"
-                                Command="{Binding ReleaseAllCommand}"
->
-                            <TextBlock Text="全部解绑" />
-                        </Button>
-
-                        <ToggleButton Style="{StaticResource DrawerEntryStyle}"
-                                      Margin="8,0,0,0"
-                                      automation:AutomationProperties.Name="展开规则与掩码"
-                                      IsChecked="{Binding IsDrawerOpen, Mode=TwoWay}"
-                                      Visibility="{Binding IsDrawerClosed, Converter={StaticResource BoolToVis}}"
->
-                            <TextBlock Text="规则与掩码" />
-                        </ToggleButton>
                     </StackPanel>
                 </Grid>
             </Border>

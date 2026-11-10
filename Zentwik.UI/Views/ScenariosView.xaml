@@ -556,20 +556,12 @@
  />
 
                     <Button Style="{StaticResource PrimaryButtonStyle}"
-                            Margin="24,0,0,0"
+                            Margin="16,0,0,0"
                             VerticalAlignment="Center"
                             automation:AutomationProperties.Name="新建规则"
                             Command="{Binding NewRuleCommand}"
 >
-                        <StackPanel Orientation="Horizontal">
-                            <Path Style="{StaticResource IconGlyphStyle}"
-                                  Width="12" Height="12"
-                                  VerticalAlignment="Center"
-                                  Data="M12 5 V19 M5 12 H19"
-                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-
-                            <TextBlock Text="新建规则" Margin="7,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <TextBlock Text="新建规则" />
                     </Button>
                 </StackPanel>
             </Grid>

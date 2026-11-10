@@ -996,6 +996,11 @@ public static class IntegrationTest
         Check("调校：加一格后数值 +1", tuning.CoreMargins[0].Margin == before + 1,
               $"{before}→{tuning.CoreMargins[0].Margin}");
 
+        tuning.CoreMargins[0].Margin = before;
+        Check("调校：改回原值不算脏", !tuning.IsDirty, $"值回到 {before}");
+
+        tuning.CoreMargins[0].IncrementCommand.Execute(null);
+
         tuning.DiscardCommand.Execute(null);
         Check("调校：放弃后 IsDirty = false", !tuning.IsDirty);
         Check("调校：放弃后数值还原", tuning.CoreMargins[0].Margin == before,

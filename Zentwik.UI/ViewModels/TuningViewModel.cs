@@ -319,7 +319,7 @@ public partial class TuningViewModel : ObservableObject
     }
 
     /// <summary>取消：回到上一次生效的值。纯本地操作，不需要 SMU。</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOperate))]
     private void Discard()
     {
         _suppressDirty = true;
@@ -695,7 +695,7 @@ public partial class TuningViewModel : ObservableObject
             return;
         }
 
-        IsDirty = true;
+        IsDirty = FMaxMHz != _baselineFMax || !Snapshot().SequenceEqual(_baselineMargins);
     }
 
     private void ClearBlocking()
@@ -752,7 +752,9 @@ public partial class TuningViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanOperate));
         ReadbackCommand.NotifyCanExecuteChanged();
+        DiscardCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged();
 
         if (!value && _recheckProfileOnIdle)

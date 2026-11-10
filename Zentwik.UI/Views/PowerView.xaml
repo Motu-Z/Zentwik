@@ -88,6 +88,7 @@
                     <Button Style="{StaticResource ActionButtonStyle}"
                             automation:AutomationProperties.Name="回读"
                             Command="{Binding RefreshCommand}"
+                            IsEnabled="{Binding CanOperate}"
 >
                         <TextBlock Text="回读" />
                     </Button>
@@ -96,6 +97,7 @@
                             Margin="8,0,0,0"
                             automation:AutomationProperties.Name="取消电源改动"
                             Command="{Binding DiscardCommand}"
+                            IsEnabled="{Binding CanOperate}"
                             Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}"
 >
                         <TextBlock Text="取消" />
