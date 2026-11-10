@@ -3,8 +3,8 @@ name: Build and Release Zentwik
 on:
   push:
     tags:
-      - 'v*' # 推送 v 开头的 tag 时触发
-  workflow_dispatch: # 允许在 Actions 页面手动点击运行
+      - 'v*'
+  workflow_dispatch:
     inputs:
       tag_name:
         description: '要发布的 Tag 名称 (例如 v1.2.1)'
@@ -23,31 +23,12 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        ref: ${{ github.event.inputs.tag_name || github.ref }} # 如果是手动触发，切换到指定的 tag
-
+        ref: ${{ github.event.inputs.tag_name || github.ref }}
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
 
-    # 双进程发布：UI 与 Worker 由同一次发布产出、装进同一目录。
-    # 两条 publish 必须指向同一个 -o —— 只发一个 exe 的包，UI 启动时会拉不起 Worker，
-    # 表现为「永远显示未连接」，且没有任何报错。
-    #
-    # 【UI：框架依赖 + 单文件 + R2R】
-    #   · --self-contained false：产品口径是「用户自装 .NET 10 Runtime」，不随包带运行时；
-    #   · PublishSingleFile=true：只出一个 exe，安装目录干净；
-    #   · PublishReadyToRun：冷启动收益明确。
-    #   · WPF 不支持 Native AOT（XAML 需要运行时代码生成），这一端只能停在这里。
-    #
-    # 【Worker：Native AOT，且必须自带运行时】
-    #   · PublishAot=true 隐含 self-contained=true，不能再叠 --self-contained false /
-    #     PublishSingleFile / PublishReadyToRun —— 三者在 AOT 下都会被 SDK 报错或静默忽略；
-    #   · 产物是原生 exe（约 11MB）+ 同目录 WinIo32.dll / WmiLight.Native.dll，
-    #     不依赖 .NET 运行时，也不需要 runtimeconfig.json；
-    #   · DebugType=None：Native AOT 会额外生成 45MB 的 pdb，发布包里毫无用处；
-    #   · WinIo32.dll 由 Core 的 ExcludeFromSingleFile 标记落到同目录（AOT 下本就没有
-    #     单文件概念，两条路殊途同归），ZenStates-Core 按文件名 LoadLibrary 找得到。
     - name: Publish UI
       run: |
         dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -o ./publish
@@ -56,8 +37,6 @@ jobs:
       run: |
         dotnet publish Zentwik.Worker/Zentwik.Worker.csproj -c Release -r win-x64 -p:PublishAot=true -p:TrimmerSingleWarn=false -p:DebugType=None -p:DebugSymbols=false -o ./publish
 
-    # 打包前的硬校验：AOT 成功与「参数被静默忽略」在日志上都写着 build succeeded。
-    # 唯一可靠的判据是产物形态 —— 原生 exe 不会同时留下托管 dll 与 runtimeconfig.json。
     - name: Verify AOT Worker
       run: |
         if (-not (Test-Path ./publish/Zentwik.Worker.exe)) { throw "Zentwik.Worker.exe 缺失" }
@@ -78,10 +57,6 @@ jobs:
         tag_name: ${{ github.event.inputs.tag_name || github.ref_name }} # 手动触发用 input，推送触发用 ref_name
         files: ./Zentwik-win-x64.zip
         generate_release_notes: true
-        # canary（can）构建必须标成预发布：GitHub 会把「最新版本」给非预发布项，
-        # 一旦 can 被当成正式版，所有走 /releases/latest 的下载入口都会拿到
-        # 一个尚未实机验证的构建。v2.0.0-can1 当初是手工勾的预发布，
-        # v2.0.0-can2 就漏成了正式版 —— 说明靠人记得勾不可靠，写进流程里。
         prerelease: ${{ contains(github.ref_name, 'can') || contains(github.event.inputs.tag_name, 'can') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
