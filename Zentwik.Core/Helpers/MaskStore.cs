@@ -20,8 +20,22 @@ namespace Zentwik.Core.Helpers
         /// <summary>逻辑核掩码，位 i = 1 表示包含逻辑处理器 i。</summary>
         public ulong Mask { get; set; }
 
+        /// <summary>
+        /// 是否由核心组自动铺出来的预置项。
+        ///
+        /// 只用于列表区分与排障，不参与任何逻辑 —— 预置项就是普通掩码，
+        /// 能改名、能改核、能删，删了不会重建。
+        /// </summary>
+        public bool Preset { get; set; }
+
         /// <summary>已勾选的逻辑核数量（用于列表展示）。</summary>
         public int CoreCount => BitOperations.PopCount(Mask);
+    }
+
+    /// <summary>masks.presets.json：已铺过的预置项组合，用来保证删掉后不重建。</summary>
+    public sealed class MaskPresetLedger
+    {
+        public List<string> Seeded { get; set; } = new();
     }
 
     /// <summary>
@@ -48,15 +62,18 @@ namespace Zentwik.Core.Helpers
         public IReadOnlyList<CustomMask> Masks => _masks;
 
         /// <summary>
-        /// 自定义掩码套数上限。
+        /// 用户自建掩码套数上限。
         ///
-        /// 主界面「调度」页的绑定目标下拉框是「不绑定 / CCD0 / CCD1 / 各自定义掩码」平铺，
-        /// 掩码再多就是一条越滚越长的下拉列表，挑一条要看半天。10 套是够用又不失控的量。
+        /// 进程页的绑定目标是个平铺下拉，掩码再多就是一条越滚越长的列表。
+        /// 只算用户自建的：核心组预置项由硬件决定条数，不该占这个配额
+        /// （Threadripper 能铺出十几个）。
         /// </summary>
         public const int MaxCount = 10;
 
+        private int UserMaskCount => _masks.Count(m => !m.Preset);
+
         /// <summary>当前是否已经达到套数上限（新建前用它决定是否还允许加草稿）。</summary>
-        public bool IsFull => _masks.Count >= MaxCount;
+        public bool IsFull => UserMaskCount >= MaxCount;
 
         /// <summary>
         /// 除某个 Id 之外已占用的名称，供重名校验使用。
@@ -139,15 +156,16 @@ namespace Zentwik.Core.Helpers
         };
 
         /// <summary>
-        /// 恢复出厂：清空全部自定义掩码并落盘。
+        /// 恢复出厂：清空全部自定义掩码并落盘，同时清掉预置记录。
         ///
-        /// 出厂状态 = 没有任何自定义掩码（只剩内置的 CCD0 / CCD1）。
         /// 走 Save() 而不是直接删文件：Save 会触发 Changed，
         /// 进程页的下拉框与已保存规则才会跟着同步，不会留下一堆
         /// 指向已删除掩码的悬空规则。
         /// </summary>
         public void ResetToFactory()
         {
+            ClearLedger();
+
             if (_masks.Count == 0)
                 return;
 
@@ -182,7 +200,7 @@ namespace Zentwik.Core.Helpers
             CustomMask? existing = _masks.FirstOrDefault(m => m.Id == mask.Id);
 
             // 新建才查数量上限；改已有的不会增加条数
-            if (existing == null && _masks.Count >= MaxCount)
+            if (existing == null && UserMaskCount >= MaxCount)
             {
                 error = UpsertError.TooMany;
                 return false;
@@ -221,6 +239,91 @@ namespace Zentwik.Core.Helpers
         {
             if (_masks.RemoveAll(m => m.Id == id) > 0)
                 Save();
+        }
+
+        private string LedgerPath => _paths.File("masks.presets.json");
+
+        /// <summary>
+        /// 把核心组铺成预置掩码项，返回新增条数。
+        ///
+        /// 判定依据是「这个组合铺过没有」而不是「这条掩码还在不在」：已铺过的组合
+        /// 记在 masks.presets.json，用户删掉某一项后重启不会又冒出来。
+        /// 同名的已存在（用户自建）就跳过不覆盖，但照样记账，免得每次启动都试一遍。
+        /// </summary>
+        public int SeedPresets(IEnumerable<(string Key, string Name, ulong Mask)> presets)
+        {
+            MaskPresetLedger ledger = ReadLedger();
+            HashSet<string> seeded = new(ledger.Seeded, StringComparer.Ordinal);
+
+            bool ledgerChanged = false;
+            int added = 0;
+
+            foreach ((string key, string name, ulong mask) in presets)
+            {
+                if (!seeded.Add(key))
+                    continue;
+
+                ledgerChanged = true;
+
+                if (mask == 0)
+                    continue;
+
+                if (_masks.Any(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                _masks.Add(new CustomMask { Name = name, Mask = mask, Preset = true });
+                added++;
+            }
+
+            if (ledgerChanged)
+                WriteLedger(seeded);
+
+            if (added > 0)
+                Save();
+
+            return added;
+        }
+
+        private MaskPresetLedger ReadLedger()
+        {
+            try
+            {
+                return JsonFile.Read(LedgerPath, AppJsonContext.Default.MaskPresetLedger)
+                       ?? new MaskPresetLedger();
+            }
+            catch
+            {
+                return new MaskPresetLedger();
+            }
+        }
+
+        private void WriteLedger(IEnumerable<string> keys)
+        {
+            try
+            {
+                JsonFile.Write(
+                    LedgerPath,
+                    new MaskPresetLedger { Seeded = keys.ToList() },
+                    AppJsonContext.Default.MaskPresetLedger);
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"记录预置掩码失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>清掉预置记录，让下次启动重新铺（供恢复出厂用）。</summary>
+        private void ClearLedger()
+        {
+            try
+            {
+                if (File.Exists(LedgerPath))
+                    File.Delete(LedgerPath);
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"清除预置记录失败: {ex.Message}");
+            }
         }
 
         public CustomMask? FindById(string id) => _masks.FirstOrDefault(m => m.Id == id);

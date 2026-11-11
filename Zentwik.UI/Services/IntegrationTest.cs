@@ -1204,10 +1204,9 @@ public static class IntegrationTest
               && proc.PriorityOptions[4] == "低",
               string.Join("/", proc.PriorityOptions));
 
-        // 「全部核心」已删除：它在协议里是 mask 类型却没有掩码 Id，选中它保存必然被拒。
-        Check("进程：掩码下拉含 CCD / 自定义掩码 / 不调度",
-              proc.MaskOptions.Any(m => m.TargetType == "ccd")
-              && proc.MaskOptions.Any(m => m.TargetType == "mask" && m.MaskId is not null)
+        // 核心组也在掩码表里：下拉不再有独立的一套 CCD 选项。
+        Check("进程：掩码下拉 = 掩码项 + 不调度",
+              proc.MaskOptions.Any(m => m.TargetType == "mask" && m.MaskId is not null)
               && proc.MaskOptions.Any(m => m.TargetType == "none"),
               $"{proc.MaskOptions.Count} 项");
 
@@ -1218,7 +1217,7 @@ public static class IntegrationTest
 
         if (fresh is not null)
         {
-            var mask = proc.MaskOptions.First(m => m.TargetType == "ccd");
+            var mask = proc.MaskOptions.First(m => m.TargetType == "mask");
             fresh.MaskKey = mask.Key;
 
             var made = proc.SavedRules.FirstOrDefault(

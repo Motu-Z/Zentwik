@@ -21,6 +21,32 @@ namespace Zentwik.Tests.Fakes
 
         public int CcdCount { get; set; }
 
+        /// <summary>按逻辑核数与组数等分出各组掩码，真实拓扑是硬件决定的，测试里只需形状对。</summary>
+        public IReadOnlyList<CpuCoreGroup> CoreGroups => BuildGroups(LogicalProcessorCount, CcdCount);
+
+        private static CpuCoreGroup[] BuildGroups(int logical, int count)
+        {
+            if (count <= 0)
+                count = 1;
+
+            int per = (logical + count - 1) / count;
+            CpuCoreGroup[] groups = new CpuCoreGroup[count];
+
+            for (int g = 0; g < count; g++)
+            {
+                int start = g * per;
+                int end = Math.Min(start + per, logical);
+                ulong mask = 0;
+
+                for (int i = start; i < end && i < 64; i++)
+                    mask |= 1UL << i;
+
+                groups[g] = new CpuCoreGroup(g, mask, Math.Max(0, end - start));
+            }
+
+            return groups;
+        }
+
         public string? LastTopologyError => null;
 
         /// <summary>成功绑定的掩码，按调用顺序记录。</summary>

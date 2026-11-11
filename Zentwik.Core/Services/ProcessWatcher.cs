@@ -651,29 +651,17 @@ namespace Zentwik.Core.Services
             if (!_handledPids.TryAdd(pid))
                 return;
 
-            // 自定义掩码：优先取实时掩码，缺失时回退快照
+            // 掩码：优先取实时掩码，缺失时回退快照
             ulong mask = rule.Target == SchedulingTarget.TargetMask
                 ? (_masks.FindById(rule.MaskId)?.Mask ?? rule.TargetMask)
                 : 0;
 
-            CpuSetScheduleResult result;
-            string label;
+            // 旧版 CCD 规则只在迁移还没跑过时走到这里
+            CpuSetScheduleResult result = rule.IsLegacyCcd
+                ? _cpuSets.ScheduleToCcd(pid, rule.LegacyCcdIndex)
+                : _cpuSets.ScheduleToMask(pid, mask);
 
-            switch (rule.Target)
-            {
-                case SchedulingTarget.CCD0:
-                    result = _cpuSets.ScheduleToCcd(pid, 0);
-                    label = "CCD0";
-                    break;
-                case SchedulingTarget.CCD1:
-                    result = _cpuSets.ScheduleToCcd(pid, 1);
-                    label = "CCD1";
-                    break;
-                default:
-                    result = _cpuSets.ScheduleToMask(pid, mask);
-                    label = rule.Label;
-                    break;
-            }
+            string label = rule.Label;
 
             // 节流键：进程名 + 错误码。同一类失败（例如受保护进程的错误 5）
             // 60 秒内只留一条，后面的计数，下次放行时补报「另有 N 条」。

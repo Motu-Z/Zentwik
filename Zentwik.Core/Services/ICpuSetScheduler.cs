@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Zentwik.Core.Services
 {
     /// <summary>
@@ -10,6 +12,9 @@ namespace Zentwik.Core.Services
 
         /// <summary>逻辑处理器数量（未探测到时为 0）。</summary>
         int LogicalProcessorCount { get; }
+
+        /// <summary>核心组（L3 缓存域）列表，拓扑不可用时为空。</summary>
+        IReadOnlyList<CpuCoreGroup> CoreGroups { get; }
 
         /// <summary>丢弃已缓存的拓扑，下次访问重新探测。</summary>
         void ResetTopology();

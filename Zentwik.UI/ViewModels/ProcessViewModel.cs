@@ -15,9 +15,6 @@ public class ProcessViewModel : ViewModelBase
 
     private bool UseWorker => !SuppressWorkerInit;
 
-    /// <summary>每 CCD 物理核数，来自 <c>query-cpu-topology</c>；诊断模式下沿用开发机形状。</summary>
-    private int _coresPerCcd = 8;
-
     public ObservableCollection<RunningProcessItem> RunningProcesses { get; } = new();
     public ObservableCollection<RunningProcessItem> FilteredProcesses { get; } = new();
     public ObservableCollection<ScheduleRuleItem> SavedRules { get; } = new();
@@ -221,7 +218,7 @@ public class ProcessViewModel : ViewModelBase
             PriorityOptions.Add(ProcessPriority.DisplayOf(option));
         }
 
-        BuildBaseMaskOptions();
+        ResetMaskOptions();
 
         SortCommand = new RelayCommand(p =>
         {
@@ -466,10 +463,11 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>诊断模式专用的自定义掩码</summary>
     private void SeedMasks()
     {
-        const string value = "16711935";
+        MaskOptions.Add(new MaskOption("0-7,16-23", "mask", "16711935", maskId: "demo-mask"));
 
-        MaskOptions.Add(new MaskOption("0-7,16-23", "mask", value, maskId: "demo-mask"));
-        DrawerMasks.Add(new MaskPreviewItem("0-7,16-23", MaskText.ToRangeText(16711935)));
+        // 必须走 RebuildDrawerMasks：它顺带刷新 MaskOption 的 label 反查表，
+        // 漏了这一步，诊断模式下选中掩码回写会退回「不调度」。
+        RebuildDrawerMasks();
     }
 
     /// <summary>诊断模式下的「解除全部绑核」：只改内存状态。</summary>
@@ -506,12 +504,7 @@ public class ProcessViewModel : ViewModelBase
             return;
         }
 
-        // 拓扑先于掩码：下拉里的 CCD 条数与掩码网格的格子数都由它决定，
-        // 顺序反了就会先铺一份 16 核的形状，再被真实值覆盖一次。
-        IpcOutcome<CpuTopologyPayload> topology = await WorkerBridge.Instance
-            .QueryCpuTopologyAsync().ConfigureAwait(true);
-
-        BuildBaseMaskOptions(topology is { Success: true, Value: not null } ? topology.Value : null);
+        ResetMaskOptions();
 
         await RefreshAsync().ConfigureAwait(true);
     }
@@ -584,14 +577,10 @@ public class ProcessViewModel : ViewModelBase
         ApplyProcessSnapshot(processes.Value);
     }
 
-    /// <summary>把后台的掩码表铺进下拉：CCD / 不调度 是固定的，自定义掩码整段重建</summary>
+    /// <summary>把后台的掩码表铺进下拉，末尾补「不调度」</summary>
     internal void ApplyMasks(MaskListPayload payload)
     {
-        for (int i = MaskOptions.Count - 1; i >= 0; i--)
-        {
-            if (MaskOptions[i].TargetType == "mask")
-                MaskOptions.RemoveAt(i);
-        }
+        MaskOptions.Clear();
 
         foreach (MaskEntryPayload mask in payload.Masks)
         {
@@ -601,6 +590,8 @@ public class ProcessViewModel : ViewModelBase
                 mask.Mask.ToString(CultureInfo.InvariantCulture),
                 maskId: mask.Id));
         }
+
+        MaskOptions.Add(new MaskOption("不调度", "none", string.Empty));
 
         RebuildDrawerMasks();
     }
@@ -855,26 +846,11 @@ public class ProcessViewModel : ViewModelBase
                && entry.Path.StartsWith(windows, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>基础目标：每个 CCD 一条 + 不调度</summary>
-    private void BuildBaseMaskOptions(CpuTopologyPayload? topology = null)
+    /// <summary>基础目标只剩「不调度」；核心组本身就是掩码项，由掩码表铺进来</summary>
+    private void ResetMaskOptions()
     {
-        int cores = topology is { Cores: > 0 } ? topology.Cores : 16;
-        int coresPerCcd = topology is { CoresPerCcd: > 0 } ? topology.CoresPerCcd : 8;
-
-        if (coresPerCcd > cores)
-            coresPerCcd = cores;
-
-        _coresPerCcd = coresPerCcd;
-
         MaskOptions.Clear();
-
-        int ccdCount = (cores + coresPerCcd - 1) / coresPerCcd;
-
-        for (int ccd = 0; ccd < ccdCount; ccd++)
-            MaskOptions.Add(new MaskOption($"CCD{ccd}", "ccd", ccd.ToString(CultureInfo.InvariantCulture)));
-
         MaskOptions.Add(new MaskOption("不调度", "none", string.Empty));
-
         RebuildDrawerMasks();
     }
 
@@ -886,13 +862,10 @@ public class ProcessViewModel : ViewModelBase
 
         foreach (MaskOption option in MaskOptions)
         {
-            string topology = option.TargetType switch
-            {
-                "ccd" => CcdRangeText(option),
-                "mask" => MaskText.ToRangeText(ParseMask(option.TargetValue)),
-                _ => string.Empty
-            };
+            if (option.TargetType != "mask")
+                continue;
 
+            string topology = MaskText.ToRangeText(ParseMask(option.TargetValue));
             if (topology.Length > 0)
                 DrawerMasks.Add(new MaskPreviewItem(option.Label, topology));
         }
@@ -900,18 +873,6 @@ public class ProcessViewModel : ViewModelBase
 
     private static ulong ParseMask(string value) =>
         ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong bits) ? bits : 0UL;
-
-    /// <summary>把一个 CCD 选项的 TargetValue（CCD 序号）换算成物理核序号区间，如 CCD0 → 0-7。</summary>
-    private string CcdRangeText(MaskOption option)
-    {
-        if (!int.TryParse(option.TargetValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int ccd))
-            return string.Empty;
-
-        int start = ccd * _coresPerCcd;
-        return start.ToString(CultureInfo.InvariantCulture)
-               + "-"
-               + (start + _coresPerCcd - 1).ToString(CultureInfo.InvariantCulture);
-    }
 
     public bool AreAllSelected => FilteredProcesses.Count > 0 && FilteredProcesses.All(p => p.IsSelected);
 

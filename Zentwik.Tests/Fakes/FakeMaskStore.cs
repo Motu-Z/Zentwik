@@ -31,6 +31,22 @@ namespace Zentwik.Tests.Fakes
 
         public void ResetToFactory() => _masks.Clear();
 
+        public int SeedPresets(IEnumerable<(string Key, string Name, ulong Mask)> presets)
+        {
+            int added = 0;
+
+            foreach ((string _, string name, ulong mask) in presets)
+            {
+                if (_masks.Any(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                _masks.Add(new CustomMask { Name = name, Mask = mask, Preset = true });
+                added++;
+            }
+
+            return added;
+        }
+
         public bool Upsert(CustomMask mask, out MaskStore.UpsertError error)
         {
             error = default;

@@ -29,6 +29,30 @@ namespace Zentwik.Core.Services
     }
 
     /// <summary>
+    /// 一个核心组（L3 缓存域）：连续的逻辑核集合。
+    ///
+    /// 命名交给 <see cref="CpuVendorProbe"/>，本类只管「哪几个核是一组」。
+    /// </summary>
+    public sealed class CpuCoreGroup
+    {
+        public CpuCoreGroup(int index, ulong mask, int logicalCount)
+        {
+            Index = index;
+            Mask = mask;
+            LogicalCount = logicalCount;
+        }
+
+        /// <summary>组序号（0 起，按最小逻辑核序号排序）。</summary>
+        public int Index { get; }
+
+        /// <summary>该组覆盖的逻辑核掩码。</summary>
+        public ulong Mask { get; }
+
+        /// <summary>该组包含的逻辑处理器数。</summary>
+        public int LogicalCount { get; }
+    }
+
+    /// <summary>
     /// 基于 Windows CPU Sets（SetProcessDefaultCpuSets）的进程调度封装。
     ///
     /// 为什么用 CPU Sets 而不是 SetProcessAffinityMask：
@@ -154,6 +178,9 @@ namespace Zentwik.Core.Services
 
         private int _ccdCount;
 
+        /// <summary>每组覆盖的逻辑核掩码，供界面生成预置掩码项。</summary>
+        private CpuCoreGroup[]? _coreGroups;
+
         private readonly object _topologyLock = new();
 
         /// <summary>最近一次拓扑读取失败的原因（成功时为 null），供 UI 警告横幅展示。</summary>
@@ -187,30 +214,31 @@ namespace Zentwik.Core.Services
             _ccdCpuSetIds = null;
             _lpToCpuSetId = null;
             _ccdCount = 0;
+            _coreGroups = null;
         }
 
         /// <summary>
-        /// 当前系统的 CCD 数（无法判断时按物理核数推算，最少 1）。
+        /// 核心组数。拓扑读不到时按 1 组。
         ///
-        /// CpuSet 枚举失败时 _ccdCount 会是 0，直接用会让勾选界面
-        /// 把所有核都归到 CCD0（标题出现「CCD0 · Core 0 - 15」这种错位）。
-        /// 所以这里退化到「按物理核 / 8」推算——Zen 系列每 CCD 8 核。
+        /// 不再用「物理核 / 8」退化推算：那条只对 Zen 的 8 核 CCD 成立，
+        /// 套到 Intel 上会把 24 核 32 线程判成 3 组。
         /// </summary>
         public int CcdCount
         {
             get
             {
                 EnsureTopology();
+                return _ccdCount > 0 ? _ccdCount : 1;
+            }
+        }
 
-                if (_ccdCount > 0)
-                    return _ccdCount;
-
-                // 退化推算：物理核数 / 8，至少 1
-                int logical = Environment.ProcessorCount;
-                int physical = logical % 2 == 0 ? logical / 2 : logical;
-                int inferred = physical / 8;
-
-                return inferred >= 1 ? inferred : 1;
+        /// <summary>核心组列表（拓扑不可用时为空）。</summary>
+        public IReadOnlyList<CpuCoreGroup> CoreGroups
+        {
+            get
+            {
+                EnsureTopology();
+                return _coreGroups ?? (IReadOnlyList<CpuCoreGroup>)Array.Empty<CpuCoreGroup>();
             }
         }
 
@@ -435,14 +463,7 @@ namespace Zentwik.Core.Services
 
         // ---------------- 拓扑解析 ----------------
 
-        /// <summary>
-        /// 读取系统全部 Processor 类型 CpuSet，按 CCD 分组。
-        ///
-        /// 分组依据：AMD Zen 的 CCD 划分无法直接从 CpuSet 结构拿到，
-        /// 这里采用「逻辑处理器序号均分」策略——先取同一 Group 内的 CpuSet 总数，
-        /// 再按 CCD 数量等分：16 核 / 32 线程 / 2 CCD 的布局下，
-        /// 逻辑核 0-15 归 CCD0、16-31 归 CCD1，与 SMU 拓扑一致。
-        /// </summary>
+        /// <summary>读取系统全部 Processor 类型 CpuSet，按核心组（L3 缓存域）分组。</summary>
         private void EnsureTopology()
         {
             lock (_topologyLock)
@@ -468,8 +489,7 @@ namespace Zentwik.Core.Services
                         return;
                     }
 
-                    _ccdCount = DetectCcdCount(processors.Count);
-                    GroupProcessors(processors, _ccdCount);
+                    GroupProcessors(processors);
                 }
                 catch (Exception ex)
                 {
@@ -480,125 +500,135 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>把已排序前未分组的处理器列表切分成 CCD，并落成扁平索引表。</summary>
-        private void GroupProcessors(
-            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors, int ccds)
+        /// <summary>把处理器列表按核心组切分，并落成扁平索引表。</summary>
+        private void GroupProcessors(List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors)
         {
-            // 按 (Group, LogicalProcessorIndex) 排序，保证顺序稳定
             processors.Sort((a, b) =>
             {
                 int g = a.Group.CompareTo(b.Group);
                 return g != 0 ? g : a.LpIndex.CompareTo(b.LpIndex);
             });
 
-            // 优先用 L3 缓存索引分组：AMD Zen 每个 CCD 独享一块 L3，
-            // 同一 CCD 内的所有逻辑核 LastLevelCacheIndex 相同，是天然且准确的 CCD 边界。
-            List<uint>[]? byCache = GroupByLastLevelCache(processors, ccds);
-            int perCcd = (processors.Count + ccds - 1) / ccds;
+            // 观测优先：L3 缓存域就是核心组的真实边界（AMD 每 CCD 独享一块 L3，
+            // Intel 单 ring 只有一块 → 自然只有一组）。组数从这里读，不靠猜。
+            List<uint>[]? byCache = TryGroupByLastLevelCache(processors);
 
-            _ccdCpuSetIds = byCache ?? SplitEvenly(processors, ccds, perCcd);
+            int groups;
+            string basis;
+
+            if (byCache != null)
+            {
+                groups = byCache.Length;
+                basis = "L3 缓存索引";
+            }
+            else
+            {
+                groups = InferGroupCount(processors.Count);
+                byCache = SplitEvenly(processors, groups, (processors.Count + groups - 1) / groups);
+                basis = $"推断（{groups} 组均分）";
+            }
+
+            _ccdCount = groups;
+            _ccdCpuSetIds = byCache;
 
             // 扁平数组：索引 = 排序后的逻辑处理器序号（0 起），值 = CpuSetId
             _lpToCpuSetId = processors.Select(p => p.Id).ToArray();
+            _coreGroups = BuildCoreGroups(byCache, _lpToCpuSetId);
             LastTopologyError = null;
 
-            string groupBasis = byCache != null
-                ? "L3 缓存索引（真实 CCD 边界）"
-                : $"逻辑序号均分（每组 {perCcd} 个）";
-
             _log.Info(
-                $"CPU Sets 拓扑：{processors.Count} 个逻辑处理器，划分为 {ccds} 个 CCD，分组依据 = {groupBasis}");
+                $"CPU Sets 拓扑：{processors.Count} 个逻辑处理器，{groups} 个核心组，分组依据 = {basis}");
         }
 
-        /// <summary>回退分组：第 i 个处理器落入第 i / ceil(n / ccds) 组。</summary>
+        /// <summary>回退分组：第 i 个处理器落入第 i / ceil(n / groups) 组。</summary>
         private List<uint>[] SplitEvenly(
-            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors, int ccds, int perCcd)
+            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors, int groups, int perGroup)
         {
-            List<uint>[] groups = new List<uint>[ccds];
-            for (int i = 0; i < ccds; i++)
-                groups[i] = new List<uint>();
+            List<uint>[] result = new List<uint>[groups];
+            for (int i = 0; i < groups; i++)
+                result[i] = new List<uint>();
 
             for (int i = 0; i < processors.Count; i++)
-                groups[Math.Min(i / perCcd, ccds - 1)].Add(processors[i].Id);
+                result[Math.Min(i / perGroup, groups - 1)].Add(processors[i].Id);
 
-            return groups;
+            return result;
         }
 
         /// <summary>
-        /// 按 LastLevelCacheIndex 分组（AMD Zen 每 CCD 独享 L3，缓存索引即 CCD 边界）。
+        /// 按 LastLevelCacheIndex 分组，缓存索引不可信时返回 null 由调用方回退推断。
         ///
-        /// 仅在「分组数恰好等于推断出的 CCD 数」时才采用，否则返回 null 由调用方回退到均分，
-        /// 避免某些平台把缓存索引报成全 0 或每核唯一，反而分出错误的组。
+        /// 只拒绝「每核一个索引」——那是把核心编号错塞进了缓存字段，按它分等于每核一组。
+        /// 组大小不齐、只有一个组都合法（单 L3 域、混合架构），照收。
         /// </summary>
-        private List<uint>[]? GroupByLastLevelCache(
-            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors, int ccds)
+        private static List<uint>[]? TryGroupByLastLevelCache(
+            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors)
         {
-            if (ccds <= 1)
+            int total = processors.Count;
+            if (total <= 1)
                 return null;
 
-            List<byte> distinct = processors.Select(p => p.LlcIndex).Distinct().ToList();
-            if (distinct.Count != ccds)
+            if (processors.Select(p => p.LlcIndex).Distinct().Count() >= total)
                 return null;
 
-            // 每个缓存组的大小必须一致（对称 CCD），否则说明这个索引不可信
             Dictionary<byte, List<uint>> buckets = new();
             foreach ((uint id, byte _, ushort _, byte llc) in processors)
             {
                 if (!buckets.TryGetValue(llc, out List<uint>? list))
                     buckets[llc] = list = new List<uint>();
+
                 list.Add(id);
             }
 
-            int first = buckets[distinct[0]].Count;
-            if (buckets.Values.Any(v => v.Count != first))
-                return null;
-
-            // 按组内最小逻辑处理器序号排序，保证 CCD0 在前（与逻辑核编号顺序一致）
-            List<uint>[] groups = buckets
-                .OrderBy(kv => processors
-                    .Where(p => p.LlcIndex == kv.Key)
-                    .Min(p => p.LpIndex))
+            // 按组内最小逻辑处理器序号排序，组 0 落在最靠前的核上
+            return buckets
+                .OrderBy(kv => processors.Where(p => p.LlcIndex == kv.Key).Min(p => p.LpIndex))
                 .Select(kv => kv.Value)
                 .ToArray();
-
-            return groups;
         }
 
         /// <summary>
-        /// 推断 CCD 数量。
+        /// 推断核心组数，只在缓存索引不可信时用。
         ///
-        /// 只按「物理核 ≥16 且能被 8 整除 → 每 CCD 8 核」推断会算错：
-        /// 6 核 CCX 的 APU、12 核 / 10 核这类非 8 整数倍的 SKU，
-        /// 分区与 SMU 侧的核位域对不上，导致「CCD0 绑定」和「CO 核 0-7」
-        /// 不是同一批核心——界面看起来正常，写下去却错位。
-        ///
-        /// 因此优先用 SMU 读到的 coresPerCcx（与写入掩码同源），
-        /// 拿不到时才退回按 8 核推断。
+        /// SMU 的每 CCX 核数与写入掩码同源，是唯一可靠依据；拿不到就按 1 组——
+        /// 按「物理核 / 8」猜在非 AMD 上必然算错（24 核 32 线程的 i9 会被判成 3 组）。
         /// </summary>
-        private int DetectCcdCount(int logicalProcessors)
+        private int InferGroupCount(int logicalProcessors)
         {
-            // 逻辑处理器数为偶数，物理核 ≈ 逻辑 / 2
             int physical = logicalProcessors / 2 > 0 ? logicalProcessors / 2 : logicalProcessors;
 
-            // 优先：SMU 报告的每 CCX 核数（0 表示未探测）。与 SmuReader.SplitCore 同一口径，
-            // 保证「界面分区」与「实际写入的核位域」一致，这是本方法唯一可靠的依据。
-            // 用 Raw 而不是 CoresPerCcd：后者未探测时会兜底成 8，
-            // 拿兜底值当事实等于没探测也在猜，反而掩盖了「SMU 还没就绪」这件事。
-            // 用 Peek 而不是 Shared：Shared 会「触发创建」，而本方法在应用启动、
-            // 调度页首次加载时就会跑，那时 PawnIO 往往还没就绪。逼着此刻建实例
-            // 会拿到一个 SMU 不应答的 Cpu 并占住单例，之后所有 SMU 读取都会失败。
-            int perCcdFromSmu = (int)_smu.PeekCoresPerCcdRaw();
-            if (perCcdFromSmu > 0 && physical >= perCcdFromSmu)
-            {
-                int n = physical / perCcdFromSmu;
-                if (n >= 1) return n;
-            }
-
-            // 回退：Zen 5 桌面/移动常见 8 核/CCD
-            if (physical >= 16 && physical % 8 == 0)
-                return physical / 8;
+            // Peek 而不是 Shared：Shared 会触发创建实例，启动早期 PawnIO 往往没就绪，
+            // 逼着此刻建实例会占住一个 SMU 不应答的单例，之后所有读取都失败。
+            int perGroup = (int)_smu.PeekCoresPerCcdRaw();
+            if (perGroup > 0 && physical >= perGroup)
+                return Math.Max(1, physical / perGroup);
 
             return 1;
+        }
+
+        /// <summary>把分组结果换算成每组覆盖的逻辑核掩码。</summary>
+        private static CpuCoreGroup[] BuildCoreGroups(List<uint>[] groups, uint[] table)
+        {
+            CpuCoreGroup[] result = new CpuCoreGroup[groups.Length];
+
+            for (int g = 0; g < groups.Length; g++)
+            {
+                HashSet<uint> ids = new(groups[g]);
+                ulong mask = 0;
+                int count = 0;
+
+                for (int i = 0; i < table.Length && i < 64; i++)
+                {
+                    if (!ids.Contains(table[i]))
+                        continue;
+
+                    mask |= 1UL << i;
+                    count++;
+                }
+
+                result[g] = new CpuCoreGroup(g, mask, count);
+            }
+
+            return result;
         }
 
         /// <summary>调用 GetSystemCpuSetInformation 枚举全部 CPU Set 条目。</summary>

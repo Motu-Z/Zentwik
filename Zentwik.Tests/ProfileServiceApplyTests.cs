@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
@@ -52,7 +52,7 @@ namespace Zentwik.Tests
                 Id = "s1",
                 Kind = PlanKind.Scheduling,
                 Name = "游戏绑核",
-                ScheduleRules = [new ScheduleRule { Name = "game.exe", Target = SchedulingTarget.CCD0 }]
+                ScheduleRules = [new ScheduleRule { Name = "game.exe", Target = (SchedulingTarget)1 }]
             });
 
             _plans.Save(new PlanEntry

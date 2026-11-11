@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
@@ -557,7 +557,7 @@ namespace Zentwik.Tests
         {
             List<ScheduleRule> rules = new()
             {
-                new ScheduleRule { Name = "chrome.exe", Target = SchedulingTarget.CCD0, Enabled = true }
+                new ScheduleRule { Name = "chrome.exe", Target = (SchedulingTarget)1, Enabled = true }
             };
 
             List<ProcessEntryPayload> items = PipeServerService.BuildProcessEntries(
@@ -574,7 +574,7 @@ namespace Zentwik.Tests
         {
             List<ScheduleRule> rules = new()
             {
-                new ScheduleRule { Name = "chrome.exe", Target = SchedulingTarget.CCD0, Enabled = false }
+                new ScheduleRule { Name = "chrome.exe", Target = (SchedulingTarget)1, Enabled = false }
             };
 
             List<ProcessEntryPayload> items = PipeServerService.BuildProcessEntries(
@@ -664,7 +664,7 @@ namespace Zentwik.Tests
                 watcher, bindings);
 
             PipeResponse response = await service.RunSaveScheduleRuleAsync(
-                SaveRulePayload("game.exe", "ccd", "CCD0", "High"),
+                SaveRulePayload("game.exe", "ccd", "0", "High"),
                 CancellationToken.None);
 
             Assert.True(response.Success);
@@ -672,9 +672,55 @@ namespace Zentwik.Tests
 
             ScheduleRule saved = Assert.Single(bindings.LastSaved!);
             Assert.Equal("game.exe", saved.Name);
-            Assert.Equal(SchedulingTarget.CCD0, saved.Target);
+            Assert.Equal(SchedulingTarget.TargetMask, saved.Target);
+            Assert.NotEqual(0UL, saved.TargetMask);
             Assert.Equal(ProcessPriority.High, saved.Priority);
             Assert.True(saved.Enabled);
+        }
+
+        /// <summary>
+        /// 第 3 组之后也要能存。旧版把 CCD0 / CCD1 做成枚举，组数被锁死在 2 个，
+        /// Threadripper 的第 3 块 CCD 根本录不进规则。
+        /// </summary>
+        [Fact]
+        public async Task SaveScheduleRule_ThirdGroup_PersistsAsMask()
+        {
+            FakeCpuSetScheduler cpuSets = new(logicalProcessorCount: 32, ccdCount: 4);
+            FakeSchedulingStore bindings = new();
+
+            PipeServerService service = BuildServer(
+                NewApplyService(), new StubSmuReader(true), new FakeTuningStore(),
+                BuildPlans(new FakeTuningStore(), NewApplyService()),
+                new FakeProcessWatcher(), bindings, cpuSets: cpuSets);
+
+            PipeResponse response = await service.RunSaveScheduleRuleAsync(
+                SaveRulePayload("game.exe", "ccd", "2"),
+                CancellationToken.None);
+
+            Assert.True(response.Success);
+
+            ScheduleRule saved = Assert.Single(bindings.LastSaved!);
+            Assert.Equal(SchedulingTarget.TargetMask, saved.Target);
+
+            // 32 核 4 组，每组 8 位；第 3 组是 8-15
+            Assert.Equal(0xFF0000UL, saved.TargetMask);
+        }
+
+        [Fact]
+        public async Task SaveScheduleRule_GroupIndexOutOfRange_Fails()
+        {
+            FakeCpuSetScheduler cpuSets = new(logicalProcessorCount: 32, ccdCount: 2);
+
+            PipeServerService service = BuildServer(
+                NewApplyService(), new StubSmuReader(true), new FakeTuningStore(),
+                BuildPlans(new FakeTuningStore(), NewApplyService()),
+                new FakeProcessWatcher(), new FakeSchedulingStore(), cpuSets: cpuSets);
+
+            PipeResponse response = await service.RunSaveScheduleRuleAsync(
+                SaveRulePayload("game.exe", "ccd", "2"),
+                CancellationToken.None);
+
+            Assert.False(response.Success);
         }
 
         /// <summary>
@@ -759,7 +805,8 @@ namespace Zentwik.Tests
 
             ScheduleRule saved = Assert.Single(bindings.LastSaved!);
             Assert.Equal(ProcessPriority.AboveNormal, saved.Priority);
-            Assert.Equal(SchedulingTarget.CCD1, saved.Target);
+            Assert.Equal(SchedulingTarget.TargetMask, saved.Target);
+            Assert.NotEqual(0UL, saved.TargetMask);
         }
 
         [Fact]
@@ -795,7 +842,8 @@ namespace Zentwik.Tests
                 SaveRulePayload("CS2.EXE", "ccd", "1"), CancellationToken.None);
 
             ScheduleRule saved = Assert.Single(bindings.LastSaved!);
-            Assert.Equal(SchedulingTarget.CCD1, saved.Target);
+            Assert.Equal(SchedulingTarget.TargetMask, saved.Target);
+            Assert.NotEqual(0UL, saved.TargetMask);
         }
 
         [Fact]
@@ -804,8 +852,8 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Name = "cs2.exe", Target = SchedulingTarget.CCD0 },
-                new ScheduleRule { Name = "chrome.exe", Target = SchedulingTarget.CCD1 }
+                new ScheduleRule { Name = "cs2.exe", Target = (SchedulingTarget)1 },
+                new ScheduleRule { Name = "chrome.exe", Target = (SchedulingTarget)2 }
             });
 
             FakeProcessWatcher watcher = new();
@@ -826,7 +874,7 @@ namespace Zentwik.Tests
         public async Task DeleteScheduleRule_Missing_Fails()
         {
             FakeSchedulingStore bindings = new();
-            bindings.Save(new[] { new ScheduleRule { Name = "cs2.exe", Target = SchedulingTarget.CCD0 } });
+            bindings.Save(new[] { new ScheduleRule { Name = "cs2.exe", Target = (SchedulingTarget)1 } });
 
             PipeServerService service = BuildServer(
                 NewApplyService(), new StubSmuReader(true), new FakeTuningStore(),
@@ -853,8 +901,8 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Name = "a.exe", Target = SchedulingTarget.CCD0, Priority = ProcessPriority.High, Path = @"C:\a.exe" },
-                new ScheduleRule { Name = "b.exe", Target = SchedulingTarget.CCD1, Enabled = false },
+                new ScheduleRule { Name = "a.exe", Target = (SchedulingTarget)1, Priority = ProcessPriority.High, Path = @"C:\a.exe" },
+                new ScheduleRule { Name = "b.exe", Target = (SchedulingTarget)2, Enabled = false },
                 new ScheduleRule { Name = "c.exe", Target = SchedulingTarget.TargetMask, TargetMask = 0xFF00, MaskId = "m1", MaskName = "纯大核" },
                 new ScheduleRule { Name = "d.exe", Target = SchedulingTarget.None }
             });
@@ -1089,7 +1137,7 @@ namespace Zentwik.Tests
                     Id = id,
                     ProcessName = processName,
                     TargetType = "ccd",
-                    TargetValue = "CCD0",
+                    TargetValue = "0",
                     Enabled = enabled
                 },
                 IpcJsonContext.Default.SaveScheduleRulePayload);
@@ -1106,19 +1154,20 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Id = "keepme", Name = "game.exe", Target = SchedulingTarget.CCD1 }
+                new ScheduleRule { Id = "keepme", Name = "game.exe", Target = (SchedulingTarget)2 }
             });
 
             PipeServerService service = BuildRuleServer(bindings, new FakeProcessWatcher());
 
             PipeResponse response = await service.RunSaveScheduleRuleAsync(
-                SaveRulePayload("game.exe", "ccd", "CCD0"), CancellationToken.None);
+                SaveRulePayload("game.exe", "ccd", "0"), CancellationToken.None);
 
             Assert.True(response.Success);
 
             ScheduleRule saved = Assert.Single(bindings.LastSaved!);
             Assert.Equal("keepme", saved.Id);
-            Assert.Equal(SchedulingTarget.CCD0, saved.Target);
+            Assert.Equal(SchedulingTarget.TargetMask, saved.Target);
+            Assert.NotEqual(0UL, saved.TargetMask);
         }
 
         /// <summary>
@@ -1130,7 +1179,7 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Id = "abc123", Name = "old.exe", Target = SchedulingTarget.CCD1 }
+                new ScheduleRule { Id = "abc123", Name = "old.exe", Target = (SchedulingTarget)2 }
             });
 
             PipeServerService service = BuildRuleServer(bindings, new FakeProcessWatcher());
@@ -1183,7 +1232,7 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Id = "abc123", Name = "renamed.exe", Target = SchedulingTarget.CCD0 }
+                new ScheduleRule { Id = "abc123", Name = "renamed.exe", Target = (SchedulingTarget)1 }
             });
 
             FakeProcessWatcher watcher = new();
@@ -1203,7 +1252,7 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Id = "abc123", Name = "msedge.exe", Target = SchedulingTarget.CCD0 }
+                new ScheduleRule { Id = "abc123", Name = "msedge.exe", Target = (SchedulingTarget)1 }
             });
 
             PipeServerService service = BuildRuleServer(bindings, new FakeProcessWatcher());
@@ -1220,7 +1269,7 @@ namespace Zentwik.Tests
             FakeSchedulingStore bindings = new();
             bindings.Save(new[]
             {
-                new ScheduleRule { Id = "id-1", Name = "a.exe", Target = SchedulingTarget.CCD0 }
+                new ScheduleRule { Id = "id-1", Name = "a.exe", Target = (SchedulingTarget)1 }
             });
 
             PipeServerService service = BuildRuleServer(bindings, new FakeProcessWatcher());

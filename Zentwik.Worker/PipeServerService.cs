@@ -117,6 +117,9 @@ namespace Zentwik.Worker
             _stopToken = new CancellationTokenSource();
             CancellationToken token = _stopToken.Token;
 
+            SeedMaskPresets();
+            MigrateLegacyCcdRules();
+
             _acceptLoop = Task.Run(() => AcceptLoopAsync(token), CancellationToken.None);
 
             // 观察任务异常：没人 await 这个循环，未观察异常会被静默丢弃。
@@ -1228,10 +1231,18 @@ namespace Zentwik.Worker
 
             if (string.Equals(targetType, "ccd", StringComparison.OrdinalIgnoreCase))
             {
-                if (!TryParseCcdTarget(targetValue, out SchedulingTarget target))
-                    return Fail($"无法识别的 CCD 目标：{targetValue}（可选 CCD0 / CCD1）");
+                // 旧协议：ccd + 核心组序号。换算成掩码后按掩码规则存，不再有 CCD 枚举。
+                if (!int.TryParse(targetValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int groupIndex))
+                    return Fail($"ccd 的 targetValue 必须是核心组序号，收到：{targetValue}");
 
-                rule.Target = target;
+                if (!TryResolveGroupMask(groupIndex, out ulong groupMask, out CustomMask? preset))
+                    return Fail(
+                        $"核心组 {groupIndex} 不存在或读不到拓扑（本机 {_cpuSets.CoreGroups.Count} 组）");
+
+                rule.Target = SchedulingTarget.TargetMask;
+                rule.TargetMask = groupMask;
+                rule.MaskId = preset?.Id ?? string.Empty;
+                rule.MaskName = preset?.Name ?? MaskFormatter.ToRangeText(groupMask);
             }
             else if (string.Equals(targetType, "mask", StringComparison.OrdinalIgnoreCase))
             {
@@ -1357,24 +1368,95 @@ namespace Zentwik.Worker
             };
         }
 
-        /// <summary>CCD 目标同时接受 CCD0 与 0 两种写法。</summary>
-        private static bool TryParseCcdTarget(string value, out SchedulingTarget target)
+        /// <summary>
+        /// 把核心组铺成预置掩码项。
+        ///
+        /// 核心组由硬件决定，运行中不会变，所以只在启动时跑一次。
+        /// 已铺过的组合记在 ledger 里，用户删掉某一项后重启不会又冒出来。
+        /// </summary>
+        private void SeedMaskPresets()
         {
-            target = SchedulingTarget.None;
-
-            if (string.Equals(value, "CCD0", StringComparison.OrdinalIgnoreCase) || value == "0")
+            IReadOnlyList<CpuCoreGroup> groups = _cpuSets.CoreGroups;
+            if (groups.Count == 0)
             {
-                target = SchedulingTarget.CCD0;
-                return true;
+                _log.Warn("核心组拓扑不可用，跳过预置掩码生成");
+                return;
             }
 
-            if (string.Equals(value, "CCD1", StringComparison.OrdinalIgnoreCase) || value == "1")
+            CpuVendor vendor = CpuVendorProbe.Detect();
+
+            List<(string Key, string Name, ulong Mask)> presets = new(groups.Count);
+            foreach (CpuCoreGroup group in groups)
             {
-                target = SchedulingTarget.CCD1;
-                return true;
+                presets.Add((
+                    $"group:0x{group.Mask:X}",
+                    CpuVendorProbe.GroupName(vendor, group.Index, groups.Count),
+                    group.Mask));
             }
 
-            return false;
+            int added = _masks.SeedPresets(presets);
+            if (added > 0)
+                _log.Info($"生成 {added} 个核心组预置掩码（{vendor}，共 {groups.Count} 组）");
+        }
+
+        /// <summary>
+        /// 旧版按 CCD 序号绑定的规则改写成掩码。
+        ///
+        /// 不改也能跑（ProcessWatcher 留了 ScheduleToCcd 兜底），改完才能让
+        /// 「组数超过 2」和「核心组改名 / 删除」这些场景成立。
+        /// </summary>
+        private void MigrateLegacyCcdRules()
+        {
+            IReadOnlyList<CpuCoreGroup> groups = _cpuSets.CoreGroups;
+            if (groups.Count == 0)
+                return;
+
+            List<ScheduleRule> rules = _scheduling.Profile.Rules.ToList();
+            int migrated = 0;
+
+            foreach (ScheduleRule rule in rules)
+            {
+                int index = rule.LegacyCcdIndex;
+                if (index < 0 || index >= groups.Count)
+                    continue;
+
+                CpuCoreGroup group = groups[index];
+                CustomMask? preset = _masks.Masks.FirstOrDefault(m => m.Mask == group.Mask);
+
+                if (rule.ApplyLegacyMask(
+                        group.Mask,
+                        preset?.Id ?? string.Empty,
+                        preset?.Name ?? MaskFormatter.ToRangeText(group.Mask)))
+                {
+                    migrated++;
+                }
+            }
+
+            if (migrated == 0)
+                return;
+
+            _scheduling.Save(rules);
+            _log.Info($"把 {migrated} 条旧版 CCD 规则改写成掩码");
+        }
+
+        /// <summary>核心组序号换算成预置掩码项。旧协议（targetType=ccd）的落点。</summary>
+        private bool TryResolveGroupMask(int groupIndex, out ulong mask, out CustomMask? preset)        {
+            mask = 0;
+            preset = null;
+
+            IReadOnlyList<CpuCoreGroup> groups = _cpuSets.CoreGroups;
+            if (groupIndex < 0 || groupIndex >= groups.Count)
+                return false;
+
+            ulong resolved = groups[groupIndex].Mask;
+            if (resolved == 0)
+                return false;
+
+            mask = resolved;
+
+            // 同掩码的预置项优先，让规则能挂上稳定的 MaskId
+            preset = _masks.Masks.FirstOrDefault(m => m.Mask == resolved);
+            return true;
         }
 
         /// <summary>优先级归一化：空串合法，其余必须命中 Options 里的常量并回写标准大小写。</summary>
@@ -1454,12 +1536,8 @@ namespace Zentwik.Worker
 
             if (coresPerCcd <= 0)
             {
-                // CcdCount 不在 ICpuSetScheduler 上，按可用性逐个探测。
-                int ccdCount = 0;
-                while (ccdCount < 32 && _cpuSets.IsCcdAvailable(ccdCount))
-                    ccdCount++;
-
-                coresPerCcd = ccdCount > 0 ? cores / ccdCount : 0;
+                int groupCount = _cpuSets.CoreGroups.Count;
+                coresPerCcd = groupCount > 0 ? cores / groupCount : 0;
             }
 
             if (coresPerCcd <= 0 || coresPerCcd > cores)
@@ -1581,16 +1659,25 @@ namespace Zentwik.Worker
 
             foreach (ScheduleRule rule in rules)
             {
-                // ccd 给索引数字、mask 给掩码值、none 给空串 —— 格式见 ScheduleRulePayload 注释。
-                (string targetType, string targetValue) = rule.Target switch
+                // 旧版 CCD 规则给组序号，掩码规则给掩码值，none 给空串 —— 格式见 ScheduleRulePayload 注释。
+                string targetType;
+                string targetValue;
+
+                if (rule.IsLegacyCcd)
                 {
-                    SchedulingTarget.CCD0 => ("ccd", "0"),
-                    SchedulingTarget.CCD1 => ("ccd", "1"),
-
-                    SchedulingTarget.TargetMask => ("mask", rule.TargetMask.ToString(CultureInfo.InvariantCulture)),
-
-                    _ => ("none", string.Empty)
-                };
+                    targetType = "ccd";
+                    targetValue = rule.LegacyCcdIndex.ToString(CultureInfo.InvariantCulture);
+                }
+                else if (rule.Target == SchedulingTarget.TargetMask)
+                {
+                    targetType = "mask";
+                    targetValue = rule.TargetMask.ToString(CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    targetType = "none";
+                    targetValue = string.Empty;
+                }
 
                 items.Add(new ScheduleRulePayload
                 {

@@ -7,24 +7,18 @@ using Zentwik.Core.Serialization;
 
 namespace Zentwik.Core.Helpers
 {
-    /// <summary>进程调度目标。</summary>
+    /// <summary>
+    /// 进程调度目标。
+    ///
+    /// 只有「不调度」和「掩码」两种。旧版把 CCD0 / CCD1 做成枚举值（落盘是 1 和 2），
+    /// 于是 CCD 数一旦超过 2（Threadripper 有 12 个）第三块就存不进去。
+    /// 现在核心组本身就是预置掩码项，规则统一按掩码走，任意组数都成立。
+    /// </summary>
     public enum SchedulingTarget
     {
         None = 0,
 
-        /// <summary>第一个 CCD（CCD0）。</summary>
-        CCD0 = 1,
-
-        /// <summary>第二个 CCD（CCD1）。</summary>
-        CCD1 = 2,
-
-        /// <summary>
-        /// 自定义掩码：具体逻辑核集合由 <see cref="ScheduleRule.MaskId"/> 指向的掩码给出。
-        ///
-        /// 与 <see cref="ScheduleRule.TargetMask"/>（快照值）同名同义：
-        /// 一个是「目标是掩码这一类」，一个是「那个掩码的值是多少」。
-        /// 旧名 Custom 说的是「自定义」，但真正的区分点是「有没有掩码」。
-        /// </summary>
+        /// <summary>按掩码绑定，具体核集合由 <see cref="ScheduleRule.MaskId"/> 或快照值给出。</summary>
         TargetMask = 3
     }
 
@@ -101,17 +95,46 @@ namespace Zentwik.Core.Helpers
         /// </summary>
         public bool Enabled { get; set; } = true;
 
+        /// <summary>
+        /// 旧版按 CCD 序号绑定的规则：落盘值是 1（CCD0）或 2（CCD1）。
+        ///
+        /// 直接看枚举的整数值，不为此保留枚举成员——成员一留，代码里就会重新长出
+        /// 「CCD0 / CCD1 特判」，那正是这次要拆掉的东西。拓扑就绪后由
+        /// <see cref="ApplyLegacyMask"/> 迁移成掩码，迁移后这个判断恒为 false。
+        /// </summary>
+        public bool IsLegacyCcd => (int)Target is 1 or 2;
+
+        /// <summary>旧版 CCD 序号（<see cref="IsLegacyCcd"/> 为 true 时有效）。</summary>
+        public int LegacyCcdIndex => IsLegacyCcd ? (int)Target - 1 : -1;
+
+        /// <summary>把旧版 CCD 目标改写成掩码。已是掩码时返回 false。</summary>
+        public bool ApplyLegacyMask(ulong mask, string maskId, string maskName)
+        {
+            if (!IsLegacyCcd)
+                return false;
+
+            Target = SchedulingTarget.TargetMask;
+            TargetMask = mask;
+            MaskId = maskId ?? string.Empty;
+            MaskName = maskName ?? string.Empty;
+            return true;
+        }
+
         /// <summary>规则的展示名（如 "CCD0"、"纯大核"、"0-7,16-23"）。</summary>
         public string Label
         {
             get
             {
-                if (Target == SchedulingTarget.CCD0) return "CCD0";
-                if (Target == SchedulingTarget.CCD1) return "CCD1";
+                if (IsLegacyCcd)
+                    return $"核心组 {LegacyCcdIndex}";
+
                 if (Target == SchedulingTarget.TargetMask)
                 {
-                    return string.IsNullOrEmpty(MaskName) ? MaskFormatter.ToRangeText(TargetMask) : MaskName;
+                    return string.IsNullOrEmpty(MaskName)
+                        ? MaskFormatter.ToRangeText(TargetMask)
+                        : MaskName;
                 }
+
                 return "不调度";
             }
         }

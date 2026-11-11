@@ -7,7 +7,7 @@ namespace Zentwik.Core.Helpers
     /// <summary>
     /// 逻辑核掩码与可读文本的双向转换。
     ///
-    /// 设计目标：让用户能像 CPU Sets 那样直接给一个掩码，而不是只能选 CCD0/CCD1。
+    /// 设计目标：让用户能像 CPU Sets 那样直接给一个掩码，而不是只能从预置项里挑。
     /// 支持三种输入写法（解析时自动识别）：
     ///   1. 十六进制：0x0000FFFF / FFFF
     ///   2. 区间列表：0-7,16-23     （逗号分隔，区间用连字符）
@@ -65,11 +65,15 @@ namespace Zentwik.Core.Helpers
 
             string input = text.Trim();
 
-            // CCD0 / CCD1 是语义关键字，绝不能被当成十六进制数字
-            // （"CCD0" 恰好全是合法 hex 字符，不拦截会解析成 0xCCD0）
-            if (input.StartsWith("CCD", StringComparison.OrdinalIgnoreCase))
+            // 形如 CCD0 / Tile1 / Core3 的标识符（首字符字母 + 含数字，且整体恰好都是 hex 字符）
+            // 不拦会被当成十六进制："CCD0" 解析出来是 0xCCD0。要求加 0x 前缀就无歧义了。
+            if (!input.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+                input.Length > 0 &&
+                char.IsAsciiLetter(input[0]) &&
+                input.Any(char.IsAsciiDigit) &&
+                input.All(Uri.IsHexDigit))
             {
-                error = $"“{input}”是 CCD 关键字，请直接使用 CCD0 / CCD1，或输入掩码（如 0x0000FFFF）";
+                error = $"“{input}”看起来是名字，请输入区间（如 0-7,16-23）或带前缀的掩码（如 0xFFFFFFFF）";
                 return false;
             }
 

@@ -1157,7 +1157,7 @@ public partial class App : Application
                 {
                     ProcessName = name,
                     TargetType = "ccd",
-                    TargetValue = "CCD0",
+                    TargetValue = "0",
                     Priority = Zentwik.Core.Services.ProcessPriority.High
                 }).ConfigureAwait(false);
 

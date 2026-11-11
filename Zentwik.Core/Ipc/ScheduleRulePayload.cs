@@ -9,11 +9,11 @@ namespace Zentwik.Core.Ipc
     /// 还有 <c>Label</c> 这种派生属性。直接把落盘模型当协议模型用，等于把
     /// schedules.json 的字段演进绑死到 IPC 上 —— 改一个存储字段就破坏一次协议。
     ///
-    ///   · <c>"ccd"</c>  → targetValue 是 CCD 索引的十进制字符串（"0" / "1"），UI 用 int.Parse；
+    ///   · <c>"ccd"</c>  → targetValue 是核心组序号的十进制字符串（"0" / "1" / …），旧版协议，只在迁移前出现；
     ///   · <c>"mask"</c> → targetValue 是掩码的十进制字符串（ulong，如 "65280"），UI 用 ulong.Parse；
     ///   · <c>"none"</c> → targetValue 为空串。
     ///
-    /// 保存时 <c>targetValue</c> 取 <c>"CCD0"</c> / <c>"CCD1"</c> 或**掩码 Id**；
+    /// 保存时 <c>targetValue</c> 取核心组序号或**掩码 Id**；
     /// 查询时给的是索引数字与掩码**值**。两者不对称是有意的：
     ///   · 查询要的是「这条规则现在绑到哪」，用值最直观，UI 不必再反查 masks.json；
     ///   · 保存要的是「绑到哪」，用 Id 才能让 Worker 把掩码名称一起快照进规则。

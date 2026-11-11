@@ -29,6 +29,9 @@ namespace Zentwik.Core.Helpers
         /// <summary>清空全部自定义掩码并落盘。</summary>
         void ResetToFactory();
 
+        /// <summary>把核心组铺成预置掩码项，返回新增条数。</summary>
+        int SeedPresets(IEnumerable<(string Key, string Name, ulong Mask)> presets);
+
         /// <summary>新增或按 Id 覆盖一条掩码。</summary>
         bool Upsert(CustomMask mask, out MaskStore.UpsertError error);
 

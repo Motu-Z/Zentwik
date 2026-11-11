@@ -258,7 +258,8 @@ namespace Zentwik.Core.Ipc
         /// 参数：<c>Payload</c> = JSON
         /// <c>{"processName":"...","targetType":"ccd|mask","targetValue":"...","priority":"..."}</c>
         /// （<see cref="SaveScheduleRulePayload"/>）。
-        ///   · <c>targetType = ccd</c>：<c>targetValue</c> 取 <c>CCD0</c> / <c>CCD1</c>（或 <c>0</c> / <c>1</c>）；
+        ///   · <c>targetType = ccd</c>：<c>targetValue</c> 是**核心组序号**（<c>0</c> / <c>1</c> / …），
+        ///     旧版协议，Worker 会换算成掩码后落盘；
         ///   · <c>targetType = mask</c>：<c>targetValue</c> 是 <c>masks.json</c> 里的掩码 Id，
         ///     Worker 会把掩码值一起快照进规则，掩码日后被删也还能按快照下发；
         ///   · <c>priority</c> 可留空 = 这条规则不碰优先级。

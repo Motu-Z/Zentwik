@@ -30,6 +30,7 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(BootGuardState))]
     [JsonSerializable(typeof(SchedulingProfile))]
     [JsonSerializable(typeof(List<CustomMask>))]
+    [JsonSerializable(typeof(MaskPresetLedger))]
     [JsonSerializable(typeof(PlanFile))]
     // PlanEntry.PowerPolicy 复用了 IPC 的载荷类型。源生成上下文必须显式登记，
     // 否则 AOT 下写 plans.json 时这整块会被静默跳过，方案里的参数快照全丢。

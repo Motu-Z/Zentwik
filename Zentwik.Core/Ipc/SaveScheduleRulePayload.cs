@@ -5,8 +5,8 @@ namespace Zentwik.Core.Ipc
     /// <summary>
     /// <c>save-scheduling-rule</c> 的 Payload 形状。
     ///
-    /// UI 侧的下拉框是「不调度 / CCD0 / CCD1 / 各自定义掩码」平铺，
-    /// 选中的是一个**文本**目标。让 UI 自己判断「这是 CCD 还是掩码、掩码值是多少」，
+    /// UI 侧的下拉框是「掩码表 / 不调度」平铺，
+    /// 选中的是一个**文本**目标。让 UI 自己判断「这是哪个掩码、掩码值是多少」，
     /// 等于把 <c>masks.json</c> 的解析逻辑复制一份到界面进程 —— 而 UI 手上那份掩码列表
     /// 可能是几秒前的快照，掩码被删掉时它会传上来一个不存在的值。
     /// 这里只传「哪一类 + 哪个」两个词，由持有主副本的 Worker 去查、去快照。
@@ -37,8 +37,11 @@ namespace Zentwik.Core.Ipc
         public string TargetType { get; set; } = string.Empty;
 
         /// <summary>
-        /// 目标值：<c>targetType=ccd</c> 时为 <c>CCD0</c> / <c>CCD1</c>（或 <c>0</c> / <c>1</c>）；
+        /// 目标值：<c>targetType=ccd</c> 时为**核心组序号**（<c>0</c> / <c>1</c> / …）；
         /// <c>targetType=mask</c> 时为掩码 Id。
+        ///
+        /// <c>ccd</c> 是旧版协议，只为兼容升级途中混搭的旧 UI 而留。
+        /// 它现在也走「序号 → 掩码」换算，落盘一律是掩码。
         /// </summary>
         [JsonPropertyName("targetValue")]
         public string TargetValue { get; set; } = string.Empty;
