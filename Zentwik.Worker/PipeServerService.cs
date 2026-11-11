@@ -693,6 +693,7 @@ namespace Zentwik.Worker
                     _scenarios.Delete(rules[i].Id);
 
                 _masks.ResetToFactory();
+                SeedMaskPresets();
                 _scheduling.Save(Array.Empty<ScheduleRule>());
                 _tuningStore.ResetToFactory();
                 _settings.ResetToFactory();
