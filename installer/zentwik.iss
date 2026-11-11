@@ -119,14 +119,23 @@ end;
   所以开头就拦一下，并且把「该装哪个包」直接说清楚。
 
   只认 Desktop 运行时（Microsoft.WindowsDesktop.App）：只装了 NETCore.App 的机器
-  连 WPF 的 PresentationFramework 都没有，照样起不来。 }
-function IsNet10DesktopInstalled(): Boolean;
+  连 WPF 的 PresentationFramework 都没有，照样起不来。
+
+  这里有两个容易踩的坑：
+  1. 版本号是那个键下的**值名**（10.0.12 这种），不是子键。用 RegGetSubkeyNames
+     去找子键，拿到的永远是空数组 —— 装了也会被判成没装。
+  2. 键不保证落在 64 位视图里。有些机器（本机就是一例）只在 WOW6432Node 下有，
+     所以两个视图都要查。
+
+  最后再兜底看 Program Files 下的实际目录：注册表被清理过、或运行时是按用户装的，
+  键可能查不到但程序照样能跑，这时不该拦人。 }
+function HasNet10DesktopValue(RootKey: Integer): Boolean;
 var
   Names: TArrayOfString;
   I: Integer;
 begin
   Result := False;
-  if RegGetSubkeyNames(HKLM64,
+  if RegGetValueNames(RootKey,
        'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App',
        Names) then
     for I := 0 to GetArrayLength(Names) - 1 do
@@ -135,6 +144,26 @@ begin
         Result := True;
         Exit;
       end;
+end;
+
+function HasNet10DesktopFolder(): Boolean;
+var
+  FindRec: TFindRec;
+begin
+  Result := False;
+  if FindFirst(ExpandConstant('{commonpf64}\dotnet\shared\Microsoft.WindowsDesktop.App\10.*'), FindRec) then
+  try
+    Result := (FindRec.Attributes and $00000010) <> 0;   { 只认目录 }
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+function IsNet10DesktopInstalled(): Boolean;
+begin
+  Result := HasNet10DesktopValue(HKLM64) or
+            HasNet10DesktopValue(HKLM32) or
+            HasNet10DesktopFolder();
 end;
 
 function InitializeSetup(): Boolean;

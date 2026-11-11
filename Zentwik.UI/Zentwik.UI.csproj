@@ -41,7 +41,7 @@
     <TieredPGO>true</TieredPGO>
 
     <!-- 版本号唯一真源：侧栏显示的版本文本从这里派生，不硬编码。与 Zentwik.Core 同一口径。 -->
-    <Version>2.2.6</Version>
+    <Version>2.2.7</Version>
     <FileVersion>2.1.11.0</FileVersion>
     <AssemblyVersion>2.1.11.0</AssemblyVersion>
 
