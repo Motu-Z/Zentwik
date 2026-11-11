@@ -764,6 +764,33 @@ public sealed class PlanScope : ViewModelBase
 
     // 应用 / 保存
 
+    /// <summary>
+    /// 后台自己换了生效方案（场景规则命中）：列表对齐，顶栏跟过去。
+    ///
+    /// 场景切换不经过界面，没有这条路径时顶栏会一直停在旧方案上 ——
+    /// 系统里已经换成别的了，界面还标着「生效中」。
+    /// </summary>
+    public async Task AdoptActiveAsync(string? activeId)
+    {
+        if (PlanHub.SuppressWorkerInit)
+            return;
+
+        await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+        // 有没落盘的改动就只留生效标记：把选中抢过来会冲掉用户手上的编辑。
+        if (HasUnsavedChanges)
+            return;
+
+        PlanItem? target = Items.FirstOrDefault(
+            p => string.Equals(p.Id, activeId, StringComparison.Ordinal));
+
+        if (target is null || ReferenceEquals(target, Current))
+            return;
+
+        Current = target;
+        Applied?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>应用一份方案：只下发它自己那一块</summary>
     public async Task ApplyAsync(PlanItem? item)
     {

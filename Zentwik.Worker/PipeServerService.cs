@@ -293,6 +293,9 @@ namespace Zentwik.Worker
                 case WorkerPipeContract.CommandQueryPlans:
                     return RunQueryPlans(request.Payload);
 
+                case WorkerPipeContract.CommandQueryActivePlans:
+                    return RunQueryActivePlans();
+
                 case WorkerPipeContract.CommandSavePlan:
                     return await RunSavePlanAsync(request.Payload, token);
 
@@ -779,6 +782,25 @@ namespace Zentwik.Worker
                         Plans = items
                     },
                     IpcJsonContext.Default.PlanListPayload)
+            };
+        }
+
+        /// <summary>query-active-plans：三类方案各自当前生效的 Id。</summary>
+        internal PipeResponse RunQueryActivePlans()
+        {
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = true,
+                Message = "ok",
+                Payload = JsonSerializer.Serialize(
+                    new ActivePlansPayload
+                    {
+                        Tuning = _plans.ActiveId(PlanKind.Tuning),
+                        Scheduling = _plans.ActiveId(PlanKind.Scheduling),
+                        Power = _plans.ActiveId(PlanKind.Power)
+                    },
+                    IpcJsonContext.Default.ActivePlansPayload)
             };
         }
 
@@ -1417,31 +1439,64 @@ namespace Zentwik.Worker
 
             foreach (ScheduleRule rule in rules)
             {
-                int index = rule.LegacyCcdIndex;
-                if (index < 0 || index >= groups.Count)
-                    continue;
-
-                CpuCoreGroup group = groups[index];
-                CustomMask? preset = _masks.Masks.FirstOrDefault(m => m.Mask == group.Mask);
-
-                if (rule.ApplyLegacyMask(
-                        group.Mask,
-                        preset?.Id ?? string.Empty,
-                        preset?.Name ?? MaskFormatter.ToRangeText(group.Mask)))
-                {
+                if (MigrateRule(rule, groups))
                     migrated++;
-                }
             }
 
-            if (migrated == 0)
-                return;
+            if (migrated > 0)
+            {
+                _scheduling.Save(rules);
+                _log.Info($"把 {migrated} 条旧版 CCD 规则改写成掩码");
+            }
 
-            _scheduling.Save(rules);
-            _log.Info($"把 {migrated} 条旧版 CCD 规则改写成掩码");
+            MigratePlanSnapshots(groups);
+        }
+
+        /// <summary>
+        /// 方案快照里的旧 CCD 规则一并改写。
+        ///
+        /// 只迁移 schedules.json 的话，方案里还是 `ccd|1`、实时规则已是 `mask|值`，
+        /// 指纹永远不相等 —— 界面每次重启都把方案标成「未保存」。
+        /// </summary>
+        private void MigratePlanSnapshots(IReadOnlyList<CpuCoreGroup> groups)
+        {
+            foreach (PlanEntry plan in _plans.Items(PlanKind.Scheduling))
+            {
+                int changed = 0;
+
+                foreach (ScheduleRule rule in plan.ScheduleRules)
+                {
+                    if (MigrateRule(rule, groups))
+                        changed++;
+                }
+
+                if (changed == 0)
+                    continue;
+
+                _plans.Save(plan);
+                _log.Info($"方案「{plan.Name}」里的 {changed} 条旧版 CCD 规则已改写成掩码");
+            }
+        }
+
+        /// <summary>单条规则的 ccd → mask 改写。已经是掩码时返回 false。</summary>
+        private bool MigrateRule(ScheduleRule rule, IReadOnlyList<CpuCoreGroup> groups)
+        {
+            int index = rule.LegacyCcdIndex;
+            if (index < 0 || index >= groups.Count)
+                return false;
+
+            CpuCoreGroup group = groups[index];
+            CustomMask? preset = _masks.Masks.FirstOrDefault(m => m.Mask == group.Mask);
+
+            return rule.ApplyLegacyMask(
+                group.Mask,
+                preset?.Id ?? string.Empty,
+                preset?.Name ?? MaskFormatter.ToRangeText(group.Mask));
         }
 
         /// <summary>核心组序号换算成预置掩码项。旧协议（targetType=ccd）的落点。</summary>
-        private bool TryResolveGroupMask(int groupIndex, out ulong mask, out CustomMask? preset)        {
+        private bool TryResolveGroupMask(int groupIndex, out ulong mask, out CustomMask? preset)
+        {
             mask = 0;
             preset = null;
 

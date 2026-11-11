@@ -10,10 +10,10 @@ namespace Zentwik.Tests
         [Fact]
         public void Constants_match_contract()
         {
-            // 9：方案拆成三类独立列表（调校 / 调度 / 电源），旧的 profile 五条命令下线。
+            // 11：新增 query-active-plans（顶栏跟随后台切换）。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
-            // 否则「顺手把版本号从 8 改成 9」这种改动没人会注意到。
-            Assert.Equal(10, WorkerPipeContract.ProtocolVersion);
+            // 否则「顺手把版本号往上加」这种改动没人会注意到。
+            Assert.Equal(11, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }

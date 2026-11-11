@@ -563,9 +563,23 @@ namespace Zentwik.Core.Services
             (bool Success, string? Error) result = _power.SetActiveScheme(guid);
 
             if (result.Success)
+            {
+                // 系统计划换人了，「生效中」标记要跟着走，否则界面还写上一份。
+                try
+                {
+                    _plans.MarkActive(PlanKind.Power, plan?.Id ?? _plans.FindPowerByScheme(guid)?.Id);
+                }
+                catch (Exception)
+                {
+                    // 记账失败不影响「系统已切过去」这件事。
+                }
+
                 _log.Info($"场景电源：已切换到电源方案 {guid}");
+            }
             else
+            {
                 _log.Warn($"场景电源：切换失败：{result.Error}");
+            }
         }
 
         /// <summary>

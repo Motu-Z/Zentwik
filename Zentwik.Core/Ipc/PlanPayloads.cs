@@ -119,6 +119,29 @@ namespace Zentwik.Core.Ipc
     }
 
     /// <summary>
+    /// 三类方案各自当前生效的 Id。字段为 null 表示这一类没有生效项。
+    /// </summary>
+    public sealed class ActivePlansPayload
+    {
+        [JsonPropertyName("tuning")]
+        public string? Tuning { get; set; }
+
+        [JsonPropertyName("scheduling")]
+        public string? Scheduling { get; set; }
+
+        [JsonPropertyName("power")]
+        public string? Power { get; set; }
+
+        /// <summary>按类别取对应字段。</summary>
+        public string? For(Services.PlanKind kind) => kind switch
+        {
+            Services.PlanKind.Tuning => Tuning,
+            Services.PlanKind.Scheduling => Scheduling,
+            _ => Power
+        };
+    }
+
+    /// <summary>
     /// <c>save-plan</c> 的请求体：新建或按 Id 覆盖一份方案。
     /// </summary>
     /// <remarks>

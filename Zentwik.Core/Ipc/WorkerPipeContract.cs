@@ -22,10 +22,11 @@ namespace Zentwik.Core.Ipc
         /// （旧 Worker 忽略不认识的字段照样回 Success，界面以为已经写成功）。
         /// 版本历史：1 初始 ｜ 2 电源策略 DC 字段 ｜ 3 电源方案增删改 ｜ 4 query-masks ｜
         /// 5 掩码与场景命令（删 apply-process-priority）｜ 6 clear-logs ｜ 7 场景三动作 ｜
-        /// 8 ProcessExited 触发源 ｜ 9 方案拆三类 ｜ 10 界面设置读写与 factory-reset。
+        /// 8 ProcessExited 触发源 ｜ 9 方案拆三类 ｜ 10 界面设置读写与 factory-reset ｜
+        /// 11 query-active-plans。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 10;
+        public const int ProtocolVersion = 11;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -159,6 +160,14 @@ namespace Zentwik.Core.Ipc
         /// 而用户要的正是「改一块不影响另外两块」。
         /// </summary>
         public const string CommandQueryPlans = "query-plans";
+
+        /// <summary>
+        /// 一次问出三类方案各自当前生效的 Id。
+        ///
+        /// 场景规则在后台自己切方案，界面没有别的途径知道：query-plans 一次只回一类，
+        /// 而且带着全部参数。轮询用这条只取三个 Id。无生效项时对应字段为 null。
+        /// </summary>
+        public const string CommandQueryActivePlans = "query-active-plans";
 
         /// <summary>
         /// 新建或覆盖一份方案。

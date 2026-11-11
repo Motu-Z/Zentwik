@@ -17,12 +17,17 @@ public partial class MainWindow : Window
 {
     private const int WM_GETMINMAXINFO = 0x0024;
 
+    /// <summary>后台自己切了方案（场景规则）时把顶栏跟过去。</summary>
+    private readonly PlanWatcher _planWatcher;
+
     public MainWindow()
     {
         // 资源字典必须先于 InitializeComponent 就位。
         AppThemeService.Instance.Initialize();
 
         InitializeComponent();
+
+        _planWatcher = new PlanWatcher(() => IsVisible);
 
         System.ComponentModel.DependencyPropertyDescriptor
             .FromProperty(WindowStateProperty, typeof(Window))
@@ -33,7 +38,15 @@ public partial class MainWindow : Window
 
         // 侧栏宽度跟随外壳状态
         ShellState.Instance.PropertyChanged += OnShellStateChanged;
-        Closed += (_, _) => ShellState.Instance.PropertyChanged -= OnShellStateChanged;
+        // 窗口激活时对一次生效方案：场景规则在后台自己切方案，不带这条
+        // 顶栏会一直停在旧方案上。
+        Activated += (_, _) => _planWatcher.Poke();
+
+        Closed += (_, _) =>
+        {
+            ShellState.Instance.PropertyChanged -= OnShellStateChanged;
+            _planWatcher.Stop();
+        };
 
         Navigate("Misc");
 
@@ -60,6 +73,8 @@ public partial class MainWindow : Window
         if (ViewModels.WorkerStatus.Instance.IsConnected)
         {
             await ViewModels.PlanHub.InitializeAllAsync();
+
+            _planWatcher.Start();
 
             // 后台那份 ui.json 是权威值；本地文件只是上一次的缓存。
             await AppSettings.Instance.SyncFromWorkerAsync();

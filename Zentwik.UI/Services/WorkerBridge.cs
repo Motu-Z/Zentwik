@@ -62,7 +62,8 @@ public sealed class WorkerBridge
         string command,
         string? payload = null,
         int timeoutMs = 3000,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool allowAutoStart = true)
     {
         if (ForcedOffline)
         {
@@ -80,7 +81,10 @@ public sealed class WorkerBridge
 
         Volatile.Write(ref _connected, 0);
 
-        if (!AllowAutoStart ||
+        // 连不上就是连不上：状态灯要跟着灭，否则界面还挂着「已连接」。
+        MarkOffline();
+
+        if (!AllowAutoStart || !allowAutoStart ||
             !await WorkerLauncher.EnsureRunningAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
         {
             return null;
@@ -89,7 +93,25 @@ public sealed class WorkerBridge
         response = await TrySendOnceAsync(command, payload, timeoutMs, cancellationToken).ConfigureAwait(false);
 
         Volatile.Write(ref _connected, response is null ? 0 : 1);
+
+        if (response is null)
+        {
+            MarkOffline();
+        }
+        else
+        {
+            WorkerStatus.Instance.IsConnected = true;
+        }
+
         return response;
+    }
+
+    /// <summary>把传输层失败同步到外壳的状态灯。</summary>
+    private static void MarkOffline()
+    {
+        WorkerStatus status = WorkerStatus.Instance;
+        status.IsConnected = false;
+        status.IsElevated = false;
     }
 
     /// <summary>一次「连接 → 发送 → 断开」。失败返回 null，不抛。</summary>
@@ -200,6 +222,25 @@ public sealed class WorkerBridge
             cancellationToken).ConfigureAwait(false);
 
         return ToOutcome(response, IpcJsonContext.Default.PlanListPayload);
+    }
+
+    /// <summary>三类方案各自当前生效的 Id。轮询用，只取 Id 不带参数。</summary>
+    /// <remarks>
+    /// 不走自动拉起：用户手动关掉的 Worker 不该被一次轮询悄悄叫回来，
+    /// 那会让人以为「杀了也还在」。
+    /// </remarks>
+    public async Task<IpcOutcome<ActivePlansPayload>> QueryActivePlansAsync(
+        int timeoutMs = 1_500,
+        CancellationToken cancellationToken = default)
+    {
+        PipeResponse? response = await SendAsync(
+            WorkerPipeContract.CommandQueryActivePlans,
+            null,
+            timeoutMs,
+            cancellationToken,
+            allowAutoStart: false).ConfigureAwait(false);
+
+        return ToOutcome(response, IpcJsonContext.Default.ActivePlansPayload);
     }
 
     /// <summary>Id 覆盖一份方案</summary>

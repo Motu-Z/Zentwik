@@ -33,6 +33,7 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(PlanRefPayload))]
     [JsonSerializable(typeof(RenamePlanPayload))]
     [JsonSerializable(typeof(PlanListPayload))]
+    [JsonSerializable(typeof(ActivePlansPayload))]
     [JsonSerializable(typeof(SaveScheduleRulePayload))]
     [JsonSerializable(typeof(ScheduleRulePayload))]
     [JsonSerializable(typeof(List<ScheduleRulePayload>))]
