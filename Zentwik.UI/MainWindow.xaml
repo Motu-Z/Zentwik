@@ -22,10 +22,7 @@
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType">
 
-    <!--
-        顶 64px 整条作为系统 caption：拖拽、双击最大化都由 WindowChrome 负责。
-        顶栏里的按钮必须标 IsHitTestVisibleInChrome="True"，否则点不到。
-    -->
+    <!-- 顶 64px 整条为 caption；顶栏按钮须 IsHitTestVisibleInChrome="True" -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="64"
                             ResizeBorderThickness="5"
@@ -41,7 +38,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- ==================== 左：可折叠侧栏（72 / 220） ==================== -->
+            <!-- 左：可折叠侧栏（72 / 220） -->
             <Border x:Name="Sidebar"
                     Grid.Column="0"
                     Background="{DynamicResource SidebarBgBrush}"
@@ -152,10 +149,7 @@
                             </StackPanel>
                         </Grid>
 
-                        <!--
-                            折叠箭头：基准朝右（展开侧栏的方向），展开后转 180° 朝左。
-                            用户口径：收起用的箭头必须朝左。
-                        -->
+                        <!-- 折叠箭头基准朝右，展开后转 180° 朝左 -->
                         <Button x:Name="SidebarToggle"
                                 Grid.Column="2"
                                 VerticalAlignment="Center"
@@ -326,7 +320,7 @@
                 </Grid>
             </Border>
 
-            <!-- ==================== 右：内容 ==================== -->
+            <!-- 右：内容 -->
             <Grid Grid.Column="1">
                 <ContentControl x:Name="ContentHost" />
                 <views:ToastHost VerticalAlignment="Bottom" Panel.ZIndex="5" />

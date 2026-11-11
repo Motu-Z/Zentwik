@@ -3,9 +3,7 @@ using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
 
-/// <summary>
-/// 全局 Toast 宿主。窗口级只挂一份，所有页面共用同一个 ToastService。
-/// </summary>
+/// <summary>全局 Toast 宿主</summary>
 public partial class ToastHost : UserControl
 {
     public ToastHost()

@@ -157,11 +157,7 @@
         </Style>
     </UserControl.Resources>
 
-    <!--
-        DataContext 直接继承宿主的 ProcessViewModel（页签在 ProcessView 里），
-        不要再自己绑一次：宿主已经用 Owner="{Binding}" 传入同一份 VM，
-        两边互为输入会收敛到 null，整块静默空白。
-    -->
+    <!-- DataContext 继承宿主 ProcessViewModel，不要再绑一次：两边互为输入会成环到 null，整块空白 -->
     <Grid ClipToBounds="True">
 
         <Grid x:Name="ListView"

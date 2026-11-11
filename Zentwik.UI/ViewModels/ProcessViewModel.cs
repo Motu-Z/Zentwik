@@ -8,12 +8,7 @@ namespace Zentwik.UI.ViewModels;
 
 public class ProcessViewModel : ViewModelBase
 {
-    /// <summary>
-    /// 诊断模式（截图 / 自检 / 集成测试）下不联网后台服务。
-    ///
-    /// 这些模式会被反复拉起，每次都去拉一次进程表既有延迟又不稳定；
-    /// 截图更要求「没有后台也能把页面画出来」。此时改用页内种子数据。
-    /// </summary>
+    /// <summary>诊断模式（截图 / 自检 / 集成测试）下不联网后台服务</summary>
     public static bool SuppressWorkerInit { get; set; }
 
     public static int BulkSeedCount { get; set; }
@@ -32,7 +27,7 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>抽屉「自定义掩码」页签里展示的条目：可用的核心组合一览。</summary>
     public ObservableCollection<MaskPreviewItem> DrawerMasks { get; } = new();
 
-    // ==================== 右侧抽屉 ====================
+    // 右侧抽屉
 
     private bool _isDrawerOpen = true;
 
@@ -160,10 +155,7 @@ public class ProcessViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 批量下拉是一次性动作。换一批进程后必须回到空值，
-    /// 否则再选同一个值 ComboBox 不会触发 setter，界面显示着旧值却什么也没下发。
-    /// </summary>
+    /// <summary>批量下拉是一次性动作</summary>
     private void ResetBatchPickers()
     {
         if (_batchMaskKey is not null)
@@ -449,10 +441,7 @@ public class ProcessViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 诊断模式专用的自定义掩码。真实运行时这一条来自后台的 <c>masks.json</c>，
-    /// 占位数据必须自己也有一条，否则引用它的规则会显示成空白下拉。
-    /// </summary>
+    /// <summary>诊断模式专用的自定义掩码</summary>
     private void SeedMasks()
     {
         const string value = "16711935";
@@ -505,13 +494,7 @@ public class ProcessViewModel : ViewModelBase
         await RefreshAsync().ConfigureAwait(true);
     }
 
-    /// <summary>
-    /// 重新拉一份进程表、规则表与掩码表。
-    /// </summary>
-    /// <remarks>
-    /// 三份数据必须一起刷新：进程行显示的掩码来自规则，规则里的掩码名又来自掩码表。
-    /// 只刷其中一份，界面上就会出现「进程指向一条不存在的规则」这种自相矛盾的行。
-    /// </remarks>
+    /// <summary>重新拉一份进程表、规则表与掩码表</summary>
     public async Task RefreshAsync(bool quiet = false)
     {
         if (!UseWorker)
@@ -554,10 +537,7 @@ public class ProcessViewModel : ViewModelBase
         ApplyProcesses(processes.Value);
     }
 
-    /// <summary>
-    /// 定时心跳。只查进程表：PID 集合没变就完全不碰 UI，
-    /// 有增减才走一次完整刷新，避免每轮重建几百行。
-    /// </summary>
+    /// <summary>定时心跳。只查进程表：PID 集合没变就完全不碰 UI， 有增减才走一次完整刷新，避免每轮重建几百行</summary>
     public async Task RefreshProcessesLightAsync(bool quiet = false)
     {
         if (!UseWorker)
@@ -582,13 +562,7 @@ public class ProcessViewModel : ViewModelBase
         ApplyProcessSnapshot(processes.Value);
     }
 
-    /// <summary>
-    /// 把后台的掩码表铺进下拉：CCD / 不调度 是固定的，自定义掩码整段重建。
-    /// </summary>
-    /// <remarks>
-    /// 必须整段重建而不是追加去重：掩码在管理器里被删掉后，旧选项还留在下拉里，
-    /// 选中它保存就会被后台拒绝（「掩码不存在」），而界面上根本看不出它已经没了。
-    /// </remarks>
+    /// <summary>把后台的掩码表铺进下拉：CCD / 不调度 是固定的，自定义掩码整段重建</summary>
     internal void ApplyMasks(MaskListPayload payload)
     {
         for (int i = MaskOptions.Count - 1; i >= 0; i--)
@@ -642,12 +616,7 @@ public class ProcessViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 规则的显示名：CCD 给 <c>CCD0</c>、掩码给用户起的名字、none 给「不调度」。
-    ///
-    /// 掩码名优先按 **值** 反查，查不到才退回规则里快照的名字 —— 掩码被删掉之后
-    /// 规则仍然按快照生效，此时界面上必须还能说清它绑到哪，而不是显示一串数字。
-    /// </summary>
+    /// <summary>规则的显示名：CCD 给 给「不调度」</summary>
     private string MaskLabelOf(ScheduleRulePayload rule)
     {
         switch (rule.TargetType)
@@ -717,10 +686,7 @@ public class ProcessViewModel : ViewModelBase
         ApplyFilterAndSort();
     }
 
-    /// <summary>
-    /// 定时心跳落地：行对象就地复用，只更新采样值、删掉退出的、把新进程追加到末端。
-    /// 不 Clear 整表，勾选、展开状态和滚动位置都不丢。
-    /// </summary>
+    /// <summary>定时心跳落地：行对象就地复用，只更新采样值、删掉退出的、把新进程追加到末端</summary>
     private void ApplyProcessSnapshot(List<ProcessEntryPayload> payload)
     {
         Dictionary<int, RunningProcessItem> byPid = RunningProcesses.ToDictionary(p => p.Pid);
@@ -801,12 +767,7 @@ public class ProcessViewModel : ViewModelBase
         return item;
     }
 
-    /// <summary>
-    /// 是不是系统进程。后台只给 pid / 路径，没给这个标记，只能按路径判断。
-    ///
-    /// 判据取两条硬事实：pid 4 是内核，路径落在 Windows 目录下的基本都是系统组件。
-    /// 第三方软件装进 Windows 目录的情况极少，误判的代价只是「要打开开关才看得到」。
-    /// </summary>
+    /// <summary>是不是系统进程</summary>
     private static bool IsSystemProcess(ProcessEntryPayload entry)
     {
         if (entry.Pid is 0 or 4)
@@ -820,10 +781,7 @@ public class ProcessViewModel : ViewModelBase
                && entry.Path.StartsWith(windows, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// 基础目标：每个 CCD 一条 + 不调度。自定义掩码由 <see cref="ApplyMasks"/> 追加在后。
-    /// 不提供「全部核心」：它只能以 targetType=mask 发出，却没有掩码 Id，保存必被拒。
-    /// </summary>
+    /// <summary>基础目标：每个 CCD 一条 + 不调度</summary>
     private void BuildBaseMaskOptions(CpuTopologyPayload? topology = null)
     {
         int cores = topology is { Cores: > 0 } ? topology.Cores : 16;
@@ -846,10 +804,7 @@ public class ProcessViewModel : ViewModelBase
         RebuildDrawerMasks();
     }
 
-    /// <summary>
-    /// 抽屉里的目标预览。整表重建而不是增量：删一套掩码之后，
-    /// 增量删除要按「哪条是掩码」逐项判断，判断依据又只有 label —— 同名就删错。
-    /// </summary>
+    /// <summary>抽屉里的目标预览</summary>
     private void RebuildDrawerMasks()
     {
         MaskOption.RebuildRegistry(MaskOptions);
@@ -1036,16 +991,7 @@ public class ProcessViewModel : ViewModelBase
         Fire(() => CommitAsync(dirty));
     }
 
-    /// <summary>
-    /// 把界面上改动过的一批目标写进后台。
-    /// </summary>
-    /// <remarks>
-    /// 每次保存都会触发后台重扫并写一次盘。逐个刷新会让列表在一次操作里重建多次，
-    /// 用户看到的是勾选与滚动位置反复跳动。
-    ///
-    /// 批量改十个进程时，其中有一个是受保护进程很常见。中途 return 会让后面的
-    /// 目标全都不生效，而用户以为自己改的都是同一批。
-    /// </remarks>
+    /// <summary>把界面上改动过的一批目标写进后台</summary>
     private async Task CommitAsync(List<AffinityTarget> targets)
     {
         List<string> failures = new();
@@ -1068,13 +1014,7 @@ public class ProcessViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 只重新拉规则与掩码，不重建进程表。
-    ///
-    /// 用户刚在某一行的下拉里选了值，重建整张表会让那一行连同焦点一起消失 ——
-    /// 表现是「选完立刻弹回顶部」。进程行的显示已经在改动发生时就同步过了，
-    /// 这里只需要把规则区对齐。
-    /// </summary>
+    /// <summary>只重新拉规则与掩码，不重建进程表</summary>
     private async Task RefreshRulesAsync()
     {
         WorkerBridge bridge = WorkerBridge.Instance;
@@ -1195,13 +1135,7 @@ public class ProcessViewModel : ViewModelBase
 
     public void ShowToast(string message) => ToastService.Instance.Show(message);
 
-    /// <summary>
-    /// 把异步动作塞进同步命令里。
-    ///
-    /// <see cref="RelayCommand"/> 收的是 <c>Action</c>，写 <c>async</c> 进去就是一个
-    /// async void —— 里面任何异常都会直接抛到 UI 线程上，进程随即崩掉。
-    /// 这里统一收口：异常转成 Toast，至少用户能看到发生了什么。
-    /// </summary>
+    /// <summary>把异步动作塞进同步命令里</summary>
     private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 
     private bool _isMaskDialogOpen;
@@ -1273,11 +1207,7 @@ public class ProcessViewModel : ViewModelBase
         RefreshSelectionState();
     }
 
-    /// <summary>
-    /// 增量对齐显示集合：删掉不该在的，新项一律追加到末端，
-    /// 其余用 Move 挪到新排序位置（占用升高往前、降低往后）。
-    /// 行对象不重建，所以勾选、下拉状态和滚动位置都不受影响。
-    /// </summary>
+    /// <summary>增量对齐显示集合：删掉不该在的，新项一律追加到末端， 其余用 Move 挪到新排序位置（占用升高往前、降低往后）</summary>
     private void SyncFiltered(List<RunningProcessItem> target)
     {
         HashSet<RunningProcessItem> wanted = new(target);
@@ -1446,9 +1376,7 @@ public class ProcessViewModel : ViewModelBase
 
 public abstract class AffinityTarget : ViewModelBase
 {
-    // 默认就是「不调度」：它和下拉里的那一项是同一个状态（targetType=none、无掩码），
-    // 所以必须同一个外观。曾经默认留空、选中后显示「不调度」，
-    // 同一件事在表里和规则区有两种长相。
+    // 默认就是「不调度」：它和下拉里的那一项是同一个状态（targetType=none、无掩码）。
     private string? _maskLabel = "不调度";
     private string _targetType = "none";
     private string _targetValue = string.Empty;
@@ -1668,13 +1596,7 @@ public sealed class MaskOption : ViewModelBase
     public string TargetValue { get; }
     public string Key => MakeKey(TargetType, TargetValue);
 
-    /// <summary>
-    /// 自定义掩码的 Id，只有 <see cref="TargetType"/> = <c>mask</c> 且来自后台时才有值。
-    ///
-    /// 查询给的 TargetValue 是掩码 **值**（位图），保存规则要的却是掩码 **Id**。
-    /// 两者不能互换：值会重复（两套掩码选了同样的核），Id 才是身份。
-    /// 界面按值显示与匹配，下发时换成 Id。
-    /// </summary>
+    /// <summary>自定义掩码的 Id，只有 TargetType = mask 且来自后台时才有值</summary>
     public string? MaskId { get; }
 
     private bool _isSelected;
@@ -1693,10 +1615,7 @@ public sealed class MaskOption : ViewModelBase
         MaskId = maskId;
     }
 
-    /// <summary>
-    /// 用当前选项集重建查找表。由选项集变化处统一调用，
-    /// 构造时注册会让每次刷新都往静态表里塞新对象、永不释放。
-    /// </summary>
+    /// <summary>用当前选项集重建查找表</summary>
     public static void RebuildRegistry(IEnumerable<MaskOption> options)
     {
         Registry.Clear();

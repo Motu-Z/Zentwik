@@ -83,10 +83,7 @@
                                    Style="{StaticResource SectionTitleStyle}" />
                     </Border>
 
-                    <!--
-                        8 列自然排布：16 核正好两行，8 核一行，12 核就是 8 + 4。
-                        最后一行不满也没关系 —— 不为凑整去改列数，那是本末倒置。
-                    -->
+                    <!-- 8 列自然排布：16 核两行、8 核一行；不为凑整去改列数 -->
                     <ItemsControl ItemsSource="{Binding CoreMargins}" Margin="0,22,0,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -185,11 +182,7 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!--
-                SMU 不可用：整页遮罩，不是某一行写「未连接」。
-                背景吃 OverlayScrimBrush（带 alpha），配合上面的 DimOpacity 把内容压暗但仍留轮廓；
-                遮罩有背景色即参与命中测试，底下的输入框点不到。
-            -->
+            <!-- SMU 不可用：整页遮罩而非某一行提示；遮罩吃 OverlayScrimBrush，有背景色即参与命中测试 -->
             <Border Background="{DynamicResource OverlayScrimBrush}"
                     Visibility="{Binding SmuAvailable, Converter={StaticResource InvBoolToVis}}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">

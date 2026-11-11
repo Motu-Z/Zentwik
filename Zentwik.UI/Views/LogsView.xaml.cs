@@ -23,13 +23,7 @@ public partial class LogsView : UserControl
 
     private LogsViewModel? ViewModel => DataContext as LogsViewModel;
 
-    /// <summary>
-    /// 点空白处把键盘焦点还回去。
-    /// <para>
-    /// WPF 点非可聚焦区域不会转移焦点，搜索框的下划线会一直亮着 ——
-    /// 看上去像「点了别处也没收起」。
-    /// </para>
-    /// </summary>
+    /// <summary>点空白处把键盘焦点还回去</summary>
     private void OnSurfacePreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (VisualTreeAssist.IsInsideTextBox(e.OriginalSource as DependencyObject))

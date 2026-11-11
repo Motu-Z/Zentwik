@@ -23,14 +23,7 @@ public enum MainWindowCloseBehavior
     CloseWindowOnly,
 }
 
-/// <summary>
-/// 界面设置的绑定源。权威值在 Worker 的 <c>ui.json</c>，本地文件只是离线缓存。
-/// </summary>
-/// <remarks>
-/// 三个后台开关由 Worker 消费（启动应用调校、进程监听），
-/// 界面各存一份的结果是两边永远不同步 —— 关掉开关后台照旧执行。
-/// 因此连上 Worker 后先读回一次覆盖本地，之后每次改动防抖回写。
-/// </remarks>
+/// <summary>界面设置的绑定源</summary>
 public sealed class AppSettings : ViewModelBase
 {
     public static AppSettings Instance { get; } = new();

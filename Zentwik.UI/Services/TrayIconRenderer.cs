@@ -6,36 +6,10 @@ using System.Windows.Media.Imaging;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 托盘图标渲染器 —— 把矢量几何渲染成 HICON。
-/// </summary>
-/// <remarks>
-/// LoadImage 从 .ico 取帧时，系统会挑**最接近**的那一帧再缩放。
-/// 新图标已备齐 16/24/32/48/64/128/256，在 100% / 150% / 200% 下
-/// 恰好能命中同名帧；但 125%(20px) / 175%(28px) 仍要缩放，
-/// 且 GDI 的 StretchBlt 没有 alpha 感知，边缘会出黑边。
-///
-/// 用 WPF 的 RenderTargetBitmap 把矢量按**目标物理像素**渲染出来，
-/// 再转成 HICON：
-///   · 尺寸是算出来的物理像素数，不是逻辑像素 —— 1:1 落点，无缩放
-///   · 矢量渲染，任意尺寸都锐利
-///   · 自己控制 alpha，边缘干净
-///
-/// Windows 11 任务栏在浅色系统主题下是浅底，深色系统主题下是深底。
-/// 同一个灰阶图标在其中一个上会糊掉。
-/// 所以按系统主题渲染两套：
-///   · 深色任务栏 → 亮色图标
-///   · 浅色任务栏 → 暗色图标
-/// 主题切换时用 NIM_MODIFY 换掉图标句柄即可。
-/// </remarks>
+/// <summary>托盘图标渲染器：矢量按目标物理像素渲染成 HICON，避开 .ico 缩放的黑边。</summary>
 internal static class TrayIconRenderer
 {
-    /// <summary>
-    /// 渲染托盘图标。
-    /// </summary>
-    /// <param name="drawing">图标矢量内容（几何已上色）。</param>
-    /// <param name="pixelSize">目标**物理**像素边长（16 / 24 / 32 …）。</param>
-    /// <returns>新创建的 HICON，调用方负责 DestroyIcon。</returns>
+    /// <summary>渲染托盘图标</summary>
     public static IntPtr CreateHIcon(Drawing drawing, int pixelSize)
     {
         if (drawing is null || pixelSize <= 0)
@@ -55,20 +29,10 @@ internal static class TrayIconRenderer
         }
     }
 
-    /// <summary>
-    /// 把矢量图标渲染成指定**物理**像素边长的位图。
-    /// </summary>
-    /// <remarks>
-    /// 图标几何在 1000×1000 网格里，这里等比缩放到目标像素并居中 ——
-    /// 与最终落到任务栏上的形态完全一致（1:1，无二次缩放）。
-    /// </remarks>
-    /// <param name="drawing">图标矢量内容（几何已上色）。</param>
-    /// <param name="pixelSize">目标物理像素边长。</param>
+    /// <summary>把矢量图标渲染成指定**物理**像素边长的位图</summary>
     public static RenderTargetBitmap RenderDrawing(Drawing drawing, int pixelSize)
     {
-        // 用 Pbgra32（预乘 alpha，内存序 BGRA）——
-        // 这与 GDI 的 32bpp BI_RGB DIB 内存布局完全一致，
-        // 拷进去不用换通道序。注意 Bgra32 不被 RenderTargetBitmap 支持。
+        // 用 Pbgra32（预乘 alpha，内存序 BGRA）。
         var rtb = new RenderTargetBitmap(
             pixelSize, pixelSize, 96, 96, PixelFormats.Pbgra32);
 
@@ -104,7 +68,7 @@ internal static class TrayIconRenderer
     {
         var rtb = RenderDrawing(drawing, pixelSize);
 
-        // ---- 2. 建 DIB 段，把渲染结果拷进去 ----
+        // 2. 建 DIB 段，把渲染结果拷进去
         IntPtr hdc = NativeMethods.GetDC(IntPtr.Zero);
         if (hdc == IntPtr.Zero) return IntPtr.Zero;
 
@@ -139,7 +103,7 @@ internal static class TrayIconRenderer
             rtb.CopyPixels(block, pixelSize * 4, 0);
             Marshal.Copy(block, 0, bits, block.Length);
 
-            // ---- 3. 掩码位图 ----
+            // 3. 掩码位图
             // 32bpp 图标自带 alpha 通道，Windows 合成时以 alpha 为准，
             // 掩码只是协议上要求存在的合法位图 —— 全 0 即可。
             hMask = NativeMethods.CreateBitmap(
@@ -152,7 +116,7 @@ internal static class TrayIconRenderer
                 return IntPtr.Zero;
             }
 
-            // ---- 4. 组装 ICONINFO ----
+            // 4. 组装 ICONINFO
             var ii = new NativeMethods.ICONINFO
             {
                 fIcon = true,

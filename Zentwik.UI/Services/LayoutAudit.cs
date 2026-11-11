@@ -7,26 +7,13 @@ using System.Windows.Media;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 布局越界审计：把页面按给定尺寸排一遍，找出任何右边界越过内容区的交互元素。
-/// </summary>
-/// <remarks>
-/// 「窗口一窄，最右一列被切掉半截」这个问题反复出现过三次，
-/// 每次都是靠修完再肉眼比对截图才发现。截图只能证明「这一次对了」，
-/// 证明不了「以后谁改坏了会有人知道」。
-/// 把判断写成断言，改坏就当场红。
-///
-/// 只审计可交互控件（按钮、下拉框、输入框、复选框），不审计文本与装饰，
-/// 因为文本被 TextTrimming 截断是设计允许的，而控件被切掉就是不能用。
-/// </remarks>
+/// <summary>布局越界审计：把页面按给定尺寸排一遍，找出任何右边界越过内容区的交互元素</summary>
 public static class LayoutAudit
 {
     /// <summary>右边界允许的亚像素误差。</summary>
     private const double Tolerance = 1.0;
 
-    /// <summary>
-    /// 找出越过页面右边界的可交互元素，返回「类型 + 自动化名称」描述。
-    /// </summary>
+    /// <summary>找出越过页面右边界的可交互元素，返回「类型 + 自动化名称」描述</summary>
     public static List<string> FindOverflow(FrameworkElement root)
     {
         var result = new List<string>();

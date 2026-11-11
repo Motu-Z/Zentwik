@@ -7,22 +7,7 @@ using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// Worker 进程的拉起与就绪判定。
-/// </summary>
-/// <remarks>
-/// 管道能 ping 通是唯一可信的「已就绪」信号。进程活着不代表管道建好了
-/// （Worker 先跑宿主服务，管道监听排在后面），互斥体存在也不代表能通信。
-/// 两个信号合起来才分得清「没启动」「在启动」「已就绪」。
-///
-/// 没有 PawnIO 时 Worker 启动会走 <c>ApplyFromStore → WaitForAvailability(60)</c>，
-/// 管道监听排在它之后，最长阻塞 60 秒。90 秒 = 60 秒最坏阻塞 + 30 秒余量。
-/// 按常规 3 秒算，没装驱动的机器上会稳定误报「未连接」。
-///
-/// 用户取消 UAC（Win32Exception 1223）、找不到 exe（FileNotFoundException）、
-/// 非提权进程硬调 CreateProcess（Win32Exception 740）。都写进
-/// <c>%TEMP%\zentwik-worker.log</c>，否则界面只能说「未连接」，没法排查。
-/// </remarks>
+/// <summary>Worker 进程的拉起与就绪判定</summary>
 public static class WorkerLauncher
 {
     private const string WorkerExeName = "Zentwik.Worker.exe";
@@ -43,16 +28,7 @@ public static class WorkerLauncher
     /// <summary>拉起流程串行化：两个页面同时首次加载会各拉一个 Worker。</summary>
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
-    /// <summary>
-    /// 本进程是否拉起过 Worker。<b>只置位、不清零</b>。
-    /// </summary>
-    /// <remarks>
-    /// 原来的实现每次进方法先置 false，ping 通之后也置 false。而
-    /// <c>WorkerBridge.EnsureConnectedAsync</c> 是每条业务命令的前置调用 ——
-    /// 第一次拉起的进程随后只要有任何一次 IPC，归属标记就被抹成「不是我拉的」，
-    /// 退出时 <see cref="RequestShutdown"/> 直接 return，Worker 永远留了下来。
-    /// 表现就是「界面关了、后台还在，只有托盘的退出偶尔能杀掉」。
-    /// </remarks>
+    /// <summary>本进程是否拉起过 Worker</summary>
     private static bool _startedByUs;
 
     /// <summary>已经发过 shutdown 的标记：多条退出路径（窗口关闭 / 托盘退出 / App.Exit 兜底）只发一次。</summary>
@@ -63,11 +39,7 @@ public static class WorkerLauncher
     /// <summary>本次 Worker 是否由本进程拉起。</summary>
     public static bool StartedByUs => _startedByUs;
 
-    /// <summary>
-    /// 保证 Worker 在跑并已就绪。<b>任何失败都返回 false，绝不抛异常</b>。
-    /// </summary>
-    /// <param name="progress">状态文案回调。在 UI 线程上被调用（本方法内部不使用
-    /// <c>ConfigureAwait(false)</c>），可直接改控件属性。</param>
+    /// <summary>保证 Worker 在跑并已就绪</summary>
     public static async Task<bool> EnsureRunningAsync(
         Action<string>? progress = null,
         CancellationToken cancellationToken = default)
@@ -88,20 +60,20 @@ public static class WorkerLauncher
 
             // 归属标记是「粘性」的：这里不再重置。理由见字段 _startedByUs 的注释。
 
-            // ---------- 1. 已经在跑？ ----------
+            // 1. 已经在跑？
             if (await PingAsync(ProbeTimeout).ConfigureAwait(true))
             {
                 _nextAttemptUtc = DateTime.MinValue;
                 return true;
             }
 
-            // ---------- 2. 刚失败过，先别再来一轮 90 秒 ----------
+            // 2. 刚失败过，先别再来一轮 90 秒
             if (DateTime.UtcNow < _nextAttemptUtc)
             {
                 return false;
             }
 
-            // ---------- 3. 进程在，但管道还没起来 ----------
+            // 3. 进程在，但管道还没起来
             if (WorkerProcessExists())
             {
                 Log("进程已存在，等待管道就绪");
@@ -112,7 +84,7 @@ public static class WorkerLauncher
                 return ready;
             }
 
-            // ---------- 4. 进程不在：找 exe 并拉起 ----------
+            // 4. 进程不在：找 exe 并拉起
             string? exePath = ResolveWorkerPath();
 
             if (exePath is null)
@@ -126,9 +98,7 @@ public static class WorkerLauncher
             progress?.Invoke("正在启动后台服务（会请求管理员权限）…");
             Log($"拉起 {exePath}");
 
-            // UseShellExecute 必须为 true 且 Verb=runas：Worker 清单是 requireAdministrator，
-            // 非提权进程用 UseShellExecute=false 走 CreateProcess 会直接 740 失败 ——
-            // 既不弹 UAC，进程也起不来。
+            // UseShellExecute 必须为 true 且 Verb=runas：Worker 清单是 requireAdministrator。
             Process.Start(new ProcessStartInfo
             {
                 FileName = exePath,
@@ -162,13 +132,7 @@ public static class WorkerLauncher
         }
     }
 
-    /// <summary>
-    /// 单次连通性探测。
-    /// </summary>
-    /// <remarks>
-    /// Worker 的管道服务端是「一个连接只处理一条消息」：读一行、回一行、关掉。
-    /// 复用同一个客户端在第二条消息上必然读到流结束。
-    /// </remarks>
+    /// <summary>单次连通性探测</summary>
     public static async Task<bool> PingAsync(TimeSpan timeout)
     {
         try
@@ -196,24 +160,7 @@ public static class WorkerLauncher
         }
     }
 
-    /// <summary>
-    /// 同步请求 Worker 退出，返回是否真的把 shutdown 发出去了。
-    /// </summary>
-    /// <remarks>
-    /// 退出流程里原本是 <c>Task.Run</c> 发完就不管。而 WPF 在最后一个窗口关闭后
-    /// 会立刻结束进程，线程池里那条任务经常还没跑到 <c>ConnectAsync</c> 就被砍掉 ——
-    /// 于是 Worker 留了下来，只能靠托盘的「退出」再试一次（那条路径前面还有窗口销毁、
-    /// 托盘释放等收尾工作，恰好给了任务几百毫秒，命中率看起来更高）。
-    /// 这是「经常不随界面关闭」的直接原因。
-    ///
-    /// 只在关闭路径上调用。管道就在本机，正常情况几十毫秒返回；Worker 不在时
-    /// <c>ConnectAsync</c> 立即失败。每段超时可调，最坏耗时约两倍 <paramref name="timeout"/>。
-    /// </remarks>
-    /// <param name="timeout">建立连接与收发的单段超时。</param>
-    /// <param name="evenIfNotOwned">
-    /// true 表示不看归属标记。用户选「完全退出」时就应该全退 ——
-    /// Worker 是上次崩溃残留的、还是开机任务拉起的，对用户来说都是「后台服务」。
-    /// </param>
+    /// <summary>同步请求 Worker 退出，返回是否真的把 shutdown 发出去了</summary>
     public static bool RequestShutdown(TimeSpan timeout, bool evenIfNotOwned = false)
     {
         if (!evenIfNotOwned && !_startedByUs)
@@ -313,14 +260,7 @@ public static class WorkerLauncher
         return false;
     }
 
-    /// <summary>
-    /// 进程是否活着。用单实例互斥体判断，不用进程名。
-    /// </summary>
-    /// <remarks>
-    /// 互斥体带 <c>Global\</c> 前缀，由提权进程创建。非提权 UI 打开它时
-    /// 实测可能直接抛 UnauthorizedAccessException —— 它的含义恰恰是「对象存在」。
-    /// 当成「不存在」会让 UI 去拉第二个实例，第二个抢不到互斥体静默退出，UI 白等 90 秒。
-    /// </remarks>
+    /// <summary>进程是否活着</summary>
     private static bool WorkerProcessExists()
     {
         try
@@ -357,14 +297,7 @@ public static class WorkerLauncher
         return null;
     }
 
-    /// <summary>
-    /// 搜索顺序：先输出目录（产品形态两个 exe 同目录），再仓库里的构建产物。
-    /// </summary>
-    /// <remarks>
-    /// 本工程当前位于仓库外的独立目录，所以除了「同级 Worker 工程」，
-    /// 还要能指向 <c>..\Zentwik\Zentwik.Worker\bin</c>。合并回主仓库后前者生效。
-    /// Release / Debug 都试：开发机常只有一种构建产物。
-    /// </remarks>
+    /// <summary>搜索顺序：先输出目录（产品形态两个 exe 同目录），再仓库里的构建产物</summary>
     private static IEnumerable<string> EnumerateWorkerPaths()
     {
         yield return Path.Combine(AppContext.BaseDirectory, WorkerExeName);
@@ -387,13 +320,7 @@ public static class WorkerLauncher
         }
     }
 
-    /// <summary>
-    /// 启动过程落一份文件日志。
-    /// </summary>
-    /// <remarks>
-    /// 「拉不起来」在界面上只有一句「未连接」，分不清是没找到 exe、UAC 被拒，
-    /// 还是进程起来了但管道没准备好。这三种情况的处理方式完全不同。
-    /// </remarks>
+    /// <summary>启动过程落一份文件日志</summary>
     private static void Log(string message)
     {
         Debug.WriteLine($"[WorkerLauncher] {message}");

@@ -4,21 +4,7 @@ using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
 
-/// <summary>
-/// 调校页。
-/// </summary>
-/// <remarks>
-/// 建视图模型、挂 DataContext、在第一次显示时触发一次与 Worker 的对数。
-/// 刷新 / 应用 / 取消 / 步进全部是 <see cref="TuningViewModel"/> 的命令，
-/// 页面不判断任何业务状态 —— 「能不能点」由 CanOperate / CanSave 表达。
-///
-/// 构造发生在导航时，此时页面还没上屏。若构造里 await 一次两秒的查询，
-/// 首帧会卡在「什么都没有」上；而且离屏截图与自检会构造本页，
-/// 它们不该被网络等待污染（截图模式见 <see cref="TuningViewModel.SuppressWorkerInit"/>）。
-///
-/// 页面实例被外壳缓存，切走再切回来不会重建。重复查询会把用户没下发的改动
-/// 用硬件值覆盖掉 —— 这是「切了个页，改的东西没了」这类投诉的来源。
-/// </remarks>
+/// <summary>调校页。 建视图模型、挂 DataContext、在第一次显示时触发一次与 Worker 的对数</summary>
 public partial class TuningView : UserControl
 {
     public TuningView()

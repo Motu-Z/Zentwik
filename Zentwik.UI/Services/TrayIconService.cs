@@ -7,27 +7,7 @@ using System.Windows.Media;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 系统托盘图标。
-/// </summary>
-/// <remarks>
-/// WPF 没有内置托盘控件，加第三方包会带来依赖与体积问题。
-/// 而托盘本身只需要三样东西：
-///   1. 一个能收消息的窗口（托盘回调消息要发给它）
-///   2. Shell_NotifyIcon 加/删图标
-///   3. 一个 Win32 弹出菜单
-/// 全部是几十行 P/Invoke，自己写反而更可控。
-///
-/// 主窗口是 WPF Window，它的 WndProc 已经在处理拖拽与最大化修正，
-/// 再往里塞托盘消息会让外壳层职责变杂。
-/// 这里单独建一个 1×1 的不可见 HwndSource 当消息泵，
-/// 生命周期跟服务走，互不干扰。
-///
-/// 见 TrayIconRenderer 的说明：
-///   · .ico 取帧靠「挑最接近的一帧再缩放」，125% / 175% 下必然发虚
-///   · 矢量按目标物理像素 1:1 渲染，任意缩放比例都锐利
-///   · 顺带能按任务栏明暗切换亮/暗两套配色
-/// </remarks>
+/// <summary>系统托盘图标：1×1 不可见 HwndSource 收消息 + Shell_NotifyIcon + Win32 菜单。</summary>
 public sealed class TrayIconService : IDisposable
 {
     /// <summary>托盘回调消息（自定义 WM_APP+1）。</summary>
@@ -47,14 +27,7 @@ public sealed class TrayIconService : IDisposable
     /// <summary>托盘图标的矢量内容（几何 + 配色），换色时重新组装并渲染。</summary>
     private Drawing? _logoDrawing;
 
-    /// <summary>
-    /// 按配色组装矢量内容的工厂 —— 由 AppThemeService 提供。
-    /// </summary>
-    /// <remarks>
-    /// 托盘与应用内共用同一份几何，但用**不同的颜色**：
-    /// 应用内用强调色（品牌识别），托盘用中性灰（任务栏背景由系统决定）。
-    /// 所以托盘不能直接拿现成的 drawing —— 必须能按自己的配色重新组装。
-    /// </remarks>
+    /// <summary>按配色组装矢量内容的工厂 —— 由 AppThemeService 提供</summary>
     private Func<Color, Color, Drawing>? _drawingFactory;
 
     /// <summary>当前托盘图标的主体色。</summary>
@@ -84,15 +57,7 @@ public sealed class TrayIconService : IDisposable
     /// <summary>上一次渲染使用的物理像素边长（诊断用）。</summary>
     public int RenderedPixelSize => _renderedPixelSize;
 
-    /// <summary>
-    /// 创建托盘图标。
-    /// </summary>
-    /// <param name="drawingFactory">
-    /// 按配色组装图标矢量内容的工厂（几何来自 Themes/BrandLogo.xaml）。
-    /// </param>
-    /// <param name="body">主体层颜色。</param>
-    /// <param name="shadow">阴影层颜色。</param>
-    /// <returns>成功返回 true；失败返回 false（调用方应据此关闭「最小化到托盘」）。</returns>
+    /// <summary>创建托盘图标</summary>
     public bool Initialize(Func<Color, Color, Drawing> drawingFactory, Color body, Color shadow)
     {
         _drawingFactory = drawingFactory;
@@ -154,21 +119,10 @@ public sealed class TrayIconService : IDisposable
         }
     }
 
-    /// <summary>
-    /// 计算托盘图标的物理像素边长。
-    /// </summary>
-    /// <remarks>
-    /// 托盘小图标的逻辑尺寸是 16×16（SM_CXSMICON），
-    /// 实际像素 = 逻辑尺寸 × DPI / 96。
-    /// 走 SM_CXSMICON 而不是写死 16，是为了让 150% / 200% 缩放下
-    /// 托盘图标仍然是 1:1 落点，不被拉伸。
-    /// </remarks>
+    /// <summary>计算托盘图标的物理像素边长</summary>
     private int GetTrayPixelSize()
     {
-        // 【注意】进程是 Per-Monitor V2 感知的，GetSystemMetrics 返回的
-        // SM_CXSMICON **已经是按当前显示器 DPI 缩放过的物理像素值**
-        // （本机实测：16 逻辑像素 @134 DPI → 返回 22）。
-        // 所以这里不能再乘一次 DPI —— 那会重复缩放。
+        // 【注意】进程是 Per-Monitor V2 感知的，GetSystemMetrics 返回的。
         int px = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXSMICON);
         if (px <= 0) px = 16;
 
@@ -176,11 +130,7 @@ public sealed class TrayIconService : IDisposable
         return Math.Clamp(px, 16, 64);
     }
 
-    /// <summary>
-    /// 按新的配色重建托盘图标（系统任务栏明暗变化时调用）。
-    /// </summary>
-    /// <param name="body">主体层颜色。</param>
-    /// <param name="shadow">阴影层颜色。</param>
+    /// <summary>按新的配色重建托盘图标（系统任务栏明暗变化时调用）</summary>
     public void UpdateColors(Color body, Color shadow)
     {
         if (_source is null || _drawingFactory is null || !_added) return;
@@ -190,30 +140,19 @@ public sealed class TrayIconService : IDisposable
         _shadow = shadow;
 
         // 【关键】必须用新配色**重新组装矢量内容**。
-        // 之前这里直接复用 _logoDrawing（那是应用内强调色那一份），
-        // 于是 UpdateColors 改的只是两个记���字段 —— 图标颜色根本没变，
-        // 换色是个静默失效的假功能。
         _logoDrawing = _drawingFactory(body, shadow);
 
         Rerender(force: true);
     }
 
-    /// <summary>
-    /// DPI 变化时重新渲染（用户把窗口拖到另一块不同缩放的屏幕）。
-    /// </summary>
+    /// <summary>DPI 变化时重新渲染（用户把窗口拖到另一块不同缩放的屏幕）</summary>
     public void RefreshForDpiChange()
     {
         if (_source is null || !_added) return;
         Rerender();
     }
 
-    /// <summary>
-    /// 重新渲染图标并替换托盘里的那一个。
-    /// </summary>
-    /// <param name="force">
-    /// true = 强制重渲（内容或配色变了）；
-    /// false = 仅在物理像素尺寸变化时才重渲。
-    /// </param>
+    /// <summary>重新渲染图标并替换托盘里的那一个</summary>
     private void Rerender(bool force = false)
     {
         if (_source is null || _logoDrawing is null) return;
@@ -246,9 +185,7 @@ public sealed class TrayIconService : IDisposable
         _renderedPixelSize = pixelSize;
     }
 
-    /// <summary>
-    /// 消息窗口的窗口过程。
-    /// </summary>
+    /// <summary>消息窗口的窗口过程</summary>
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg != WM_TRAY) return IntPtr.Zero;
@@ -269,18 +206,8 @@ public sealed class TrayIconService : IDisposable
         return IntPtr.Zero;
     }
 
-    /// <summary>
-    /// 弹出 Win32 原生弹出菜单（TrackPopupMenuEx）。
-    /// </summary>
-    /// <remarks>
-    /// 自绘菜单要自己处理 DPI、阴影、动画、键盘导航、点击外部关闭 —— 每一处都能出 bug。
-    /// 原生菜单这些全由系统负责，并且跟着系统主题、缩放、辅助功能走。
-    ///
-    ///   · SetForegroundWindow：不切前台的话，点菜单外面菜单不会消失（Win32 的老毛病）
-    ///   · TPM_BOTTOMALIGN：托盘在屏幕底部，菜单得往上长
-    ///   · TPM_RETURNCMD：同步拿到命令 ID，省掉 WM_COMMAND 分支
-    /// 收尾的 PostMessage(WM_NULL) 也是官方建议，避免菜单残影。
-    /// </remarks>
+    /// <summary>弹出 Win32 原生菜单（TrackPopupMenuEx）。</summary>
+    /// <remarks>SetForegroundWindow 否则点外部不消失；TPM_BOTTOMALIGN 往上长；TPM_RETURNCMD 同步取命令。</remarks>
     private void ShowContextMenu()
     {
         if (_source is null)

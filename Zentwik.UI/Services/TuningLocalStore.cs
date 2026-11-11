@@ -4,20 +4,7 @@ using Zentwik.Core.Services;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 只读 tuning.json：SMU 不可用时用它给界面占位。
-/// </summary>
-/// <remarks>
-/// 写盘由 Worker 负责（save-profile-tuning / apply-tuning 都在它那一侧）。
-/// UI 再开一个写入口就有两个真源，缓存与磁盘迟早不一致，
-/// 表现为「保存成功，重启后值回退」。
-///
-/// 它是 tuning.json 的唯一实现（原子替换 + 内存缓存），
-/// UI 另写一份 JsonFile 调用等于复制一份解析逻辑。
-///
-/// 两个进程共用 %AppData%\Zentwik\Logs。同名文件会让先打开的一方独占追加句柄，
-/// 后写的一方随机丢日志。UI 用 <c>zentwik-</c>、Worker 用 <c>worker-</c>。
-/// </remarks>
+/// <summary>只读 tuning.json：SMU 不可用时用它给界面占位</summary>
 internal static class TuningLocalStore
 {
     private static readonly Lazy<TuningStore> Store = new(Create);
@@ -37,10 +24,7 @@ internal static class TuningLocalStore
         return new TuningStore(log, paths);
     }
 
-    /// <summary>
-    /// 读取最后一次下发过的值。没有存档时返回空数组 + 0
-    /// （调用方据此保持界面原值，不要清零）。
-    /// </summary>
+    /// <summary>读取最后一次下发过的值</summary>
     public static (int[] Margins, uint FMaxMHz) Load()
     {
         try

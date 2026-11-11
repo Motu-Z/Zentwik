@@ -2,13 +2,7 @@ using System.ComponentModel;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 外壳左下角的 Worker 连接状态。
-/// </summary>
-/// <remarks>
-/// 状态灯属于外壳，不属于任何页面。三页各自维护一份会出现
-/// 「调校页显示已连接、电源页显示断开」这种自相矛盾的画面。
-/// </remarks>
+/// <summary>外壳左下角的 Worker 连接状态</summary>
 public sealed class WorkerStatus : ViewModelBase
 {
     public static WorkerStatus Instance { get; } = new();

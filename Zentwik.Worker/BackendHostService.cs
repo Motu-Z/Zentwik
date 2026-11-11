@@ -7,24 +7,7 @@ using Zentwik.Core.Services;
 
 namespace Zentwik.Worker
 {
-    /// <summary>
-    /// Worker 的后端宿主服务：把 Core 的服务按固定顺序拉起来，退出时按相反顺序停掉。
-    ///
-    /// 本服务没有自己的执行循环 —— 它的全部工作是「启动时按顺序做一串同步动作，
-    /// 退出时做一串清理」。继承 BackgroundService 会凭空多出一个 ExecuteAsync，
-    /// 里面只能写 await Task.Delay(Timeout.Infinite)，那是一个假的循环。
-    ///
-    ///   ① 各 store 必须先 Load：后面的 profiles / scenarios / 调校都从它们读盘；
-    ///   ② profiles 先于 scenarios：场景规则指向方案 Id，方案表没加载完无法校验；
-    ///   ③ 采样线程（ProcessRefresher）先于 ProcessWatcher.Start()：
-    ///      ProcessWatcher 的启动补扫走 SampleOnSamplerThread，采样线程不存在时
-    ///      只会白等 5 秒超时、拿到空快照，且不抛异常、不写日志（静默失效）；
-    ///   ④ 监听最后起：前面任何一步失败都不该让一个「监听着一半状态」的进程常驻。
-    ///
-    /// 【红线】本类不读 UiSettings 里任何「要不要有后台」的开关 —— 双进程下常驻与否
-    /// 由「谁拉起它」和「关闭行为」决定，与配置项无关；
-    /// 也不调 SetHostVisible（Worker 无窗口，那两道闸门对它没有语义）。
-    /// </summary>
+    /// <summary>Worker 的后端宿主服务：把 Core 的服务按固定顺序拉起来，退出时按相反顺序停掉</summary>
     internal sealed class BackendHostService : IHostedService
     {
         private readonly ILogService _log;
@@ -108,12 +91,12 @@ namespace Zentwik.Worker
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            // ---------- 0. 计划任务路径自愈 ----------
+            // 0. 计划任务路径自愈
             // 任务存的是绝对路径，程序换了安装目录后任务仍指着旧位置，开机拉起的是旧构建。
             // 这里在启动时校正一次：路径一致则什么都不做。
             _autoStart.RepairRegisteredPath();
 
-            // ---------- 1. 各 store 先落盘内容进内存 ----------
+            // 1. 各 store 先落盘内容进内存
             // 掩码表必须在这里加载：它不随构造自动读盘，漏掉这次调用会让
             // Worker 侧的掩码恒为空，下一次保存就把盘上原有的掩码整体覆盖掉。
             _tuning.Load();
@@ -121,10 +104,10 @@ namespace Zentwik.Worker
             _settings.Load();
             _masks.Load();
 
-            // ---------- 2. 方案表 ----------
+            // 2. 方案表
             _plans.Load();
 
-            // ---------- 3. 场景规则 + 监听范围对齐 ----------
+            // 3. 场景规则 + 监听范围对齐
             _scenarios.Load();
 
             // 规则变更后重新对齐监听范围。回调在触发线程上同步执行（Core 不做封送），
@@ -132,7 +115,7 @@ namespace Zentwik.Worker
             _scenarios.Changed += () => _monitor.Sync();
             _monitor.Sync();
 
-            // ---------- 4. 启动护栏 + 启动时应用调校 ----------
+            // 4. 启动护栏 + 启动时应用调校
             // 护栏必须在这里判定：它决定这次到底要不要写 SMU。
             // 连续多次「写入后没走完」意味着那套参数很可能让机器起不来，
             // 这一次一条都不写，让机器以出厂参数起来。
@@ -161,17 +144,13 @@ namespace Zentwik.Worker
                     _log.Warn($"启动时应用调校未完成：{outcome.Summary}");
             }
 
-            // ---------- 4b. 休眠感知 ----------
-            // 睡眠只冻结进程，唤醒后它还活着；丢的是 SMU 里的寄存器值。
-            // 这里挂上恢复回调，醒来后把 tuning.json 再写一遍。
-            // 订阅无条件挂、监听才受开关控制：设置页中途打开开关时由 PipeServerService
-            // 调 Start，回调这边不用再补一次订阅。
+            // 4b. 休眠感知。
             _sleepWatcher.Resumed += OnResumedFromSleep;
 
             if (_settings.Settings.SmartHibernateAware)
                 _sleepWatcher.Start();
 
-            // ---------- 5. SMU 探测 ----------
+            // 5. SMU 探测
             // 只读一次属性触发探测。异常只 Warn，绝不 throw、绝不 Environment.Exit。
             try
             {
@@ -182,7 +161,7 @@ namespace Zentwik.Worker
                 _log.Warn($"SMU 探测失败：{ex.Message}");
             }
 
-            // ---------- 6. 采样线程 → 进程监听 ----------
+            // 6. 采样线程 → 进程监听
             // 顺序不可颠倒：ProcessWatcher 的启动补扫依赖采样线程已在跑。
             _refresher.Start();
 
@@ -205,16 +184,7 @@ namespace Zentwik.Worker
             return Task.CompletedTask;
         }
 
-        /// <summary>
-        /// 从睡眠 / 休眠恢复：把当前调校重新写进 SMU。
-        /// </summary>
-        /// <remarks>
-        /// 在系统电源事件线程上同步触发，所以整段丢到线程池执行 ——
-        /// 写 SMU 要几十到上百毫秒，堵住那个线程会拖慢系统对其他恢复事件的广播。
-        ///
-        /// 延迟 3 秒：刚唤醒的那一瞬间显卡、驱动都还在恢复，SMU 接口未必就绪，
-        /// 立刻写会拿到「不可用」然后白写一次。3 秒是「用户还没看到桌面就补完」的量级。
-        /// </remarks>
+        /// <summary>从睡眠 / 休眠恢复：把当前调校重新写进 SMU</summary>
         private void OnResumedFromSleep()
         {
             _ = Task.Run(async () =>

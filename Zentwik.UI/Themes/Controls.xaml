@@ -6,20 +6,11 @@
                     xmlns:conv="clr-namespace:Zentwik.UI.Converters"
                     xmlns:media="clr-namespace:System.Windows.Media;assembly=PresentationCore">
 
-    <!--
-      控件样式 —— 全部按参考 HTML 重建。
-
-      【口径】
-      1. 颜色一律 DynamicResource，切主题才跟得上。
-      2. 面板 = #111114 底 + 1px #27272A 描边 + 圆角 4/6/8，不用阴影、不用渐变。
-      3. 行分隔线只有一种：1px rgba(255,255,255,0.03)（LineFaintBrush）。
-      4. 等宽字体只用于标签、数值、路径、PID 一类"机器数据"，正文仍用 UI 字体。
-      5. 常驻元素不挂 Effect —— 阴影只给浮层与浮出面板。
-    -->
+    <!-- 控件样式。口径：颜色一律 DynamicResource；面板 = 底 + 1px 描边 + 圆角，不用阴影渐变；行分隔线只有 LineFaintBrush 一种；等宽字体只用于机器数据；常驻元素不挂 Effect -->
 
     <ResourceDictionary.MergedDictionaries />
 
-    <!-- ==================== 焦点视觉 ==================== -->
+    <!-- 焦点视觉 -->
     <Style x:Key="NoFocusVisual" TargetType="{x:Type Control}">
         <Setter Property="Template">
             <Setter.Value>
@@ -30,7 +21,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 外壳：顶栏 / 页标题 ==================== -->
+    <!-- 外壳：顶栏 / 页标题 -->
     <Style x:Key="TopBarStyle" TargetType="Border">
         <Setter Property="Height" Value="64" />
         <Setter Property="Background" Value="Transparent" />
@@ -47,7 +38,7 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-    <!-- ==================== 文本层级 ==================== -->
+    <!-- 文本层级 -->
     <Style x:Key="MonoLabelStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{DynamicResource AppMonoFontFamily}" />
         <Setter Property="FontSize" Value="11" />
@@ -86,7 +77,7 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-    <!-- ==================== 容器 ==================== -->
+    <!-- 容器 -->
     <!-- 面板：左右分栏里的每一栏、以及浮层卡片 -->
     <Style x:Key="PanelStyle" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
@@ -122,7 +113,7 @@
         <Setter Property="BorderThickness" Value="0" />
     </Style>
 
-    <!-- ==================== 按钮 ==================== -->
+    <!-- 按钮 -->
     <Style x:Key="ActionButtonStyle" TargetType="Button">
         <Setter Property="Height" Value="32" />
         <Setter Property="Padding" Value="16,0" />
@@ -167,19 +158,9 @@
         </Setter>
     </Style>
 
-    <!--
-        列表末尾的「＋ 新建」：虚线描边、比卡片弱一档。
-        用 Rectangle 的 StrokeDashArray 而不是 DrawingBrush —— 后者在 140% 缩放下会被抹成实线。
-    -->
-    <!-- ==================== 卡片按钮（无自身视觉） ==================== -->
-    <!--
-        【为什么必须有自己的模板，而不是只设 Background=Transparent】
-        外面不套模板的 Button 会落到系统的 Aero2 模板。那个模板在鼠标悬停 / 按下时
-        会画一层浅蓝底（约 #BEE6FD）。卡片内容的底色如果是半透明的（比如
-        AccentSubtleBrush，26% 不透明度），浅蓝会透上来 —— 一块卡片在悬停时变成
-        亮蓝色，文字还是白的，完全没法看。这里给一个纯透明、无任何状态视觉的模板，
-        把外观完全交给内容，按钮只负责接收点击。
-    -->
+    <!-- 列表末尾「＋ 新建」：虚线用 Rectangle.StrokeDashArray，DrawingBrush 在 140% 缩放下会被抹成实线 -->
+    <!-- 卡片按钮（无自身视觉） -->
+    <!-- 必须自带模板：只设 Background=Transparent 会落到 Aero2 模板，悬停画浅蓝底，半透明卡片底座透上来就毁 -->
     <Style x:Key="GhostCardButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
@@ -412,7 +393,7 @@
         </Style.Triggers>
     </Style>
 
-    <!-- ==================== 侧栏导航 ==================== -->
+    <!-- 侧栏导航 -->
     <Style x:Key="LogoBadgeStyle" TargetType="Border">
         <Setter Property="Width" Value="32" />
         <Setter Property="Height" Value="32" />
@@ -420,11 +401,7 @@
         <Setter Property="Background" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
 
-    <!--
-        导航项：48 高、整条通栏。图标左缘 24（中线 36，与 logo 对齐），
-        文字缩进 20；选中时左侧 3px 强调条 + 前景转强调色。
-        文字只在侧栏展开时显示 —— 收缩态靠 ClipToBounds 裁掉。
-    -->
+    <!-- 导航项：48 高整条通栏，图标左缘 24、文字缩进 20；选中时左侧 3px 强调条 + 前景转强调色 -->
     <Style x:Key="NavRailItemStyle" TargetType="RadioButton">
         <Setter Property="Height" Value="{x:Static lm:LayoutMetrics.NavItemHeight}" />
         <Setter Property="Margin" Value="0,0,0,8" />
@@ -542,12 +519,8 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 表单控件 ==================== -->
-    <!--
-        带框输入框。全站统一 36 高 / 12 左右内距 / 圆角 6。
-        水印、焦点线、错误态都在模板内完成，页面不再自己叠 TextBlock：
-        IME 合成期间 Text 未提交，页面级水印会和正在打的字重叠。
-    -->
+    <!-- 表单控件 -->
+    <!-- 带框输入框：36 高 / 12 内距 / 圆角 6；水印、焦点线、错误态都在模板内，页面不再叠 TextBlock（IME 合成期会重叠） -->
     <Style x:Key="TextFieldStyle" TargetType="TextBox">
         <Setter Property="Height" Value="36" />
         <Setter Property="Padding" Value="12,0" />
@@ -934,7 +907,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 下拉框（进程页 BIND TARGET / PRIORITY） ==================== -->
+    <!-- 下拉框（进程页 BIND TARGET / PRIORITY） -->
     <Style x:Key="ComboToggleStyle" TargetType="ToggleButton">
         <Setter Property="Focusable" Value="False" />
         <Setter Property="IsTabStop" Value="False" />
@@ -1171,7 +1144,7 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
-    <!-- ==================== 标签 / 徽章 ==================== -->
+    <!-- 标签 / 徽章 -->
     <Style x:Key="TagBaseStyle" TargetType="Border">
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="6,2" />
@@ -1201,7 +1174,7 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!-- ==================== 列表 ==================== -->
+    <!-- 列表 -->
     <Style x:Key="PlainListBoxItemStyle" TargetType="ListBoxItem">
         <Setter Property="Padding" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -1216,11 +1189,7 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}" />
                         </Trigger>
-                        <!--
-                            选中态用中性亮一档的底色，不用淡强调色。
-                            淡强调色在大面积（整行）上会让文字对比度塌下来，
-                            行选中只需要「比相邻行亮一点」，不必染色。
-                        -->
+                        <!-- 行选中用中性亮一档的底，不用淡强调色：整行大面积染色会让文字对比度塌下来 -->
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PanelHoverBrush}" />
                         </Trigger>
@@ -1250,7 +1219,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 细滚动条（6px 无箭头） ==================== -->
+    <!-- 细滚动条（6px 无箭头） -->
     <Style x:Key="SlimScrollBarThumbStyle" TargetType="Thumb">
         <Setter Property="Template">
             <Setter.Value>
@@ -1302,7 +1271,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 滚动容器 ==================== -->
+    <!-- 滚动容器 -->
     <Style x:Key="PageScrollStyle" TargetType="ScrollViewer">
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
@@ -1310,12 +1279,8 @@
         <Setter Property="PanningMode" Value="VerticalOnly" />
     </Style>
 
-    <!-- ==================== 工具栏（搜索框一类的下划线输入） ==================== -->
-    <!--
-        搜索框：统一 32 高、底部 1px 线、聚焦时 2px 强调线。
-        三处搜索（场景 / 进程 / 日志）共用这一套，水印也在模板内，
-        页面不再手叠 TextBlock，避免 IME 合成期文字与水印重叠。
-    -->
+    <!-- 工具栏（搜索框一类的下划线输入） -->
+    <!-- 搜索框：32 高、底部 1px 线、聚焦 2px 强调线；三处共用，水印在模板内 -->
     <Style x:Key="UnderlineFieldStyle" TargetType="TextBox">
         <Setter Property="Height" Value="32" />
         <Setter Property="Padding" Value="0,0,0,4" />
@@ -1390,7 +1355,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 浮层 ==================== -->
+    <!-- 浮层 -->
     <Style x:Key="OverlayScrimStyle" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource OverlayScrimBrush}" />
     </Style>
@@ -1414,7 +1379,7 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!-- ==================== 单列表单页（行为 / 高级） ==================== -->
+    <!-- 单列表单页（行为 / 高级） -->
     <!-- 分组标题：等宽 13 SemiBold 灰，右侧一条通到底线 -->
     <Style x:Key="SectionHeaderStyle" TargetType="Border">
         <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
@@ -1435,20 +1400,13 @@
         <Setter Property="Padding" Value="0,16" />
     </Style>
 
-    <!--
-        行间虚线：4px 实 + 4px 空，1px 高，横向平铺到任意宽度。
-        用绝对坐标 + Repeat 的线性渐变，不用平铺 DrawingBrush ——
-        后者在本机 140% 缩放下会被抹成一条均匀实线（实测只剩 0x1B / 0x0D 两行）。
-    -->
+    <!-- 行间虚线：4 实 4 空、1px 高、横向平铺；用绝对坐标 + Repeat 渐变，DrawingBrush 在 140% 下会抹成实线 -->
     <Style x:Key="DashRuleStyle" TargetType="Border">
         <Setter Property="Height" Value="1" />
         <Setter Property="VerticalAlignment" Value="Bottom" />
         <Setter Property="IsHitTestVisible" Value="False" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
-        <!--
-            虚线挂在行内容的 Grid 里，而行的上下留白在 FlatRowStyle 的 Padding 上，
-            所以往下顶 16（= 行内边距）才落在行的外沿，而不是贴着说明文字。
-        -->
+        <!-- 虚线挂在行内容的 Grid 上，行的上下留白在 FlatRowStyle.Padding，所以往下顶 16 才落在行外沿 -->
         <Setter Property="Margin" Value="0,0,0,-16" />
         <Setter Property="Background">
             <Setter.Value>
@@ -1601,7 +1559,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 日志页右侧仪表 ==================== -->
+    <!-- 日志页右侧仪表 -->
     <Style x:Key="StatCardStyle" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
@@ -1672,7 +1630,7 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 关于栏 ==================== -->
+    <!-- 关于栏 -->
     <Style x:Key="AboutLinkButtonStyle" TargetType="Button">
         <Setter Property="Height" Value="36" />
         <Setter Property="Background" Value="{DynamicResource WindowBgBrush}" />
@@ -1710,11 +1668,8 @@
         </Setter>
     </Style>
 
-    <!-- ==================== 进程页右侧抽屉 ==================== -->
-    <!--
-        抽屉内的页签：高 40，选中时底部 2px 强调线 + 强调字。
-        不用胶囊分段控件 —— 抽屉里两个页签各占一半宽，下划线的横向分割更干净。
-    -->
+    <!-- 进程页右侧抽屉 -->
+    <!-- 抽屉页签：高 40，选中时底部 2px 强调线 + 强调字 -->
     <Style x:Key="DrawerTabStyle" TargetType="RadioButton">
         <Setter Property="Height" Value="40" />
         <Setter Property="FontSize" Value="13" />

@@ -5,10 +5,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 场景页：一条列表维护「触发源 → 三个动作」的规则，列表自上而下的顺序就是仲裁优先级。
-/// 一条规则可以只动其中一块，留空的那块表示保持原样。
-/// </summary>
+/// <summary>场景页：一条列表维护「触发源 → 三个动作」的规则，列表自上而下的顺序就是仲裁优先级</summary>
 public sealed class ScenariosViewModel : ViewModelBase
 {
     /// <summary>诊断模式（截图 / 自检）：不连 Worker，用示例规则。</summary>
@@ -121,12 +118,7 @@ public sealed class ScenariosViewModel : ViewModelBase
 
     public string EditorTitle => _editingId is null ? "添加自动化联动" : "编辑自动化联动";
 
-    // ---- 触发源：两级下拉（大类 → 状态）----
-    //
-    // 界面写成一句人话「当 进程 启动时 <cs2.exe>」，所以要有两级：
-    // 大类决定联动谁，状态决定是它的哪个瞬间。两级各自的下拉项在字段里缓存成
-    // 固定实例，切换大类时只换 ItemsSource —— 每次重建集合会让 ComboBox
-    // 把 SelectedItem 回写成 null，选中的那项凭空消失。
+    // 触发源：两级下拉（大类 → 状态）。
 
     private static readonly ScenarioKindOption ProcessKind = new(ScenarioTrigger.ProcessRunning, "进程");
     private static readonly ScenarioKindOption PowerKind = new(ScenarioTrigger.OnBattery, "电源");
@@ -191,7 +183,7 @@ public sealed class ScenariosViewModel : ViewModelBase
     /// <summary>真正下发的触发源，由两级下拉合成。</summary>
     public ScenarioTrigger EditorTrigger => _selectedState.Trigger;
 
-    // ---- 进程搜索 ----
+    // 进程搜索
 
     /// <summary>最近一次拉到的进程表（去重后），过滤只在这份上做，不重复采样。</summary>
     private readonly List<ScenarioProcessOption> _allProcesses = new();
@@ -275,9 +267,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         get => _editorProfileId;
         set
         {
-            // ComboBox 用 SelectedValue 做 TwoWay 绑定：候选集合 Clear 再重建时，
-            // 它会把找不到的选中项回写成 null。不归一化就会让 HasEditorProfile
-            // 在读取 .Length 时抛 NRE，整块动作区渲染直接断掉。
+            // ComboBox 用 SelectedValue 做 TwoWay 绑定：候选集合 Clear 再重建时。
             if (SetProperty(ref _editorProfileId, value ?? string.Empty))
                 OnPropertyChanged(nameof(HasEditorProfile));
         }
@@ -364,12 +354,7 @@ public sealed class ScenariosViewModel : ViewModelBase
             Toast(rules.Message);
     }
 
-    /// <summary>
-    /// 重拉三个动作候选。页面实例被主窗口缓存，切回来时不会再跑 InitializeAsync，
-    /// 所以候选必须单独刷一次 —— 否则三大页新建 / 改名 / 删除的方案在场景页看不到，
-    /// 首次进入时后台还没就绪更会只剩「不修改」。
-    /// </summary>
-    /// <summary>三个动作各认三大页自己的方案列表；查失败保留旧候选。</summary>
+    /// <summary>重拉三个动作候选</summary>
     public async Task RefreshActionOptionsAsync()
     {
         // 页面重新可见时先重绑一次，不依赖候选是否真的变了。
@@ -398,15 +383,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         RefreshRuleDisplayNames();
     }
 
-    /// <summary>
-    /// 候选集合重建后强制通知一次三个动作 Id。
-    /// <para>
-    /// ComboBox 用 SelectedValue 做 TwoWay 绑定，集合 <c>Clear()</c> 时它会把选中项丢掉并
-    /// 回写 null；setter 归一化成空串后与旧值相同，<c>SetProperty</c> 不认为有变化，于是
-    /// 不再通知。结果就是切页回来下拉框空着、点开却能看到选项。强制通知让 ComboBox
-    /// 重新按当前值找一次项。
-    /// </para>
-    /// </summary>
+    /// <summary>候选集合重建后强制通知一次三个动作 Id</summary>
     internal void RebindActionSelection()
     {
         OnPropertyChanged(nameof(EditorProfileId));
@@ -439,10 +416,7 @@ public sealed class ScenariosViewModel : ViewModelBase
     private static bool IsKnownOption(ObservableCollection<ScenarioActionOption> options, string id)
         => string.IsNullOrEmpty(id) || options.Any(o => string.Equals(o.Id, id, StringComparison.Ordinal));
 
-    /// <summary>
-    /// 候选刷新后把已列出规则卡上的名字按 Id 重解析一遍。
-    /// 只改显示字段：重拉规则会把用户正在编辑的表单一起冲掉。
-    /// </summary>
+    /// <summary>候选刷新后把已列出规则卡上的名字按 Id 重解析一遍</summary>
     private void RefreshRuleDisplayNames()
     {
         foreach (ScenarioRuleItem rule in Rules)
@@ -609,10 +583,7 @@ public sealed class ScenariosViewModel : ViewModelBase
 
     private string ProfileNameOf(string profileId)
     {
-        // 三个动作统一以候选集合为准：它们由 RefreshActionOptionsAsync 直接从
-        // 后台拉取，是场景页自己的权威列表。过去调校方案查 PlanHub.Tuning.Items
-        // （只在调校页刷新）、掩码与电源方案另存一份字典，三套状态各走各的，
-        // 于是三大页改名后规则卡停在旧名，诊断模式下字典空还会显示「已删除」。
+        // 三个动作统一以候选集合为准：它们由 RefreshActionOptionsAsync 直接从。
         if (string.IsNullOrEmpty(profileId))
             return string.Empty;
 

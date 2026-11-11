@@ -13,24 +13,8 @@ using ScenarioTrigger = Zentwik.Core.Services.ScenarioTrigger;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 集成自检 —— 按参考 HTML 的新版式（72 图标栏 + 64 顶栏 + 面板 + 行分隔）逐条断言。
-/// </summary>
-/// <remarks>
-/// 运行方式：dotnet run -- --itest
-///
-/// 2026-11-06 起 UI 语言整套换掉：中性色卡片 + 底部浮条 + 1180 居中
-/// 全部废弃，改成参考稿的分栏 + 面板 + 顶栏常驻动作。
-/// 旧断言指向的样式键（SettingTitleStyle / SettingsCardStyle /
-/// PageHeaderTitleStyle / 页脚样式）已经不存在，
-/// 留着只会让自检在构造页面时抛 ResourceReferenceKeyNotFoundException ——
-/// 于是「自检崩了」比「界面错了」更难查。
-///
-/// 现在断言分两类：
-///   · 契约类 —— 令牌取值、尺寸常量、样式实际值三者必须一致；
-///   · 行为类 —— 页面渲染、命中测试、命令语义、虚拟化、性能铁律。
-/// 全部强类型调用，不用反射匹配字符串 —— 反射版在重构时容易静默失配。
-/// </remarks>
+/// <summary>集成自检：按版式契约逐条断言（运行：dotnet run -- --itest）。</summary>
+/// <remarks>契约类断言令牌 / 尺寸 / 样式三者一致；行为类断言渲染、命中测试、命令语义、虚拟化。全部强类型调用，不用反射。</remarks>
 public static class IntegrationTest
 {
     /// <summary>参考稿的默认强调色。</summary>
@@ -196,7 +180,7 @@ public static class IntegrationTest
                                           + b.ActualWidth <= shellRoot.ActualWidth - 2));
             }
 
-            // ---- 可折叠侧栏：72 ↔ 220 ----
+            // 可折叠侧栏：72 ↔ 220
             var sidebar = FindByName<Border>(shellRoot, "Sidebar");
             var toggleBtn = FindByName<Button>(shellRoot, "SidebarToggle");
             var arrow = toggleBtn?.Content as System.Windows.Shapes.Path;
@@ -476,11 +460,7 @@ public static class IntegrationTest
 
     // 5. 强调色
 
-    /// <summary>外观偏好的落盘往返：主题模式、强调色来源、自定义色都得能存能读。</summary>
-    /// <remarks>
-    /// 用临时路径，绝不碰用户的 theme.json。
-    /// 这一步验的是「重启后能复原上次的外观」这条链上的存储环节。
-    /// </remarks>
+    /// <summary>外观偏好的落盘往返：主题模式、强调色来源、自定义色都得能存能读</summary>
     private static void SectionThemePersistence()
     {
         Say("\n=== 5b. 外观偏好落盘 ===");
@@ -790,7 +770,7 @@ public static class IntegrationTest
             Check($"{name}：常驻元素不挂 Effect", effects.Count == 0, string.Join(", ", effects));
         }
 
-        // ---- 调校页：CPU 型号已挪进侧栏，右侧状态区只留 SMU ----
+        // 调校页：CPU 型号已挪进侧栏，右侧状态区只留 SMU
         {
             var tuning = new Views.TuningView();
             Render(tuning, 1168, 820);
@@ -837,7 +817,7 @@ public static class IntegrationTest
                   FindAll<Button>(offline).Any(b => b.IsEnabled == false));
         }
 
-        // ---- 单栏页（行为 / 高级）：内容居中，不贴左 ----
+        // 单栏页（行为 / 高级）：内容居中，不贴左
         foreach (var (name, factory) in new (string, Func<FrameworkElement>)[]
                  {
                      ("行为", () => new Views.BehaviorView()),
@@ -983,7 +963,7 @@ public static class IntegrationTest
     {
         Say("\n=== 10. 命令语义 ===");
 
-        // ---- 调校：改一格 → 脏；放弃 → 干净 ----
+        // 调校：改一格 → 脏；放弃 → 干净
         var tuning = new TuningViewModel();
         Check("调校：初始不脏", !tuning.IsDirty);
         Check("调校：核心数 = 16", tuning.CpuCoreCount == 16, $"{tuning.CpuCoreCount}");
@@ -1017,7 +997,7 @@ public static class IntegrationTest
         Check("调校：FMax 上边界夹住", tuning.FMaxMHz == tuning.FMaxMaximum, $"{tuning.FMaxMHz}");
         tuning.DiscardCommand.Execute(null);
 
-        // ---- 读不到值的核：不能折成 0 ----
+        // 读不到值的核：不能折成 0
         // 0 是「不偏移」，是用户会以为生效了的正常值。读失败必须是另一个样子。
         var blind = new CoreMarginItem(3, 0, -50, 50, 1);
         blind.MarkUnavailable();
@@ -1041,7 +1021,7 @@ public static class IntegrationTest
         Check("调校：真正的 0 偏移不算不可用",
               !genuineZero.IsUnavailable && genuineZero.EditText == "0", genuineZero.EditText);
 
-        // ---- 调校值跟着当前方案走 ----
+        // 调校值跟着当前方案走
         PlanItem? activeProfile = PlanHub.Tuning.Current;
 
         if (activeProfile is not null)
@@ -1066,7 +1046,7 @@ public static class IntegrationTest
             activeProfile.CoreMargins = savedMargins;
             activeProfile.FMaxMHz = savedFMax;
 
-            // ---- 顶栏切方案 → 本页换一组值 ----
+            // 顶栏切方案 → 本页换一组值
             var switched = new PlanItem("t-switch", "切换验证", false)
             {
                 CoreMargins = new[] { -3, -4, -5 },
@@ -1098,7 +1078,7 @@ public static class IntegrationTest
             activeProfile.FMaxMHz = savedFMax;
         }
 
-        // ---- 电源：改 EPP → 脏；恢复默认 ----
+        // 电源：改 EPP → 脏；恢复默认
         var power = new PowerViewModel();
         Check("电源：初始不脏", !power.IsDirty);
 
@@ -1117,7 +1097,7 @@ public static class IntegrationTest
 
         Check("电源：方案列表非空", power.Schemes.Count > 0, $"{power.Schemes.Count}");
 
-        // ---- 电源方案：新建 / 改名 / 删除的界面侧状态 ----
+        // 电源方案：新建 / 改名 / 删除的界面侧状态
         Check("电源：列表末尾是「＋ 新建方案」",
               power.Schemes[power.Schemes.Count - 1].IsCreateNew,
               $"{power.Schemes[power.Schemes.Count - 1].Name}");
@@ -1161,7 +1141,7 @@ public static class IntegrationTest
                   renamable.EditName);
         }
 
-        // ---- 电源：AC / DC 是两套独立的值 ----
+        // 电源：AC / DC 是两套独立的值
         int acEpp = power.Epp;
         power.IsAcMode = false;
         power.Epp = (acEpp + 10) % 101;
@@ -1175,7 +1155,7 @@ public static class IntegrationTest
         power.DiscardCommand.Execute(null);
         Check("电源：放弃后两套都回到已应用值", !power.IsDirty, $"{power.IsDirty}");
 
-        // ---- 进程：筛选 / 选择 / 解绑 ----
+        // 进程：筛选 / 选择 / 解绑
         var proc = new ProcessViewModel();
         int all = proc.FilteredProcesses.Count;
         Check("进程：有占位进程", all > 0, $"{all}");
@@ -1212,7 +1192,7 @@ public static class IntegrationTest
             Say("    （占位进程里没有已绑核，跳过解除确认）");
         }
 
-        // ---- 进程：下拉口径与「改进程即落成规则」 ----
+        // 进程：下拉口径与「改进程即落成规则」
         Check("进程：优先级下拉 5 档且为中文",
               proc.PriorityOptions.Count == 5
               && proc.PriorityOptions[0] == "高"
@@ -1247,7 +1227,7 @@ public static class IntegrationTest
             Say("    （占位进程都已有规则，跳过自动生成断言）");
         }
 
-        // ---- 场景：一条列表，每条形如 IF → 三个动作 ----
+        // 场景：一条列表，每条形如 IF → 三个动作
         var scenes = new ScenariosViewModel();
         ScenariosViewModel.SuppressWorkerInit = true;
         _ = scenes.InitializeAsync();
@@ -1264,7 +1244,7 @@ public static class IntegrationTest
         Check("场景：没配的动作显示保持原样",
               scenes.Rules.Where(r => !r.HasProfile).All(r => r.ProfileText == "保持原样"));
 
-        // ---- 场景：单栏版式 + 流程卡 ----
+        // 场景：单栏版式 + 流程卡
         {
             var view = new Views.ScenariosView();
             Render(view, 1168, 820);
@@ -1307,7 +1287,7 @@ public static class IntegrationTest
                 ScenariosViewModel.StartWithAutoSwitchOff = false;
             }
 
-            // ---- 表单：一句人话「当 [大类] [状态] [进程]」 ----
+            // 表单：一句人话「当 [大类] [状态] [进程]」
             ScenariosViewModel.StartWithEditorOpen = true;
 
             try
@@ -1341,7 +1321,7 @@ public static class IntegrationTest
             }
         }
 
-        // ---- 三份方案列表各自独立、文案按类别 ----
+        // 三份方案列表各自独立、文案按类别
         {
             Check("方案：三份列表按类别出文案",
                   PlanHub.Tuning.Label == "调校方案"
@@ -1359,7 +1339,7 @@ public static class IntegrationTest
                   && !PlanHub.Power.Label.Contains("自定义方案"));
         }
 
-        // ---- 默认名带类别：三页都叫「新方案 1」时分不清刚建的是哪一类 ----
+        // 默认名带类别：三页都叫「新方案 1」时分不清刚建的是哪一类
         {
             PlanHub.Tuning.BeginCreateCommand.Execute(null);
             Check("方案：调校页默认名带类别",
@@ -1380,7 +1360,7 @@ public static class IntegrationTest
             PlanHub.Power.CancelCreateCommand.Execute(null);
         }
 
-        // ---- 方案库已从场景页移走：改名 / 删除仍要能跑 ----
+        // 方案库已从场景页移走：改名 / 删除仍要能跑
         {
             var session = PlanHub.Tuning;
             var card = session.Items.First();
@@ -1417,7 +1397,7 @@ public static class IntegrationTest
                   session.Items.Count == beforeCount - 1 && !session.Items.Contains(temp));
         }
 
-        // ---- 方案面板：行内摘要 / 当前行 / 未保存拦截 / 底部应用按钮 ----
+        // 方案面板：行内摘要 / 当前行 / 未保存拦截 / 底部应用按钮
         {
             var session = PlanHub.Tuning;
             PlanItem first = session.Items[0];
@@ -1462,9 +1442,7 @@ public static class IntegrationTest
                   session.ApplyLabel == $"应用「{oldName}-改」", session.ApplyLabel);
             first.Name = oldName;
 
-            // 有未保存改动时切别的方案：必须先弹确认。早先只弹一句 Toast 就 return，
-            // 用户以为已经切过去了，接着点「应用参数」，值全落进原来那份方案里 ——
-            // 表现就是「我明明在调校 1 上改，重启后却是调校 2」。
+            // 有未保存改动时切别的方案：必须先弹确认。
             var other = new PlanItem("p-unsaved-guard", "未保存守卫", false)
             {
                 Summary = "16 核 · CO 0 · 4000 MHz"
@@ -1498,7 +1476,7 @@ public static class IntegrationTest
             session.Items.Remove(other);
         }
 
-        // ---- 界面状态：重启后恢复「上次选中的方案」 ----
+        // 界面状态：重启后恢复「上次选中的方案」
         {
             string path = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(), $"zw-uistate-{Guid.NewGuid():N}.json");
@@ -1526,7 +1504,7 @@ public static class IntegrationTest
             }
         }
 
-        // ---- 场景：候选改名后，已列出的规则卡显示名跟着变 ----
+        // 场景：候选改名后，已列出的规则卡显示名跟着变
         {
             var linked = new ScenariosViewModel();
             ScenarioRuleItem rule = linked.Rules.First(r => r.ProfileId.Length > 0);
@@ -1545,7 +1523,7 @@ public static class IntegrationTest
                   rule.ProfileId == option.Id && linked.Rules.Contains(rule));
         }
 
-        // ---- 场景：进程名校验与优先级上下 ----
+        // 场景：进程名校验与优先级上下
         {
             var vm = new ScenariosViewModel();
             vm.NewRuleCommand.Execute(null);
@@ -1572,7 +1550,7 @@ public static class IntegrationTest
                   $"{second.Priority}/{first.Priority}");
         }
 
-        // ---- 场景：进程候选的收起判定 ----
+        // 场景：进程候选的收起判定
         // Popup 用 StaysOpen=True，收起全靠这条判断；判错就会「点输入框闪一下就没了」。
         {
             Check("场景：点输入框不收起进程候选",
@@ -1588,9 +1566,7 @@ public static class IntegrationTest
                   !Views.ScenariosView.ShouldDismissProcessPicker(false, false, false));
         }
 
-        // ---- 方案面板：点输入框不能当成「点了空白」 ----
-        // 面板在 Preview 阶段判空白并取消新建/改名；输入框与按钮必须排除，
-        // 否则新建框一点就收起来，名字根本打不进去。
+        // 方案面板：点输入框不能当成「点了空白」。
         {
             Check("方案面板：新建输入框不算空白区",
                   Views.ProfileOverlay.IsInteractiveChild(new System.Windows.Controls.TextBox()));
@@ -1602,7 +1578,7 @@ public static class IntegrationTest
                   !Views.ProfileOverlay.IsInteractiveChild(new System.Windows.Controls.Border()));
         }
 
-        // ---- 场景：新建 / 三动作校验 / 拖拽排序 / 停用 ----
+        // 场景：新建 / 三动作校验 / 拖拽排序 / 停用
         {
             var vm = new ScenariosViewModel();
             _ = vm.InitializeAsync();
@@ -1719,7 +1695,7 @@ public static class IntegrationTest
             Check("场景：删除把规则移出列表",
                   vm.Rules.Count == afterAdd - 1 && !vm.Rules.Contains(added));
 
-            // ---- 退出时：真能存成一条 ProcessExited 规则 ----
+            // 退出时：真能存成一条 ProcessExited 规则
             int beforeExit = vm.Rules.Count;
             vm.NewRuleCommand.Execute(null);
             vm.SelectedKind = vm.TriggerKinds[0];
@@ -1741,9 +1717,7 @@ public static class IntegrationTest
 
             vm.DeleteRuleCommand.Execute(exitRule);
 
-            // 三个动作下拉用 SelectedValue 做 TwoWay 绑定：候选集合 Clear 再重建时
-            // ComboBox 会把找不到的选中项回写成 null。旧代码直接存进字段，
-            // HasEditorXxx 读 .Length 抛 NRE，整块动作区渲染中断。
+            // 三个动作下拉用 SelectedValue 做 TwoWay 绑定：候选集合 Clear 再重建时。
             vm.EditorProfileId = null!;
             vm.EditorMaskId = null!;
             vm.EditorPowerSchemeId = null!;
@@ -1781,7 +1755,7 @@ public static class IntegrationTest
                   string.Join("/", notified));
         }
 
-        // ---- 输入框统一行为：模板水印 / 焦点线 / 错误态 ----
+        // 输入框统一行为：模板水印 / 焦点线 / 错误态
         {
             var fieldStyle = Application.Current.Resources["TextFieldStyle"] as Style;
             Check("输入框：带框样式存在", fieldStyle is not null);
@@ -1845,7 +1819,7 @@ public static class IntegrationTest
             }
         }
 
-        // ---- 全站段头口径：主内容区一律「带底线 + 等宽灰标题」 ----
+        // 全站段头口径：主内容区一律「带底线 + 等宽灰标题」
         foreach (var (name, factory, expected) in new (string, Func<FrameworkElement>, int)[]
                  {
                      ("调校", () => new Views.TuningView(), 2),
@@ -1865,7 +1839,7 @@ public static class IntegrationTest
             Check($"{name}：{expected} 处段头全部带底线", count == expected, $"实际 {count}");
         }
 
-        // ---- 日志：单一级别筛选 + 统计仪表 ----
+        // 日志：单一级别筛选 + 统计仪表
         var logs = new LogsViewModel();
         Check("日志：有占位日志", logs.Entries.Count > 0, $"{logs.Entries.Count}");
         Check("日志：默认显示全部级别",
@@ -1908,7 +1882,7 @@ public static class IntegrationTest
               logs.LatestIssue is not null && logs.LatestIssue.Level == "ERROR",
               logs.LatestIssueLevel);
 
-        // ---- 日志：后台行文本的解析（协议：yyyy-MM-ddTHH:mm:ss.fff|级别|消息）----
+        // 日志：后台行文本的解析（协议：yyyy-MM-ddTHH:mm:ss.fff|级别|消息）
         {
             string today = DateTime.Today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
@@ -1957,7 +1931,7 @@ public static class IntegrationTest
         Check("日志：清空后无条目、异常卡收起",
               logs.FilteredEntries.Count == 0 && !logs.HasIssue);
 
-        // ---- 行为：四档启动方式 / 三档关闭行为，互斥且直写设置 ----
+        // 行为：四档启动方式 / 三档关闭行为，互斥且直写设置
         var settings = AppSettings.Instance;
         StartupBehavior originalStartup = settings.Startup;
         MainWindowCloseBehavior originalClose = settings.CloseBehavior;
@@ -2035,7 +2009,7 @@ public static class IntegrationTest
             settings.AutoApplyTuning = originalAutoApply;
         }
 
-        // ---- 设置远程同步 + 提示分类 ----
+        // 设置远程同步 + 提示分类
         bool watchBefore = settings.WatchProcesses;
         bool bubbleBefore = settings.ErrorBubble;
         int toastBefore = settings.ToastDurationSeconds;
@@ -2084,7 +2058,7 @@ public static class IntegrationTest
               && advanced.RunSelfTestCommand.CanExecute(null)
               && advanced.ExportLogsCommand.CanExecute(null));
 
-        // ---- 通用：HEX 输入（解析发生在提交时：LostFocus / Enter）----
+        // 通用：HEX 输入（解析发生在提交时：LostFocus / Enter）
         var misc = new SettingsViewModel();
         misc.HexInput = "#FF0000";
         misc.CommitHexInput();
@@ -2106,9 +2080,7 @@ public static class IntegrationTest
     {
         Say("\n=== 11. 浮层（掩码管理 / 方案 / 确认 / Toast）===");
 
-        // ---- 掩码管理器：拓扑与快捷选择 ----
-        // 掩码 VM 必须绑在进程页上（它要把选择结果写回进程页的下拉选项），
-        // 所以这里走真实入口：进程页 → 管理掩码。
+        // 掩码管理器：拓扑与快捷选择。
         var proc = new ProcessViewModel();
         proc.OpenMaskManager();
 
@@ -2168,9 +2140,7 @@ public static class IntegrationTest
         mask.CancelCommand.Execute(null);
         Check("掩码：取消后回到列表视图", !mask.IsEditing && mask.IsListVisible);
 
-        // 视图自己渲染一遍：DataContext 若没接上宿主 VM，整块会静默空白，
-        // 这种错在纯 VM 断言里看不出来。真实界面靠 DataContext 继承，
-        // 这里没有父级，手工补上同一份 VM。
+        // 视图自己渲染一遍：DataContext 若没接上宿主 VM，整块会静默空白。
         var maskPane = new Views.MaskManagerOverlay { Owner = proc, DataContext = proc };
         Render(maskPane, 280, 560);
         Check("掩码：抽屉视图拿到进程页 VM",
@@ -2197,7 +2167,7 @@ public static class IntegrationTest
               topologyList is not null && topologyList.ActualHeight > 100,
               topologyList is null ? "找不到拓扑列表" : $"{topologyList.ActualHeight:0} px");
 
-        // ---- 方案浮层 ----
+        // 方案浮层
         var profiles = PlanHub.Tuning;
         Check("方案：方案库非空", profiles.Items.Count >= 1, $"{profiles.Items.Count}");
         Check("方案：有当前方案", profiles.HasCurrent, profiles.CurrentName);
@@ -2215,7 +2185,7 @@ public static class IntegrationTest
                   profiles.CurrentName);
         }
 
-        // ---- 确认层：取消必须无副作用 ----
+        // 确认层：取消必须无副作用
         var confirm = ConfirmService.Instance;
         var advanced = new AdvancedViewModel();
 
@@ -2230,7 +2200,7 @@ public static class IntegrationTest
         Check("确认层：取消不产生副作用",
               AppSettings.Instance.SmartAntiBrick == smartBefore);
 
-        // ---- Toast ----
+        // Toast
         var toast = ToastService.Instance;
         toast.Show("自检占位");
         Check("Toast：显示后可见且带文案", toast.IsVisible && toast.Message.Length > 0);
@@ -2384,11 +2354,7 @@ public static class IntegrationTest
         return null;
     }
 
-    /// <summary>找出页面里所有挂了 Effect 的常驻元素。</summary>
-    /// <remarks>
-    /// 浮层 / Toast 是临时元素（消失后整棵子树卸载），允许挂阴影；
-    /// 常驻元素挂 Effect 会走 CPU 离屏位图，GC 看不到 —— 曾 5 张卡吃 200MB。
-    /// </remarks>
+    /// <summary>找出页面里所有挂了 Effect 的常驻元素</summary>
     private static List<string> ResidentEffects(DependencyObject root)
     {
         var found = new List<string>();
@@ -2495,15 +2461,7 @@ public static class IntegrationTest
         }
     }
 
-    /// <summary>
-    /// 断言某个按钮在真实布局下能被点中。
-    /// </summary>
-    /// <remarks>
-    /// 历史上出现过「按钮看着在那儿、点了没反应」：
-    /// 顶栏整条是 WindowChrome 的 caption（拖动区），
-    /// 里面的元素不标 IsHitTestVisibleInChrome 就没有可命中几何，
-    /// 命令永远收不到点击。而只测 ViewModel 命令的话完全绕过了这一层。
-    /// </remarks>
+    /// <summary>断言某个按钮在真实布局下能被点中</summary>
     private static void CheckHitTestableIn(FrameworkElement root, string label, string automationName)
     {
         var button = FindByAutomationName(root, automationName);
@@ -2572,12 +2530,7 @@ public static class IntegrationTest
         }
     }
 
-    /// <summary>按 AutomationProperties.Name 查找元素。</summary>
-    /// <remarks>
-    /// 参数用 <see cref="DependencyObject"/> 而不是 <see cref="FrameworkElement"/>：
-    /// 视觉树里混着 TextBoxLineDrawingVisual 这类非 FrameworkElement 的节点，
-    /// 强制转换会直接抛 InvalidCastException。
-    /// </remarks>
+    /// <summary>按 AutomationProperties.Name 查找元素</summary>
     private static FrameworkElement? FindByAutomationName(DependencyObject root, string name)
     {
         if (root is FrameworkElement fe &&
@@ -2645,10 +2598,7 @@ public static class IntegrationTest
         _sink?.AppendLine(line);
     }
 
-    /// <summary>
-    /// 读 Explorer\Accent\AccentPalette 的主色组（索引 3，RGBA 字节序）——
-    /// 用于与 DWM 读到的强调色交叉校验。
-    /// </summary>
+    /// <summary>读 Explorer\Accent\AccentPalette 主色组（索引 3，RGBA）与 DWM 交叉校验。</summary>
     private static Color? ReadPaletteMainAccent()
     {
         try

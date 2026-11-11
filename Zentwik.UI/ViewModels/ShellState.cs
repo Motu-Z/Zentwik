@@ -2,13 +2,7 @@ using System.Windows.Input;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 外壳布局状态（侧栏展开/收起）。属于窗口，不属于任何页面。
-/// </summary>
-/// <remarks>
-/// 【默认态】收缩。参考稿里侧栏默认就是 72 宽的图标条，
-/// 只有展开后才占 220 并把导航文字露出来。
-/// </remarks>
+/// <summary>外壳布局状态（侧栏展开/收起）</summary>
 public sealed class ShellState : ViewModelBase
 {
     public static ShellState Instance { get; } = new();

@@ -13,11 +13,7 @@
         <conv:CountToVisibilityConverter x:Key="CountToVis" />
         <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
 
-        <!--
-            右栏整宽动作按钮。
-            必须自带模板：只设 Background 会落到系统 Aero2 模板，悬停时画浅蓝底，
-            在深色面板上是一块突兀的亮蓝。
-        -->
+        <!-- 必须自带模板：只设 Background 会落到 Aero2 模板，悬停画浅蓝底 -->
         <Style x:Key="PaneActionStyle" TargetType="Button">
             <Setter Property="Height" Value="38" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -93,11 +89,7 @@
             </Setter>
         </Style>
 
-        <!--
-            一条日志：时间 / 级别 / 正文。
-            错误与警告把 3px 竖条贴到行最左缘（参考稿的 border-left），
-            正文靠行内 padding 让出这 3px，保证文字左缘与页标题对齐。
-        -->
+        <!-- 一条日志：时间 / 级别 / 正文；错误与警告的 3px 竖条贴行最左缘，正文靠 padding 让位 -->
         <DataTemplate x:Key="LogEntryTemplate">
             <Border x:Name="Row"
                     BorderBrush="Transparent"

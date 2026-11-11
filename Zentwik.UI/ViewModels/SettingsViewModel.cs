@@ -8,7 +8,7 @@ public sealed class SettingsViewModel : ViewModelBase
 {
     private readonly AppThemeService _theme = AppThemeService.Instance;
 
-    // ---- 彩虹滑块 ----
+    // 彩虹滑块
     private double _hueValue = 198.44;
     private string _hexInput = "#38BDF8";
     private string _lastValidHex = "#38BDF8";
@@ -20,11 +20,6 @@ public sealed class SettingsViewModel : ViewModelBase
         SyncFromAccent(_theme.AccentColor);
 
         // 服务状态变化 → 刷新投影出来的单选态与派生属性。
-        //
-        // ThemeChanged 是「解析后的明暗」（系统模式下会自己变），
-        // ThemeModeChanged 是「用户选了什么」（只有用户操作才变）。
-        // 分段控件的选中态必须跟后者，否则系统主题一变，
-        // 用户明明选了「深色」，按钮却跳到别的地方去。
         _theme.ThemeModeChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(IsLightSelected));
@@ -59,7 +54,7 @@ public sealed class SettingsViewModel : ViewModelBase
         };
     }
 
-    // ==================== 主题模式（投影自服务） ====================
+    // 主题模式（投影自服务）
 
     public bool IsLightSelected
     {
@@ -90,7 +85,7 @@ public sealed class SettingsViewModel : ViewModelBase
         }
     }
 
-    // ==================== 色彩模式（投影自服务） ====================
+    // 色彩模式（投影自服务）
 
     public bool IsSystemAccentSelected
     {
@@ -112,7 +107,7 @@ public sealed class SettingsViewModel : ViewModelBase
 
     public bool IsColorPanelVisible => _theme.AccentMode == AccentSource.Custom;
 
-    // ==================== 彩虹滑块 ====================
+    // 彩虹滑块
 
     public double HueValue
     {
@@ -184,7 +179,7 @@ public sealed class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(HexInput));
     }
 
-    // ==================== 派生属性 ====================
+    // 派生属性
 
     public Color AccentColor => _theme.AccentColor;
 

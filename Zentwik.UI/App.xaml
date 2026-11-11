@@ -2,42 +2,11 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework">
-    <!--
-        资源字典不在这里静态合并 —— 主题字典需要按索引热切换
-        （AppThemeService.Initialize 里按 ThemeSlot 替换），
-        静态合并会让索引不可控。
-
-        顺序：主题令牌（索引 0，最高优先级）→ 强调色 → 控件样式
-    -->
+    <!-- 资源字典在 AppThemeService 里按索引热切换，不在这里静态合并：令牌(索引0) → 强调色 → 控件样式 -->
     <Application.Resources>
         <ResourceDictionary>
 
-            <!--
-                ============================================================
-                全局禁用原生虚线焦点框
-                ============================================================
-
-                WPF 的默认焦点视觉是系统主题绘制的一圈**点划线**矩形，
-                鼠标点过任何可聚焦控件后那圈虚线就会留在界面上。
-
-                【这个文件里的覆盖其实不生效 —— 别被它骗了】
-                SystemParameters.FocusVisualStyleKey 指向的资源由
-                SystemResources（主题资源字典）提供，**不走 Application.Resources**。
-                实测：在这里放一个空模板 Style，Button 的 FocusVisualStyle
-                仍然解析到系统默认那份 —— 虚线照旧出现。
-
-                【真正生效的机制在两处】
-                1. Themes/Controls.xaml 里，每个自定义样式都显式设置了
-                   FocusVisualStyle（NoFocusVisual 空模板 / KeyboardFocusRing
-                   自绘实线环）—— 这解决了我们自己画的控件。
-                2. Services/FocusVisualKiller.cs 注册的全局类处理器，
-                   把**任何漏设**的控件的系统默认样式替换成空模板 ——
-                   这是「应用内没有虚线」的硬保证。
-
-                而 FocusVisualStyle="{x:Null}" 同样解决不了：
-                x:Null 的语义是「没有自定义焦点视觉」，
-                WPF 会回退到系统默认那份 —— 虚线依旧。
-            -->
+            <!-- 这里的 FocusVisualStyle 覆盖不生效：系统资源不走 Application.Resources。真正生效的是 Controls.xaml 里逐样式显式设置 + FocusVisualKiller 全局兜底 -->
 
         </ResourceDictionary>
     </Application.Resources>

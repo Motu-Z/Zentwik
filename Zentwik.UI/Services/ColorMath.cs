@@ -3,19 +3,10 @@ using System.Windows.Media;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 颜色数学：HSL ↔ RGB 互转 + 品牌色衍生。
-/// </summary>
-/// <remarks>
-/// 纯函数，无副作用，便于单测。
-/// H 用「度」（0~360），S/L 用「百分数」（0~100），
-/// 与参考 HTML 的 hslToHex / hexToHsl 语义保持一致。
-/// </remarks>
+/// <summary>颜色数学：HSL ↔ RGB 互转 + 品牌色衍生</summary>
 public static class ColorMath
 {
-    /// <summary>
-    /// RGB → HSL。
-    /// </summary>
+    /// <summary>RGB → HSL</summary>
     public static (double H, double S, double L) RgbToHsl(byte r, byte g, byte b)
     {
         double rd = r / 255.0, gd = g / 255.0, bd = b / 255.0;
@@ -42,9 +33,7 @@ public static class ColorMath
         return (h, s * 100.0, l * 100.0);
     }
 
-    /// <summary>
-    /// HSL → RGB。H 为度，S/L 为百分数。
-    /// </summary>
+    /// <summary>HSL → RGB</summary>
     public static (byte R, byte G, byte B) HslToRgb(double h, double s, double l)
     {
         // 先把 H 归一到 [0,360)
@@ -70,16 +59,7 @@ public static class ColorMath
             (byte)Math.Round((bd + m) * 255.0));
     }
 
-    /// <summary>
-    /// 品牌色（twik）衍生算法。
-    ///
-    /// 规则（与参考 HTML 的 applyAccentColor 一致）：
-    ///   H ← (H + 20) mod 360
-    ///   S ← min(100, S + 15)      （15 个百分点，不是乘 1.15）
-    ///   L ← 深色模式加亮 / 浅色模式压暗
-    /// </summary>
-    /// <param name="accent">当前强调色。</param>
-    /// <param name="isDark">当前是否为深色主题。</param>
+    /// <summary>品牌色（twik）衍生算法</summary>
     public static Color DeriveBrandColor(Color accent, bool isDark)
     {
         var (h, s, l) = RgbToHsl(accent.R, accent.G, accent.B);
@@ -92,23 +72,7 @@ public static class ColorMath
         return Color.FromRgb(r, g, b);
     }
 
-    /// <summary>
-    /// 派生品牌色的三层调色板（主色 / 中间调 / 高光）。
-    /// </summary>
-    /// <remarks>
-    /// 用于 Zentwik 应用图标的三层填充 ——
-    /// 原 SVG 是灰阶三档（#000000 / #7F7F7F / #C3C3C3），
-    /// 换成品牌色系后图标能跟随强调色变化。
-    ///
-    /// 原图三层的**相对亮度**是 0% / 50% / 77%。
-    /// 若直接对品牌色做 ±12 点的偏移，在浅色品牌色（如 #C6DAFF，
-    /// L 已经接近 90）上会被夹住 —— 三层挤在一起糊成一团。
-    ///
-    /// 所以这里按品牌色自身的亮度**等比映射**：
-    ///   中间调 = L × 0.72（对应原图的 50% 档）
-    ///   高光   = L × 0.92 + 6（对应原图的 77% 档，且保留一点亮度差）
-    /// 无论品牌色多亮多暗，三层之间都保持可见的层次。
-    /// </remarks>
+    /// <summary>派生品牌色的三层调色板（主色 / 中间调 / 高光）</summary>
     public static (Color Main, Color Mid, Color Light) DeriveBrandPalette(Color brand)
     {
         var (h, s, l) = RgbToHsl(brand.R, brand.G, brand.B);
@@ -126,9 +90,7 @@ public static class ColorMath
         );
     }
 
-    /// <summary>
-    /// 解析 HEX。支持 #RGB / #RRGGBB，带不带 # 都能解析。
-    /// </summary>
+    /// <summary>解析 HEX</summary>
     public static bool TryParseHex(string? text, out Color color)
     {
         color = Colors.Black;
@@ -158,47 +120,34 @@ public static class ColorMath
         return true;
     }
 
-    /// <summary>
-    /// 格式化为 #RRGGBB 大写。
-    /// </summary>
+    /// <summary>格式化为 #RRGGBB 大写</summary>
     public static string ToHex(Color color)
     {
         return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 }
 
-/// <summary>
-/// 颜色算法的自检。数值基准取自参考 HTML 的 JS 实现（逐字节复算对齐）。
-/// </summary>
-/// <remarks>
-/// 这套断言的「期望值」不是拍脑袋写的，而是把参考 HTML 里的
-/// hslToHex / hexToHsl / applyAccentColor 三个 JS 函数原样搬到 C# 侧复算出来的。
-/// 两边结果必须逐字节相同，否则说明转写有偏差。
-///
-/// 运行方式：dotnet run --project Zentwik.UI.csproj -- --selftest
-/// </remarks>
+/// <summary>颜色算法的自检</summary>
 public static class ColorMathSelfTest
 {
     private static int _failures;
 
     public static int Run() => Run(null);
 
-    /// <summary>
-    /// 执行自检。<paramref name="output"/> 非空时把结果写入该缓冲区。
-    /// </summary>
+    /// <summary>执行自检。 非空时把结果写入该缓冲区</summary>
     public static int Run(StringBuilder? output)
     {
         _failures = 0;
         _sink = output;
 
-        // ---- HSL 往返 ----
+        // HSL 往返
         // 基准色 = 参考 HTML 的默认强调色 #38BDF8
         var (h, s, l) = ColorMath.RgbToHsl(0x38, 0xBD, 0xF8);
         Check("HSL: #38BDF8 的 H ≈ 198.44", Math.Abs(h - 198.44) < 0.05, $"H={h:F2}");
         Check("HSL: #38BDF8 的 S ≈ 93.20", Math.Abs(s - 93.20) < 0.05, $"S={s:F2}");
         Check("HSL: #38BDF8 的 L ≈ 59.61", Math.Abs(l - 59.61) < 0.05, $"L={l:F2}");
 
-        // ---- HSL -> RGB：与 JS hslToHex 逐字节对齐 ----
+        // HSL -> RGB：与 JS hslToHex 逐字节对齐
         Check("HSL→RGB: hsl(198,85,65) = #5AC4F2",
               ColorMath.ToHex(ToColor(ColorMath.HslToRgb(198, 85, 65))) == "#5AC4F2");
         Check("HSL→RGB: hsl(0,85,65) = #F25A5A",
@@ -206,7 +155,7 @@ public static class ColorMathSelfTest
         Check("HSL→RGB: hsl(120,85,65) = #5AF25A",
               ColorMath.ToHex(ToColor(ColorMath.HslToRgb(120, 85, 65))) == "#5AF25A");
 
-        // ---- 品牌色衍生：与 JS applyAccentColor 对齐 ----
+        // 品牌色衍生：与 JS applyAccentColor 对齐
         var accent = Color.FromRgb(0x38, 0xBD, 0xF8);
         var brandDark = ColorMath.DeriveBrandColor(accent, isDark: true);
         var brandLight = ColorMath.DeriveBrandColor(accent, isDark: false);
@@ -221,7 +170,7 @@ public static class ColorMathSelfTest
         Check("品牌色: S = 100 (原 S + 15，已封顶)", Math.Abs(bs - 100) < 0.5, $"S={bs:F2}");
         Check("品牌色: 深色 L ≈ 79.61 (原 L + 20)", Math.Abs(bl - 79.61) < 0.05, $"L={bl:F2}");
 
-        // ---- HEX 解析 ----
+        // HEX 解析
         Check("HEX: 解析 #38BDF8", TryParse("#38BDF8", out var c1) && c1 == accent);
         Check("HEX: 解析无 # 且小写", TryParse("38bdf8", out var c2) && c2 == accent);
         Check("HEX: 解析三位 #ABC", TryParse("#ABC", out var c3) && c3 == Color.FromRgb(0xAA, 0xBB, 0xCC));

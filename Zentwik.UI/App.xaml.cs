@@ -9,14 +9,10 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI;
 
-/// <summary>
-/// 应用入口。
-/// </summary>
+/// <summary>应用入口。</summary>
 public partial class App : Application
 {
-    // WinExe 没有自带控制台。自检模式需要把结果写到调用方能读到的地方，
-    // 所以既尝试附加父进程控制台，也落一份到临时目录的文件 ——
-    // CI runner 里 stdout 常被重定向，文件更可靠。
+    // WinExe 没有自带控制台。
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AttachConsole(int dwProcessId);
 
@@ -26,22 +22,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // ============================================================
-        // 全局禁用原生虚线焦点框
-        //
-        // WPF 的默认焦点视觉是系统主题画的一圈点划线矩形。
-        // 逐个控件设 FocusVisualStyle="{x:Null}" 解决不了 ——
-        // x:Null 表示「没有自定义焦点视觉」，WPF 会回退到系统默认，虚线照旧。
-        // 这里装一个全局类处理器，把任何漏设的控件的系统默认焦点样式
-        // 替换成空模板，从根上保证「应用内没有虚线」。
-        // ============================================================
+        // 全局禁用原生虚线焦点框。
         FocusVisualKiller.Initialize();
 
         // 让 Win32 原生控件（托盘右键菜单、消息框、滚动条）跟随系统深浅色。
         // 不调用的话，深色系统上会从托盘弹出一张纯白菜单。
         NativeMethods.EnableNativeDarkMenus();
 
-        // ---- 外壳状态（诊断用）----
+        // 外壳状态（诊断用）
         // --worker=offline: 把左下角的 Worker 状态灯切成断开态，用来核对两种外观。
         string? workerArg = e.Args.FirstOrDefault(a => a.StartsWith("--worker="));
         if (workerArg is not null &&
@@ -52,16 +40,14 @@ public partial class App : Application
             Services.WorkerBridge.ForcedOffline = true;
         }
 
-        // ---- 诊断模式不拉起后台服务 ----
-        // 这些模式都会构造主窗口，而拉起 Worker 会弹 UAC。拍一张图、跑一次断言
-        // 就弹一次管理员授权，既污染用户环境又会让自动化卡在授权框上。
+        // 诊断模式不拉起后台服务。
         if (e.Args.Any(a => a is "--screenshot" or "--selftest" or "--itest"
                                or "--trayprobe" or "--perf" or "--perf-empty"))
         {
             Services.WorkerBridge.AllowAutoStart = false;
         }
 
-        // ---- 侧栏展开态（诊断用）----
+        // 侧栏展开态（诊断用）
         // --sidebar=expanded: 以展开态启动，用来核对 220 宽的外观。
         string? sidebarArg = e.Args.FirstOrDefault(a => a.StartsWith("--sidebar=", StringComparison.Ordinal));
         if (sidebarArg is not null &&
@@ -80,9 +66,7 @@ public partial class App : Application
             AppThemeService.Instance.PersistenceEnabled = true;
         }
 
-        // ---- 依赖组的关闭态（诊断用）----
-        // --off=startup,scenes: 把这些总开关预先置为关闭，
-        // 用来核对其下子项置灰的外观。可任意组合。
+        // 依赖组的关闭态（诊断用）。
         string? offArg = e.Args.FirstOrDefault(a => a.StartsWith("--off=", StringComparison.Ordinal));
         if (offArg is not null)
         {
@@ -100,7 +84,7 @@ public partial class App : Application
             }
         }
 
-        // ---- 管道连通性探针（诊断用）----
+        // 管道连通性探针（诊断用）
         // --workerprobe: 只验一次与 Worker 的管道，把结果打到控制台后退出。不碰硬件写入。
         if (e.Args.Contains("--workerprobe"))
         {
@@ -109,17 +93,14 @@ public partial class App : Application
             return;
         }
 
-        // ---- 调校页数据链路探针（诊断用）----
-        // --tuningprobe: 跑一次 TuningViewModel 的初始化（查 SMU 状态 + 读快照），
-        // 把结果写文件后退出。**只读**，不写调校、不写硬件。
-        // 用途：没有界面时确认「查询 / 降级 / 核数对齐」这条链通不通。
+        // 调校页数据链路探针（诊断用）。
         if (e.Args.Contains("--tuningprobe"))
         {
             RunTuningProbe();
             return;
         }
 
-        // ---- 电源页数据链路探针（诊断用）----
+        // 电源页数据链路探针（诊断用）
         // --powerprobe: 查方案列表与当前策略，再做一次「建 → 改名 → 切回 → 删」往返。
         if (e.Args.Contains("--powerprobe"))
         {
@@ -127,7 +108,7 @@ public partial class App : Application
             return;
         }
 
-        // ---- 清理系统里的重复电源方案（诊断用）----
+        // 清理系统里的重复电源方案（诊断用）
         // --powerclean: 只列出将被删除的方案；--powerclean --apply 才真删。
         if (e.Args.Contains("--powerclean"))
         {
@@ -135,7 +116,7 @@ public partial class App : Application
             return;
         }
 
-        // ---- 界面设置往返探针（诊断用）----
+        // 界面设置往返探针（诊断用）
         // --settingsprobe: 真拉起 Worker，读一次 ui.json、翻转监听开关、再翻回来。
         if (e.Args.Contains("--settingsprobe"))
         {
@@ -143,7 +124,7 @@ public partial class App : Application
             return;
         }
 
-        // ---- 进程页数据链路探针（诊断用）----
+        // 进程页数据链路探针（诊断用）
         // --processprobe: 读进程表 / 规则表 / 掩码表，并做一次「建规则 → 查 → 删」往返。
         if (e.Args.Contains("--processprobe"))
         {
@@ -151,7 +132,7 @@ public partial class App : Application
             return;
         }
 
-        // ---- 掩码数据链路探针（诊断用）----
+        // 掩码数据链路探针（诊断用）
         // --maskprobe: 查拓扑，做一次「建掩码 → 改名改值 → 撞名 → 删」往返。
         if (e.Args.Contains("--maskprobe"))
         {
@@ -159,7 +140,7 @@ public partial class App : Application
             return;
         }
 
-        // ---- 场景数据链路探针（诊断用）----
+        // 场景数据链路探针（诊断用）
         // --scenarioprobe: 读总闸与规则，做一次「拨总闸 → 拨回 → 建规则 → 改 → 删」往返。
         if (e.Args.Contains("--scenarioprobe"))
         {
@@ -167,16 +148,14 @@ public partial class App : Application
             return;
         }
 
-        // ---- 日志数据链路探针（诊断用）----
-        // --logsprobe: 拉一次 snapshot-logs 并解析，打印条数与前几条。**只读**，
-        // 不清空 —— 清空会删掉用户目录里真实的日志文件。
+        // 日志数据链路探针（诊断用）。
         if (e.Args.Contains("--logsprobe"))
         {
             RunLogsProbe();
             return;
         }
 
-        // ---- 进程列表压测（诊断用）----
+        // 进程列表压测（诊断用）
         // --procs=N: 在默认占位进程之外再铺 N 条，用来验证列表虚拟化。
         string? procsArg = e.Args.FirstOrDefault(a => a.StartsWith("--procs="));
         if (procsArg is not null &&
@@ -186,7 +165,7 @@ public partial class App : Application
             ViewModels.ProcessViewModel.BulkSeedCount = bulkCount;
         }
 
-        // ---- 核心数量（诊断用）----
+        // 核心数量（诊断用）
         // --cores=N: 改调校页的核心格子数量，用来验证换行规则。
         string? coresArg = e.Args.FirstOrDefault(a => a.StartsWith("--cores="));
         if (coresArg is not null &&
@@ -196,17 +175,14 @@ public partial class App : Application
             ViewModels.TuningViewModel.SeedCoreCount = coreCount;
         }
 
-        // ---- SMU 不可用态（诊断用）----
+        // SMU 不可用态（诊断用）
         // --smu=off: 强制调校页进入「整页不可用」，用来验遮罩与禁用。
         if (e.Args.Contains("--smu=off"))
         {
             ViewModels.TuningViewModel.ForceSmuOffline = true;
         }
 
-        // ---- 离屏截图与自检：业务页不发起 IPC ----
-        // 截图是一帧定格。真实查询要等 2 秒（快照 15 秒），拍到的可能是查询前后的
-        // 任意中间态 —— 同一个命令两次出不同的图。截图只验视觉，数据走占位值。
-        // 自检同理：它会在同一进程里反复造页面，真去查会连上 Worker 并读用户的系统设置。
+        // 离屏截图与自检：业务页不发起 IPC。
         if (e.Args.Any(a => a is "--screenshot" or "--selftest" or "--itest" or "--perf"))
         {
             ViewModels.PlanHub.SuppressWorkerInit = true;
@@ -234,9 +210,7 @@ public partial class App : Application
             ViewModels.TuningViewModel.SuppressWorkerInit = true;
         }
 
-        // ---- 托盘探针（诊断用）----
-        // --trayprobe: 只创建托盘图标，把结果打印到控制台后退出。
-        // 用来在没有可视化环境的机器上确认 Shell_NotifyIcon 是否真的成功。
+        // 托盘探针（诊断用）。
         if (e.Args.Contains("--trayprobe"))
         {
             AttachConsole(ATTACH_PARENT_PROCESS);
@@ -262,9 +236,7 @@ public partial class App : Application
             return;
         }
 
-        // ---- 命令行自检模式 ----
-        // --selftest: 颜色算法断言（纯函数，不需要窗口）
-        // --itest   : 集成断言（需要真实 Application 与资源字典）
+        // 命令行自检模式。
         if (e.Args.Contains("--selftest") || e.Args.Contains("--itest"))
         {
             AttachConsole(ATTACH_PARENT_PROCESS);
@@ -299,9 +271,7 @@ public partial class App : Application
         // 关闭时退出进程（避免后台线程残留）
         ShutdownMode = ShutdownMode.OnMainWindowClose;
 
-        // ---- 空窗口对照 ----
-        // --perf-empty: 只开一个同尺寸空窗口。用来量 WPF 自身基线
-        // （.NET host + WPF 初始化 + DWM 合成），据此判断我们的 UI 还占多少。
+        // 空窗口对照。
         if (e.Args.Contains("--perf-empty"))
         {
             AttachConsole(ATTACH_PARENT_PROCESS);
@@ -325,9 +295,7 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
 
-        // ---- 性能探针（诊断用）----
-        // --perf [--page=X]: 静置 10 秒，统计布局次数 / 渲染帧数 / CPU / 内存。
-        // 静止窗口的 layout 次数应该是个位数；一旦按帧增长就是布局循环。
+        // 性能探针（诊断用）。
         if (e.Args.Contains("--perf"))
         {
             AttachConsole(ATTACH_PARENT_PROCESS);
@@ -342,21 +310,14 @@ public partial class App : Application
             return;
         }
 
-        // ============================================================
-        // 系统托盘
-        //
-        // 截图模式不接托盘 —— 否则每次离屏渲染都会往系统托盘
-        // 塞一个图标出来，污染用户环境。
-        // ============================================================
+        // 系统托盘。
         bool isScreenshotMode = e.Args.Contains("--screenshot");
         if (!isScreenshotMode)
         {
             SetupTray(window);
         }
 
-        // ---- 离屏截图模式 ----
-        // 用 WPF 自己的 RenderTargetBitmap 渲染，不依赖屏幕抓取：
-        // 不受窗口遮挡、桌面缩放、多显示器影响，结果可复现。
+        // 离屏截图模式。
         int shotIndex = Array.FindIndex(e.Args, a => a == "--screenshot");
         if (shotIndex >= 0)
         {
@@ -384,8 +345,6 @@ public partial class App : Application
             }
 
             // 可选：--size=1180x1400 指定离屏渲染尺寸。
-            // 页面比窗口高时（例如调校页的三卡版式），
-            // 只按窗口尺寸拍会拍不到折叠线以下的内容。
             string? sizeArg = e.Args.FirstOrDefault(a => a.StartsWith("--size="));
             if (sizeArg is not null)
             {
@@ -459,8 +418,6 @@ public partial class App : Application
                 }
 
                 // --mask : 打开右栏「自定义掩码」页签并进编辑器后再拍。
-                // --masklist : 只打开页签、停在列表视图。
-                // 页签在主视觉树里，两种状态都能直接拍到。
                 if (e.Args.Contains("--masklist"))
                 {
                     window.OpenMaskManager();
@@ -474,8 +431,6 @@ public partial class App : Application
                 }
 
                 // --toast : 触发一次全局 Toast 后再拍（诊断用）。
-                // 正常 UI 里 Toast 只在「结果看不见」时出现，
-                // 离屏截图不会自己走到那种场景，所以给个显式开关验视觉。
                 if (e.Args.Contains("--toast"))
                 {
                     ViewModels.ToastService.Instance.Show(
@@ -484,9 +439,6 @@ public partial class App : Application
                 }
 
                 // --confirm : 打开危险操作确认叠层后再拍（诊断用）。
-                // 走的是真实命令路径（AdvancedViewModel.ClearAllCommand），
-                // 所以截图里的文案与实际点「清除全部数据」时完全一致。
-                // 命令只发起 Request、不执行副作用，诊断模式不会清掉任何状态。
                 if (e.Args.Contains("--confirm"))
                 {
                     new ViewModels.AdvancedViewModel().ClearAllCommand.Execute(null);
@@ -518,15 +470,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 跑一次调校页初始化，把结果写进 <c>%TEMP%\zentwik-tuningprobe.txt</c>。
-    /// </summary>
-    /// <remarks>
-    /// WinExe 没有自带控制台，<c>AttachConsole</c> 在 CI / 重定向场景下时灵时不灵。
-    /// 状态查询与快照查询都是异步的，用 <c>GetAwaiter().GetResult()</c> 直接在
-    /// UI 线程上等会死锁（延续要回到被阻塞的调度器），所以整段放进线程池：
-    /// 那里没有同步上下文，延续不会排回界面线程。
-    /// </remarks>
+    /// <summary>跑一次调校页初始化，结果写进 %TEMP%\zentwik-tuningprobe.txt。</summary>
     private static void RunTuningProbe()
     {
         var sb = new StringBuilder();
@@ -563,14 +507,7 @@ public partial class App : Application
         Environment.Exit(0);
     }
 
-    /// <summary>
-    /// 查一次电源方案列表与当前策略，写进 <c>%TEMP%\zentwik-powerprobe.txt</c>。
-    /// </summary>
-    /// <remarks>
-    /// 只读：两条命令都是查询，不写系统设置。
-    /// 整段放进线程池的写法与 <see cref="RunTuningProbe"/> 一致，避免在 UI 线程上
-    /// 同步等异步结果时死锁。
-    /// </remarks>
+    /// <summary>查一次电源方案列表与当前策略，写进 只读：两条命令都是查询，不写系统设置</summary>
     private static void RunSettingsProbe()
     {
         var sb = new StringBuilder();
@@ -637,14 +574,7 @@ public partial class App : Application
         System.IO.File.WriteAllText(path, sb.ToString());
     }
 
-    /// <summary>
-    /// 删掉系统里重复的电源方案，只保留四个内置模板和用户自建的两份。
-    /// </summary>
-    /// <remarks>
-    /// 早期版本新建方案时没有重名校验，从预设卡点一次就复制一份同名方案，
-    /// 攒下来会在控制面板里堆成一长串「高性能」。删除走 Worker 的既有命令，
-    /// 内置方案与活动方案由 Core 侧拒绝。
-    /// </remarks>
+    /// <summary>删掉系统里重复的电源方案，只保留四个内置模板和用户自建的两份</summary>
     private static void RunPowerClean(bool apply)
     {
         var sb = new StringBuilder();
@@ -722,8 +652,6 @@ public partial class App : Application
         System.IO.File.WriteAllText(path, sb.ToString());
 
         // 删除是靠提权 Worker 做的，这里不关它会一直占着管道和 Core.dll。
-        // 同步发（原来是 fire-and-forget + 睡 1200 ms）：发不出去时那 1.2 秒纯属白等，
-        // 发得出去时又没人保证它真的写进管道。
         Services.WorkerLauncher.RequestShutdown(
             TimeSpan.FromSeconds(3), evenIfNotOwned: true);
 
@@ -795,14 +723,7 @@ public partial class App : Application
 
     private static string Show(int value, bool supported) => supported ? value.ToString() : "N/A";
 
-    /// <summary>
-    /// 读一次进程页的三份数据，并做一次「建规则 → 查 → 删」往返。
-    /// </summary>
-    /// <remarks>
-    /// 往返用的进程名带随机后缀，不可能命中任何真实进程，规则建出来也不会改变
-    /// 任何进程的调度；无论成败都在 finally 里删掉，不在用户的 <c>schedules.json</c>
-    /// 里留垃圾。
-    /// </remarks>
+    /// <summary>读一次进程页的三份数据，并做一次「建规则 → 查 → 删」往返</summary>
     private static void RunProcessProbe()
     {
         var sb = new StringBuilder();
@@ -878,12 +799,7 @@ public partial class App : Application
         Environment.Exit(0);
     }
 
-    /// <summary>
-    /// 掩码链路探针：拓扑查询 + 「建 → 改名改值 → 撞名 → 空名 → 删」往返。
-    /// </summary>
-    /// <remarks>
-    /// 全程用随机名，无论成败都在 finally 里删掉，不在用户的 <c>masks.json</c> 里留垃圾。
-    /// </remarks>
+    /// <summary>掩码链路探针：拓扑查询 + 「建 → 改名改值 → 撞名 → 空名 → 删」往返</summary>
     private static void RunMaskProbe()
     {
         var sb = new StringBuilder();
@@ -978,13 +894,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 场景链路探针：总闸往返 + 「建规则 → 查 → 改 → 删」。
-    /// </summary>
-    /// <remarks>
-    /// 总闸最后一定拨回原值：探针跑完之后用户的自动切换必须还是原来的状态。
-    /// 规则用固定前缀 + 随机后缀的进程名，删不掉也不会命中任何真实进程。
-    /// </remarks>
+    /// <summary>场景链路探针：总闸往返 + 「建规则 → 查 → 改 → 删」</summary>
     private static void RunLogsProbe()
     {
         var sb = new StringBuilder();
@@ -1178,7 +1088,7 @@ public partial class App : Application
 
             sb.AppendLine($"bad profile: success={badProfile.Success} msg={badProfile.Message}");
 
-            // ---- 进程退出触发（协议 8 新增）----
+            // 进程退出触发（协议 8 新增）
             IpcOutcome<string> exitSaved = await bridge.SaveScenarioRuleAsync(new Zentwik.Core.Ipc.ScenarioRulePayload
             {
                 Id = string.Empty,
@@ -1301,16 +1211,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 电源方案的增删改往返：建一份临时方案 → 改名 → 撞名 → 删内置 → 删临时方案。
-    /// </summary>
-    /// <remarks>
-    /// 这一段会真的往系统里写一份方案，所以名字带随机前缀、并且在 finally 里必删 ——
-    /// 探针中途抛异常时留在用户机器上的「__probe 方案__」比没有验证更糟。
-    ///
-    /// 删内置方案那一步是**故意**的：它必须被拒绝。真删掉了才是事故，
-    /// 而事故会立刻体现在下一行 cleanup 的报告里（内置方案消失）。
-    /// </remarks>
+    /// <summary>电源方案的增删改往返：建一份临时方案 → 改名 → 撞名 → 删内置 → 删临时方案</summary>
     private static async Task AppendSchemeRoundtrip(StringBuilder sb)
     {
         Services.WorkerBridge bridge = Services.WorkerBridge.Instance;
@@ -1358,8 +1259,6 @@ public partial class App : Application
                 $"boost={Show(snapshot.Value?.BoostMode ?? -1, snapshot.Value?.BoostModeSupported ?? false)}");
 
             // 关键回归：切回默认方案后，新建的那份必须还在列表里。
-            // 从隐藏模板（节能 / 高性能 / 卓越性能）直接派生会继承隐藏标记，
-            // 切走之后就再也枚举不到 —— 用户看到的是「新建的方案被删了」。
             await bridge.SetActivePowerSchemeAsync(
                 Zentwik.Core.Services.PowerSchemePresets.Balanced.Guid).ConfigureAwait(false);
 
@@ -1404,14 +1303,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 走一遍「方案面板新建电源方案」：只登记方案，系统电源计划列表必须原样不变。
-    /// </summary>
-    /// <remarks>
-    /// 旧实现会在系统里派生一份 Windows 计划，用户每建一次控制面板就多一个。
-    /// 探针留作回归护栏：前后各查一次方案数，一旦有人把派生逻辑加回来，
-    /// <c>schemes</c> 立刻从 N 变 N+1；<c>policy</c> 则守住「方案自带参数快照」。
-    /// </remarks>
+    /// <summary>走一遍「方案面板新建电源方案」：只登记方案，系统电源计划列表必须原样不变</summary>
     private static async Task AppendPlanCreateRoundtrip(StringBuilder sb)
     {
         Services.WorkerBridge bridge = Services.WorkerBridge.Instance;
@@ -1470,13 +1362,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 从「卓越性能」模板建一份方案，验两件事：说明文字搬过来了、设置不是平衡的复制品。
-    /// </summary>
-    /// <remarks>
-    /// 卓越性能在本机的模板键只有硬盘与 PCIe 两项，单独搬它等于复制平衡 ——
-    /// 所以它要先铺「高性能」的底。验完立刻删，不在用户机器上留方案。
-    /// </remarks>
+    /// <summary>从「卓越性能」模板建一份方案，验两件事：说明文字搬过来了、设置不是平衡的复制品</summary>
     private static async Task AppendUltimateSchemeCheck(StringBuilder sb)
     {
         Services.WorkerBridge bridge = Services.WorkerBridge.Instance;
@@ -1534,13 +1420,7 @@ public partial class App : Application
             "Description",
             null) as string;
 
-    /// <summary>
-    /// 方案的调校值读写往返：建一份临时白纸方案 → 写值（**不下发**）→ 读回 → 删除。
-    /// </summary>
-    /// <remarks>
-    /// applyNow 一律传 false：探针只验证「值进得去、出得来」，绝不写硬件。
-    /// 临时方案无论成败都在 finally 里删掉，不在用户盘上留垃圾。
-    /// </remarks>
+    /// <summary>方案的调校值读写往返：建一份临时白纸方案 → 写值（**不下发**）→ 读回 → 删除</summary>
     private static async Task AppendProfileRoundtrip(StringBuilder sb)
     {
         Services.WorkerBridge bridge = Services.WorkerBridge.Instance;
@@ -1622,9 +1502,7 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 只读探针：ping + 查 SMU 可用性，打印后退出。两条命令都不写硬件。
-    /// </summary>
+    /// <summary>只读探针：ping + 查 SMU 可用性，打印后退出</summary>
     private static void RunWorkerProbe()
     {
         try
@@ -1650,21 +1528,14 @@ public partial class App : Application
             Console.WriteLine("workerprobe failed: " + ex.Message);
         }
 
-        // 探针走的是真实拉起路径，退出前必须把自己拉起来的 Worker 收掉 ——
-        // 否则每跑一次就多一个残留的提权进程，下一次 UI 启动会把它当成
-        // 「不是我拉起的」，后续关闭界面就再也关不掉它。
+        // 探针走的是真实拉起路径，退出前必须把自己拉起来的 Worker 收掉 。
         Services.WorkerLauncher.RequestShutdown(
             TimeSpan.FromSeconds(3), evenIfNotOwned: true);
 
         Environment.Exit(0);
     }
 
-    /// <summary>
-    /// 静置采样：量 CPU 与内存。
-    /// 注意不要订阅 CompositionTarget.Rendering 来数帧 ——
-    /// 订阅本身会让渲染循环保持活跃，测出来的帧数是被探针自己推高的。
-    /// 先预热 3 秒再采 10 秒：首屏渲染、首次 JIT、字体缓存都不算稳态。
-    /// </summary>
+    /// <summary>静置采样：量 CPU 与内存</summary>
     private static void RunPerfProbe(Window window)
     {
         int layoutCount = 0;
@@ -1726,24 +1597,17 @@ public partial class App : Application
         warmup.Start();
     }
 
-    /// <summary>
-    /// 托盘图标实例 —— 必须持有引用，否则会被 GC 回收，
-    /// 消息窗口随之销毁，托盘图标也会消失。
-    /// </summary>
+    /// <summary>托盘图标实例 —— 必须持有引用，否则会被 GC 回收， 消息窗口随之销毁，托盘图标也会消失</summary>
     private TrayIconService? _tray;
 
-    /// <summary>
-    /// 创建托盘图标并接上主窗口的显示 / 退出。
-    /// </summary>
+    /// <summary>创建托盘图标并接上主窗口的显示 / 退出</summary>
     private void SetupTray(MainWindow window)
     {
         var theme = AppThemeService.Instance;
 
         var tray = new TrayIconService();
 
-        // 托盘图标用中性灰，**不跟随强调色** ——
-        // 任务栏背景由系统决定，用户挑的强调色在那里没有意义。
-        // 深色任务栏需要亮图标才看得见，浅色任务栏需要暗图标。
+        // 托盘图标用中性灰，**不跟随强调色** 。
         var trayPalette = LogoPaletteFactory.BuildForTray(
             darkTaskbar: !SystemTheme.IsSystemLightTheme());
 
@@ -1779,8 +1643,6 @@ public partial class App : Application
         window.MinimizeToTrayEnabled = true;
 
         // 系统任务栏明暗变化 → 托盘图标跟着换配色。
-        // ThemeChanged 表示「应用内明暗」；而任务栏明暗是系统决定的，
-        // 用户把应用设成深色、系统任务栏是浅色时，托盘仍需要深色图标。
         theme.SystemThemeChanged += (_, _) =>
         {
             var palette = LogoPaletteFactory.BuildForTray(
@@ -1791,9 +1653,6 @@ public partial class App : Application
         Exit += (_, _) =>
         {
             // 「仅留服务」= 只退 UI，Worker 常驻，不能连带杀掉。
-            // 其余两档在这里再兜一次：主窗口之外还有别的退出路径（断言失败、
-            // 未捕获异常后的强制关停），漏掉就会又留下一个后台进程。
-            // 已经发过的情况下 RequestShutdown 会直接返回，不会重复等待。
             if (ViewModels.AppSettings.Instance.CloseBehavior
                 != ViewModels.MainWindowCloseBehavior.CloseWindowOnly)
             {

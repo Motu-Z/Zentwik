@@ -7,20 +7,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 电源页视图模型：系统电源方案 + 五项处理器 / PCIe 策略的 AC / DC 两套值。
-/// </summary>
-/// <remarks>
-/// 系统里每一项都存成 AC、DC 两个独立的值，笔记本上通常不同。
-/// 分段切换只换「在看哪一套」，两套都在内存里，来回切不会丢改动。
-///
-/// <c>apply-power-policy</c> 只改 Payload 里出现的项。这里只把「跟上次生效值不同」
-/// 的项发出去：全量重发等于每点一次应用就把五项刷一遍，其中一项本机不支持
-/// 就会回一句失败 —— 用户只动了一个滑块，却被告知五项里有一项失败。
-///
-/// 每项自带 Supported / Error。折成一个值时，界面会画出 EPP = 0 的滑块，
-/// 拖一下才发现写不进去。
-/// </remarks>
+/// <summary>电源页视图模型：系统电源方案 + 五项处理器 / PCIe 策略的 AC / DC 两套值</summary>
 public partial class PowerViewModel : ObservableObject
 {
     private const int QueryTimeoutMs = 6_000;
@@ -28,13 +15,7 @@ public partial class PowerViewModel : ObservableObject
     // Worker 写完要重新激活一次电源方案，低端机上这一步可能要几秒。
     private const int ApplyTimeoutMs = 30_000;
 
-    /// <summary>
-    /// 诊断用：<c>--screenshot</c> 时不发 IPC。
-    /// </summary>
-    /// <remarks>
-    /// 离屏截图是一帧定格，异步查询返回的时机不确定，同一个命令两次会拍出不同的图。
-    /// 截图模式只验视觉，方案卡片与五项值一律用占位数据。
-    /// </remarks>
+    /// <summary>诊断用：--screenshot 时不发 IPC</summary>
     public static bool SuppressWorkerInit { get; set; }
 
     /// <summary>一套策略值 + 每项自己的可读状态。</summary>
@@ -124,22 +105,14 @@ public partial class PowerViewModel : ObservableObject
     /// <summary>程序性改动选中项时为 true，避免列表刷新触发一次方案切换。</summary>
     private bool _suppressSchemeSwitch;
 
-    /// <summary>
-    /// 刷新方案面板期间为 true，期间不按方案快照覆盖页面值。
-    /// </summary>
-    /// <remarks>
-    /// 面板刷新走 <c>Items.Clear()</c>，会触发 <c>CurrentChanged</c>。若此时照样
-    /// <see cref="LoadSelectedPlanValues"/>，就会用方案里的旧快照把刚从系统读回来的
-    /// 真实值盖掉 —— 用户看到的是「方案存的」而不是「机器现在的」。
-    /// 只有用户手动换选方案时才该加载方案值。
-    /// </remarks>
+    /// <summary>刷新方案面板期间为 true，期间不按方案快照覆盖页面值</summary>
     private bool _suppressPlanLoad;
 
     private Task? _refreshTask;
 
     private bool _initialized;
 
-    // ==================== 系统电源方案 ====================
+    // 系统电源方案
 
     public ObservableCollection<PowerScheme> Schemes { get; } = new();
 
@@ -213,7 +186,7 @@ public partial class PowerViewModel : ObservableObject
     [ObservableProperty]
     private string _activeSchemeName = PowerPolicySnapshot.UnknownSchemeName;
 
-    // ==================== 供电状态 ====================
+    // 供电状态
 
     /// <summary>本机有没有电池。false 时界面上不出现电池分段。</summary>
     [ObservableProperty]
@@ -227,7 +200,7 @@ public partial class PowerViewModel : ObservableObject
 
     partial void OnIsOnBatteryChanged(bool value) => OnPropertyChanged(nameof(SupplyLabel));
 
-    // ==================== 分段 ====================
+    // 分段
 
     [ObservableProperty]
     private bool _isAcMode = true;
@@ -255,16 +228,10 @@ public partial class PowerViewModel : ObservableObject
 
     public string ModeTitle => IsAcMode ? "交流电策略" : "电池策略";
 
-    /// <summary>
-    /// 最大处理器状态的滑块下限。
-    /// </summary>
-    /// <remarks>
-    /// 系统允许 0，Worker 侧固定拒绝 50 以下的写入（见 <c>PowerPolicyService</c>）。
-    /// 这里是同一个 50，滑块拖不到写不进去的位置。
-    /// </remarks>
+    /// <summary>最大处理器状态的滑块下限</summary>
     public int MaxProcessorStateMinimum => 50;
 
-    // ==================== 五项 ====================
+    // 五项
 
     public int Epp
     {
@@ -324,7 +291,7 @@ public partial class PowerViewModel : ObservableObject
 
     public string AspmError => Current.AspmError;
 
-    // ==================== 状态 ====================
+    // 状态
 
     [ObservableProperty]
     private bool _isDirty;
@@ -364,13 +331,7 @@ public partial class PowerViewModel : ObservableObject
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>
-    /// 每行右侧「本机不支持」那行字。
-    /// </summary>
-    /// <remarks>
-    /// 后台服务没连上时也叫「本机不支持」，用户会去查主板手册 ——
-    /// 而真正要做的是把服务拉起来。
-    /// </remarks>
+    /// <summary>每行右侧「本机不支持」那行字</summary>
     [ObservableProperty]
     private string _unavailableText = "本机不支持";
 
@@ -378,7 +339,7 @@ public partial class PowerViewModel : ObservableObject
 
     public bool CanOperate => !IsBusy;
 
-    // ==================== 初始化 ====================
+    // 初始化
 
     public PowerViewModel()
     {
@@ -396,8 +357,6 @@ public partial class PowerViewModel : ObservableObject
         PlanHub.Power.SavePending = () => _ = SaveToCurrentPlanAsync();
 
         // 从方案面板应用电源方案，系统计划会被切走 —— 本页必须重读。
-        // 弱事件订阅：页面实例由外壳缓存，但自检会造很多个，普通订阅会在
-        // 单例上留下一串永不释放的强引用（与调校页同一套写法）。
         System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
             PlanHub.Power,
             nameof(PlanScope.Applied),
@@ -419,13 +378,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 读方案列表与当前策略。失败不弹提示，界面以「本机不支持」表达。
-    /// </summary>
-    /// <remarks>
-    /// 启动流程与页面 Loaded 会同时调到这里，共用同一个 Task：
-    /// 并发发起两次查询会在管道上排两条命令，第二条等第一条的超时。
-    /// </remarks>
+    /// <summary>读方案列表与当前策略</summary>
     public Task InitializeAsync()
     {
         if (SuppressWorkerInit || _initialized)
@@ -455,13 +408,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 方案面板应用了一份电源方案：系统计划与五项参数都变了，整页重读。
-    /// </summary>
-    /// <remarks>
-    /// 这里不拦未保存改动：应用是显式动作，系统状态已经变了，
-    /// 继续显示旧的一套值就是在骗人。页内自己的「应用参数」不走这条路径。
-    /// </remarks>
+    /// <summary>方案面板应用了一份电源方案：系统计划与五项参数都变了，整页重读</summary>
     private void OnPlanApplied(object? sender, EventArgs e)
     {
         if (SuppressWorkerInit)
@@ -484,17 +431,7 @@ public partial class PowerViewModel : ObservableObject
         LoadSelectedPlanValues();
     }
 
-    /// <summary>
-    /// 把选中的那份方案存的五项参数搬到界面上（不动系统、不切计划、不标脏）。
-    /// </summary>
-    /// <remarks>
-    /// 这三页的体验必须一致：调校页换方案就换一组值，电源页原先换方案毫无反应，
-    /// 用户只能看到「系统现在是什么」，看不到「这份方案里存的是什么」，
-    /// 于是没法判断自己选的对不对。真正生效仍然靠面板底部的「应用」。
-    ///
-    /// 方案没存过快照（老数据、或新建时本机不支持这些项）时保持现状 ——
-    /// 半截覆盖比不动更让人困惑。
-    /// </remarks>
+    /// <summary>把选中的那份方案存的五项参数搬到界面上（不动系统、不切计划、不标脏）</summary>
     private void LoadSelectedPlanValues()
     {
         if (SuppressWorkerInit)
@@ -565,14 +502,7 @@ public partial class PowerViewModel : ObservableObject
     /// <summary>首帧是否已经读过一次系统状态。</summary>
     public bool IsInitialized => _initialized;
 
-    /// <summary>
-    /// 切回本页时对齐一次系统状态。
-    /// </summary>
-    /// <remarks>
-    /// 场景规则切电源方案发生在后台，界面收不到任何事件；不加这一步，
-    /// 只要不重启，卡片高亮就永远是第一次进页时的样子。
-    /// 有未保存改动时不重读 —— 那会把用户正在调的值冲掉。
-    /// </remarks>
+    /// <summary>切回本页时对齐一次系统状态</summary>
     public Task ReloadOnShownAsync()
     {
         if (SuppressWorkerInit || !_initialized || IsDirty || IsBusy)
@@ -654,15 +584,9 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    // ==================== 应用 ====================
+    // 应用
 
-    /// <summary>
-    /// 「应用参数」：只发跟上次生效值不同的项。
-    /// </summary>
-    /// <remarks>
-    /// 部分失败时 Worker 仍会回一份写入后的快照，这里照单全收 ——
-    /// 已经有项写进系统了，界面必须立刻对齐，否则下次点应用会把它们再写一遍。
-    /// </remarks>
+    /// <summary>「应用参数」：只发跟上次生效值不同的项</summary>
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
@@ -723,13 +647,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 与上次生效值的差异。
-    /// </summary>
-    /// <remarks>
-    /// 电池那五项只在确实有电池时参与：台式机上发 <c>dcEpp</c> 之类的字段，
-    /// 系统会照收（存在方案里），但那是一项用户永远看不到的值。
-    /// </remarks>
+    /// <summary>与上次生效值的差异</summary>
     private ApplyPowerPolicyPayload BuildPatch()
     {
         ApplyPowerPolicyPayload payload = new();
@@ -754,9 +672,7 @@ public partial class PowerViewModel : ObservableObject
         return payload;
     }
 
-    /// <summary>
-    /// 「恢复默认」：把当前分段填成一组折中值。不写系统，要再点应用参数。
-    /// </summary>
+    /// <summary>「恢复默认」：把当前分段填成一组折中值</summary>
     [RelayCommand]
     private void RestoreDefaults()
     {
@@ -786,11 +702,9 @@ public partial class PowerViewModel : ObservableObject
         IsDirty = false;
     }
 
-    // ==================== 新建 / 改名 / 删除 ====================
+    // 新建 / 改名 / 删除
 
-    /// <summary>
-    /// 新建弹层里的四个内置模板：节能 / 平衡 / 高性能 / 卓越性能。
-    /// </summary>
+    /// <summary>新建弹层里的四个内置模板：节能 / 平衡 / 高性能 / 卓越性能</summary>
     public ObservableCollection<PresetOption> Presets { get; } = new();
 
     [ObservableProperty]
@@ -802,12 +716,7 @@ public partial class PowerViewModel : ObservableObject
     [RelayCommand]
     private void CloseCreateMenu() => IsCreateMenuOpen = false;
 
-    /// <summary>
-    /// 以某个内置模板派生一份新方案，并立刻切过去。
-    /// </summary>
-    /// <remarks>
-    /// 派生源固定为微软模板：本页只管五项设置，凭空造方案会让其余几十项落回系统默认值。
-    /// </remarks>
+    /// <summary>以某个内置模板派生一份新方案，并立刻切过去</summary>
     [RelayCommand]
     private async Task CreateSchemeAsync(PresetOption? option)
     {
@@ -855,16 +764,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 顶栏方案面板的「新建」：把当前五项参数存成一份方案，不动系统电源计划列表。
-    /// </summary>
-    /// <remarks>
-    /// 旧实现先 <c>create-power-scheme</c> 派生一份 Windows 计划、再拿它的 GUID 登记，
-    /// 于是「在软件里建一份方案」等于「控制面板里多一个计划」，越攒越多。
-    /// 现在方案自带参数快照，系统计划只是「应用时是否顺手切过去」的可选记录：
-    /// 新建只记下当前活动方案的 GUID，绝不新建。
-    /// </remarks>
-    /// <returns>新方案 Id；失败返回 null。</returns>
+    /// <summary>顶栏方案面板的「新建」：把当前五项参数存成一份方案，不动系统电源计划列表</summary>
     private async Task<string?> CreatePlanAsync(string requestedName)
     {
         if (IsBusy)
@@ -916,11 +816,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 存进方案的是完整的一套值，不是 <see cref="BuildPatch"/> 那样只挑改动项：
-    /// 方案要能独立还原，缺项就意味着应用时那一项保持现状。
-    /// 本机不支持的项不入快照，否则应用时会被写成失败项。
-    /// </summary>
+    /// <summary>存进方案的是完整一套值，不像 BuildPatch 只挑改动项：方案要能独立还原。</summary>
     private ApplyPowerPolicyPayload BuildFullSnapshot()
     {
         ApplyPowerPolicyPayload payload = new();
@@ -943,11 +839,7 @@ public partial class PowerViewModel : ObservableObject
         return payload;
     }
 
-    /// <summary>
-    /// 把当前生效的一套值记进当前选中的方案，方案才有内容可还原。
-    /// 不刷新列表：<c>Items.Clear()</c> 会触发 <c>CurrentChanged</c>，冲掉编辑状态。
-    /// 静默：这一步只是顺手记账，不该把一次成功的写入报成失败。
-    /// </summary>
+    /// <summary>把当前生效的一套值记进当前选中的方案，方案才有内容可还原</summary>
     private async Task PersistCurrentPlanAsync()
     {
         PlanItem? current = PlanHub.Power.Current;
@@ -979,20 +871,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 「保存到当前方案」：把界面上这套参数存进选中的方案，并让它认领当前这份系统计划。
-    /// </summary>
-    /// <remarks>
-    /// 与「应用参数」分工明确：应用参数是写到 Windows，本命令是写到方案。
-    ///
-    /// 用户在卡片上换了系统计划（平衡 → 节能）之后，方案记录仍指回旧计划，
-    /// 而页面此时没有任何改动，<see cref="CanApply"/> 为 false —— 按钮全灰，
-    /// 于是「改了系统方案却存不进方案」。这里把「当前这套 + 当前这份系统计划」
-    /// 一次性记进选中的方案。
-    ///
-    /// <c>Items.Clear()</c> 会触发 <c>CurrentChanged</c>，页面值被按方案再刷一遍，
-    /// 用户正在调的东西就没了。方案行的字段就地更新即可。
-    /// </remarks>
+    /// <summary>「保存到当前方案」：把界面上这套参数存进选中的方案，并让它认领当前这份系统计划</summary>
     [RelayCommand(CanExecute = nameof(CanSaveToPlan))]
     private async Task SaveToCurrentPlanAsync()
     {
@@ -1053,22 +932,14 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 有方案可写、后台在线、且不在忙时才允许保存 —— 与「应用参数」不同，
-    /// 不要求有脏改动：这个入口本来就是给「没改动、但换了系统计划」用的。
-    /// </summary>
+    /// <summary>有方案可写、后台在线、不忙时可保存；不要求有脏改动。</summary>
     public bool CanSaveToPlan =>
         !IsBusy
         && IsWorkerAvailable
         && !PlanHub.SuppressWorkerInit
         && PlanHub.Power.Current is { IsLocal: false };
 
-    /// <summary>
-    /// 在模板名后面加序号，避让本机已有的同名方案。
-    /// </summary>
-    /// <remarks>
-    /// 模板名是「高性能」这类通用词，本机往往已经有一份，直接用会被后台的重名校验挡回来。
-    /// </remarks>
+    /// <summary>在模板名后面加序号，避让本机已有的同名方案</summary>
     internal string BuildUniqueSchemeName(string baseName)
     {
         bool Taken(string candidate) => Schemes.Any(
@@ -1110,10 +981,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 提交改名。名字没变就直接收起输入框，不发 IPC ——
-    /// 一次什么都没改的写请求会让系统重新加载方案，切换时画面会闪一下。
-    /// </summary>
+    /// <summary>提交改名。名字没变就直接收起输入框，不发 IPC —— 一次什么都没改的写请求会让系统重新加载方案，切换时画面会闪一下</summary>
     [RelayCommand]
     private async Task CommitRenameAsync(PowerScheme? scheme)
     {
@@ -1232,7 +1100,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    // ==================== 方案切换 ====================
+    // 方案切换
 
     private async Task SwitchSchemeAsync(PowerScheme scheme)
     {
@@ -1261,9 +1129,7 @@ public partial class PowerViewModel : ObservableObject
             _refreshTask = null;
             await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
 
-            // 方案层的「生效中」也跟着变：后台已按这份计划反查归属并记账，
-            // 这里重拉一次列表把标记取回来，否则面板会一直写着上一份。
-            // 期间屏蔽方案回填：页面此时显示的是刚读到的系统真值，不能被方案快照盖掉。
+            // 方案层的「生效中」也跟着变：后台已按这份计划反查归属并记账。
             _suppressPlanLoad = true;
 
             try
@@ -1286,7 +1152,7 @@ public partial class PowerViewModel : ObservableObject
         }
     }
 
-    // ==================== 快照 → 界面 ====================
+    // 快照 → 界面
 
     private void ApplySchemeList(PowerSchemeListPayload payload)
     {
@@ -1404,7 +1270,7 @@ public partial class PowerViewModel : ObservableObject
         IsDirty = false;
     }
 
-    // ==================== 降级 ====================
+    // 降级
 
     private void MarkAllUnsupported(string reason)
     {
@@ -1445,7 +1311,7 @@ public partial class PowerViewModel : ObservableObject
         MarkAllUnsupported("后台服务未连接");
     }
 
-    // ==================== 内部 ====================
+    // 内部
 
     private void SetValue(
         Func<PowerSet, int> read,
@@ -1512,13 +1378,7 @@ public partial class PowerViewModel : ObservableObject
         OnPropertyChanged(nameof(AspmError));
     }
 
-    /// <summary>
-    /// 截图模式下的固定方案卡片。
-    /// </summary>
-    /// <remarks>
-    /// 四个 GUID 是 Windows 内置方案，不查系统也能列出来，仅用于离屏截图
-    /// （截图模式不连 Worker）。真实运行一律以 query-power-schemes 的结果为准。
-    /// </remarks>
+    /// <summary>截图模式下的固定方案卡片</summary>
     private void SeedPlaceholderSchemes()
     {
         Schemes.Add(new PowerScheme("平衡", new Guid("381b4222-f694-41f0-9685-ff5bb260df2e")));
@@ -1553,17 +1413,10 @@ public partial class PowerScheme : ObservableObject
 
     public Guid Guid { get; }
 
-    /// <summary>
-    /// 列表末尾那条「＋ 新建方案」。它不对应系统里的任何方案，
-    /// 只是方案行里的一个固定位置 —— 单独放到 ListBox 外面的话，
-    /// 方案多了会换行，加号就跑到第二行开头去了。
-    /// </summary>
+    /// <summary>列表末尾那条「＋ 新建方案」</summary>
     public bool IsCreateNew { get; }
 
-    /// <summary>
-    /// 是不是 Windows 内置方案。内置方案不能删：删掉之后系统里
-    /// 再也没有对应模式的模板，只能 powercfg -restoredefaultschemes 重置全部电源设置。
-    /// </summary>
+    /// <summary>是不是 Windows 内置方案</summary>
     public bool IsBuiltIn => PowerSchemePresets.IsBuiltIn(Guid);
 
     /// <summary>改名输入框是否展开。内置方案也允许改名，名字只是显示层的。</summary>
@@ -1597,9 +1450,7 @@ public partial class PowerScheme : ObservableObject
     public override string ToString() => Name;
 }
 
-/// <summary>
-/// 新建弹层里的一项内置模板。
-/// </summary>
+/// <summary>新建弹层里的一项内置模板</summary>
 public partial class PresetOption : ObservableObject
 {
     public PresetOption(PowerSchemePreset preset)

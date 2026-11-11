@@ -13,10 +13,7 @@ public partial class PowerView : UserControl
         DataContext = vm;
         InitializeComponent();
 
-        // 窗口先上屏再发 IPC：查询要在管道上排在 Worker 前面那条命令之后，
-        // 放进构造函数会把首帧卡住。
-        // 外壳缓存了本页实例，切走再切回来只是重新挂进可视树 —— Loaded 会再触发一次，
-        // 那一次只做「对齐」（有未保存改动就跳过），不会重复首帧那一整套初始化。
+        // 窗口先上屏再发 IPC：查询要在管道上排在 Worker 前面那条命令之后。
         Loaded += async (_, _) =>
         {
             if (vm.IsInitialized)
@@ -45,10 +42,7 @@ public partial class PowerView : UserControl
         }
     }
 
-    /// <summary>
-    /// 点别处也算提交。误触时应按 Esc 取消 —— 丢焦即提交是这一页唯一自然的退出方式：
-    /// 卡片只有 40 高，再放一对「确定 / 取消」按钮会把名字挤没。
-    /// </summary>
+    /// <summary>点别处也算提交</summary>
     private void OnSchemeRenameLostFocus(object sender, RoutedEventArgs e)
     {
         if (sender is TextBox { DataContext: PowerScheme { IsRenaming: true } scheme }

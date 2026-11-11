@@ -15,12 +15,7 @@ public partial class ProfileOverlay : UserControl
         InitializeComponent();
     }
 
-    /// <summary>点面板空白处退出命名态；行内点击交给行自己的处理。</summary>
-    /// <remarks>
-    /// 这里是 Preview，早于控件自己的处理。点新建输入框或「创建」按钮时
-    /// 命中源不在任何方案行里，于是被当成「点了空白」→ 取消新建 ——
-    /// 表现为输入框刚点就消失、名字都打不进去。
-    /// </remarks>
+    /// <summary>点面板空白处退出命名态；行内点击交给行自己的处理</summary>
     private void OnOverlayPreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is not PlanScope scope)
@@ -50,7 +45,7 @@ public partial class ProfileOverlay : UserControl
     /// <summary>退出改名态时把输入框收起来用的标记，见 <see cref="OnRowMouseLeftButtonDown"/>。</summary>
     private static PlanScope? ScopeOf(object? dataContext) => dataContext as PlanScope;
 
-    // ==================== 行的点击：切换 ====================
+    // 行的点击：切换
 
     /// <summary>点行 = 选为当前方案；子控件的点击由 IsInteractiveChild 排除。</summary>
     private void OnRowMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -79,11 +74,7 @@ public partial class ProfileOverlay : UserControl
         scope.SelectCommand.Execute(item);
     }
 
-    /// <summary>命中源是否落在交互子控件里（按钮、输入框）。</summary>
-    /// <remarks>
-    /// 必须用 <see cref="VisualTreeHelper.GetParent"/> 而不是逻辑树 ——
-    /// 后者对非 FrameworkElement 节点（TextBox 的内部绘制对象）会抛异常。
-    /// </remarks>
+    /// <summary>命中源是否落在交互子控件里（按钮、输入框）</summary>
     internal static bool IsInteractiveChild(DependencyObject? source)
     {
         while (source is not null)
@@ -97,7 +88,7 @@ public partial class ProfileOverlay : UserControl
         return false;
     }
 
-    // ==================== 改名 ====================
+    // 改名
 
     /// <summary>重命名输入框：回车提交、ESC 取消。</summary>
     private void OnRenameKeyDown(object sender, KeyEventArgs e)
@@ -122,13 +113,7 @@ public partial class ProfileOverlay : UserControl
         }
     }
 
-    /// <summary>
-    /// 重命名输入框出现时自动聚焦并选中原名。
-    /// </summary>
-    /// <remarks>
-    /// 不聚焦的话，用户还得先点一下输入框才知道能打字 —— 看起来像「点了没反应」。
-    /// 输入框靠 Visibility 切换显示，切进来时会重新 Loaded 一次，时机正好。
-    /// </remarks>
+    /// <summary>重命名输入框出现时自动聚焦并选中原名</summary>
     private void OnRenameTextBoxLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is not TextBox box)
@@ -139,7 +124,7 @@ public partial class ProfileOverlay : UserControl
         box.BringIntoView();
     }
 
-    // ==================== 内联新建 ====================
+    // 内联新建
 
     /// <summary>新建输入框出现时聚焦并全选默认名，用户可以直接覆盖。</summary>
     private void OnCreateBoxLoaded(object sender, RoutedEventArgs e)

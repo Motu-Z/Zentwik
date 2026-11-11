@@ -4,10 +4,7 @@ using System.Windows.Controls;
 
 namespace Zentwik.UI.Controls;
 
-/// <summary>
-/// 固定格子尺寸的自适应网格：格子宽高恒定、绝不拉伸，
-/// 列数按子元素数量与可用宽度推导，整组水平居中。
-/// </summary>
+/// <summary>固定格子尺寸的自适应网格：格子宽高恒定、绝不拉伸， 列数按子元素数量与可用宽度推导，整组水平居中</summary>
 public class CoreGridPanel : Panel
 {
     public static readonly DependencyProperty CellWidthProperty =
@@ -136,10 +133,7 @@ public class CoreGridPanel : Panel
         return Math.Min(Math.Max(fit, 1), count);
     }
 
-    /// <summary>
-    /// 行数越少越优先，但必须是能整除的列数，且不能瘦长。
-    /// 找不到整除解时返回上限列数，末行自然靠左。
-    /// </summary>
+    /// <summary>行数越少越优先，但必须是能整除的列数，且不能瘦长</summary>
     private static int ResolveColumns(int count, int maxColumns)
     {
         int minRows = count >= 4 ? 2 : 1;

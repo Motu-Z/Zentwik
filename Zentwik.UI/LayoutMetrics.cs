@@ -2,14 +2,7 @@ using System.Windows;
 
 namespace Zentwik.UI;
 
-/// <summary>
-/// 全站布局契约。所有尺寸只在这里定义，XAML 通过 x:Static 引用。
-/// </summary>
-/// <remarks>
-/// 2026-11-06 起全部改用用户提供的参考 HTML 的实测值：
-/// 侧栏 72、顶栏 64、页面左右 32、面板圆角 6、行上下留白 18。
-/// 旧的中性色卡片体系（页脚条 / SettingsCard / MaxWidth 1180）已整体废弃。
-/// </remarks>
+/// <summary>全站布局契约</summary>
 public static class LayoutMetrics
 {
     /// <summary>左侧导航栏收缩态宽度（只有图标）。</summary>
@@ -36,34 +29,18 @@ public static class LayoutMetrics
     /// <summary>面板圆角。</summary>
     public const double PanelRadius = 6;
 
-    /// <summary>
-    /// 窗口最小尺寸。
-    /// 宽度按「侧栏展开」算：220 + 内容区 952，否则展开时进程表最右列会被挤出界。
-    /// </summary>
+    /// <summary>窗口最小尺寸</summary>
     public const double WindowMinWidth = 1172;
 
     public const double WindowMinHeight = 700;
 
-    /// <summary>
-    /// 进程页右侧抽屉宽度。可收起到 0。
-    /// 取 320 而非参考稿的 360：最小窗宽下 360 会把进程名列压到 150 以下。
-    /// </summary>
+    /// <summary>进程页右侧抽屉宽度</summary>
     public const double ProcessDrawerWidth = 320;
 
-    /// <summary>
-    /// 日志页右侧控制中心宽度。可收起到 0。
-    /// 与进程抽屉同宽，但日志区在最小窗宽下仍能装下「时间 + 级别 + 正文」三列。
-    /// </summary>
+    /// <summary>日志页右侧控制中心宽度</summary>
     public const double LogStatsWidth = 340;
 
-    /// <summary>
-    /// 单列表单页（调校 / 电源）的内容最大宽度。
-    /// </summary>
-    /// <remarks>
-    /// 这个值是**封顶**，不是固定宽度：内容块跟着可用宽度一起长大
-    /// （两侧各留 32），只有超过这里才停下居中。
-    /// 定死宽度在宽屏上会缩成一条，顶满又会把行标题和右侧控件拉得太远。
-    /// </remarks>
+    /// <summary>单列表单页（调校 / 电源）的内容最大宽度</summary>
     public const double FormContentWidth = 1320;
 
     /// <summary>通用页「设置列 + 关于栏」作为一个整体居中时的最大宽度。</summary>
@@ -90,16 +67,13 @@ public static class LayoutMetrics
     /// <summary>调校页矩阵列数（16 核 4×4）。</summary>
     public const int CoreColumns = 4;
 
-    /// <summary>
-    /// 矩阵整体宽度 = 列数 ×（格宽 + 间距）。
-    /// 必须限死：WrapPanel 会按可用宽度塞满，900 下会排成 6 列而不是 4 列。
-    /// </summary>
+    /// <summary>矩阵整体宽度 = 列数 ×（格宽 + 间距）</summary>
     public const double CoreMatrixWidth = CoreColumns * (CoreCellWidth + CoreCellGap);
 
     /// <summary>竖向滚动条占位：表头与行都要减掉它，否则固定列整体左移。</summary>
     public const double ScrollBarGutter = 6;
 
-    // ---- 进程表列宽：只有进程名列吃剩余宽度 ----
+    // 进程表列宽：只有进程名列吃剩余宽度
 
     public static GridLength TablePid => new(56);
 

@@ -1,18 +1,12 @@
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 异步命令的唯一收口。<c>RelayCommand</c> 是同步的，把 <c>async void</c> 直接挂上去，
-/// 异常会落在 UI 线程的同步上下文上，表现为整个进程崩掉而不是一条提示。
-/// </summary>
+/// <summary>异步命令的唯一收口</summary>
 public static class AsyncRunner
 {
     /// <summary>发起一个异步动作，不等待结果；失败转一条 Toast。</summary>
     public static void Fire(Func<Task> action) => _ = Run(action, ViewModels.ToastService.Instance.Show);
 
-    /// <summary>
-    /// 发起一个异步动作，不等待结果；失败走错误气泡，
-    /// 受「发生错误时弹出气泡」开关约束。
-    /// </summary>
+    /// <summary>发起一个异步动作，不等待结果；失败走错误气泡， 受「发生错误时弹出气泡」开关约束</summary>
     public static void FireError(Func<Task> action) => _ = Run(action, ViewModels.ToastService.Instance.ShowError);
 
     /// <summary>执行异步动作，失败转一条 Toast。</summary>

@@ -8,18 +8,7 @@ using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
 
-/// <summary>
-/// 通用（杂项）设置页。
-///
-/// <remarks>
-/// 视图只负责绑定与事件转发 —— 状态切换与颜色计算全在 SettingsViewModel。
-/// 这里的两个事件处理仅做一件事：把「用户何时提交了 HEX」转交给 ViewModel。
-///
-/// 判定「该不该展开」是 ViewModel 的职责（IsColorPanelVisible），
-/// 但「怎么展开」是纯表现层的事：Storyboard 要 TargetName 到具体元素，
-/// 而 DataTrigger 内的 Storyboard 在页面级 Style 里 TargetName 解析不可靠。
-/// 所以拆成两半：ViewModel 决定状态，View 执行动画。
-/// </remarks>
+/// <summary>通用（杂项）设置页</summary>
 public partial class SettingsView : UserControl
 {
     /// <summary>面板完全展开时的高度（一行设置行，64）。</summary>
@@ -29,31 +18,14 @@ public partial class SettingsView : UserControl
     {
         InitializeComponent();
 
-        // ============================================================
-        // 【必须在这里直接订阅 PropertyChanged】
-        //
-        // 根因：DataContext 是在 XAML 里通过
-        //   <UserControl.DataContext><vm:SettingsViewModel /></UserControl.DataContext>
-        // 赋值的 —— 这发生在 InitializeComponent() **内部**，
-        // 而 DataContextChanged 事件也是在那一刻触发的。
-        //
-        // 构造函数末尾再写 `DataContextChanged += OnDataContextChanged;`
-        // 已经**错过**了那次触发 → PropertyChanged 从未订阅 →
-        // 切换「个性 / 系统」时 IsColorPanelVisible 变了但没人知道 →
-        // 彩虹面板永远不展开。
-        //
-        // 修法：InitializeComponent() 之后立刻取当前 DataContext 订阅。
-        // DataContextChanged 仍然保留，作为「后续换 VM」的兜底。
-        // ============================================================
+        // 【必须在这里直接订阅 PropertyChanged】。
         if (DataContext is SettingsViewModel initialVm)
         {
             initialVm.PropertyChanged += OnVmPropertyChanged;
             _subscribedVm = initialVm;
         }
 
-        // 视图加载完成后再解除 HueValue 的初始化保护 ——
-        // TwoWay 绑定在加载期会把源值回写一次，
-        // 那次回写不应产生副作用（否则初始强调色会被 hsl(h,85,65) 覆盖）。
+        // 视图加载完成后再解除 HueValue 的初始化保护 。
         Loaded += (_, _) =>
         {
             if (DataContext is SettingsViewModel vm)
@@ -101,9 +73,7 @@ public partial class SettingsView : UserControl
         }
     }
 
-    /// <summary>
-    /// 按目标状态执行展开 / 收起动画。
-    /// </summary>
+    /// <summary>按目标状态执行展开 / 收起动画</summary>
     private void ApplyPanelState(bool expanded, bool animate)
     {
         if (expanded)
@@ -151,17 +121,13 @@ public partial class SettingsView : UserControl
     private bool IsPanelExpanded() =>
         DataContext is SettingsViewModel vm && vm.IsColorPanelVisible;
 
-    /// <summary>
-    /// HEX 输入框失去焦点 → 提交解析。
-    /// </summary>
+    /// <summary>HEX 输入框失去焦点 → 提交解析</summary>
     private void OnHexLostFocus(object sender, RoutedEventArgs e)
     {
         CommitHex();
     }
 
-    /// <summary>
-    /// HEX 输入框按回车 → 提交解析。
-    /// </summary>
+    /// <summary>HEX 输入框按回车 → 提交解析</summary>
     private void OnHexKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
@@ -184,14 +150,7 @@ public partial class SettingsView : UserControl
         }
     }
 
-    /// <summary>
-    /// 「源码」按钮 → 用系统默认浏览器打开项目仓库。
-    /// </summary>
-    /// <remarks>
-    /// 外部 https 链接必须自己用 Process.Start 打开
-    /// （UseShellExecute = true 让 Windows 用默认浏览器接管）。
-    /// 打不开浏览器不该让应用崩溃 —— 记一笔即可。
-    /// </remarks>
+    /// <summary>「源码」按钮 → 用系统默认浏览器打开项目仓库</summary>
     private void OnRepositoryClick(object sender, RoutedEventArgs e)
     {
         OpenUrl((DataContext as SettingsViewModel)?.RepositoryUrl);

@@ -85,14 +85,7 @@ public partial class ScenariosView : UserControl
         _hostWindow = null;
     }
 
-    /// <summary>
-    /// 点页面别处收起进程候选。
-    /// </summary>
-    /// <remarks>
-    /// Popup 用 StaysOpen=True：StaysOpen=False 会在按下鼠标的那一刻抢走捕获，
-    /// 输入框刚获得焦点、浮层刚打开就会被同一次点击判成「外部点击」关掉。
-    /// 收起交给这里，同时要放行输入框与浮层内部的点击。
-    /// </remarks>
+    /// <summary>点页面别处收起进程候选</summary>
     private void OnSurfacePreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (ViewModel is not { } vm)

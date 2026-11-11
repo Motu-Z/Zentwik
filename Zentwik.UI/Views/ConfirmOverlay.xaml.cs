@@ -7,9 +7,7 @@ using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
 
-/// <summary>
-/// 全局危险操作确认叠层。窗口级只挂一份，状态由 <see cref="ConfirmService"/> 提供。
-/// </summary>
+/// <summary>全局危险操作确认叠层</summary>
 public partial class ConfirmOverlay : UserControl
 {
     public ConfirmOverlay()
@@ -22,10 +20,7 @@ public partial class ConfirmOverlay : UserControl
         ConfirmService.Instance.PropertyChanged += OnServicePropertyChanged;
     }
 
-    /// <summary>
-    /// 叠层打开时把焦点移进卡片 —— 否则焦点还留在触发按钮上，
-    /// ESC 的按键事件不会经过本叠层。
-    /// </summary>
+    /// <summary>叠层打开时把焦点移进卡片 —— 否则焦点还留在触发按钮上， ESC 的按键事件不会经过本叠层</summary>
     private void OnServicePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(ConfirmService.IsOpen) || !ConfirmService.Instance.IsOpen)

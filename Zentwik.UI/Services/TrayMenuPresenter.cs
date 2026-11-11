@@ -6,28 +6,7 @@ using Zentwik.UI.Views;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 托盘菜单的宿主与定位。
-/// </summary>
-/// <remarks>
-/// 托盘右键菜单已改为 TrayIconService 里的 TrackPopupMenuEx（系统原生），
-/// 不再需要 WPF 自绘菜单，也就不需要这个 0x1 宿主窗口。
-/// 本类与 Views/TrayMenu.xaml 目前没有任何引用点。
-///
-/// 下面这段说明是自绘方案当时的取舍，留作记录：
-///
-/// WPF 的 Popup 依附于宿主窗口：宿主一旦隐藏或最小化，Popup 会跟着消失。
-/// 而托盘菜单恰恰要在「主窗口已收进托盘（被 Hide）」的状态下弹出，
-/// 这是直接冲突。
-///
-/// 所以这里常驻一个 1x1 的透明窗口，放在屏幕外（-32000, -32000），
-/// 肉眼完全不可见，但它给 Popup 提供了一个永远存在的 owner，
-/// 于是主窗口收不收进托盘都不影响菜单弹出。
-///
-/// Placement=AbsolutePoint 时，HorizontalOffset / VerticalOffset
-/// 就是屏幕物理像素坐标 —— 与托盘图标所在显示器无关，
-/// 多屏场景下不会跑到另一块屏。
-/// </remarks>
+/// <summary>托盘菜单的宿主与定位</summary>
 public sealed class TrayMenuPresenter : IDisposable
 {
     private readonly Window _host;
@@ -65,10 +44,7 @@ public sealed class TrayMenuPresenter : IDisposable
     /// <summary>请求退出应用。</summary>
     public event EventHandler? ExitRequested;
 
-    /// <summary>
-    /// 在鼠标所在的屏幕坐标处弹出菜单。
-    /// </summary>
-    /// <param name="screenPoint">鼠标的屏幕坐标（物理像素）。</param>
+    /// <summary>在鼠标所在的屏幕坐标处弹出菜单</summary>
     public void Open(Point screenPoint)
     {
         var size = _menu.MeasureMenuSize();
@@ -89,9 +65,7 @@ public sealed class TrayMenuPresenter : IDisposable
         _menu.Open(x, y);
     }
 
-    /// <summary>
-    /// 取鼠标所在显示器的工作区（排除任务栏）。
-    /// </summary>
+    /// <summary>取鼠标所在显示器的工作区（排除任务栏）</summary>
     private static Rect GetWorkArea(Point screenPoint)
     {
         var pt = new NativeMethods.POINT { X = (int)screenPoint.X, Y = (int)screenPoint.Y };

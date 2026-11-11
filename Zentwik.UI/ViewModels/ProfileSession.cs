@@ -10,17 +10,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 三类方案各自的会话状态：列表、当前选中、增删改名、应用。
-/// </summary>
-/// <remarks>
-/// 用户的抱怨是「改一个方案，三页全跟着变」。一个全局「当前方案」必然导致这种耦合：
-/// 切调校方案就等于换了进程页的方案条。三类各自持有一份列表与选中项之后，
-/// 三页互不相干，场景规则引用的调校方案 Id 也不受另外两类影响。
-///
-/// UI 这份只是展示缓存。任何增删改都走 IPC，成功后重拉该类的列表 ——
-/// 本地先改再等回包，会出现「界面已经改名，盘上还是旧名」的中间态。
-/// </remarks>
+/// <summary>三类方案各自的会话状态：列表、当前选中、增删改名、应用</summary>
 public sealed class PlanScope : ViewModelBase
 {
     private const int ListTimeoutMs = 3_000;
@@ -127,14 +117,7 @@ public sealed class PlanScope : ViewModelBase
     /// <summary>当前方案换人了。调校页靠它把界面切到那一份。</summary>
     public event EventHandler? CurrentChanged;
 
-    /// <summary>
-    /// 方案应用成功（系统状态已变）。电源页靠它重读系统方案与五项参数。
-    /// </summary>
-    /// <remarks>
-    /// 不能用 <see cref="CurrentChanged"/> 顶替：列表重拉时选中项会被复用，
-    /// 应用一份方案并不换人，那个事件根本不会触发 —— 系统计划已经切走了，
-    /// 界面却还高亮着原来那张卡。
-    /// </remarks>
+    /// <summary>方案应用成功（系统状态已变）</summary>
     public event EventHandler? Applied;
 
     public string CurrentName => Current?.Name ?? EmptyText;
@@ -143,15 +126,7 @@ public sealed class PlanScope : ViewModelBase
 
     private bool _hasUnsavedChanges;
 
-    /// <summary>
-    /// 页面上有改动还没落盘。
-    /// </summary>
-    /// <remarks>
-    /// 由页面把各自的脏标记推过来（调校 / 电源页各有一个）。方案面板据此
-    /// 给当前行贴「未保存」，并在用户点别的方案时拦住切换 ——
-    /// 否则切换会按新方案重载页面值，那些没保存的改动就无声消失了。
-    /// 调度页是即时写盘的，永远是 false。
-    /// </remarks>
+    /// <summary>页面上有改动还没落盘</summary>
     public bool HasUnsavedChanges
     {
         get => _hasUnsavedChanges;
@@ -193,7 +168,7 @@ public sealed class PlanScope : ViewModelBase
     /// <summary>列表是否已与 Worker 对齐。false 时可能只有本地占位。</summary>
     public bool IsSynced { get; private set; }
 
-    // ==================== 面板 / 内联新建 ====================
+    // 面板 / 内联新建
 
     private bool _isOverlayOpen;
 
@@ -219,13 +194,7 @@ public sealed class PlanScope : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 正在内联输入新方案名。
-    /// </summary>
-    /// <remarks>
-    /// 不用弹窗：改名只需要一个字段，为它打断整个界面不值。
-    /// 新建走同一套 —— 点「+ 新建」就地长出一行输入框，回车即建。
-    /// </remarks>
+    /// <summary>正在内联输入新方案名</summary>
     public bool IsCreating
     {
         get => _isCreating;
@@ -251,10 +220,7 @@ public sealed class PlanScope : ViewModelBase
 
     private string _inputError = string.Empty;
 
-    /// <summary>
-    /// 命名输入框的内联错误文案，空串表示无错。
-    /// 只驱动红边与 ToolTip，不参与保存/校验的数据流；Toast 仍照旧弹。
-    /// </summary>
+    /// <summary>命名输入框的内联错误文案，空串表示无错</summary>
     public string InputError
     {
         get => _inputError;
@@ -276,17 +242,10 @@ public sealed class PlanScope : ViewModelBase
     public RelayCommand ApplyCommand { get; }
     public RelayCommand ApplyOrSaveCommand { get; }
 
-    /// <summary>
-    /// 由页面自己完成的新建，返回新方案 Id；null 表示失败（已给过回执）。
-    /// </summary>
-    /// <remarks>
-    /// 电源方案不能空白新建：它存的是「参数要写到哪份 Windows 方案上」，
-    /// 没有真实方案可挂时后台会直接拒掉。电源页据此把「新建」变成
-    /// 「派生一份系统方案 + 登记成方案」，其余两页不需要这个钩子。
-    /// </remarks>
+    /// <summary>由页面自己完成的新建，返回新方案 Id；null 表示失败（已给过回执）</summary>
     public Func<string, Task<string?>>? CreateHandler { get; set; }
 
-    // ==================== 与 Worker 对齐 ====================
+    // 与 Worker 对齐
 
     /// <summary>拉这一类方案的列表。失败保留当前内容，不弹提示。</summary>
     public async Task InitializeAsync()
@@ -299,14 +258,7 @@ public sealed class PlanScope : ViewModelBase
         await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
     }
 
-    /// <summary>
-    /// 诊断模式下的占位方案。
-    /// </summary>
-    /// <remarks>
-    /// 截图与自检不打 IPC，列表会是空的 —— 顶栏显示「未选择调校方案」，
-    /// 页面上一片空白，既不反映真实布局也拍不出问题。
-    /// 占位只在本类里造，不写盘、不影响真实运行。
-    /// </remarks>
+    /// <summary>诊断模式下的占位方案</summary>
     public void EnsurePlaceholder()
     {
         if (!PlanHub.SuppressWorkerInit || Items.Count > 0)
@@ -386,9 +338,7 @@ public sealed class PlanScope : ViewModelBase
 
         foreach (PlanEntryPayload entry in payload.Plans ?? new List<PlanEntryPayload>())
         {
-            // 选中项还在就复用原实例。重建一个「同 Id 的新对象」会让 Current 的
-            // setter 触发 CurrentChanged，调校页据此重新加载值 —— 用户还没保存的
-            // 逐核负压会被一次「打开浮层刷列表」冲掉。场景页同理才绕开了共享集合。
+            // 选中项还在就复用原实例。
             PlanItem item = keep is not null
                             && string.Equals(keep.Id, entry.Id, StringComparison.Ordinal)
                 ? keep
@@ -425,14 +375,7 @@ public sealed class PlanScope : ViewModelBase
         RefreshApplyState();
     }
 
-    /// <summary>
-    /// 一行方案的参数摘要。
-    /// </summary>
-    /// <remarks>
-    /// 列表里只有名字时，两个「新调校」在用户眼里完全一样 —— 摘要就是
-    /// 让人不点进去也知道这份方案调了多少。数值都来自平台已带回的字段，
-    /// 不额外打 IPC。
-    /// </remarks>
+    /// <summary>一行方案的参数摘要</summary>
     private static string DescribePlan(PlanKind kind, PlanItem item)
     {
         switch (kind)
@@ -484,17 +427,14 @@ public sealed class PlanScope : ViewModelBase
         return count;
     }
 
-    /// <summary>
-    /// 不重拉列表，只按本地最新值重算当前行的摘要。
-    /// 页面应用完参数后调它：重拉列表会 <c>Items.Clear()</c>，把编辑状态冲掉。
-    /// </summary>
+    /// <summary>不重拉列表，只按本地最新值重算当前行的摘要</summary>
     public void UpdateCurrentSummary()
     {
         if (Current is not null)
             Current.Summary = DescribePlan(Kind, Current);
     }
 
-    // ==================== 增删改 ====================
+    // 增删改
 
     private void OpenOverlay()
     {
@@ -509,12 +449,7 @@ public sealed class PlanScope : ViewModelBase
         if (ReferenceEquals(Current, item))
             return;
 
-        // 有没落盘的改动时不能直接换人：换方案会按新方案重载页面值，那些改动
-        // 一条都不会提示就没了。
-        //
-        // 早先这里只弹一句「请先应用或放弃」就 return。Toast 一闪而过，用户以为
-        // 已经切过去了，接着点「应用参数」—— 结果值全落进原来那份方案里。
-        // 表现出来就是「我明明在调校 1 上改，重启后却是调校 2」。
+        // 有没落盘的改动时不能直接换人：换方案会按新方案重载页面值，那些改动。
         if (HasUnsavedChanges)
         {
             PlanItem? previous = Current;
@@ -826,15 +761,9 @@ public sealed class PlanScope : ViewModelBase
         }
     }
 
-    // ==================== 应用 / 保存 ====================
+    // 应用 / 保存
 
-    /// <summary>
-    /// 应用一份方案：只下发它自己那一块。
-    /// </summary>
-    /// <remarks>
-    /// 这是三页顶栏「应用」按钮的唯一出口。失败一定给回执 ——
-    /// 应用是不可见动作，点下去没反应用户会以为按钮坏了。
-    /// </remarks>
+    /// <summary>应用一份方案：只下发它自己那一块</summary>
     public async Task ApplyAsync(PlanItem? item)
     {
         if (item is null)
@@ -862,8 +791,6 @@ public sealed class PlanScope : ViewModelBase
             await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
 
             // 列表刷新只改「谁生效」，页面上那份系统状态还是旧的。
-            // 电源方案会顺手切走系统计划，必须让页面重读一次，否则卡片高亮
-            // 与五项参数全停在上一份上，看起来像「点了应用什么都没发生」。
             Applied?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -872,15 +799,7 @@ public sealed class PlanScope : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 把界面上正在编辑的值存进当前方案（没有当前方案时新建一份）。
-    /// </summary>
-    /// <returns>保存成功后的方案；失败返回 null。</returns>
-    /// <remarks>
-    /// 「保存」与「应用」是两件事：保存只写盘，应用才下发。
-    /// 调校页把两者合成一个动作（用户点「应用参数」就是要它生效），
-    /// 但调度与电源页必须先保存成方案再应用 —— 否则下次切回来就丢了。
-    /// </remarks>
+    /// <summary>把界面上正在编辑的值存进当前方案（没有当前方案时新建一份）</summary>
     public async Task<PlanItem?> SaveAsync(
         int[]? coreMargins = null,
         uint? fMaxMHz = null,

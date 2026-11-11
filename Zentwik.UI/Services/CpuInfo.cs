@@ -3,10 +3,7 @@ using Microsoft.Win32;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 处理器型号：侧栏字标下方那行小字。读一次注册表就固定，读不到用占位值。
-/// 界面只吃精简后的型号（去掉核数后缀与核显后缀），全名进 ToolTip。
-/// </summary>
+/// <summary>处理器型号：侧栏字标下方那行小字</summary>
 public static class CpuInfo
 {
     private const string Fallback = "Unknown CPU";
@@ -38,10 +35,7 @@ public static class CpuInfo
         return Fallback;
     }
 
-    /// <summary>
-    /// “AMD Ryzen 9 XXXX 16-Core Processor” → “AMD Ryzen 9 XXXX”
-    /// “... w/ Radeon Graphics” → 去掉核显尾巴
-    /// </summary>
+    /// <summary>“AMD Ryzen 9 XXXX 16-Core Processor” → 去掉核数与核显尾巴。</summary>
     private static string Shorten(string raw)
     {
         string s = Regex.Replace(raw, @"\s*\b\d+-Core Processor\b", string.Empty,

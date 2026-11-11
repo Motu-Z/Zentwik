@@ -19,11 +19,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        // 资源字典必须先于 InitializeComponent 就位：
-        // MainWindow.xaml 里用 {StaticResource NavItemStyle} 等样式，
-        // 解析 XAML 时就会去 Application.Resources 里找。
-        // 而字典是在 AppThemeService.Initialize 里合并的，
-        // 若 InitializeComponent 先跑，样式尚未合并 → 运行时找不到资源。
+        // 资源字典必须先于 InitializeComponent 就位。
         AppThemeService.Instance.Initialize();
 
         InitializeComponent();
@@ -44,19 +40,9 @@ public partial class MainWindow : Window
         _ = BootWorkerAsync();
     }
 
-    // ==================== Worker 连通性 ====================
+    // Worker 连通性
 
-    /// <summary>
-    /// 启动后把 Worker 拉起来并刷新状态灯。
-    /// </summary>
-    /// <remarks>
-    /// Worker 的清单是 requireAdministrator，拉起会弹 UAC；没有 PawnIO 时它还会
-    /// 在初始化里阻塞最多 60 秒。这一段必须异步跑在窗口显示之后，
-    /// 否则用户看到的是「点了图标，窗口一分钟不出来」。
-    ///
-    /// 拉不起来就把状态灯留在「未连接」，业务页各自以遮罩降级。
-    /// 这里弹窗反而会盖住界面 —— 用户点一下状态灯就能重试。
-    /// </remarks>
+    /// <summary>启动后把 Worker 拉起来并刷新状态灯</summary>
     private async Task BootWorkerAsync()
     {
         try
@@ -88,9 +74,7 @@ public partial class MainWindow : Window
         _ = ProbeWorkerAsync(force: true);
     }
 
-    /// <summary>
-    /// ping 一次 Worker 并刷新左下角状态。失败后进入退避，避免每次切页都白等 400ms。
-    /// </summary>
+    /// <summary>ping 一次 Worker 并刷新左下角状态</summary>
     private async Task ProbeWorkerAsync(bool force)
     {
         if (!force && DateTime.UtcNow < _nextProbeAt)
@@ -127,15 +111,9 @@ public partial class MainWindow : Window
         return plus > 0 ? version[..plus] : version;
     }
 
-    // ==================== 侧栏展开 / 收起 ====================
+    // 侧栏展开 / 收起
 
-    /// <summary>
-    /// 侧栏宽度过渡。展开 220 / 收缩 72，300ms 缓出。
-    /// </summary>
-    /// <remarks>
-    /// 离屏截图只能拍一帧 —— 触发器里的 Storyboard 会拍到中间态（实测拍到 196），
-    /// 放在这里才能让截图模式一次性落到终值。
-    /// </remarks>
+    /// <summary>侧栏宽度过渡</summary>
     private void AnimateSidebar(bool animate = true)
     {
         double target = ShellState.Instance.Width;
@@ -163,9 +141,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// 让侧栏立刻落到当前状态的宽度，跳过 300ms 过渡（截图 / 自检用）。
-    /// </summary>
+    /// <summary>让侧栏立刻落到当前状态的宽度，跳过 300ms 过渡（截图 / 自检用）</summary>
     public void SnapSidebar()
     {
         AnimateSidebar(animate: false);
@@ -189,7 +165,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ==================== 导航路由（Code-Behind） ====================
+    // 导航路由（Code-Behind）
 
     private readonly Dictionary<string, FrameworkElement> _viewCache = new();
 
@@ -220,18 +196,7 @@ public partial class MainWindow : Window
         Navigate(tag);
     }
 
-    /// <summary>
-    /// 离开有未保存改动的页面时拦住导航。
-    /// </summary>
-    /// <remarks>
-    /// 全项目只有三项高危操作配确认层（清全部数据 / 停用全部功能 / 清空规则）。
-    /// 切页属于高频动作，每次都弹窗比直接放行更烦人；而放行会让用户
-    /// 以为刚拖的曲线已经生效（其实只在界面上，没下发 SMU）。
-    /// 所以取中间态：**拦下来 + 告知原因**，改动本身一条都不丢，用户回来接着调。
-    ///
-    /// Checked 事件发出时单选状态已经改了。不勾回去，界面会显示「已经切到进程页」
-    /// 而内容区还停在调校页。
-    /// </remarks>
+    /// <summary>离开有未保存改动的页面时拦住导航</summary>
     private bool TryLeaveCurrentPage(string targetTag)
     {
         if (ContentHost?.Content is not FrameworkElement page)
@@ -264,9 +229,7 @@ public partial class MainWindow : Window
 
     private void Navigate(string tag)
     {
-        // 初始 IsChecked 会在 XAML 加载阶段触发 Checked，
-        // 那时 ContentHost 尚未创建（它在 XAML 里位于导航项之后）。
-        // 这种早期触发直接忽略 —— 构造函数末尾会再做一次正式路由。
+        // 初始 IsChecked 会在 XAML 加载阶段触发 Checked。
         if (ContentHost is null) return;
 
         if (!_viewCache.TryGetValue(tag, out var view))
@@ -372,7 +335,7 @@ public partial class MainWindow : Window
         return null;
     }
 
-    // ==================== 窗口控制（Code-Behind） ====================
+    // 窗口控制（Code-Behind）
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e)
     {
@@ -434,11 +397,7 @@ public partial class MainWindow : Window
 
         if (action == WindowCloseAction.ExitAll)
         {
-            // 窗口关掉之后 WPF 立刻结束进程，fire-and-forget 的关闭请求经常还没连上
-            // 管道就被砍掉 —— Worker 就留在了后台。同步发的代价是退出多几十毫秒。
-            //
-            // evenIfNotOwned：用户既然选了「界面和后台服务一起退出」，就不该因为
-            // Worker 是上次残留或开机任务拉起的而留下它。自启任务下次登录会重新拉起。
+            // 窗口关掉之后 WPF 立刻结束进程，fire-and-forget 的关闭请求经常还没连上。
             WorkerLauncher.RequestShutdown(ShutdownTimeout, evenIfNotOwned: true);
         }
 
@@ -485,7 +444,7 @@ public partial class MainWindow : Window
             : "M1.5 0.5 H8.5 A1,1 0 0 1 9.5 1.5 V8.5 A1,1 0 0 1 8.5 9.5 H1.5 A1,1 0 0 1 0.5 8.5 V1.5 A1,1 0 0 1 1.5 0.5 Z");
     }
 
-    // ==================== 最大化工作区修正 ====================
+    // 最大化工作区修正
 
     protected override void OnSourceInitialized(EventArgs e)
     {

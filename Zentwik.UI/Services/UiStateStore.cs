@@ -5,18 +5,7 @@ using System.Text.Json;
 
 namespace Zentwik.UI.Services;
 
-/// <summary>
-/// 界面自己的「上次看到哪」记忆：三类方案各自选中的那一份。
-/// </summary>
-/// <remarks>
-/// 重启后如果只按「生效方案」恢复选中，用户上回选的那份就被悄悄换掉了 ——
-/// 他会认为自己设置的东西被改了。选中的是哪一份属于界面状态，不该由后台决定。
-///
-/// 后台没有消费方：它只决定面板打开时高亮哪一行。放本地就不会因为后台不可用
-/// 或版本不一致而丢掉。
-///
-/// 文件坏了、方案被删了，都退回「按生效方案选」—— 为一条界面记忆挡住启动不值得。
-/// </remarks>
+/// <summary>界面自己的「上次看到哪」记忆：三类方案各自选中的那一份</summary>
 internal static class UiStateStore
 {
     private static readonly string DefaultFilePath = Path.Combine(

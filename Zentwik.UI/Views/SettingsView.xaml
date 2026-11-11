@@ -27,10 +27,7 @@
             <TextBlock Text="通用" Style="{StaticResource PageTitleStyle}" />
         </Border>
 
-        <!--
-            常规左右分栏：设置区吃掉剩余宽度，关于栏固定 380 贴右缘。
-            不做整组居中 —— 居中后两侧留白把右栏推到中间，反而更难看。
-        -->
+        <!-- 常规左右分栏：设置区吃剩余宽度，关于栏固定 380 贴右缘，不做整组居中 -->
         <Grid Grid.Row="1" Background="{DynamicResource WindowBgBrush}">
             <Grid>
                 <Grid.ColumnDefinitions>

@@ -8,17 +8,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 调校页视图模型：逐核 CO + FMax 的唯一状态与唯一出口。
-/// </summary>
-/// <remarks>
-/// 「应用参数」= 一条 save-plan（写盘 + 下发），顺序由 Worker 保证。
-/// 拆成「UI 先写盘、再发 apply-tuning」两步的话，中间任一步失败都会用旧值写硬件。
-///
-/// 「后台服务没连上」「连上了但 SMU 不可写」「可写」必须分开：前两种在界面上
-/// 都是整页遮罩，但文案不同。把「Worker 没起来」说成「请安装 PawnIO 驱动」，
-/// 用户会去重装驱动，永远修不好。
-/// </remarks>
+/// <summary>调校页视图模型：逐核 CO + FMax 的唯一状态与唯一出口</summary>
 public partial class TuningViewModel : ObservableObject
 {
     private const string SmuUnavailableHint = "请确保已安装 PawnIO 驱动并以管理员权限运行";
@@ -35,13 +25,7 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>诊断用：<c>--smu=off</c> 强制整页不可用。</summary>
     public static bool ForceSmuOffline { get; set; }
 
-    /// <summary>
-    /// 诊断用：<c>--screenshot</c> 时不发 IPC。
-    /// </summary>
-    /// <remarks>
-    /// 离屏截图是一帧定格：查询 2 秒后才返回的遮罩 / 真实数值会随机出现在半路，
-    /// 同一个命令两次拍出不同的图。截图模式只验视觉，数据一律走占位值。
-    /// </remarks>
+    /// <summary>诊断用：--screenshot 时不发 IPC</summary>
     public static bool SuppressWorkerInit { get; set; }
 
     /// <summary>处理器型号。与侧栏同源，只在关于页与诊断里用。</summary>
@@ -72,14 +56,7 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>逐核偏移项。长度 = <see cref="CpuCoreCount"/>，核数变了整段重建。</summary>
     public ObservableCollection<CoreMarginItem> CoreMargins { get; } = new();
 
-    /// <summary>
-    /// 逐核 CO 的上下限。
-    /// </summary>
-    /// <remarks>
-    /// 取 <see cref="SmuReader.CoMin"/> / <see cref="SmuReader.CoMax"/>：
-    /// Worker 的写入校验用的就是这一份。界面另写一个 -50 的话，
-    /// 改边界时漏掉一处，用户就能把值调进必被拒的区间。
-    /// </remarks>
+    /// <summary>逐核 CO 的上下限</summary>
     public int CoreMarginMinimum => SmuReader.CoMin;
 
     public int CoreMarginMaximum => SmuReader.CoMax;
@@ -90,17 +67,7 @@ public partial class TuningViewModel : ObservableObject
     [ObservableProperty]
     private int _fMaxMHz;
 
-    /// <summary>
-    /// FMax 输入框的文本。
-    /// </summary>
-    /// <remarks>
-    /// 直接把 TextBox 双向绑到 int，用户敲第一个字符时 WPF 的转换器就会失败并拒绝输入。
-    /// 这里用文本双向绑定、在本类里解析，XAML 侧用 <c>UpdateSourceTrigger=LostFocus</c>：
-    /// 输入过程中不夹值，离开输入框时一次性解析 + 夹取。
-    ///
-    /// 用 LostFocus 而不是 PropertyChanged，是因为上限只有四位 ——
-    /// 逐键提交会把用户正在输入的 "5" 立刻夹成上限，光标跟着跳，根本敲不完。
-    /// </remarks>
+    /// <summary>FMax 输入框的文本</summary>
     public string FMaxText
     {
         get => _fMaxText;
@@ -125,14 +92,7 @@ public partial class TuningViewModel : ObservableObject
 
     private string _fMaxText = string.Empty;
 
-    /// <summary>
-    /// 可调下限（MHz）。由 Worker 随快照给出。
-    /// </summary>
-    /// <remarks>
-    /// 两个真源会出事：驱动侧收紧了写入范围，界面还按旧常量放着，
-    /// 用户拖到那个位置点应用，整组值必然被拒。
-    /// 快照给 0（未知）时退到 <see cref="SmuReader.FMaxMin"/> 兜底。
-    /// </remarks>
+    /// <summary>可调下限（MHz）</summary>
     [ObservableProperty]
     private int _fMaxMinimum = (int)SmuReader.FMaxMin;
 
@@ -151,25 +111,13 @@ public partial class TuningViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private bool _isDirty;
 
-    /// <summary>回读 / 取消是否可点：只受「正在通信」限制。</summary>
-    /// <remarks>
-    /// 刻意不跟 <see cref="SmuAvailable"/> 联动。SMU 不可用时遮罩挡住内容，
-    /// 但顶栏的「回读」是用户唯一的自救入口 —— 装好驱动、重启后台之后点它重读。
-    /// 把回读也禁用掉，界面就变成了「出错之后无法恢复」。
-    /// </remarks>
+    /// <summary>回读 / 取消是否可点：只受「正在通信」限制</summary>
     public bool CanOperate => !IsBusy;
 
     /// <summary>应用参数是否可点：有改动、SMU 可写、且当前没有正在跑的通信。</summary>
     public bool CanSave => !IsBusy && SmuAvailable && IsDirty;
 
-    /// <summary>
-    /// 界面挂载期间冻结脏标记。
-    /// </summary>
-    /// <remarks>
-    /// 输入框绑定文本入口时，WPF 会先读一次 getter 再把同一个值写回 setter。
-    /// 这一下写回发生在构造函数之后，会被当成用户改动 ——
-    /// 表现就是页面一打开就挂着「取消」。界面在 Loaded 之后再解冻。
-    /// </remarks>
+    /// <summary>界面挂载期间冻结脏标记</summary>
     public bool FreezeDirty { get; set; }
 
     /// <summary>上一次「已生效」的一组值。「取消」回到这里，「回读」后同步更新。</summary>
@@ -218,11 +166,7 @@ public partial class TuningViewModel : ObservableObject
             OnCurrentProfileChanged);
     }
 
-    /// <summary>
-    /// 与 Worker 对一次数：SMU 是否可写、硬件当前值、当前方案存的值。
-    /// 只执行一次；重复调用直接返回（切页回来不会重复打硬件）。
-    /// </summary>
-    /// <remarks>失败折算成界面状态，不外抛。</remarks>
+    /// <summary>与 Worker 对一次数：SMU 是否可写、硬件当前值、当前方案存的值</summary>
     public async Task InitializeAsync()
     {
         if (_syncedWithWorker)
@@ -249,17 +193,7 @@ public partial class TuningViewModel : ObservableObject
     private async Task ReadbackAsync()
         => await RefreshFromWorkerAsync(notifyOnFailure: true, reloadPlan: false).ConfigureAwait(true);
 
-    /// <summary>
-    /// 应用参数：写进当前方案并立即下发。
-    /// </summary>
-    /// <remarks>
-    /// 只有 Worker 明确回 <c>Success = true</c> 才清脏标记。skipped / failed
-    /// （驱动没就绪、某一核被拒）都保留脏标记 —— 用户改的值还在，
-    /// 重试一次就行，不必重新输入。
-    ///
-    /// Worker 那边的 save-plan 已经封装了「写 store → 下发 → 回读校验」。
-    /// UI 再写一遍，两边就可能各持一份，重启后以谁为准说不清。
-    /// </remarks>
+    /// <summary>应用参数：写进当前方案并立即下发</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task ApplyAsync()
     {
@@ -346,14 +280,7 @@ public partial class TuningViewModel : ObservableObject
     [RelayCommand]
     private void StepFMaxDown() => FMaxMHz = Math.Max(FMaxMinimum, FMaxMHz - FMaxStepMHz);
 
-    /// <summary>
-    /// 与 Worker 对数，再把当前方案的值叠上去。三态在这里收敛，
-    /// 界面只认 <see cref="SmuAvailable"/> 与两条文案。
-    /// </summary>
-    /// <param name="notifyOnFailure">
-    /// 用户主动点「回读」时为 true：失败要给回执（Toast），否则点下去毫无反应。
-    /// 初始化时为 false：首屏直接以遮罩表达状态，不用再叠一个 Toast。
-    /// </param>
+    /// <summary>与 Worker 对数，再把当前方案的值叠上去</summary>
     private async Task RefreshFromWorkerAsync(bool notifyOnFailure, bool reloadPlan = true)
     {
         // 初始化与「切方案」可能同时触发，共用同一次刷新，避免遮罩连闪两下。
@@ -489,14 +416,7 @@ public partial class TuningViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 收下 Worker 给的可写区间。
-    /// </summary>
-    /// <remarks>
-    /// 当前的 FMax 一定得落在区间里：区间来自驱动，而硬件上跑着的值
-    /// 可能是用别的工具写进去的。区间不包含它的话，滑块会把手柄夹到边界，
-    /// 用户看到的数字和他刚才读到的不是一个 —— 而他什么都没动。
-    /// </remarks>
+    /// <summary>收下 Worker 给的可写区间</summary>
     private void ApplyFMaxRange(uint min, uint max)
     {
         int low = min > 0 ? (int)min : (int)SmuReader.FMaxMin;
@@ -519,10 +439,7 @@ public partial class TuningViewModel : ObservableObject
         FMaxMaximum = high;
     }
 
-    /// <summary>
-    /// 把当前方案存的调校值叠到界面上。
-    /// </summary>
-    /// <returns>方案带调校值时为 true；白纸方案返回 false，界面保持硬件值。</returns>
+    /// <summary>把当前方案存的调校值叠到界面上</summary>
     private bool LoadProfileValues()
     {
         PlanItem? item = PlanHub.Tuning.Current;
@@ -557,13 +474,7 @@ public partial class TuningViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 读不到硬件时的兜底：先试当前方案的值，再退回盘上上一次保存的值。
-    /// </summary>
-    /// <remarks>
-    /// 只填空、不清零：两处都没值时保持界面原样。
-    /// 把值清成 0 会让用户以为「我的调校被清掉了」，而实际上什么都没发生。
-    /// </remarks>
+    /// <summary>读不到硬件时的兜底：先试当前方案的值，再退回盘上上一次保存的值</summary>
     private async Task FallbackToStoredValuesAsync()
     {
         if (LoadProfileValues())
@@ -671,11 +582,7 @@ public partial class TuningViewModel : ObservableObject
         return item;
     }
 
-    /// <summary>
-    /// 硬件回读里 <see cref="int.MinValue"/> 表示「该核读失败 / 禁用」，不是「偏移 0」。
-    /// 值本身折成 0 参与夹取，另用不可用标记把它和真正的 0 区分开；
-    /// 下发时再还原成 <see cref="int.MinValue"/>，让 Worker 跳过这一核。
-    /// </summary>
+    /// <summary>硬件回读里 int.MinValue 表示「该核读失败 / 禁用」，不是「偏移 0」</summary>
     private static int NormalizeMargin(int value)
         => value == int.MinValue ? 0 : Math.Clamp(value, SmuReader.CoMin, SmuReader.CoMax);
 
@@ -774,13 +681,7 @@ public partial class TuningViewModel : ObservableObject
 
     partial void OnSmuAvailableChanged(bool value) => ApplyCommand.NotifyCanExecuteChanged();
 
-    /// <summary>
-    /// 没有存档时的占位值。
-    /// </summary>
-    /// <remarks>
-    /// 刻意不用全 0：全 0 看不出等宽数字在窄框里会不会挤，也看不出负号对不齐。
-    /// 首次与 Worker 对数后会被真实值整段替换。
-    /// </remarks>
+    /// <summary>没有存档时的占位值</summary>
     private static int[] BuildSeed(int coreCount)
     {
         int[] template = { -18, -22, -17, -25, -26, -24, -29, -33, -13, -20, -13, -20, -11, -17, -14, -17 };
@@ -796,13 +697,7 @@ public partial class TuningViewModel : ObservableObject
     }
 }
 
-/// <summary>
-/// 单个核心的 CO 偏移项。
-/// </summary>
-/// <remarks>
-/// 逐核是集合驱动：核数一变，格子数跟着变，XAML 一行都不用改。
-/// 把 16 组控件写死在 XAML 里，遇到 12 核或 24 核就得改文档结构。
-/// </remarks>
+/// <summary>单个核心的 CO 偏移项</summary>
 public partial class CoreMarginItem : ObservableObject
 {
     /// <summary>该核读不到值时的占位字符（与数字等宽）。</summary>
@@ -820,12 +715,7 @@ public partial class CoreMarginItem : ObservableObject
 
     public string DisplayName => $"核心 {Index}";
 
-    /// <summary>
-    /// 该核的值读不到（读取失败 / 被禁用）。
-    /// </summary>
-    /// <remarks>
-    /// 不能折成 0：0 是「不偏移」，是一个看起来正常、实际会改变行为的假值。
-    /// </remarks>
+    /// <summary>该核的值读不到（读取失败 / 被禁用）</summary>
     public bool IsUnavailable
     {
         get => _isUnavailable;
@@ -843,11 +733,7 @@ public partial class CoreMarginItem : ObservableObject
 
     public bool IsReadOnly => IsUnavailable;
 
-    /// <summary>该核的偏移值。赋值自动夹进 [最小值, 最大值]。</summary>
-    /// <remarks>
-    /// 夹取放在 setter 里，而不是只放在步进命令里：文本框、步进按钮、外部赋值
-    /// 三条入口都要遵守同一个区间，分散着写必然漏掉一条。
-    /// </remarks>
+    /// <summary>该核的偏移值</summary>
     public int Margin
     {
         get => _margin;
@@ -869,14 +755,7 @@ public partial class CoreMarginItem : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 输入框的文本。
-    /// </summary>
-    /// <remarks>
-    /// CO 值有负号（-25）。把 TextBox 直接双向绑到 int，用户敲 "-" 的那一刻
-    /// WPF 的转换器就失败，负号根本进不了框。所以这里绑定 string 自己解析：
-    /// 逐键提交，输入中的 "-" 解析失败就原样留着，等用户补齐数字（"-25"）再夹取。
-    /// </remarks>
+    /// <summary>输入框的文本</summary>
     public string EditText
     {
         get => IsUnavailable ? UnavailableText : _editText;

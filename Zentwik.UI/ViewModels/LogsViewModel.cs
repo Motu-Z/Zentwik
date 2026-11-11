@@ -18,14 +18,7 @@ public enum LogFilterMode
     Error,
 }
 
-/// <summary>
-/// 日志页。数据源是 Worker 的 <c>snapshot-logs</c>（最近 50 条，行文本），
-/// 不做本地落盘 —— 日志的主副本在 Worker 那边，界面只负责显示与筛选。
-/// </summary>
-/// <remarks>
-/// 管道是「一个连接一条消息」，没有推送通道。要做实时日志得再加一条长连接协议，
-/// 而日志页的价值在于「出问题后回来看」，不在于盯着滚动。手动刷新够用。
-/// </remarks>
+/// <summary>日志页。数据源是 Worker 的 snapshot-logs（最近 50 条），不做本地落盘。</summary>
 public sealed class LogsViewModel : ViewModelBase
 {
     /// <summary>诊断 / 截图模式下不连后台，构造时直接铺种子。</summary>
@@ -38,11 +31,7 @@ public sealed class LogsViewModel : ViewModelBase
     private LogFilterMode _filterMode = LogFilterMode.All;
     private string _searchText = string.Empty;
 
-    /// <summary>
-    /// 日志落盘目录。与 Worker 侧 <c>AppPaths.Logs</c> 必须一致：
-    /// 这里曾经写成 LocalApplicationData，点「打开目录」打开的是一个空目录，
-    /// 而真正的日志在 Roaming 下 —— 用户只会以为日志没写。
-    /// </summary>
+    /// <summary>日志落盘目录</summary>
     public static string LogDirectory { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Zentwik",
@@ -51,10 +40,7 @@ public sealed class LogsViewModel : ViewModelBase
     /// <summary>右栏「文件信息」用。静态属性走不了实例绑定，这里透出一份。</summary>
     public string LogFolderPath => LogDirectory;
 
-    /// <summary>
-    /// 右栏显示用的路径。完整路径在 340 宽的栏里会折成两行，
-    /// AppData 前缀缩成 <c>%AppData%</c> 正好一行；完整路径放在 ToolTip。
-    /// </summary>
+    /// <summary>右栏显示用的路径</summary>
     public string LogFolderDisplay
     {
         get
@@ -67,14 +53,11 @@ public sealed class LogsViewModel : ViewModelBase
         }
     }
 
-    // ==================== 右栏折叠 ====================
+    // 右栏折叠
 
     private bool _isStatsOpen = true;
 
-    /// <summary>
-    /// 右侧控制中心是否展开。宽度动画在 code-behind —— 触发器 Storyboard 会被
-    /// 离屏截图拍到中间帧，code-behind 可以直接落到终值。
-    /// </summary>
+    /// <summary>右侧控制中心是否展开</summary>
     public bool IsStatsOpen
     {
         get => _isStatsOpen;
@@ -98,7 +81,7 @@ public sealed class LogsViewModel : ViewModelBase
         private set => SetProperty(ref _logFolderSizeText, value);
     }
 
-    // ==================== 筛选 ====================
+    // 筛选
 
     public LogFilterMode FilterMode
     {
@@ -146,7 +129,7 @@ public sealed class LogsViewModel : ViewModelBase
         set { if (SetProperty(ref _searchText, value)) ApplyFilter(); }
     }
 
-    // ==================== 统计 ====================
+    // 统计
 
     public int TotalCount => Entries.Count;
     public int InfoCount => Entries.Count(e => e.Level == "INFO");
@@ -166,7 +149,7 @@ public sealed class LogsViewModel : ViewModelBase
 
     public string LatestIssueMessage => LatestIssue?.Message ?? string.Empty;
 
-    // ==================== 命令 ====================
+    // 命令
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand ClearCommand { get; }
@@ -200,7 +183,7 @@ public sealed class LogsViewModel : ViewModelBase
         await RefreshAsync().ConfigureAwait(true);
     }
 
-    // ==================== 数据链路 ====================
+    // 数据链路
 
     private async Task RefreshAsync()
     {
@@ -254,13 +237,7 @@ public sealed class LogsViewModel : ViewModelBase
         ApplyFilter();
     }
 
-    /// <summary>
-    /// 解析 <c>snapshot-logs</c> 的行文本：<c>yyyy-MM-ddTHH:mm:ss.fff|级别|消息</c>。
-    /// </summary>
-    /// <remarks>
-    /// 用 <c>Split('|', 3)</c> 而不是全切：消息正文里完全可能出现 <c>|</c>
-    /// （比如命令行、正则），切成四段以上会把后半句吞掉。
-    /// </remarks>
+    /// <summary>解析 的行文本：yyyy-MM-ddTHH:mm:ss.fff|级别|消息</summary>
     internal static List<LogEntryItem> Parse(string? payload)
     {
         List<LogEntryItem> items = new();
@@ -289,10 +266,7 @@ public sealed class LogsViewModel : ViewModelBase
         return items;
     }
 
-    /// <summary>
-    /// 时间只显示时分秒（当天）或月日 + 时分（跨天）—— 列表宽度固定 110，
-    /// 塞完整 ISO 时间会把正文挤掉。
-    /// </summary>
+    /// <summary>时间只显示时分秒（当天）或月日 + 时分（跨天）—— 列表宽度固定 110， 塞完整 ISO 时间会把正文挤掉</summary>
     private static string FormatTime(string raw)
     {
         if (!DateTime.TryParseExact(
@@ -310,7 +284,7 @@ public sealed class LogsViewModel : ViewModelBase
             : time.ToString("MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
-    // ==================== 诊断 ====================
+    // 诊断
 
     private void CopyDiagnostics()
     {
@@ -326,12 +300,7 @@ public sealed class LogsViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 诊断信息 = 环境 + 版本 + 后台连通性 + 统计 + 日志尾部。
-    ///
-    /// 用户在反馈里最常缺的就是这几项，让他自己一项项去翻远不如一次复制。
-    /// 这里**不**包含用户名、路径以外的机器信息。
-    /// </summary>
+    /// <summary>诊断信息 = 环境 + 版本 + 后台连通性 + 统计 + 日志尾部</summary>
     public string BuildDiagnostics()
     {
         StringBuilder builder = new();
@@ -384,10 +353,7 @@ public sealed class LogsViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 重算日志目录占用。只统计顶层文件 —— 日志按天分文件，没有子目录。
-    /// 单个文件取长度失败就跳过：文件正在被 Worker 写入时可能锁住。
-    /// </summary>
+    /// <summary>重算日志目录占用</summary>
     private void UpdateFolderSize()
     {
         try
@@ -427,7 +393,7 @@ public sealed class LogsViewModel : ViewModelBase
         _ => $"{bytes / (1024.0 * 1024.0):0.0} MB",
     };
 
-    // ==================== 内部 ====================
+    // 内部
 
     private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 

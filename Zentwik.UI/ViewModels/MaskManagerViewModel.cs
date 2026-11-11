@@ -6,17 +6,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>
-/// 自定义掩码管理器。
-///
-/// 网格的核数 / CCD 排布来自 <c>query-cpu-topology</c>，左栏列表与保存结果来自
-/// <c>query-masks</c> / <c>save-mask</c> / <c>delete-mask</c>。
-/// 界面不持有 <c>masks.json</c> 的任何副本：它在 Worker 手里是唯一主副本，
-/// 界面直读的话，下次后台写盘就会把界面看到的那份覆盖掉。
-///
-/// 截图 / 自检没有 Worker（<see cref="ProcessViewModel.SuppressWorkerInit"/>），
-/// 用一个固定形状的拓扑与两条示例掩码保证界面可画、可断言。这些数据只在诊断路径出现。
-/// </summary>
+/// <summary>自定义掩码管理器</summary>
 public sealed class MaskManagerViewModel : ViewModelBase
 {
     private const int DemoCores = 16;
@@ -85,10 +75,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
     /// <summary>编辑器滑入 / 滑出的方向由视图层消费。</summary>
     public event Action<bool>? EditingChanged;
 
-    /// <summary>
-    /// 直接进编辑器编辑当前选中项。给 <c>--mask</c> 截图用 ——
-    /// 截图模式没有鼠标，点不到列表卡片。
-    /// </summary>
+    /// <summary>直接进编辑器编辑当前选中项</summary>
     public void EditSelected()
     {
         if (SelectedMask is not null)
@@ -101,10 +88,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
     private SavedMaskItem? _selectedMask;
 
-    /// <summary>
-    /// 当前选中的掩码。这里只维护选中标记 ——
-    /// 把内容搬进编辑器的动作归 <see cref="BeginEdit"/>，否则「重建列表」也会顺带改编辑器。
-    /// </summary>
+    /// <summary>当前选中的掩码</summary>
     public SavedMaskItem? SelectedMask
     {
         get => _selectedMask;
@@ -436,12 +420,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
         SelectedCoreCount = count;
     }
 
-    /// <summary>
-    /// 按后台拓扑重建网格。
-    ///
-    /// 探测不到 SMT 宽度时一个逻辑处理器就是一个格子。位索引仍然等于逻辑处理器序号，
-    /// 勾出来的掩码照样正确，只是少了 T0/T1 这一层分组 —— 这比按「每核两线程」硬猜安全。
-    /// </summary>
+    /// <summary>按后台拓扑重建网格</summary>
     private void BuildGrid(int cores, int coresPerCcd, int threadsPerCore)
     {
         cores = Math.Max(1, cores);

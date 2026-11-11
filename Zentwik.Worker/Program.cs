@@ -14,25 +14,12 @@ using Zentwik.Core.Services;
 
 namespace Zentwik.Worker
 {
-    /// <summary>
-    /// Worker 进程入口。
-    ///
-    ///   1. 抢单实例互斥体（抢不到说明已有 Worker 在跑，直接退）；
-    ///   2. 挂全局异常兜底（崩溃现场必须落盘，因为 WinExe 没有控制台可看）；
-    ///   3. 建宿主、注册 Core 服务与两个 HostedService；
-    ///   4. 跑起来，退出时释放互斥体。
-    ///
-    /// Worker 的职责边界是「常驻 + 听管道 + 执行提权操作」。
-    /// 启动顺序（Load → Apply → 探测 → 监听）属于宿主服务的职责，
-    /// 放在 Main 里会让「先 Load 谁、后 Start 谁」散落在两个文件里。
-    /// </summary>
+    /// <summary>Worker 进程入口：抢单实例互斥体 → 挂全局异常兜底 → 建宿主 → 跑起来。</summary>
     internal static class Program
     {
         private static int Main(string[] args)
         {
-            // ---------- 单实例 ----------
-            // 互斥体名带 Global\ 前缀（见 WorkerPipeContract.WorkerMutexName）：
-            // 跨会话可见，远程桌面另开一个会话时不会拉起第二个 Worker 去抢同一块 SMU。
+            // 单实例。
             Mutex mutex = new(
                 initiallyOwned: true,
                 name: WorkerPipeContract.WorkerMutexName,
@@ -51,16 +38,7 @@ namespace Zentwik.Worker
                 AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
                 TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-                // ---------- 参数过滤 ----------
-                // --open-ui / --tray 是本进程自己的开关，必须在交给 Host 之前摘掉：
-                // Host.CreateApplicationBuilder(args) 会把参数喂给 CommandLineConfigurationProvider，
-                // 让一个业务开关混进配置系统，等于把一个进程参数变成一份隐式配置。
-                // （批次五实测：裸开关 -silent 并不会让 Worker 崩，所以这里不是为了「防崩」，
-                //   而是为了让参数归属清晰 —— 谁解析，谁消费。）
-                //
-                // 同时出现时以 --open-ui 为准：「打开窗口」是更明确、用户感知更强的意图，
-                // 而 --tray 只表达「别开窗口」。计划任务不会同时写两个，这条规则防的是
-                // 用户手工敲错命令时得到一个既不弹窗也不建托盘的后台进程。
+                // 参数过滤。
                 bool openUi = args.Contains(AutoStartService.OpenUiArgument);
                 bool tray = args.Contains(AutoStartService.TrayArgument);
 
@@ -86,13 +64,7 @@ namespace Zentwik.Worker
                 if (Debugger.IsAttached)
                     Console.WriteLine("Worker 已启动，调试模式");
 
-                // ---------- 登录后拉起 UI ----------
-                // 用 ApplicationStarted 而不是在 Run() 之前直接起：
-                // ApplicationStarted 在所有 IHostedService.StartAsync 完成之后触发，
-                // 此时管道监听已经就位，UI 一起来就能连上，不会看到「正在连接」再等一轮。
-                //
-                // Run() 内部自己会调 StartAsync()，先 Start 再 Run 会抛
-                // InvalidOperationException（Host already started）。
+                // 登录后拉起 UI。
                 if (openUi || tray)
                 {
                     ILogService uiLog = host.Services.GetRequiredService<ILogService>();
@@ -134,21 +106,7 @@ namespace Zentwik.Worker
             return 0;
         }
 
-        /// <summary>
-        /// 第二个实例退出前留一行记录。
-        ///
-        /// 它写的是完整异常堆栈。这里只是「已经有实例占着」这一条事实，
-        /// 没有异常，写堆栈会让人误以为崩过一次。
-        ///
-        /// 本分支在 Host.CreateApplicationBuilder 之前执行，AppPaths 还没构造，
-        /// 所以拿不到 IAppPaths —— 只能自己拼 %AppData%\Zentwik。
-        /// 而首次运行时该目录可能不存在，File.AppendAllText 会抛
-        /// DirectoryNotFoundException；此刻全局异常处理器尚未注册，
-        /// 后果是「第二个实例崩溃退出」而不是静默退出，直接违背单实例设计。
-        ///
-        /// 单实例的承诺是「静默退出」，不是「一定写得出日志」。
-        /// 目录只读、磁盘满、被安全软件拦截时，写日志失败不该升级成崩溃。
-        /// </summary>
+        /// <summary>第二个实例退出前留一行记录</summary>
         private static void WriteAlreadyRunningNote()
         {
             try
@@ -174,10 +132,7 @@ namespace Zentwik.Worker
         /// <summary>UI 可执行文件名。</summary>
         private const string UiExeName = "Zentwik.UI.exe";
 
-        /// <summary>
-        /// 把 UI 叫起来。任何失败都只记日志、返回 false，不抛也不退出。
-        /// </summary>
-        /// <param name="extraArgs">null = 正常开窗口；TrayArgument = 只建托盘。</param>
+        /// <summary>把 UI 叫起来</summary>
         internal static bool LaunchUi(ILogService log, string? extraArgs)
         {
             try
@@ -189,9 +144,7 @@ namespace Zentwik.Worker
                     return false;
                 }
 
-                // Worker 是提权进程，子进程继承提权令牌 —— 不弹 UAC（事实卡 §5.2 第 2 行）。
-                // UseShellExecute=false：不经过 shell，也就不会因为 UI 的 asInvoker 清单
-                // 再走一次提权判定（那条路会弹 UAC，而这里恰恰不该弹）。
+                // Worker 是提权进程，子进程继承提权令牌 —— 不弹 UAC（。
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = uiPath,
@@ -224,10 +177,7 @@ namespace Zentwik.Worker
             return null;
         }
 
-        /// <summary>
-        /// 搜索顺序：先发布/输出目录（两个 exe 同目录），再开发构建目录
-        /// （从 Zentwik.Worker/bin/&lt;Config&gt;/net10.0-windows 往上四级到仓库根）。
-        /// </summary>
+        /// <summary>搜索顺序：先输出目录（两个 exe 同目录），再开发构建目录。</summary>
         private static IEnumerable<string> EnumerateUiPaths()
         {
             yield return Path.Combine(AppContext.BaseDirectory, UiExeName);
@@ -238,10 +188,7 @@ namespace Zentwik.Worker
                 UiExeName));
         }
 
-        /// <summary>
-        /// 未处理异常兜底。处理器自身绝不能再抛 —— 否则真正的崩溃原因会被
-        /// 「兜底时的崩溃」顶掉，日志里只剩一条毫无信息量的 CLR 终止记录。
-        /// </summary>
+        /// <summary>未处理异常兜底</summary>
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             try

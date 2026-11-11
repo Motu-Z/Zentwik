@@ -9,18 +9,7 @@ using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI;
 
-/// <summary>
-/// 离屏截图工具。
-/// </summary>
-/// <remarks>
-/// 用 WPF 自己的 RenderTargetBitmap 渲染，而不是抓屏幕：
-/// 抓屏会受窗口遮挡、桌面缩放、多显示器影响，结果不可复现；
-/// RenderTargetBitmap 渲染的是控件树，结果只取决于布局与资源。
-///
-/// RenderTargetBitmap 渲染 Window 会得到空白 —— Window 不是普通的
-/// 布局容器，它的背景由系统合成。所以这里取 window.Content 作为渲染目标，
-/// 并把 Window 自身的 Background 垫在下面，保证截图包含窗口底色。
-/// </remarks>
+/// <summary>离屏截图工具</summary>
 internal static class ScreenshotHelper
 {
     public static void Capture(Window window, string outputPath)
@@ -67,15 +56,7 @@ internal static class ScreenshotHelper
         encoder.Save(stream);
     }
 
-    /// <summary>
-    /// 离屏截图 + 叠加一个 ToolTip 预览。
-    /// </summary>
-    /// <remarks>
-    /// ToolTip 真实运行时挂在 Popup 里 —— Popup 是独立的顶层窗口，
-    /// 不在视觉树中，RenderTargetBitmap 根本拍不到它。
-    /// 所以这里手工实例化一个 ToolTip，Measure/Arrange 让它套用模板，
-    /// 再单独渲染并贴到截图的左下角，用来校验全局 ToolTip 样式的实际观感。
-    /// </remarks>
+    /// <summary>离屏截图 + 叠加一个 ToolTip 预览</summary>
     public static void CaptureWithTooltip(Window window, string outputPath)
     {
         window.UpdateLayout();
@@ -104,9 +85,7 @@ internal static class ScreenshotHelper
             bitmap.Render(content);
         }
 
-        // ---- ToolTip 预览 ----
-        // 给一个有限宽度：Measure(∞) 时 ToolTip 的 DesiredSize.Width 可能是 0，
-        // 文字会被压成一条竖条。
+        // ToolTip 预览。
         var tip = new ToolTip { Content = "在浏览器中打开项目仓库" };
         tip.Measure(new Size(320, double.PositiveInfinity));
         tip.Arrange(new Rect(0, 0, 320, tip.DesiredSize.Height));
@@ -151,15 +130,7 @@ internal static class ScreenshotHelper
         encoder.Save(stream);
     }
 
-    /// <summary>
-    /// 离屏渲染托盘图标预览。
-    /// </summary>
-    /// <remarks>
-    /// 两行：深色任务栏底 + 亮色图标 / 浅色任务栏底 + 暗色图标。
-    /// 每行放 16 / 22 / 32 三个**物理像素**尺寸 ——
-    /// 16 对应 100% 缩放，22 对应 140%（本机），32 对应 200%。
-    /// 矢量渲染，三个尺寸都是 1:1 落点，不该出现任何缩放模糊。
-    /// </remarks>
+    /// <summary>离屏渲染托盘图标预览</summary>
     public static void CaptureTrayIcon(string outputPath)
     {
         var theme = AppThemeService.Instance;
@@ -239,15 +210,7 @@ internal static class ScreenshotHelper
         encoder.Save(stream);
     }
 
-    /// <summary>
-    /// 离屏截图 + 叠加一个「方案面板」预览。
-    /// </summary>
-    /// <remarks>
-    /// 方案面板真实运行时挂在 Popup 里。Popup 是独立的顶层窗口，
-    /// 不在视觉树中，RenderTargetBitmap 拍不到（与 ToolTip 同一个坑）。
-    /// 这里手工实例化一份、套上卡片外框单独渲染，再贴到页头方案条下方，
-    /// 用来校验面板的实际排版。
-    /// </remarks>
+    /// <summary>离屏截图 + 叠加一个「方案面板」预览</summary>
     public static void CaptureWithPopover(Window window, string outputPath)
     {
         window.UpdateLayout();
@@ -276,9 +239,7 @@ internal static class ScreenshotHelper
             bitmap.Render(content);
         }
 
-        // ---- 方案面板预览 ----
-        // 用一份临时的调校会话摆出「生效中 / 未保存 / 普通」三种行态，
-        // 不写盘、不打 IPC —— 只为了拍得出面板的真实排版。
+        // 方案面板预览。
         var demo = new PlanScope(PlanKind.Tuning);
 
         demo.Items.Add(new PlanItem("demo-active", "默认调校", true)

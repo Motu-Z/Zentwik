@@ -11,7 +11,7 @@ public class AdvancedViewModel : ViewModelBase
 {
     private readonly AppSettings _settings = AppSettings.Instance;
 
-    // ==================== 安全 ====================
+    // 安全
 
     public bool SmartAntiBrick
     {
@@ -39,7 +39,7 @@ public class AdvancedViewModel : ViewModelBase
         }
     }
 
-    // ==================== 防砖计数 ====================
+    // 防砖计数
 
     private int _bootFailures;
 
@@ -74,7 +74,7 @@ public class AdvancedViewModel : ViewModelBase
         }
     }
 
-    // ==================== 显示 ====================
+    // 显示
 
     public int ToastDuration
     {
@@ -94,7 +94,7 @@ public class AdvancedViewModel : ViewModelBase
 
     public string ToastDurationText => $"{ToastDuration} 秒";
 
-    // ==================== 诊断 / 恢复 ====================
+    // 诊断 / 恢复
 
     public RelayCommand RestoreSafeDefaultsCommand { get; }
 
@@ -104,7 +104,7 @@ public class AdvancedViewModel : ViewModelBase
 
     public RelayCommand ExportLogsCommand { get; }
 
-    // ==================== 重置 ====================
+    // 重置
 
     public RelayCommand DisableAllCommand { get; }
 
@@ -130,9 +130,7 @@ public class AdvancedViewModel : ViewModelBase
             }
         };
 
-        // 【高危确认】用户 2026-11-04 裁定：这两项必须先弹界面内确认。
-        // 命令本身**只发起 Request，不执行动作** —— 真正的副作用在回调里，
-        // 取消时回调根本不会被调用。这样「点了但取消」与「没点过」完全等价。
+        // 【高危确认】用户 2026-11-04。
         DisableAllCommand = new RelayCommand(_ =>
             ConfirmService.Instance.Request(
                 "停用全部功能",

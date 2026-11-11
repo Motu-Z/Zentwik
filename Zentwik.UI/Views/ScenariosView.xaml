@@ -17,11 +17,7 @@
         <conv:WidthClampConverter x:Key="FormWidthConverter" />
 
 
-        <!--
-            提交栏上方的分隔线。
-            必须走 BorderThickness 而不是「Height=1 + Background」：140% 缩放下
-            1 DIP 的背景带会被像素对齐抹成 0 设备像素，截图上整条线消失。
-        -->
+        <!-- 分隔线必须走 BorderThickness：Height=1 + Background 在 140% 缩放下会被抹成 0 像素 -->
         <Style x:Key="FormDividerStyle" TargetType="Border">
             <Setter Property="VerticalAlignment" Value="Top" />
             <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
@@ -29,15 +25,7 @@
             <Setter Property="IsHitTestVisible" Value="False" />
         </Style>
 
-        <!--
-            下拉框一共两套模板：
-              · DarkSelectStyle —— 自带实线边框，给触发条上的两级下拉；
-              · BareSelectStyle —— 不画边框，给三个动作块。
-            动作块留空时要画虚线框（「这一块不动」），而 Border 不支持虚线，
-            所以边框改成页面层叠的 Rectangle：实线一份、虚线一份，按 HasEditorXxx
-            切显隐。放在模板里做不到 —— 模板内只能绑 TemplatedParent 的依赖属性，
-            而 ComboBox 上没有「当前值是否为空」这样的布尔 DP。
-        -->
+        <!-- 两套下拉模板：DarkSelectStyle 带实线边框给触发条，BareSelectStyle 给动作块。动作块留空的虚线框由页面层 Rectangle 叠出 —— 模板内拿不到「当前值是否为空」的布尔 DP -->
         <Style x:Key="DarkSelectStyle" TargetType="ComboBox">
             <Setter Property="Height" Value="36" />
             <Setter Property="FontSize" Value="13" />
@@ -292,11 +280,7 @@
             </Setter>
         </Style>
 
-        <!--
-            规则卡：一条规则就是一句 IF → THEN。
-            IF 块给触发源，右边三个动作块各占一列；没配的那块左侧竖条保持线色、
-            文字转「保持原样」并降一档 —— 一眼能看出这条规则动了几块。
-        -->
+        <!-- 规则卡：一条规则就是一句 IF → THEN；没配的动作块左侧竖条保持线色、文字转「保持原样」 -->
         <DataTemplate x:Key="RuleCardTemplate">
             <Border x:Name="Card"
                     Background="{DynamicResource PanelBrush}"

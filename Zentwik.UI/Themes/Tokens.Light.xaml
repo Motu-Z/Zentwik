@@ -1,40 +1,36 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!--
-      浅色主题令牌 —— 与 Tokens.Dark.xaml 键集合逐条对齐，
-      明暗两套只换取值，不换结构。参考稿只有深色，
-      浅色按同一套 zinc 色阶反相推导，保持「冷灰表面 + 一条极细分割线」的语言。
-    -->
+    <!-- 浅色令牌：与 Tokens.Dark 键集合逐条对齐，只换取值不换结构 -->
 
-    <!-- ============ 表面 ============ -->
+    <!-- 表面 -->
     <SolidColorBrush x:Key="WindowBgBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="SidebarBgBrush" Color="#FFF8F8F9" />
     <SolidColorBrush x:Key="PanelBrush" Color="#FFF8F8F9" />
     <SolidColorBrush x:Key="PanelHoverBrush" Color="#FFF1F1F3" />
 
-    <!-- ============ 线条 ============ -->
+    <!-- 线条 -->
     <SolidColorBrush x:Key="LineBrush" Color="#FFE4E4E7" />
     <SolidColorBrush x:Key="LineFaintBrush" Color="#08000000" />
     <SolidColorBrush x:Key="LineStrongBrush" Color="#FFA1A1AA" />
     <SolidColorBrush x:Key="RowDashBrush" Color="#0D000000" />
     <Color x:Key="RowDashColor">#0D000000</Color>
 
-    <!-- ============ 文本 ============ -->
+    <!-- 文本 -->
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FF18181B" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FF71717A" />
     <SolidColorBrush x:Key="TextTertiaryBrush" Color="#FFA1A1AA" />
 
-    <!-- ============ 控件表面 ============ -->
+    <!-- 控件表面 -->
     <SolidColorBrush x:Key="ControlBgBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="ControlBorderBrush" Color="#FFE4E4E7" />
     <SolidColorBrush x:Key="ControlBorderHoverBrush" Color="#FFA1A1AA" />
 
-    <!-- ============ 交互底 ============ -->
+    <!-- 交互底 -->
     <SolidColorBrush x:Key="ItemHoverBrush" Color="#0D000000" />
     <SolidColorBrush x:Key="ItemSelectedBrush" Color="#14000000" />
 
-    <!-- ============ 语义色：浅色下提饱和，保证白底可读 ============ -->
+    <!-- 语义色：浅色下提饱和，保证白底可读 -->
     <SolidColorBrush x:Key="AccentSelectionBrush" Color="#400289C7" />
     <SolidColorBrush x:Key="DangerBrush" Color="#FFDC2626" />
     <SolidColorBrush x:Key="DangerSubtleBrush" Color="#1ADC2626" />
@@ -45,7 +41,7 @@
     <SolidColorBrush x:Key="WarningSubtleBrush" Color="#1AD97706" />
     <SolidColorBrush x:Key="WarningBorderBrush" Color="#4DD97706" />
 
-    <!-- ============ 日志级别色 ============ -->
+    <!-- 日志级别色 -->
     <SolidColorBrush x:Key="LogDebugBrush" Color="#FF7C3AED" />
     <SolidColorBrush x:Key="LogInfoBrush" Color="#FF2563EB" />
     <SolidColorBrush x:Key="LogWarnBrush" Color="#FFD97706" />
@@ -54,19 +50,19 @@
     <SolidColorBrush x:Key="LogWarnTextBrush" Color="#FF92400E" />
     <SolidColorBrush x:Key="LogErrorTextBrush" Color="#FFB91C1C" />
 
-    <!-- ============ 浮层遮罩 ============ -->
+    <!-- 浮层遮罩 -->
     <SolidColorBrush x:Key="OverlayScrimBrush" Color="#B3FFFFFF" />
 
-    <!-- ============ 悬浮提示 ============ -->
+    <!-- 悬浮提示 -->
     <SolidColorBrush x:Key="ToolTipBgBrush" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="ToolTipBorderBrush" Color="#FFD4D4D8" />
 
-    <!-- ============ 字体 ============ -->
+    <!-- 字体 -->
     <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI</FontFamily>
     <FontFamily x:Key="AppMonoFontFamily">Consolas, Cascadia Mono, Courier New, Microsoft YaHei UI</FontFamily>
     <FontFamily x:Key="AppCommentFontFamily">Consolas, Microsoft YaHei UI, Microsoft YaHei, DengXian</FontFamily>
 
-    <!-- ============ 浮层阴影 ============ -->
+    <!-- 浮层阴影 -->
     <DropShadowEffect x:Key="OverlayShadowEffect"
                       BlurRadius="28" ShadowDepth="6" Direction="270"
                       Color="#FF71717A" Opacity="0.35" RenderingBias="Performance" />

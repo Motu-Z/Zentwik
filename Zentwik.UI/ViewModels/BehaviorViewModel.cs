@@ -46,7 +46,7 @@ public class BehaviorViewModel : ViewModelBase
         }
     }
 
-    // ==================== 启动方式（四选一，含「不启动」） ====================
+    // 启动方式（四选一，含「不启动」）
 
     public bool StartupNone
     {
@@ -81,7 +81,7 @@ public class BehaviorViewModel : ViewModelBase
         _ => "开机直接打开界面，后台服务同时启动"
     };
 
-    // ==================== 关闭主窗口 ====================
+    // 关闭主窗口
 
     public bool CloseMinimizeToTray
     {
@@ -109,7 +109,7 @@ public class BehaviorViewModel : ViewModelBase
         _ => "只退界面，后台服务继续运行"
     };
 
-    // ==================== 后台运行 ====================
+    // 后台运行
 
     public bool AutoApplyTuning
     {

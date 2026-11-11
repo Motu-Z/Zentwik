@@ -15,15 +15,7 @@ internal sealed class ThemePreference
     public string AccentColor { get; set; } = "#38BDF8";
 }
 
-/// <summary>
-/// 外观偏好落盘：<c>%AppData%\Zentwik\theme.json</c>。
-/// </summary>
-/// <remarks>
-/// 主题与强调色只决定这个进程怎么画，后台没有任何消费方。
-/// 与 ui-settings.json 分开存，是为了让外观配置坏了不牵连行为开关。
-///
-/// 文件缺失或写坏时退回默认外观即可 —— 为一个配色问题挡住启动不值得。
-/// </remarks>
+/// <summary>外观偏好落盘：%AppData%\Zentwik\theme.json</summary>
 internal static class ThemePreferenceStore
 {
     private static readonly string DefaultFilePath = Path.Combine(

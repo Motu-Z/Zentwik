@@ -88,13 +88,6 @@ jobs:
           ./Zentwik-${{ steps.ver.outputs.version }}-Portable.zip
           ./Zentwik-${{ steps.ver.outputs.version }}-Standalone.zip
         generate_release_notes: true
-        body: |
-          | 包 | 说明 | 体积 |
-          |---|---|---|
-          | `Zentwik-${{ steps.ver.outputs.version }}-Portable.zip` | 需要本机安装 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) | 小 |
-          | `Zentwik-${{ steps.ver.outputs.version }}-Standalone.zip` | 内置 .NET 10 运行时，解压即用 | 大 |
-
-          两个包内容一致：`Zentwik.UI.exe` + `Zentwik.Worker.exe`（Native AOT）+ `WinIo32.dll` + `WmiLight.Native.dll`。
         prerelease: ${{ contains(github.ref_name, 'can') || contains(github.event.inputs.tag_name, 'can') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

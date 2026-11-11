@@ -21,11 +21,7 @@
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
-        <!--
-            新建弹层里的每一行：整行可点、左对齐、hover 亮一档。
-            必须自带模板 —— 只把 Background 设成 Transparent 会落到系统 Aero2 模板，
-            悬停时画出浅蓝底，透过半透明面板显示成一块突兀的亮色。
-        -->
+        <!-- 整行可点、左对齐、hover 亮一档；必须自带模板，仅设 Background 会落到 Aero2 模板 -->
         <Style x:Key="MenuRowButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -139,10 +135,7 @@
                     </Grid>
                 </Border>
 
-                <!--
-                    方案卡：固定宽度、自动换行。末尾那条「＋ 新建方案」也排在这个 ListBox 里 ——
-                    放到外面的话，方案一多换行，加号就跑到第二行开头去了。
-                -->
+                <!-- 方案卡：固定宽度、自动换行；「＋ 新建方案」也排在这个 ListBox 里，否则换行后会跑到第二行开头 -->
                 <ListBox x:Name="SchemeList"
                          ItemsSource="{Binding Schemes}"
                          SelectedItem="{Binding SelectedScheme, Mode=TwoWay}"

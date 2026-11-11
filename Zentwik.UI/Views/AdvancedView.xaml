@@ -23,7 +23,7 @@
         <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
             <StackPanel Margin="32,32,32,32" MaxWidth="1160">
 
-                <!-- ==================== 安全防砖 ==================== -->
+                <!-- 安全防砖 -->
                 <StackPanel>
                     <Border Style="{StaticResource SectionHeaderStyle}">
                         <TextBlock Text="SAFETY / 安全防砖保护" Style="{StaticResource SectionTitleStyle}" />
@@ -138,7 +138,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ==================== 诊断与排障 ==================== -->
+                <!-- 诊断与排障 -->
                 <StackPanel Margin="0,48,0,0">
                     <Border Style="{StaticResource SectionHeaderStyle}">
                         <TextBlock Text="DIAGNOSTICS / 诊断与排障" Style="{StaticResource SectionTitleStyle}" />
@@ -189,7 +189,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ==================== 显示 ==================== -->
+                <!-- 显示 -->
                 <StackPanel Margin="0,48,0,0">
                     <Border Style="{StaticResource SectionHeaderStyle}">
                         <TextBlock Text="DISPLAY / 显示" Style="{StaticResource SectionTitleStyle}" />
@@ -231,7 +231,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ==================== 危险区 ==================== -->
+                <!-- 危险区 -->
                 <StackPanel Margin="0,48,0,0">
                     <Border Style="{StaticResource SectionHeaderStyle}">
                         <TextBlock Text="DANGER ZONE / 危险操作" Style="{StaticResource SectionTitleStyle}" />
