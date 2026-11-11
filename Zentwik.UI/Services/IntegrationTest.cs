@@ -2039,6 +2039,7 @@ public static class IntegrationTest
             settings.ErrorBubble = true;
             ToastService.Instance.ShowError("测试错误");
             Check("提示：开着错误气泡时错误可见", ToastService.Instance.IsVisible);
+            Check("提示：错误走警示图标", ToastService.Instance.IsError);
 
             settings.ErrorBubble = false;
             ToastService.Instance.Hide();
@@ -2047,6 +2048,7 @@ public static class IntegrationTest
 
             ToastService.Instance.Show("结果反馈");
             Check("提示：关掉错误气泡不影响普通提示", ToastService.Instance.IsVisible);
+            Check("提示：普通提示回到对勾图标", !ToastService.Instance.IsError);
         }
         finally
         {

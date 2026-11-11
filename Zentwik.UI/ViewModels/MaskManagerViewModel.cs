@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Numerics;
 using Zentwik.Core.Ipc;
@@ -161,9 +161,25 @@ public sealed class MaskManagerViewModel : ViewModelBase
     public async Task InitializeAsync()
     {
         // 诊断种子在构造函数里已铺好，重复铺会清掉刚勾的核。
-        if (ProcessViewModel.SuppressWorkerInit)
+        if (ProcessViewModel.SuppressWorkerInit || IsEditing || _loading)
             return;
 
+        _loading = true;
+
+        try
+        {
+            await LoadAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private bool _loading;
+
+    private async Task LoadAsync()
+    {
         IpcOutcome<CpuTopologyPayload> topology =
             await WorkerBridge.Instance.QueryCpuTopologyAsync().ConfigureAwait(true);
 
@@ -173,7 +189,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
         }
         else
         {
-            Toast(topology.Message);
+            ToastError(topology.Message);
         }
 
         IpcOutcome<MaskListPayload> masks =
@@ -185,7 +201,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
         }
         else
         {
-            Toast(masks.Message);
+            ToastError(masks.Message);
         }
     }
 
@@ -290,7 +306,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
             if (!outcome.Success || outcome.Value is null)
             {
-                Toast(outcome.Message);
+                ToastError(outcome.Message);
                 return;
             }
 
@@ -311,7 +327,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
         if (mask == 0)
         {
-            Toast("至少选一个核心");
+            ToastError("至少选一个核心");
             return;
         }
 
@@ -320,7 +336,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
         if (name.Length == 0)
         {
             NameError = "掩码名称不能为空";
-            Toast(NameError);
+            ToastError(NameError);
             return;
         }
 
@@ -340,7 +356,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
             if (!outcome.Success || outcome.Value is null)
             {
                 NameError = string.IsNullOrEmpty(outcome.Message) ? "保存失败" : outcome.Message;
-                Toast(NameError);
+                ToastError(NameError);
                 return;
             }
 
@@ -502,10 +518,10 @@ public sealed class MaskManagerViewModel : ViewModelBase
         UpdateCount();
     }
 
-    private static void Toast(string message)
+    private static void ToastError(string message)
     {
         if (!string.IsNullOrWhiteSpace(message))
-            ToastService.Instance.Show(message);
+            ToastService.Instance.ShowError(message);
     }
 
     private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);

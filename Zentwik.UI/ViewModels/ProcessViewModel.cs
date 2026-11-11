@@ -85,6 +85,10 @@ public class ProcessViewModel : ViewModelBase
             _drawerTab = "masks";
             OnPropertyChanged(nameof(IsRulesTab));
             OnPropertyChanged(nameof(IsMasksTab));
+
+            // 掩码表只在进这个页签时拉；不拉就是一片「还没有保存的掩码」。
+            if (MaskManager is not null)
+                Fire(MaskManager.InitializeAsync);
         }
     }
 
@@ -1256,14 +1260,14 @@ public class ProcessViewModel : ViewModelBase
         IsMaskDialogOpen = true;
 
         // 抽屉自身在掩码页签上，掩码表才有地方铺。
+        bool alreadyMasks = IsMasksTab;
         IsMasksTab = true;
 
         if (!IsDrawerOpen)
             IsDrawerOpen = true;
 
-        // 拓扑与掩码表在打开时才拉：它们是掩码页签自己的数据，
-        // 跟着进程页每次刷新一起拉一遍只是白做。
-        if (MaskManager is not null)
+        // 页签切过去时 setter 已经拉过；本来就在这个页签才补一次。
+        if (alreadyMasks && MaskManager is not null)
             Fire(MaskManager.InitializeAsync);
     }
 

@@ -21,16 +21,43 @@
             Effect="{DynamicResource OverlayShadowEffect}"
             Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
         <StackPanel Orientation="Horizontal">
-            <Path Data="M3 8 L6.5 11.5 L13 5"
-                  Stroke="{DynamicResource SuccessBrush}"
-                  StrokeThickness="1.8"
-                  StrokeStartLineCap="Round"
-                  StrokeEndLineCap="Round"
-                  StrokeLineJoin="Round"
-                  Width="12" Height="12"
-                  Stretch="Uniform"
-                  VerticalAlignment="Center"
-                  Margin="0,0,10,0" />
+            <Grid Width="12" Height="12" Margin="0,0,10,0" VerticalAlignment="Center">
+                <Path Data="M3 8 L6.5 11.5 L13 5"
+                      Stroke="{DynamicResource SuccessBrush}"
+                      StrokeThickness="1.8"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round"
+                      Stretch="Uniform">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsError}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                </Path>
+
+                <Path Data="M4 4 L12 12 M12 4 L4 12"
+                      Stroke="{DynamicResource DangerBrush}"
+                      StrokeThickness="1.8"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      Stretch="Uniform">
+                    <Path.Style>
+                        <Style TargetType="Path">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsError}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Path.Style>
+                </Path>
+            </Grid>
 
             <TextBlock Text="{Binding Message}"
                        FontSize="13"

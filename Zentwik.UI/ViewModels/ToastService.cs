@@ -34,16 +34,16 @@ public sealed class ToastService : ViewModelBase
         private set => SetProperty(ref _isVisible, value);
     }
 
-    public void Show(string message)
-    {
-        Message = message;
-        IsVisible = true;
+    private bool _isError;
 
-        _timer.Stop();
-        _timer.Interval = TimeSpan.FromSeconds(
-            Math.Clamp(AppSettings.Instance.ToastDurationSeconds, 1, 30));
-        _timer.Start();
+    /// <summary>true = 失败提示，气泡换警示图标并对勾置灰。</summary>
+    public bool IsError
+    {
+        get => _isError;
+        private set => SetProperty(ref _isError, value);
     }
+
+    public void Show(string message) => ShowCore(message, false);
 
     /// <summary>错误提示。关掉「发生错误时弹出气泡」后整条丢弃，日志仍有记录。</summary>
     public void ShowError(string message)
@@ -51,7 +51,19 @@ public sealed class ToastService : ViewModelBase
         if (!AppSettings.Instance.ErrorBubble)
             return;
 
-        Show(message);
+        ShowCore(message, true);
+    }
+
+    private void ShowCore(string message, bool isError)
+    {
+        Message = message;
+        IsError = isError;
+        IsVisible = true;
+
+        _timer.Stop();
+        _timer.Interval = TimeSpan.FromSeconds(
+            Math.Clamp(AppSettings.Instance.ToastDurationSeconds, 1, 30));
+        _timer.Start();
     }
 
     public void Hide()
