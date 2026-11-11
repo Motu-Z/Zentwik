@@ -1,4 +1,4 @@
-﻿; Zentwik 安装包脚本（由 installer.yml 调用，版本通过 /DMyAppVersion 传入）
+﻿; Zentwik 安装包脚本（由 release.yml 的 Build installer 步骤调用，版本通过 /DMyAppVersion 传入）
 #define MyAppName "Zentwik"
 #define MyAppExeName "Zentwik.UI.exe"
 #define WorkerName "Zentwik.Worker.exe"
@@ -6,6 +6,24 @@
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
+#endif
+
+; 同一份脚本产出两个安装包，用 /DLite 切换：
+;   完整版（自带 .NET 10，默认）
+;     ISCC /DMyAppVersion=x installer\zentwik.iss
+;   精简版（负载换成 pkg-portable，需预装 .NET 10 桌面运行时）
+;     ISCC /DMyAppVersion=x /DLite installer\zentwik.iss
+;
+; 为什么用开关而不是 /D 传路径：ISCC 的 /D 值不带引号时会被当表达式解析，
+; ..\pkg-portable 这种含反斜杠的值直接报错；而 PowerShell 5.1 往原生 exe
+; 传带内层引号的参数又常常被吞掉。开关只定义一个符号，两个坑都绕开。
+#ifdef Lite
+  #define PayloadDir "..\pkg-portable"
+  #define OutputSuffix "-Lite"
+  #define RequireRuntime
+#else
+  #define PayloadDir "..\pkg-standalone"
+  #define OutputSuffix ""
 #endif
 
 [Setup]
@@ -22,7 +40,7 @@ ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 OutputDir=..\dist
-OutputBaseFilename=Zentwik-{#MyAppVersion}-Setup
+OutputBaseFilename=Zentwik-{#MyAppVersion}-Setup{#OutputSuffix}
 SetupIconFile=..\Zentwik.UI\Assets\Zentwik.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
@@ -38,7 +56,7 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\pkg-standalone\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -95,3 +113,41 @@ begin
     end;
   end;
 end;
+
+#ifdef RequireRuntime
+{ 精简版不自带运行时。装完才发现缺 .NET 是最差的体验 —— 双击没反应、还要自己查日志，
+  所以开头就拦一下，并且把「该装哪个包」直接说清楚。
+
+  只认 Desktop 运行时（Microsoft.WindowsDesktop.App）：只装了 NETCore.App 的机器
+  连 WPF 的 PresentationFramework 都没有，照样起不来。 }
+function IsNet10DesktopInstalled(): Boolean;
+var
+  Names: TArrayOfString;
+  I: Integer;
+begin
+  Result := False;
+  if RegGetSubkeyNames(HKLM64,
+       'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App',
+       Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+      if Pos('10.', Names[I]) = 1 then
+      begin
+        Result := True;
+        Exit;
+      end;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  if not IsNet10DesktopInstalled() then
+  begin
+    if MsgBox('未检测到 .NET 10 桌面运行时。' + #13#10 + #13#10 +
+              '这个安装包不自带运行时，缺少它将无法启动。' + #13#10 +
+              '建议改用完整安装包，或先安装 .NET 10 Desktop Runtime。' + #13#10 + #13#10 +
+              '仍要继续安装吗？',
+              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDNO then
+      Result := False;
+  end;
+end;
+#endif

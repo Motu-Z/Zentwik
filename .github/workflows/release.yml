@@ -95,11 +95,16 @@ jobs:
     - name: Build installer
       shell: pwsh
       run: |
-        & "$env:ISCC" "/DMyAppVersion=${{ steps.ver.outputs.version }}" "installer\zentwik.iss"
-        if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（退出码 $LASTEXITCODE）" }
-        $setup = Get-ChildItem ./dist -Filter '*-Setup.exe' | Select-Object -First 1
-        if (-not $setup) { throw '未产出 Setup.exe' }
-        Write-Host ("Setup: {0} ({1:N1} MB)" -f $setup.Name, ($setup.Length / 1MB))
+        $v = "${{ steps.ver.outputs.version }}"
+        & "$env:ISCC" "/DMyAppVersion=$v" "installer\zentwik.iss"
+        if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败：完整包（退出码 $LASTEXITCODE）" }
+        & "$env:ISCC" "/DMyAppVersion=$v" "/DLite" "installer\zentwik.iss"
+        if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败：精简包（退出码 $LASTEXITCODE）" }
+        $full = Get-ChildItem ./dist -Filter '*-Setup.exe'
+        $lite = Get-ChildItem ./dist -Filter '*-Setup-Lite.exe'
+        if (-not $full) { throw '未产出 Setup.exe' }
+        if (-not $lite) { throw '未产出 Setup-Lite.exe' }
+        Get-ChildItem ./dist -Filter '*-Setup*.exe' | Select-Object Name,Length | Format-Table -AutoSize | Out-String | Write-Host
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
@@ -109,6 +114,7 @@ jobs:
           ./Zentwik-${{ steps.ver.outputs.version }}-Portable.zip
           ./Zentwik-${{ steps.ver.outputs.version }}-Standalone.zip
           ./dist/Zentwik-${{ steps.ver.outputs.version }}-Setup.exe
+          ./dist/Zentwik-${{ steps.ver.outputs.version }}-Setup-Lite.exe
         generate_release_notes: true
         prerelease: ${{ contains(github.ref_name, 'can') || contains(github.event.inputs.tag_name, 'can') }}
       env:
