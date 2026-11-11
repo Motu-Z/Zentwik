@@ -36,7 +36,7 @@
 
 ## 应用数据
 
-用户配置位于 `%APPDATA%\Zentwik\`：`tuning.json`、`schedules.json`、`masks.json`、`ui.json`；运行日志在 `Logs\` 子目录。卸载默认保留，重装可沿用。
+用户配置位于 `%APPDATA%\Zentwik` 目录：`tuning.json`、`schedules.json`、`masks.json`、`ui.json`；运行日志在其中的 `Logs` 子目录。卸载默认保留，重装可沿用。
 
 ## 项目结构
 
@@ -65,10 +65,10 @@ dotnet test  Zentwik.Tests/Zentwik.Tests.csproj -c Release
 
 - [SMUDebugTool](https://github.com/irusanov/SMUDebugTool/)：Ryzen SMU 参数读写的参考实现
 - [CPUSetSetter](https://github.com/SimonvBez/CPUSetSetter)：CPU Sets 进程调度与双 CCD 拓扑识别的行为参照
-- [ZenStates-Core](https://github.com/irusanov/ZenStates-Core)：SMU 消息收发与 PawnIO 模块加载
+- [ZenStates-Core](https://github.com/Motu-Z/ZenStates-Core-AOT)：SMU 消息收发与 PawnIO 模块加载，为上游 [irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建
 - [PawnIO](https://github.com/namazso/PawnIO)：SMU 访问的内核驱动
 - [WmiLight](https://github.com/MartinKuschnik/WmiLight)：Native AOT 下可用的 WMI 封装
 
 ## 许可证
 
-[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core](https://github.com/irusanov/ZenStates-Core)（GPL-3.0），因此整体以 GPL-3.0 发布；完整源码即本仓库。
+[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core](https://github.com/Motu-Z/ZenStates-Core-AOT)（GPL-3.0，上游 [irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建），因此整体以 GPL-3.0 发布；完整源码即本仓库。
