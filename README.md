@@ -65,10 +65,10 @@ dotnet test  Zentwik.Tests/Zentwik.Tests.csproj -c Release
 
 - [SMUDebugTool](https://github.com/irusanov/SMUDebugTool/)：Ryzen SMU 参数读写的参考实现
 - [CPUSetSetter](https://github.com/SimonvBez/CPUSetSetter)：CPU Sets 进程调度与双 CCD 拓扑识别的行为参照
-- [ZenStates-Core](https://github.com/Motu-Z/ZenStates-Core-AOT)：SMU 消息收发与 PawnIO 模块加载，为上游 [irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建
+- [ZenStates-Core-AOT](https://github.com/Motu-Z/ZenStates-Core-AOT)：SMU 消息收发与 PawnIO 模块加载
 - [PawnIO](https://github.com/namazso/PawnIO)：SMU 访问的内核驱动
 - [WmiLight](https://github.com/MartinKuschnik/WmiLight)：Native AOT 下可用的 WMI 封装
 
 ## 许可证
 
-[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core](https://github.com/Motu-Z/ZenStates-Core-AOT)（GPL-3.0，上游 [irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建），因此整体以 GPL-3.0 发布；完整源码即本仓库。
+[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core](https://github.com/Motu-Z/ZenStates-Core-AOT)（[irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建，GPL-3.0），因此整体以 GPL-3.0 发布；完整源码即本仓库。
