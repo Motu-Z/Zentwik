@@ -4,6 +4,19 @@
 
 ---
 
+## [2.2.4]
+
+### Added (新增)
+
+- **Windows 安装包**：发布产物从两个压缩包增加为 `Portable.zip` / `Standalone.zip` / `Setup.exe` 三项，三者由同一个 tag 一次构建。
+  - 安装包基于 Standalone（自带 .NET 10 运行时），默认装到 `Program Files\Zentwik`，安装向导保留目录选择页，可由用户改到任意位置。
+  - 界面为简体中文；桌面图标为可选任务，默认不勾选。
+  - 卸载时先结束 `Zentwik.UI.exe` 与提权的 `Zentwik.Worker.exe`，再删除 `ZentwikAutoStart` 计划任务；`%APPDATA%\Zentwik` 下的配置保留不动。覆盖升级在写文件前执行同样的收尾，避免文件占用导致升级失败。
+
+### Changed (变更)
+
+- **发布包不再附带调试符号**：`Zentwik.UI.pdb` 从两个压缩包与安装包中去掉（约 232 KB）。此前 Worker 的发布已带 `DebugType=none`，UI 这一处是遗漏，现在两端口径一致。构建流程增加断言，打包目录里出现任何 `.pdb` 直接失败。
+
 ## [2.2.3]
 
 ### Changed (变更)
