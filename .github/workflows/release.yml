@@ -54,11 +54,11 @@ jobs:
 
     - name: Publish UI (portable)
       run: |
-        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -p:OutputPath=./obj/ui-portable/ -o ./pkg-portable
+        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:PublishSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:OutputPath=./obj/ui-portable/ -o ./pkg-portable
 
     - name: Publish UI (standalone)
       run: |
-        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:OutputPath=./obj/ui-standalone/ -o ./pkg-standalone
+        dotnet publish Zentwik.UI/Zentwik.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -p:OutputPath=./obj/ui-standalone/ -o ./pkg-standalone
 
     - name: Assemble packages
       run: |
@@ -69,6 +69,7 @@ jobs:
         foreach ($dir in './pkg-portable','./pkg-standalone') {
           if (-not (Test-Path "$dir/Zentwik.UI.exe")) { throw "$dir 缺少 Zentwik.UI.exe" }
           if (-not (Test-Path "$dir/Zentwik.Worker.exe")) { throw "$dir 缺少 Zentwik.Worker.exe" }
+          if (Get-ChildItem $dir -Filter *.pdb) { throw "$dir 残留符号文件" }
           Write-Host ("--- {0} ---" -f $dir)
           Get-ChildItem $dir | Select-Object Name,Length | Format-Table -AutoSize | Out-String | Write-Host
         }
