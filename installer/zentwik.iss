@@ -53,6 +53,15 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#MyAppExeName}"; Flags: run
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#WorkerName}"; Flags: runhidden; RunOnceId: "KillWorker"
 Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""{#AutoStartTask}"" /F"; Flags: runhidden; RunOnceId: "DelAutoStart"
 
+; 单文件运行时会把自己解包到临时目录，且每个版本各建一个 hash 子目录，从不回收。
+; 升级几次就会攒出几百 MB。这里整棵删掉。
+;
+; 两条都写：{tmp} 在多数机器上等于 {localappdata}\Temp，但 TEMP 环境变量被改过时
+; 两者会分叉。删不存在的路径 Inno 会静默跳过，重复写没有副作用。
+[UninstallDelete]
+Type: filesandordirs; Name: "{localappdata}\Temp\.net\Zentwik.UI"
+Type: filesandordirs; Name: "{tmp}\.net\Zentwik.UI"
+
 [Code]
 procedure KillProcesses();
 var
@@ -66,4 +75,23 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   KillProcesses();
   Result := '';
+end;
+
+{ 程序文件删完之后再问配置。
+  放在 usPostUninstall 而不是 usUninstall：卸载中途失败时不会先把用户数据删掉。
+  默认按钮是「否」——重装还能沿用掩码与方案，想彻底清干净就选「是」。 }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    DataDir := ExpandConstant('{userappdata}\{#MyAppName}');
+    if DirExists(DataDir) then
+    begin
+      if MsgBox('是否同时删除 Zentwik 的配置与日志？' + #13#10 + #13#10 + DataDir,
+                mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+        DelTree(DataDir, True, True, True);
+    end;
+  end;
 end;
