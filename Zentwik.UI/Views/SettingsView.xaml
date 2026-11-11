@@ -209,7 +209,7 @@
                                    Foreground="{DynamicResource AccentBrush}"
                                    HorizontalAlignment="Center" />
 
-                        <TextBlock Text="轻量级硬件调校与核心调度工具，调校功能面向 AMD Ryzen。"
+                        <TextBlock Text="轻量级硬件调校与核心调度工具，涵盖电压偏移、核心绑定与电源方案。"
                                    MaxWidth="260"
                                    Margin="0,0,0,32"
                                    FontSize="13"
