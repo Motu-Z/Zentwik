@@ -349,6 +349,7 @@ public sealed class PlanScope : ViewModelBase
             item.CoreMargins = entry.CoreMargins ?? Array.Empty<int>();
             item.FMaxMHz = entry.FMaxMHz;
             item.RuleCount = entry.RuleCount;
+            item.RuleDigest = entry.RuleDigest ?? string.Empty;
             item.PowerSchemeGuid = entry.PowerSchemeGuid;
             item.PowerSchemeName = entry.PowerSchemeName;
             item.PowerPolicy = entry.PowerPolicy;
@@ -970,6 +971,9 @@ public sealed class PlanItem : ViewModelBase
 
     /// <summary>调度方案的规则条数。</summary>
     public int RuleCount { get; set; }
+
+    /// <summary>调度方案规则集的指纹；界面拿当前规则算同一个值来判脏。</summary>
+    public string RuleDigest { get; set; } = string.Empty;
 
     public string PowerSchemeGuid { get; set; } = string.Empty;
 

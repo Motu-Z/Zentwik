@@ -640,7 +640,7 @@ public class ProcessViewModel : ViewModelBase
         SyncRuleDirty();
     }
 
-    /// <summary>规则条数与当前方案快照不一致，就是有没存进方案的改动。</summary>
+    /// <summary>规则集与当前方案快照的指纹不一致，才算有没存进方案的改动。</summary>
     private void SyncRuleDirty()
     {
         if (!UseWorker)
@@ -650,7 +650,44 @@ public class ProcessViewModel : ViewModelBase
 
         PlanItem? current = PlanHub.Scheduling.Current;
 
-        PlanHub.Scheduling.SetUnsaved(current is not null && SavedRules.Count != current.RuleCount);
+        PlanHub.Scheduling.SetUnsaved(
+            current is not null
+            && !string.Equals(LiveRuleDigest(), current.RuleDigest, StringComparison.Ordinal));
+    }
+
+    /// <summary>把界面上的规则按协议投影算一遍指纹，与后台给的方案指纹同口径。</summary>
+    private string LiveRuleDigest()
+    {
+        List<ScheduleRulePayload> items = new(SavedRules.Count);
+
+        foreach (ScheduleRuleItem rule in SavedRules)
+        {
+            items.Add(new ScheduleRulePayload
+            {
+                Id = rule.Id,
+                ProcessName = rule.ProcessName,
+                TargetType = rule.TargetType,
+                TargetValue = rule.TargetValue,
+                Priority = PriorityWireOf(rule.Priority),
+                Enabled = rule.Enabled
+            });
+        }
+
+        return ScheduleRuleDigest.Of(items);
+    }
+
+    /// <summary>展示文案 → 协议常量。「—」表示规则本来就没设优先级，回到空串。</summary>
+    private static string PriorityWireOf(string label)
+    {
+        foreach (string option in ProcessPriority.Options)
+        {
+            if (string.Equals(ProcessPriority.DisplayOf(option), label, StringComparison.Ordinal))
+            {
+                return option;
+            }
+        }
+
+        return string.Equals(label, "—", StringComparison.Ordinal) ? string.Empty : label;
     }
 
     /// <summary>规则的显示名：CCD 给 给「不调度」</summary>
@@ -1045,12 +1082,6 @@ public class ProcessViewModel : ViewModelBase
 
         await RefreshRulesAsync().ConfigureAwait(true);
 
-        // 条数可能没变（只换了掩码），但方案快照一定落后了。
-        if (failures.Count == 0)
-        {
-            PlanHub.Scheduling.SetUnsaved(true);
-        }
-
         if (failures.Count > 0)
         {
             ToastService.Instance.ShowError(failures[0]);
@@ -1079,24 +1110,32 @@ public class ProcessViewModel : ViewModelBase
 
         int live = SavedRules.Count;
 
-        if (!UseWorker || live == plan.RuleCount)
+        // 指纹一致 = 眼前就是方案里那份，覆盖也不会丢东西。
+        if (!UseWorker || !session.HasUnsavedChanges)
         {
             session.ApplyCommand.Execute(null);
             return;
         }
 
-        int diff = Math.Abs(live - plan.RuleCount);
+        List<string> lines = new() { $"用「{plan.Name}」里的 {plan.RuleCount} 条规则替换当前 {live} 条" };
+
+        if (live != plan.RuleCount)
+        {
+            int diff = Math.Abs(live - plan.RuleCount);
+            lines.Add(live > plan.RuleCount
+                ? $"多出来的 {diff} 条规则会被删除"
+                : $"方案里的 {diff} 条规则会被重新加回来");
+        }
+        else
+        {
+            lines.Add("规则内容与方案里存的不一样，改动会被方案覆盖");
+        }
+
+        lines.Add("已经绑好核心的进程会按新规则重算");
 
         ConfirmService.Instance.Request(
             "应用调度方案",
-            new[]
-            {
-                $"用「{plan.Name}」里的 {plan.RuleCount} 条规则替换当前 {live} 条",
-                live > plan.RuleCount
-                    ? $"多出来的 {diff} 条规则会被删除"
-                    : $"方案里的 {diff} 条规则会被重新加回来",
-                "已经绑好核心的进程会按新规则重算"
-            },
+            lines,
             () => session.ApplyCommand.Execute(null),
             "应用");
     }

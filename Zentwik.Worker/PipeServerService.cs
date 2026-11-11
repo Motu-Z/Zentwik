@@ -787,6 +787,10 @@ namespace Zentwik.Worker
             CoreMargins = entry.CurveOptimizer ?? Array.Empty<int>(),
             FMaxMHz = entry.FMaxMHz,
             RuleCount = entry.ScheduleRules?.Count ?? 0,
+            RuleDigest = ScheduleRuleDigest.Of(
+                entry.ScheduleRules is null
+                    ? null
+                    : BuildScheduleRulePayloads(entry.ScheduleRules)),
             PowerSchemeGuid = entry.PowerSchemeGuid,
             PowerSchemeName = entry.PowerSchemeName,
             PowerPolicy = entry.PowerPolicy

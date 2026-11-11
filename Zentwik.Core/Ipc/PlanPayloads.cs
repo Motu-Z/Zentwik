@@ -78,6 +78,13 @@ namespace Zentwik.Core.Ipc
         [JsonPropertyName("ruleCount")]
         public int RuleCount { get; set; }
 
+        /// <summary>
+        /// 规则集的指纹（见 <see cref="ScheduleRuleDigest"/>）。界面拿当前规则算同一个值，
+        /// 相等就是「这份方案已经跟眼前一致」，不必靠条数猜。
+        /// </summary>
+        [JsonPropertyName("ruleDigest")]
+        public string RuleDigest { get; set; } = string.Empty;
+
         /// <summary>绑定的 Windows 电源方案 GUID。仅电源方案使用。</summary>
         [JsonPropertyName("powerSchemeGuid")]
         public string PowerSchemeGuid { get; set; } = string.Empty;
