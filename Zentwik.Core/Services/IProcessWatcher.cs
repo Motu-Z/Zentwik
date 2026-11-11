@@ -10,17 +10,11 @@ namespace Zentwik.Core.Services
     /// </summary>
     public interface IProcessWatcher
     {
-        /// <summary>当前是否走事件驱动路径。为 false 表示降级为轮询。</summary>
-        bool UsingEvents { get; }
-
         /// <summary>本实例是否持有全局互斥体（即是否为真正执行绑定的那一个）。</summary>
         bool HasOwnership { get; }
 
         /// <summary>监听循环是否正在运行。</summary>
         bool IsRunning { get; }
-
-        /// <summary>需要告知用户「事件不可用，已降级」时被调用。</summary>
-        Action? WmiUnavailableNotifier { get; set; }
 
         /// <summary>被监听的进程集合发生变化时触发。</summary>
         event Action? ProcessSetChanged;
@@ -34,9 +28,6 @@ namespace Zentwik.Core.Services
 
         /// <summary>清空已处理进程的缓存，让下一轮重新判定。</summary>
         void ResetCache();
-
-        /// <summary>宿主窗口可见性变化，用于调整采样频率。</summary>
-        void SetHostVisible(bool visible);
 
         /// <summary>本工具**成功**绑过、且尚未解绑的 PID 快照。</summary>
         int[] GetBoundProcessIds();

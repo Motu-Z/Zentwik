@@ -158,6 +158,9 @@ namespace Zentwik.Core.Services
         private readonly List<Entry> _latest = new();
         private readonly object _gate = new();
 
+        /// <summary>最新一帧的采样时刻（Stopwatch 时间戳），用于「够不够新」判断。</summary>
+        private long _latestStamp;
+
         /// <summary>
         /// 保护 <see cref="_samples"/>：单例字典会被采样线程与任何外部 Sample 调用同时接触。
         /// </summary>
@@ -307,6 +310,26 @@ namespace Zentwik.Core.Services
         public IReadOnlyList<Entry> Latest
         {
             get { lock (_gate) return _latest.ToArray(); }
+        }
+
+        /// <summary>
+        /// 取一帧不超过 <paramref name="maxAge"/> 的快照，过期或无数据返回 null。
+        ///
+        /// 给「查询即现采」的调用方用：列表每 3 秒查一次，若每次都强制重采，
+        /// 就等于每 3 秒做一轮全量 OpenProcess。2 秒内的数据对列表没有区别。
+        /// </summary>
+        public IReadOnlyList<Entry>? TryGetSnapshot(TimeSpan maxAge)
+        {
+            long now = Stopwatch.GetTimestamp();
+
+            lock (_gate)
+            {
+                if (_latest.Count == 0 || _latestStamp == 0)
+                    return null;
+
+                double ageSeconds = (now - _latestStamp) / (double)Stopwatch.Frequency;
+                return ageSeconds > maxAge.TotalSeconds ? null : _latest.ToArray();
+            }
         }
 
         /// <summary>
@@ -562,6 +585,7 @@ namespace Zentwik.Core.Services
             {
                 _latest.Clear();
                 _latest.AddRange(collected);
+                _latestStamp = Stopwatch.GetTimestamp();
             }
 
             // 注意：本事件在采样线程上触发，订阅方必须自行切回 UI 线程。

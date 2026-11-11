@@ -1079,11 +1079,15 @@ namespace Zentwik.Worker
         }
 
 
-        /// <summary>进程列表 + 规则命中；查询即现场采一帧，不读陈旧快照。</summary>
+        /// <summary>进程列表查询可接受的快照年龄。</summary>
+        private static readonly TimeSpan ProcessSnapshotMaxAge = TimeSpan.FromSeconds(2);
+
+        /// <summary>进程列表 + 规则命中。2 秒内的快照直接复用，过期才现采。</summary>
         internal Task<PipeResponse> RunQueryProcessesAsync()
         {
             IReadOnlyList<ProcessRefresher.Entry> snapshot =
-                _refresher.SampleOnSamplerThread(TimeSpan.FromSeconds(2));
+                _refresher.TryGetSnapshot(ProcessSnapshotMaxAge)
+                ?? _refresher.SampleOnSamplerThread(TimeSpan.FromSeconds(2));
 
             List<ProcessEntryPayload> items = BuildProcessEntries(
                 snapshot,

@@ -152,6 +152,51 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="后台效率行为" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="{Binding IdleTrimHint}"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource SegmentGroupStyle}"
+                                    VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="IdleTrim"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="关闭"
+                                                 automation:AutomationProperties.Name="窗口收进后台后不做处理"
+                                                 IsChecked="{Binding IdleTrimOff, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="IdleTrim"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="轻档"
+                                                 automation:AutomationProperties.Name="后台降低优先级并交还内存"
+                                                 IsChecked="{Binding IdleTrimLight, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="IdleTrim"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="重档"
+                                                 automation:AutomationProperties.Name="后台另外释放页面缓存"
+                                                 IsChecked="{Binding IdleTrimFull, Mode=TwoWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource DashRuleStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="启动时自动应用调校" Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 

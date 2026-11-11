@@ -162,7 +162,6 @@ namespace Zentwik.Worker
             }
 
             // 6. 采样线程 → 进程监听
-            // 顺序不可颠倒：ProcessWatcher 的启动补扫依赖采样线程已在跑。
             _refresher.Start();
 
             // 「监听进程并自动调度」关掉时不起监听：进程页照样能看，只是不自动绑核。

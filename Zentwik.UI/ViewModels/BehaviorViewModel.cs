@@ -109,6 +109,47 @@ public class BehaviorViewModel : ViewModelBase
         _ => "只退界面，后台服务继续运行"
     };
 
+    // 后台效率
+
+    public bool IdleTrimOff
+    {
+        get => IdleTrimSettings.Current == IdleTrimMode.Off;
+        set { if (value) SetIdleTrim(IdleTrimMode.Off); }
+    }
+
+    public bool IdleTrimLight
+    {
+        get => IdleTrimSettings.Current == IdleTrimMode.Light;
+        set { if (value) SetIdleTrim(IdleTrimMode.Light); }
+    }
+
+    public bool IdleTrimFull
+    {
+        get => IdleTrimSettings.Current == IdleTrimMode.Full;
+        set { if (value) SetIdleTrim(IdleTrimMode.Full); }
+    }
+
+    /// <summary>当前档位的一句话说明。</summary>
+    public string IdleTrimHint => IdleTrimSettings.Current switch
+    {
+        IdleTrimMode.Off => "窗口收进后台后不做处理",
+        IdleTrimMode.Light => "降低优先级并把占用的内存交还系统，页面保留",
+        _ => "在上面基础上释放其他页面的控件树，切回时按需重建"
+    };
+
+    private void SetIdleTrim(IdleTrimMode mode)
+    {
+        if (IdleTrimSettings.Current == mode)
+            return;
+
+        IdleTrimSettings.Current = mode;
+
+        OnPropertyChanged(nameof(IdleTrimOff));
+        OnPropertyChanged(nameof(IdleTrimLight));
+        OnPropertyChanged(nameof(IdleTrimFull));
+        OnPropertyChanged(nameof(IdleTrimHint));
+    }
+
     // 后台运行
 
     public bool AutoApplyTuning

@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using Zentwik.UI.Services;
 using Zentwik.UI.ViewModels;
 using Zentwik.UI.Views;
@@ -16,6 +17,11 @@ namespace Zentwik.UI;
 public partial class MainWindow : Window
 {
     private const int WM_GETMINMAXINFO = 0x0024;
+
+    /// <summary>进后台多久之后才做效率模式处理。</summary>
+    private const int IdleDelaySeconds = 20;
+
+    private readonly DispatcherTimer _idleTimer;
 
     /// <summary>后台自己切了方案（场景规则）时把顶栏跟过去。</summary>
     private readonly PlanWatcher _planWatcher;
@@ -31,7 +37,19 @@ public partial class MainWindow : Window
 
         System.ComponentModel.DependencyPropertyDescriptor
             .FromProperty(WindowStateProperty, typeof(Window))
-            .AddValueChanged(this, (_, _) => UpdateMaximizeButton());
+            .AddValueChanged(this, (_, _) =>
+            {
+                UpdateMaximizeButton();
+                UpdateIdleState();
+            });
+
+        // 后台效率模式：进后台 20 秒才动手，免得切来切去反复换入换出。
+        _idleTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(IdleDelaySeconds)
+        };
+        _idleTimer.Tick += OnIdleTick;
+        IsVisibleChanged += (_, _) => UpdateIdleState();
 
         // 版本号来自程序集元数据，不在 XAML / C# 里硬编码
         SidebarHeader.ToolTip = $"Zentwik v{GetVersion()}\n点击展开侧栏";
@@ -45,6 +63,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             ShellState.Instance.PropertyChanged -= OnShellStateChanged;
+            _idleTimer.Stop();
             _planWatcher.Stop();
         };
 
@@ -183,6 +202,82 @@ public partial class MainWindow : Window
     // 导航路由（Code-Behind）
 
     private readonly Dictionary<string, FrameworkElement> _viewCache = new();
+
+    // 后台效率模式
+
+    /// <summary>窗口是否在前台可见。最小化时 IsVisible 仍为 true，必须一起看。</summary>
+    private bool IsForeground => IsVisible && WindowState != WindowState.Minimized;
+
+    private void UpdateIdleState()
+    {
+        if (IsForeground)
+        {
+            _idleTimer.Stop();
+
+            if (IdleMemoryTrimmer.IsEntered)
+                IdleMemoryTrimmer.Leave();
+
+            RestoreCurrentView();
+            return;
+        }
+
+        if (IdleTrimSettings.Current == IdleTrimMode.Off)
+            return;
+
+        _idleTimer.Stop();
+        _idleTimer.Start();
+    }
+
+    private void OnIdleTick(object? sender, EventArgs e)
+    {
+        _idleTimer.Stop();
+
+        if (IsForeground)
+            return;
+
+        IdleTrimMode mode = IdleTrimSettings.Current;
+        if (mode == IdleTrimMode.Off)
+            return;
+
+        IdleMemoryTrimmer.Enter();
+
+        if (mode != IdleTrimMode.Full)
+            return;
+
+        ReleaseCachedViews();
+
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+
+        IdleMemoryTrimmer.TrimWorkingSet();
+    }
+
+    /// <summary>丢掉除当前页以外的控件树。切回去会按需重建。</summary>
+    private void ReleaseCachedViews()
+    {
+        if (_viewCache.Count <= 1)
+            return;
+
+        List<string> drop = new(_viewCache.Count - 1);
+
+        foreach (string key in _viewCache.Keys)
+        {
+            if (!string.Equals(key, _currentTag, StringComparison.Ordinal))
+                drop.Add(key);
+        }
+
+        foreach (string key in drop)
+            _viewCache.Remove(key);
+    }
+
+    /// <summary>当前页不在缓存里就重建。正常不会发生 —— 当前页永远保留。</summary>
+    private void RestoreCurrentView()
+    {
+        if (ContentHost?.Content is not null || string.IsNullOrEmpty(_currentTag))
+            return;
+
+        Navigate(_currentTag);
+    }
 
     /// <summary>当前显示的页面标签。用来判断「这次是不是真的要离开」。</summary>
     private string _currentTag = "Misc";

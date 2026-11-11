@@ -320,7 +320,7 @@ namespace Zentwik.Core.Services
             try
             {
                 Line($"    运行中：{_watcher.IsRunning}");
-                Line($"    WMI 事件模式：{_watcher.UsingEvents}");
+                Line($"    有全局互斥体：{_watcher.HasOwnership}");
                 Line($"    进程快照采样中（有人看列表）：{_refresher.IsWatched}");
             }
             catch (Exception ex)

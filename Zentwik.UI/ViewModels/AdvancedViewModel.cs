@@ -40,7 +40,6 @@ public class AdvancedViewModel : ViewModelBase
     }
 
     // 防砖计数
-
     private int _bootFailures;
 
     /// <summary>连续异常启动次数。由 Worker 的 BootGuard 维护，进页时问一次。</summary>
