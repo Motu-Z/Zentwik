@@ -1,6 +1,6 @@
 # Zentwik
 
-面向 AMD 平台用户的轻量化本地调优工具：逐核 Curve Optimizer、FMax 上限、CPU Sets 进程绑定、电源方案修改，按进程与电源状态自动套用方案。
+Windows 轻量化本地调优工具：逐核 Curve Optimizer、FMax 上限、CPU Sets 进程绑定、电源方案修改，按进程与电源状态自动套用方案。
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
