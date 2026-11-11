@@ -52,13 +52,6 @@
 
                     <Border Height="1" Margin="8,4" Background="{DynamicResource LineFaintBrush}" />
 
-                    <TextBlock Text="禁用配置（预留）"
-                               Margin="10,8"
-                               FontSize="12"
-                               Foreground="{DynamicResource TextTertiaryBrush}" />
-
-                    <Border Height="1" Margin="8,4" Background="{DynamicResource LineFaintBrush}" />
-
                     <Button Style="{StaticResource TrayItemStyle}" Click="OnExitClick">
                         <TextBlock Text="退出程序" Foreground="{DynamicResource TextPrimaryBrush}" />
                     </Button>

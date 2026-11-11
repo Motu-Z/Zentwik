@@ -209,7 +209,7 @@
                                    Foreground="{DynamicResource AccentBrush}"
                                    HorizontalAlignment="Center" />
 
-                        <TextBlock Text="专为 AMD Ryzen 处理器设计的轻量级硬件调校与核心调度工具。"
+                        <TextBlock Text="轻量级硬件调校与核心调度工具，调校功能面向 AMD Ryzen。"
                                    MaxWidth="260"
                                    Margin="0,0,0,32"
                                    FontSize="13"
@@ -267,7 +267,7 @@
                                    FontSize="11"
                                    TextAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Text="Licensed under MIT · © 2026 Zentwik Project"
+                        <TextBlock Text="Licensed under GPL-3.0 · © 2026 Zentwik Project"
                                    Margin="0,10,0,0"
                                    FontFamily="{DynamicResource AppMonoFontFamily}"
                                    FontSize="11"
