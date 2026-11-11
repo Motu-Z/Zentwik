@@ -1454,6 +1454,14 @@ public static class IntegrationTest
             Check("方案：存完恢复成应用",
                   session.ApplyLabel == $"应用「{first.Name}」", session.ApplyLabel);
 
+            string oldName = first.Name;
+            first.Name = oldName + "-改";
+            Check("方案：改名后顶栏标题跟新名",
+                  session.CurrentName == oldName + "-改", session.CurrentName);
+            Check("方案：改名后底部按钮跟新名",
+                  session.ApplyLabel == $"应用「{oldName}-改」", session.ApplyLabel);
+            first.Name = oldName;
+
             // 有未保存改动时切别的方案：必须先弹确认。早先只弹一句 Toast 就 return，
             // 用户以为已经切过去了，接着点「应用参数」，值全落进原来那份方案里 ——
             // 表现就是「我明明在调校 1 上改，重启后却是调校 2」。

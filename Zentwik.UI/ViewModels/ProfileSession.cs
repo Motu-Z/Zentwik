@@ -115,7 +115,10 @@ public sealed class PlanScope : ViewModelBase
     private void OnCurrentItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(PlanItem.Name))
+        {
+            OnPropertyChanged(nameof(CurrentName));
             RefreshApplyState();
+        }
 
         if (e.PropertyName == nameof(PlanItem.IsActive))
             OnPropertyChanged(nameof(CanApplyCurrent));
