@@ -71,4 +71,4 @@ dotnet test  Zentwik.Tests/Zentwik.Tests.csproj -c Release
 
 ## 许可证
 
-[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core](https://github.com/Motu-Z/ZenStates-Core-AOT)（[irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建，GPL-3.0），因此整体以 GPL-3.0 发布；完整源码即本仓库。
+[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core-AOT](https://github.com/Motu-Z/ZenStates-Core-AOT)（对 [irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建，GPL-3.0），因此整体以 GPL-3.0 发布。Zentwik 的完整源码即本仓库；ZenStates-Core-AOT 及其上游的对应源码见对应仓库。
