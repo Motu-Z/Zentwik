@@ -81,6 +81,26 @@ jobs:
         Compress-Archive -Path ./pkg-standalone/* -DestinationPath "./Zentwik-$v-Standalone.zip"
         Get-ChildItem ./Zentwik-*.zip | Select-Object Name,Length | Format-Table -AutoSize | Out-String | Write-Host
 
+    - name: Install Inno Setup
+      shell: pwsh
+      run: |
+        $exe = Join-Path $env:TEMP 'innosetup.exe'
+        curl.exe -sSL -o $exe 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe'
+        if (-not (Test-Path $exe)) { throw 'Inno Setup 下载失败' }
+        Start-Process -FilePath $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait
+        $iscc = @('C:\Program Files (x86)\Inno Setup 6\ISCC.exe','C:\Program Files\Inno Setup 6\ISCC.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if (-not $iscc) { throw 'ISCC.exe 未找到' }
+        "ISCC=$iscc" >> $env:GITHUB_ENV
+
+    - name: Build installer
+      shell: pwsh
+      run: |
+        & "$env:ISCC" "/DMyAppVersion=${{ steps.ver.outputs.version }}" "installer\zentwik.iss"
+        if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败（退出码 $LASTEXITCODE）" }
+        $setup = Get-ChildItem ./dist -Filter '*-Setup.exe' | Select-Object -First 1
+        if (-not $setup) { throw '未产出 Setup.exe' }
+        Write-Host ("Setup: {0} ({1:N1} MB)" -f $setup.Name, ($setup.Length / 1MB))
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
@@ -88,6 +108,7 @@ jobs:
         files: |
           ./Zentwik-${{ steps.ver.outputs.version }}-Portable.zip
           ./Zentwik-${{ steps.ver.outputs.version }}-Standalone.zip
+          ./dist/Zentwik-${{ steps.ver.outputs.version }}-Setup.exe
         generate_release_notes: true
         prerelease: ${{ contains(github.ref_name, 'can') || contains(github.event.inputs.tag_name, 'can') }}
       env:

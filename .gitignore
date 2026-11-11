@@ -22,6 +22,11 @@ Thumbs.db
 publish_tmp/
 publish_out/
 
+# 安装包构建产物
+dist/
+pkg-installer/
+worker/
+
 # Python 缓存（xamlcheck.py 运行时生成）
 __pycache__/
 *.pyc
