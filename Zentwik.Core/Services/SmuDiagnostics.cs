@@ -321,7 +321,7 @@ namespace Zentwik.Core.Services
             {
                 Line($"    运行中：{_watcher.IsRunning}");
                 Line($"    有全局互斥体：{_watcher.HasOwnership}");
-                Line($"    进程快照采样中（有人看列表）：{_refresher.IsWatched}");
+                Line($"    进程快照：按需采样，当前 {_refresher.Latest.Count} 项");
             }
             catch (Exception ex)
             {

@@ -19,6 +19,7 @@ public partial class ProcessView : UserControl
     private bool _initialized;
     private bool _refreshing;
     private readonly DispatcherTimer _autoRefreshTimer;
+    private Window? _host;
 
     public ProcessView()
     {
@@ -51,7 +52,9 @@ public partial class ProcessView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (!ProcessViewModel.SuppressWorkerInit)
+        AttachHost();
+
+        if (!ProcessViewModel.SuppressWorkerInit && !HostInBackground)
         {
             _autoRefreshTimer.Start();
         }
@@ -80,6 +83,7 @@ public partial class ProcessView : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        DetachHost();
         _autoRefreshTimer.Stop();
 
         if (ViewModel is not null)
@@ -88,10 +92,79 @@ public partial class ProcessView : UserControl
         }
     }
 
+    /// <summary>窗口在后台（隐藏 / 最小化）时不刷。最小化时 IsVisible 仍为 true，必须一起看。</summary>
+    private bool HostInBackground =>
+        _host is { } host && (!host.IsVisible || host.WindowState == WindowState.Minimized);
+
+    private void AttachHost()
+    {
+        Window? host = Window.GetWindow(this);
+        if (ReferenceEquals(host, _host))
+        {
+            return;
+        }
+
+        DetachHost();
+
+        if (host is null)
+        {
+            return;
+        }
+
+        _host = host;
+        host.StateChanged += OnHostStateChanged;
+        host.IsVisibleChanged += OnHostVisibleChanged;
+    }
+
+    private void DetachHost()
+    {
+        if (_host is null)
+        {
+            return;
+        }
+
+        _host.StateChanged -= OnHostStateChanged;
+        _host.IsVisibleChanged -= OnHostVisibleChanged;
+        _host = null;
+    }
+
+    private void OnHostStateChanged(object? sender, EventArgs e) => SyncAutoRefresh(catchUp: true);
+
+    private void OnHostVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) =>
+        SyncAutoRefresh(catchUp: true);
+
+    /// <summary>按窗口可见性起停定时器；从后台回来时补一帧，免得第一眼是旧数据。</summary>
+    private void SyncAutoRefresh(bool catchUp)
+    {
+        if (ProcessViewModel.SuppressWorkerInit)
+        {
+            return;
+        }
+
+        if (HostInBackground)
+        {
+            _autoRefreshTimer.Stop();
+            return;
+        }
+
+        bool wasStopped = !_autoRefreshTimer.IsEnabled;
+        _autoRefreshTimer.Start();
+
+        if (!catchUp || !wasStopped || _refreshing || VisualTreeAssist.HasOpenDropDown(this))
+        {
+            return;
+        }
+
+        if (ViewModel is { } vm)
+        {
+            RequestRefresh(quiet: true, () => vm.RefreshProcessesLightAsync(quiet: true));
+        }
+    }
+
     /// <summary>停留在本页时定时采一次占用；切走即停，不做常驻轮询。</summary>
     private void OnAutoRefreshTick(object? sender, EventArgs e)
     {
-        if (ViewModel is not { } vm)
+        if (ViewModel is not { } vm || HostInBackground)
         {
             return;
         }

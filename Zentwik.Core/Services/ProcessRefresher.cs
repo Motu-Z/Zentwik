@@ -169,128 +169,10 @@ namespace Zentwik.Core.Services
         private CancellationTokenSource? _cts;
         private int _loopRunning;
 
-        /// <summary>
-        /// 锁住 <see cref="_watcherCount"/> 的增减与唤醒信号。
-        /// </summary>
-        private readonly object _wakeGate = new();
-
-        /// <summary>
-        /// 「有人在看」的唤醒事件。计数从 0 变 1 时置位，采样线程随即醒来。
-        ///
-        /// 旧实现用 Task.Run 跑异步循环，循环里没有任何等待原语可被打断，
-        /// 于是「没人看时彻底停采样」这件事根本做不到 —— 停下来的只有引用计数，
-        /// 线程仍然按周期醒着遍历全系统进程，属于纯粹的常驻浪费。
-        ///
-        /// 现在：一条命名后台线程 + AutoResetEvent，采样与回调都在它上面串行发生。
-        /// 线程单元状态设为 MTA：纯后台无消息泵，不需要 STA。
-        ///
-        /// 事件在采样线程上同步触发，这里不做任何封送：常驻进程里没有可封送的界面线程。
-        /// 见 ProcessBindingPage.OnProcessesRefreshed。
-        ///
-        /// 1.0.2 的实测教训：这里原本是 ManualResetEventSlim，只 Set 从不 Reset，
-        /// 于是「第一次打开进程页」把信号永久置位。之后无论有没有人看，
-        /// 采样线程在「没人看」分支里的 WaitAny 都会**立刻返回**，变成：
-        ///
-        ///     WaitAny → 立即返回 → continue → WaitAny → 立即返回 → ……
-        ///
-        /// 一个占满核心的忙等自旋。任务管理器上表现为「收进托盘后仍有约 3% CPU」
-        /// （16 核 × BelowNormal 优先级 ≈ 0.5 核 ≈ 3.1%）。
-        /// 切走页面也停不下来 —— 停掉的是引用计数，信号还一直置着。
-        ///
-        /// AutoResetEvent 的语义正好：一次 Set 只唤醒一个等待者，
-        /// 唤醒后自动复位，等待方再次 Wait 就会真的睡下去。
-        /// </summary>
-        private readonly AutoResetEvent _watchSignal = new(false);
-
-        /// <summary>「立即采一帧」请求。与观察者信号分开，避免互相吃掉。</summary>
+        /// <summary>「立即采一帧」请求。采样线程只在这条信号与取消信号上等待。</summary>
         private readonly SemaphoreSlim _sampleNowSignal = new(0);
 
         private Thread? _samplerThread;
-
-        /// <summary>
-        /// 「正在看进程列表」的引用计数。
-        ///
-        /// 0.7.0 起自动绑定已改由 ProcessWatcher 的 WMI 事件驱动，这份快照只服务于
-        /// 「用户正在看列表」这一个用途。既然没人看，就没有任何理由继续采样 ——
-        /// 所以这里不是「降频到某个慢周期」，而是完全停下。
-        /// 用计数而不是布尔值，是为了容纳「窗口可见 + 页面已加载」这类多个条件
-        /// 各自持有、各自释放的场景，避免其中一方先释放就把采集误停。
-        /// </summary>
-        private int _watcherCount;
-
-        /// <summary>
-        /// 宿主窗口是否可见（volatile：UI 线程写、采样线程读）。
-        /// false 时采样循环彻底挂起，不看有没有人「在看列表」。
-        /// </summary>
-        private volatile bool _hostVisible = true;
-
-        /// <summary>当前是否有人在看（有任何一个观察者持有）。</summary>
-        public bool IsWatched
-        {
-            get { lock (_wakeGate) return _watcherCount > 0; }
-        }
-
-        /// <summary>
-        /// 登记一个观察者，开始按 <see cref="IntervalSeconds"/> 采集。
-        /// 与 <see cref="ReleaseWatch"/> 必须成对调用（页面 Loaded/Unloaded、
-        /// 窗口可见性变化时各配一次）。
-        /// </summary>
-        public void AcquireWatch()
-        {
-            lock (_wakeGate)
-            {
-                _watcherCount++;
-                if (_watcherCount == 1)
-                {
-                    // 从「停」切到「跑」：立即唤醒采样线程，
-                    // 让用户切回来的第一眼就是新数据，而不是空白或陈数据。
-                    _watchSignal.Set();
-                    _log.Info("进程快照采样：已恢复（列表可见）");
-                }
-            }
-        }
-
-        /// <summary>释放观察者。计数归零后采样线程挂起，不再消耗 CPU。</summary>
-        public void ReleaseWatch()
-        {
-            lock (_wakeGate)
-            {
-                if (_watcherCount == 0)
-                    return;
-
-                _watcherCount--;
-                if (_watcherCount == 0)
-                {
-                    // 这里不需要额外清信号：AutoResetEvent 是一次性的，
-                    // 采样线程下一轮 Wait 时自然就睡下去了（最多多醒一次，
-                    // 醒来后 IsWatched 为 false，随即继续等待）。
-                    _log.Info("进程快照采样：已挂起（列表不可见）");
-                }
-            }
-        }
-
-        /// <summary>
-        /// 宿主窗口是否可见。false = 窗口已隐藏 / 最小化 / 收进托盘。
-        ///
-        /// 引用计数只能反映「有没有人主动在看列表」，反映不了「窗口根本看不见」。
-        /// 窗口隐藏后，即使某个页面因为异常路径忘了 ReleaseWatch，
-        /// 采样也必须停 —— 这里是硬闸门，不依赖任何人的 bookkeeping。
-        ///
-        /// 恢复时立刻唤醒采样线程：用户把窗口叫回来时，第一眼就该是新数据。
-        /// </summary>
-        public void SetHostVisible(bool visible)
-        {
-            if (_hostVisible == visible)
-                return;
-
-            _hostVisible = visible;
-
-            if (visible)
-                _watchSignal.Set();
-        }
-
-        /// <summary>宿主窗口当前是否可见（自检 / 日志用）。</summary>
-        public bool HostVisible => _hostVisible;
 
         /// <summary>CPU 占用滑动窗口的长度（秒）。</summary>
         private const double CpuWindowSeconds = 30.0;
@@ -332,44 +214,9 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>
-        /// 采样完成事件（携带本轮快照）。
-        ///
-        /// 订阅方必须自行切回自己的线程再动任何控件或集合。
-        /// 这里不做封送，是因为本类要能在完全没有界面线程的常驻进程里工作。
-        /// </summary>
-        public event Action<IReadOnlyList<Entry>>? Refreshed;
-
-        /// <summary>采样周期（秒）。
-        ///
-        /// 默认 5 秒。这个值在 1.0.1 从 3 秒放宽：
-        /// 一是列表每 3 秒重排一次，用户伸手去点某一行的下拉框时经常点空；
-        /// 二是「用户在看列表」这件事本身不需要秒级精度 —— 进程占用是用来
-        /// 判断「谁在吃 CPU」的，5 秒足够看出趋势，而 3 秒只是在放大噪声。
-        /// 10 秒试过，滞后感明显：刚打开的进程要等近十秒才出现在列表里。
-        ///
-        /// 单帧开销没变（Toolhelp32 快照 + 每进程 OpenProcess 取时间），
-        /// 所以放宽周期等于把后台占用直接降到约六成（3 → 5 秒）。
-        ///
-        /// 这个周期只在「用户真的在看列表」时生效 —— 没人看时循环完全挂起
-        /// （见 AcquireWatch / ReleaseWatch），不再是「降频到某个慢周期」。
-        /// 自动绑定与此无关，那条链路走 ProcessWatcher 的 WMI 事件。
-        ///
-        /// 想更灵敏就调小（最小 1 秒），想更省就调大。改这里一处即可，
-        /// 全工程没有第二个地方写死采样周期。
-        ///
-        /// volatile：UI 线程写、后台采样线程读，不加会让循环可能长期读到缓存里的旧值。</summary>
-        private volatile int _intervalSeconds = 5;
-        public int IntervalSeconds
-        {
-            get => _intervalSeconds;
-            set => _intervalSeconds = Math.Max(1, value);
-        }
-
         /// <summary>启动后台采样线程（幂等）。应用启动时调用一次即可。
         ///
-        /// 线程启动后并不等于立刻开始采集：没人观察时它会挂在信号量上等待，
-        /// 真正的采集频率由「有没有人在看」决定（见 AcquireWatch / ReleaseWatch）。
+        /// 线程启动后挂在信号量上等待，只有 <see cref="RequestSample"/> 才会让它采一帧。
         /// </summary>
         public void Start()
         {
@@ -418,85 +265,31 @@ namespace Zentwik.Core.Services
             {
                 try
                 {
-                    // 没人看 / 窗口不可见：挂在事件上，CPU 占用为零。
-                    // 取消时 Stop() 会 Set 一次把它踢出。
-                    //
-                    // ① _watchSignal：有人开始看列表；
-                    // ② _sampleNowSignal：有人点名要一帧（降级轮询的补扫会用）。
-                    // 只等 ① 的话，② 会在「没人看」时被丢掉，调用方只能白等一个超时，
-                    // 拿到的还是上一份快照 —— 这正是降级模式下补扫失效的原因。
-                    if (!IsWatched || !_hostVisible)
-                    {
-                        int index = WaitHandle.WaitAny(
-                            new[]
-                            {
-                                _watchSignal,
-                                _sampleNowSignal.AvailableWaitHandle,
-                                token.WaitHandle,
-                            },
-                            Timeout.Infinite);
-
-                        if (index == 2)
-                            break;                                  // 取消
-
-                        if (index == 1)
+                    // 只等「立即采一帧」与取消：采样完全由查询驱动，没有周期唤醒。
+                    int index = WaitHandle.WaitAny(
+                        new[]
                         {
-                            // 有人点名要一帧：消费掉请求并采。
-                            while (_sampleNowSignal.Wait(0))
-                            {
-                                // 消费完毕
-                            }
+                            _sampleNowSignal.AvailableWaitHandle,
+                            token.WaitHandle,
+                        },
+                        Timeout.Infinite);
 
-                            SampleOnce("立即采样请求");
-                        }
+                    if (index == 1)
+                        break;
 
-                        continue;
+                    // 消费掉待处理的请求，多来源并发时只采一帧。
+                    while (_sampleNowSignal.Wait(0))
+                    {
                     }
 
-                    // 有人看：到点就采一帧，或被打断（有人要求立即采）。
-                    SampleOnce("周期刷新");
-
-                    if (!WaitInterval(token))
-                        break;
+                    SampleOnce("立即采样请求");
                 }
                 catch (ObjectDisposedException)
                 {
-                    // 退出阶段事件被释放，正常收尾
+                    // 退出阶段信号量被释放，正常收尾
                     break;
                 }
             }
-        }
-
-        /// <summary>
-        /// 等满一个采样周期，或被「立即采样」请求提前唤醒。
-        ///
-        /// 用定时器而不是 Task.Delay：这条线程上没有同步上下文，用 async/await
-        /// 只会把执行流甩回线程池（又变回 MTA），那正是要避免的事。
-        /// </summary>
-        private bool WaitInterval(CancellationToken token)
-        {
-            // 进睡眠前清掉残留请求：不清的话上一轮的「立即采样」会让这一轮立刻返回，
-            // 从 3 秒一次退化成紧密循环。
-            while (_sampleNowSignal.Wait(0))
-            {
-                // 消费完毕
-            }
-
-            using Timer ticker = new(
-                _ => TryRelease(_sampleNowSignal), null,
-                TimeSpan.FromSeconds(Math.Max(1, IntervalSeconds)), Timeout.InfiniteTimeSpan);
-
-            int index = WaitHandle.WaitAny(
-                new[]
-                {
-                    _sampleNowSignal.AvailableWaitHandle,
-                    _watchSignal,
-                    token.WaitHandle,
-                },
-                Timeout.Infinite);
-
-            // 0 = 立即采样 / 定时到点，1 = 观察者状态变化（进页面或离开，离开时下一轮会挂起）
-            return index is 0 or 1;
         }
 
         /// <summary>采一帧并广播；异常只记 WARN，绝不让循环停摆。</summary>
@@ -540,7 +333,6 @@ namespace Zentwik.Core.Services
             }
 
             // 循环可能正挂在信号量上等待，光 Cancel 不会让它醒来，必须补一次信号。
-            _watchSignal.Set();
             TryRelease(_sampleNowSignal);
 
             cts.Dispose();
@@ -558,15 +350,11 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>调整采样周期（搜索框聚焦时加速）。下一轮循环生效。</summary>
-        public void SetInterval(int seconds) => IntervalSeconds = Math.Max(1, seconds);
-
         /// <summary>
-        /// 执行一次采样并广播结果。
+        /// 执行一次采样并写入快照。
         ///
-        /// 唯一的例外是启动补扫（ProcessWatcher.TakeSnapshotForScan），它需要
-        /// 「同步拿到结果」。那条路径在 WMI 回调线程上，同样是 MTA —— 所以它
-        /// 现在也改成走 <see cref="SampleOnSamplerThread"/>。
+        /// 需要「同步拿到结果」的调用方（启动补扫、查询）走
+        /// <see cref="SampleOnSamplerThread"/>，不要直调本方法。
         /// </summary>
         public void Sample()
         {
@@ -587,16 +375,13 @@ namespace Zentwik.Core.Services
                 _latest.AddRange(collected);
                 _latestStamp = Stopwatch.GetTimestamp();
             }
-
-            // 注意：本事件在采样线程上触发，订阅方必须自行切回 UI 线程。
-            Refreshed?.Invoke(collected);
         }
 
         /// <summary>
         /// 在采样线程上同步跑一次采样，并等它完成。
         ///
-        /// 给「启动补扫」这类需要结果立刻可用的调用方用：它不能等 3 秒周期，
-        /// 也不该自己在调用线程上跑（那条线程可能是 MTA 的 WMI 回调）。
+        /// 给「启动补扫 / 查询」这类需要结果立刻可用的调用方用：它不该在调用
+        /// 线程上直接跑（几百次 OpenProcess 会压到界面线程上）。
         /// </summary>
         public IReadOnlyList<Entry> SampleOnSamplerThread(TimeSpan timeout)
         {

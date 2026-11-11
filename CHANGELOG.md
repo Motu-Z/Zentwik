@@ -4,6 +4,17 @@
 
 ---
 
+## [2.2.3]
+
+### Changed (变更)
+
+- **进程页进后台后停止轮询**：原先只在页面 `Unloaded` 时停表，而最小化不触发 `Unloaded` —— 停在进程页再收进后台，仍每 3 秒查一次进程；快照寿命 2 秒短于查询周期，等于每轮都让后台现采一帧（几百次 `OpenProcess`），把刚生效的 EcoQoS 与 BelowNormal 又反复叫醒。现在跟随宿主窗口的可见性与窗口状态起停，回前台补一帧增量刷新，第一眼仍是新数据。
+- **生效方案轮询同样停在后台**：可见性判断从 `IsVisible` 改为含最小化的口径，最小化期间不再发 `query-active-plans`。
+
+### Removed (移除)
+
+- **采样器的观察者记账与可见性闸门**：`AcquireWatch` / `ReleaseWatch` / `IsWatched` / `SetHostVisible` / `HostVisible` 自 2.1.5 改为「查询驱动采样」起就没有调用点，计数恒为 0、可见性恒为 true，闸门条件恒成立。连同只服务于周期采样的 `IntervalSeconds` / `SetInterval` / `WaitInterval`，以及没有任何订阅者的 `Refreshed` 事件一并删除。采样线程现在只等「立即采一帧」与取消两个信号，行为不变。
+
 ## [2.2.2]
 
 ### Changed (变更)

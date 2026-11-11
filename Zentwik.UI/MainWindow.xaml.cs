@@ -33,7 +33,7 @@ public partial class MainWindow : Window
 
         InitializeComponent();
 
-        _planWatcher = new PlanWatcher(() => IsVisible);
+        _planWatcher = new PlanWatcher(() => IsForeground);
 
         System.ComponentModel.DependencyPropertyDescriptor
             .FromProperty(WindowStateProperty, typeof(Window))
