@@ -297,6 +297,10 @@ public sealed class MaskManagerViewModel : ViewModelBase
             SelectedMask = null;
             LoadMasks(outcome.Value);
             _owner.ApplyMasks(outcome.Value);
+
+            // 规则里存的是掩码名快照：改名 / 删掉之后规则卡上的标签会停在旧样子。
+            await _owner.RefreshRulesAsync().ConfigureAwait(true);
+
             ReturnToList();
         });
     }
@@ -342,48 +346,81 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
             LoadMasks(outcome.Value);
             _owner.ApplyMasks(outcome.Value);
+            await _owner.RefreshRulesAsync().ConfigureAwait(true);
             ReturnToList();
         });
     }
 
     private void SetAll(bool selected)
     {
-        foreach (CcdGroup group in CcdGroups)
-        foreach (CoreSlot core in group.Cores)
-        foreach (ThreadSlot thread in core.Threads)
-            thread.IsSelected = selected;
-
-        UpdateCount();
+        BulkApply(() =>
+        {
+            foreach (CcdGroup group in CcdGroups)
+            foreach (CoreSlot core in group.Cores)
+            foreach (ThreadSlot thread in core.Threads)
+                thread.IsSelected = selected;
+        });
     }
 
     private void SelectPhysicalOnly()
     {
-        foreach (CcdGroup group in CcdGroups)
-        foreach (CoreSlot core in group.Cores)
+        BulkApply(() =>
         {
-            for (int i = 0; i < core.Threads.Count; i++)
-                core.Threads[i].IsSelected = i == 0;
+            foreach (CcdGroup group in CcdGroups)
+            foreach (CoreSlot core in group.Cores)
+            {
+                for (int i = 0; i < core.Threads.Count; i++)
+                    core.Threads[i].IsSelected = i == 0;
+            }
+        });
+    }
+
+    private void InvertSelection()
+    {
+        BulkApply(() =>
+        {
+            foreach (CcdGroup group in CcdGroups)
+            foreach (CoreSlot core in group.Cores)
+            foreach (ThreadSlot thread in core.Threads)
+                thread.IsSelected = !thread.IsSelected;
+        });
+    }
+
+    private void ApplyMaskToGrid(ulong mask)
+    {
+        BulkApply(() =>
+        {
+            foreach (CcdGroup group in CcdGroups)
+            foreach (CoreSlot core in group.Cores)
+            foreach (ThreadSlot thread in core.Threads)
+                thread.IsSelected = (mask & BitAt(thread.LogicalIndex)) != 0;
+        });
+    }
+
+    /// <summary>成批改勾选时不逐格重算，末尾统一刷一次。</summary>
+    private void BulkApply(Action action)
+    {
+        _bulkSelect = true;
+
+        try
+        {
+            action();
+        }
+        finally
+        {
+            _bulkSelect = false;
         }
 
         UpdateCount();
     }
 
-    private void InvertSelection()
-    {
-        foreach (CcdGroup group in CcdGroups)
-        foreach (CoreSlot core in group.Cores)
-        foreach (ThreadSlot thread in core.Threads)
-            thread.IsSelected = !thread.IsSelected;
+    private bool _bulkSelect;
 
-        UpdateCount();
-    }
-
-    private void ApplyMaskToGrid(ulong mask)
+    /// <summary>单个格子被点：计数要立刻跟上，否则「已选 N」停在打开时那一刻。</summary>
+    private void OnThreadSelectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        foreach (CcdGroup group in CcdGroups)
-        foreach (CoreSlot core in group.Cores)
-        foreach (ThreadSlot thread in core.Threads)
-            thread.IsSelected = (mask & BitAt(thread.LogicalIndex)) != 0;
+        if (e.PropertyName == nameof(ThreadSlot.IsSelected) && !_bulkSelect)
+            UpdateCount();
     }
 
     private ulong BuildMask()
@@ -442,11 +479,16 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
             for (int core = 0; core < coreCount; core++)
             {
-                int logicalBase = (firstCore + core) * threads;
-                CoreSlot slot = new(ccd, core, logicalBase);
+                // 核编号一路排下去：CCD1 的第一个核是 Core 8，不是又从 Core 0 起。
+                int globalCore = firstCore + core;
+                CoreSlot slot = new(globalCore, globalCore * threads);
 
                 for (int thread = 0; thread < threads; thread++)
-                    slot.Threads.Add(new ThreadSlot(logicalBase + thread, thread));
+                {
+                    ThreadSlot item = new((globalCore * threads) + thread, thread);
+                    item.PropertyChanged += OnThreadSelectionChanged;
+                    slot.Threads.Add(item);
+                }
 
                 group.Cores.Add(slot);
             }
@@ -511,15 +553,13 @@ public sealed class CcdGroup
 
 public sealed class CoreSlot
 {
-    public CoreSlot(int ccdIndex, int coreIndex, int logicalIndex)
+    public CoreSlot(int coreIndex, int logicalIndex)
     {
-        CcdIndex = ccdIndex;
         CoreIndex = coreIndex;
         LogicalIndex = logicalIndex;
     }
 
-    public int CcdIndex { get; }
-
+    /// <summary>全局物理核序号，跨 CCD 连续。</summary>
     public int CoreIndex { get; }
 
     /// <summary>该核第一个逻辑处理器的序号（掩码位起点）。</summary>

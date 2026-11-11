@@ -981,6 +981,11 @@ public static class IntegrationTest
 
         tuning.CoreMargins[0].IncrementCommand.Execute(null);
 
+        tuning.CoreMargins[0].IncrementCommand.Execute(null);
+        Check("调校：脏值下面板拿到「保存至」", PlanHub.Tuning.HasUnsavedChanges);
+        Check("调校：脏值时「保存至」可点（不要求 SMU 可写）",
+              PlanHub.Tuning.CanSavePending?.Invoke() == true);
+
         tuning.DiscardCommand.Execute(null);
         Check("调校：放弃后 IsDirty = false", !tuning.IsDirty);
         Check("调校：放弃后数值还原", tuning.CoreMargins[0].Margin == before,
@@ -2088,6 +2093,10 @@ public static class IntegrationTest
         Check("掩码：抽屉停在掩码页签", proc.IsMasksTab && proc.IsDrawerOpen);
         Check("掩码：页签持有自己的 VM", proc.MaskManager is not null);
 
+        // 规则只写 schedules.json、方案快照不动：底部按钮得能切到「保存至」
+        Check("进程页：接了「保存至」钩子",
+              PlanHub.Scheduling.CanSavePending is not null && PlanHub.Scheduling.SavePending is not null);
+
         var mask = proc.MaskManager;
 
         if (mask is null)
@@ -2105,6 +2114,17 @@ public static class IntegrationTest
         Check("掩码：列表每项都有后台 Id",
               mask.SavedMasks.All(m => !string.IsNullOrEmpty(m.Id)),
               string.Join(", ", mask.SavedMasks.Select(m => m.Id)));
+
+        Check("掩码：核编号跨 CCD 连续（CCD1 从 Core 8 起）",
+              mask.CcdGroups[1].Cores[0].DisplayName == "Core 8",
+              mask.CcdGroups[1].Cores[0].DisplayName);
+
+        // 单点勾选：计数必须当场跟，不能等快捷按钮
+        mask.ClearSelectionCommand.Execute(null);
+        mask.CcdGroups[0].Cores[0].Threads[0].IsSelected = true;
+        Check("掩码：单点勾选即时刷新计数", mask.SelectedCoreCount == 1, $"{mask.SelectedCoreCount}");
+        mask.CcdGroups[0].Cores[0].Threads[0].IsSelected = false;
+        Check("掩码：取消勾选即时回落", mask.SelectedCoreCount == 0, $"{mask.SelectedCoreCount}");
 
         mask.SelectAllCommand.Execute(null);
         Check("掩码：全选 32", mask.SelectedCoreCount == 32, $"{mask.SelectedCoreCount}");

@@ -158,6 +158,10 @@ public partial class TuningViewModel : ObservableObject
         // 有就先显示，别让界面先闪一遍占位值再被覆盖。
         LoadProfileValues();
 
+        // 面板底部按钮脏值时改成「保存至」：只写 plans.json，不碰 SMU。
+        PlanHub.Tuning.CanSavePending = () => !IsBusy && IsDirty;
+        PlanHub.Tuning.SavePending = () => _ = SaveToPlanAsync();
+
         // 顶栏切方案 = 本页换一组值。用弱事件订阅：页面实例被外壳缓存着，
         // 但自检会造很多个，普通订阅会在单例上留下一串永不释放的强引用。
         System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
@@ -249,6 +253,36 @@ public partial class TuningViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>只把界面上的值写进当前方案，不下发硬件</summary>
+    private async Task SaveToPlanAsync()
+    {
+        int[] margins = Snapshot();
+        uint fMax = (uint)Math.Max(0, FMaxMHz);
+        PlanItem? target = PlanHub.Tuning.Current;
+
+        try
+        {
+            IpcOutcome<string> saved = await WorkerBridge.Instance
+                .SavePlanAsync(PlanKind.Tuning, target?.Id, target?.Name ?? "当前调校", margins, fMax)
+                .ConfigureAwait(true);
+
+            if (!saved.Success)
+            {
+                ToastService.Instance.Show(
+                    string.IsNullOrEmpty(saved.Message) ? "方案未保存" : saved.Message);
+                return;
+            }
+
+            PlanHub.Tuning.RememberTuning(margins, fMax);
+            await PlanHub.Tuning.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+            AcceptCurrentAsBaseline();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Instance.ShowError($"保存方案失败：{ex.Message}");
         }
     }
 

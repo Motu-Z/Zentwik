@@ -52,6 +52,7 @@ public class ProcessViewModel : ViewModelBase
     public event Action<bool>? DrawerStateChanged;
 
     public RelayCommand ToggleDrawerCommand { get; }
+    public RelayCommand ApplyPlanCommand { get; }
 
     private string _drawerTab = "rules";
 
@@ -248,6 +249,23 @@ public class ProcessViewModel : ViewModelBase
         ApplyRuleCommand = new RelayCommand(_ => AutoApply());
         ManageMaskCommand = new RelayCommand(_ => OpenMaskManager());
         ToggleDrawerCommand = new RelayCommand(_ => IsDrawerOpen = !IsDrawerOpen);
+        ApplyPlanCommand = new RelayCommand(_ => RequestApplyPlan());
+
+        // 规则改完只落在 schedules.json，方案快照不动：底部按钮据此切「保存至」。
+        PlanHub.Scheduling.CanSavePending = () => UseWorker;
+        PlanHub.Scheduling.SavePending = () => Fire(SaveRulesToPlanAsync);
+
+        // 面板应用调度方案会整块换掉规则，本页的规则表与进程行都得重拉。
+        System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
+            PlanHub.Scheduling,
+            nameof(PlanScope.Applied),
+            OnPlanApplied);
+
+        // 换选方案 = 换了一个比对基准，按钮文案要跟着这个方案的条数走。
+        System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
+            PlanHub.Scheduling,
+            nameof(PlanScope.CurrentChanged),
+            OnPlanSelectionChanged);
 
         // 「自定义掩码」页签是抽屉的常驻内容，管理器必须一开始就存在，
         // 否则页签绑定到 null、切过去是一片空白。数据等打开页签时再拉。
@@ -614,6 +632,21 @@ public class ProcessViewModel : ViewModelBase
         {
             _suppressSync = false;
         }
+
+        SyncRuleDirty();
+    }
+
+    /// <summary>规则条数与当前方案快照不一致，就是有没存进方案的改动。</summary>
+    private void SyncRuleDirty()
+    {
+        if (!UseWorker)
+        {
+            return;
+        }
+
+        PlanItem? current = PlanHub.Scheduling.Current;
+
+        PlanHub.Scheduling.SetUnsaved(current is not null && SavedRules.Count != current.RuleCount);
     }
 
     /// <summary>规则的显示名：CCD 给 给「不调度」</summary>
@@ -1008,14 +1041,77 @@ public class ProcessViewModel : ViewModelBase
 
         await RefreshRulesAsync().ConfigureAwait(true);
 
+        // 条数可能没变（只换了掩码），但方案快照一定落后了。
+        if (failures.Count == 0)
+        {
+            PlanHub.Scheduling.SetUnsaved(true);
+        }
+
         if (failures.Count > 0)
         {
             ToastService.Instance.ShowError(failures[0]);
         }
     }
 
+    /// <summary>「保存至「方案x」」：把当前规则整份写进方案，不碰硬件</summary>
+    private async Task SaveRulesToPlanAsync()
+    {
+        await PlanHub.Scheduling.SaveAsync().ConfigureAwait(true);
+
+        // SaveAsync 已重拉方案列表：RuleCount 跟上了，脏标记自动落回 false。
+        SyncRuleDirty();
+    }
+
+    /// <summary>面板上点「应用方案」：规则被覆盖前先说清会丢几条。</summary>
+    private void RequestApplyPlan()
+    {
+        PlanScope session = PlanHub.Scheduling;
+        PlanItem? plan = session.Current;
+
+        if (plan is null)
+        {
+            return;
+        }
+
+        int live = SavedRules.Count;
+
+        if (!UseWorker || live == plan.RuleCount)
+        {
+            session.ApplyCommand.Execute(null);
+            return;
+        }
+
+        int diff = Math.Abs(live - plan.RuleCount);
+
+        ConfirmService.Instance.Request(
+            "应用调度方案",
+            new[]
+            {
+                $"用「{plan.Name}」里的 {plan.RuleCount} 条规则替换当前 {live} 条",
+                live > plan.RuleCount
+                    ? $"多出来的 {diff} 条规则会被删除"
+                    : $"方案里的 {diff} 条规则会被重新加回来",
+                "已经绑好核心的进程会按新规则重算"
+            },
+            () => session.ApplyCommand.Execute(null),
+            "应用");
+    }
+
+    /// <summary>方案应用完规则被换掉了，重拉规则表与进程表。</summary>
+    private void OnPlanApplied(object? sender, EventArgs e)
+    {
+        if (!UseWorker)
+        {
+            return;
+        }
+
+        Fire(() => RefreshAsync(quiet: true));
+    }
+
+    private void OnPlanSelectionChanged(object? sender, EventArgs e) => SyncRuleDirty();
+
     /// <summary>只重新拉规则与掩码，不重建进程表</summary>
-    private async Task RefreshRulesAsync()
+    internal async Task RefreshRulesAsync()
     {
         WorkerBridge bridge = WorkerBridge.Instance;
 

@@ -66,8 +66,7 @@
                         <Button Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="8,0,0,0"
                                 automation:AutomationProperties.Name="应用调度方案"
-                                Command="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=ApplyCommand}"
-                                CommandParameter="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=Current}"
+                                Command="{Binding ApplyPlanCommand}"
                                 IsEnabled="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=HasCurrent}"
 >
                             <TextBlock Text="应用方案" />
