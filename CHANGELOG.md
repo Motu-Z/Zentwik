@@ -4,6 +4,14 @@
 
 ---
 
+## [2.2.8]
+
+### Changed (变更)
+
+- **发布包不再携带 `WinIo32.dll`**：ZenStates-Core 的 `IODriver` 按位数二选一——64 位进程加载 `inpoutx64.dll`，只有 32 位进程才碰 `WinIo32.dll`。本项目只出 x64 产物，那条分支永远走不到，45 KB 属于纯死重量。删除后发布目录为 `Zentwik.UI.exe` + `Zentwik.Worker.exe` + `WmiLight.Native.dll`。
+  - 顺带澄清一个错误认知：SMU 写入只走 PawnIO（`Cpu` 构造第一句就检查 `PawnIo.IsInstalled`），`IODriver` 初始化失败仅记一条 `InitError`，不影响调校。原注释所称「PawnIO 缺位时回退 WinIo」在 x64 下不成立。
+- **README 重写**：按主流开源项目结构重排，补全四个发布产物说明、应用数据位置、项目结构与参考实现致谢；删除已过时的协议版本号等易腐化内容。
+
 ## [2.2.7]
 
 ### Fixed (修复)

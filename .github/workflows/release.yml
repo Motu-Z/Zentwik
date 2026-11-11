@@ -48,7 +48,6 @@ jobs:
         if (Test-Path ./worker/Zentwik.Worker.dll) { throw "Worker 仍是托管产物（存在 .dll），Native AOT 未生效" }
         if (Test-Path ./worker/Zentwik.Worker.runtimeconfig.json) { throw "存在 runtimeconfig.json，Native AOT 未生效" }
         if (-not (Test-Path ./worker/WmiLight.Native.dll)) { throw "WmiLight.Native.dll 未随包落地" }
-        if (-not (Test-Path ./worker/WinIo32.dll)) { throw "WinIo32.dll 未随包落地" }
         $w = (Get-Item ./worker/Zentwik.Worker.exe).Length
         Write-Host ("Worker native exe: {0:N2} MB" -f ($w / 1MB))
 
@@ -62,7 +61,7 @@ jobs:
 
     - name: Assemble packages
       run: |
-        $worker = 'Zentwik.Worker.exe','WmiLight.Native.dll','WinIo32.dll'
+        $worker = 'Zentwik.Worker.exe','WmiLight.Native.dll'
         foreach ($dir in './pkg-portable','./pkg-standalone') {
           foreach ($f in $worker) { Copy-Item "./worker/$f" $dir -Force }
         }

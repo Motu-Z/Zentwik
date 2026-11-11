@@ -31,7 +31,7 @@
     <LangVersion>latest</LangVersion>
 
     <!-- 版本号口径统一由 Core 维护，各宿主工程不再各写一份 -->
-    <Version>2.2.7</Version>
+    <Version>2.2.8</Version>
     <FileVersion>2.1.11.0</FileVersion>
     <AssemblyVersion>2.1.11.0</AssemblyVersion>
 
@@ -92,11 +92,13 @@
       · 拓扑字段、smu.Rsmu.SMU_MSG_* 消息号、SetPsmMarginSingleCore /
         GetPsmMarginSingleCore / MakeCoreMask / GetFMax / SetFMax 全部未变
 
-      【WinIo32.dll 为什么要一起带】
-      1.93.1 的 IODriver 在 PawnIO 缺位时会回退到 WinIo/inpOut 端口访问，
-      它是按文件名 LoadLibrary 的。驱动就绪时用不到它，但缺了会在
-      「没装 PawnIO 的机器」上把错误信息变成一句含糊的 FileNotFound。
-      45KB 换一条可读的降级路径，值。 -->
+      【为什么不再随包携带 WinIo32.dll】
+      库里的 IODriver 按位数二选一：Is64BitProcess ? "inpoutx64.dll"
+      : "WinIo32.dll"，而 Is64BitProcess 就是 IntPtr.Size == 8。本工程只出
+      x64 产物，WinIo32.dll 那条分支永远走不到，属于纯死重量。
+      即便将来真的退到 IODriver，它加载的也是系统侧安装的 inpoutx64.dll，
+      与这个 32 位库无关。SMU 本身只走 PawnIO（Cpu 构造第一句就检查
+      PawnIo.IsInstalled），IODriver 失败只记一条 InitError，不影响调校。 -->
     <Reference Include="ZenStates-Core">
       <HintPath>..\libs\ZenStates-Core\ZenStates-Core.dll</HintPath>
       <Private>true</Private>
@@ -130,31 +132,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 原生依赖随宿主输出同目录落地（ProjectReference 的 content 会传递到输出）。
-
-         ExcludeFromSingleFile 是必需的：不写这一条，单文件发布会把这个原生 DLL
-         一并塞进 exe，运行时解到 %TEMP%\.net\... 里，而 ZenStates-Core 是按
-         「文件名」自己 LoadLibrary("WinIo32.dll") 的 —— 它只认 exe 所在目录与
-         PATH，找不到解包目录，等于白带。
-         代价是发布产物从「一个 exe」变成「exe + 45KB 的 DLL」，但这比留一个
-         永远加载不上的降级路径要好。
-
-         CopyToPublishDirectory 与 CopyToOutputDirectory 两条都要写：
-         前者管 dotnet publish，后者管 dotnet build 后的就地调试，
-         只写一条会让其中一种场景缺文件。 -->
-    <None Include="..\libs\ZenStates-Core\WinIo32.dll" Link="WinIo32.dll"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest"
-          ExcludeFromSingleFile="true" />
-
     <!--
       驱动与固件类资源（.sys / .bin）的通配规则。
 
       【当前基线里没有这两类文件，别以为漏了】
-      扫描过 libs\ZenStates-Core 与整个仓库：只有 WinIo32.dll 与
-      ZenStates-Core.dll 两个二进制。ZenStates-Core 内部硬编码的驱动路径是
-      C:\Windows\System32\drivers\inpoutx64.sys 与 PawnIO 的服务注册表项，
-      两者都由各自安装程序落到系统目录，不是随包发布的资源。
+      扫描过 libs\ZenStates-Core 与整个仓库：只剩 ZenStates-Core.dll 一个二进制。
+      ZenStates-Core 内部引用的 inpoutx64.dll 与 PawnIO 驱动都由各自安装程序
+      落到系统目录，不是随包发布的资源。
       也就是说 .sys 从来不该出现在发布目录里 —— 把驱动塞进应用目录，
       Windows 也不会从那里加载未签名的内核模块。
 
