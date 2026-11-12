@@ -4,6 +4,22 @@
 
 ---
 
+## [2.3.5]
+
+### Fixed (修复)
+
+- **「选中的掩码已不存在」在重新勾选后仍复现**：`AffinityTarget.MaskKey` 的 setter 在 `MaskOption.Resolve` 查不到时只改 key、不改 `TargetType` / `TargetValue`，且 key 与旧值相同时 `SetProperty` 直接返回 —— 一旦进入这个状态，界面显示已选中、内部仍是旧值，重新勾同一项永远不会修正。
+  - setter 改为：key 命中选项时**无条件回写**三元组（key 相同但值不一致也修）；只有真正查不到选项时才退化为仅更新 key。
+  - `ResolveMaskId` 改为三级解析：界面选中的 key → 掩码数值 → 直接是掩码 Id 的历史规则。
+  - 保存前若解析不出掩码 Id，先重拉一次掩码表再判，覆盖「掩码表过期」导致的误报。
+- 新增回归断言「重设同一掩码能修回内部值」（`--itest`）。
+
+### Verified (验证)
+
+- 构建 0 警告 0 错误；`dotnet test` 220 通过；UiSmoke `failures=0`；`--itest` 全部通过。
+
+---
+
 ## [2.3.4]
 
 ### Changed (变更)

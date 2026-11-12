@@ -1114,6 +1114,21 @@ public class ProcessViewModel : ViewModelBase
 
     private void OnPlanSelectionChanged(object? sender, EventArgs e) => SyncRuleDirty();
 
+    /// <summary>只重新拉掩码表</summary>
+    private async Task<bool> RefreshMaskOptionsAsync()
+    {
+        IpcOutcome<MaskListPayload> masks = await WorkerBridge.Instance
+            .QueryMasksAsync().ConfigureAwait(true);
+
+        if (!masks.Success || masks.Value is null)
+        {
+            return false;
+        }
+
+        ApplyMasks(masks.Value);
+        return true;
+    }
+
     /// <summary>只重新拉规则与掩码，不重建进程表</summary>
     internal async Task RefreshRulesAsync()
     {
@@ -1153,8 +1168,17 @@ public class ProcessViewModel : ViewModelBase
 
         if (target.TargetType == "mask" && maskId is null)
         {
-            // 掩码在界面打开之后被删掉了。此时传上去的 Id 一定匹配不到，
-            // 后台会回「掩码不存在」—— 提前拦下来，提示用户重选。
+            // 掩码表可能过期（掩码管理器刚改过、启动时拉取失败）：重拉一次再判。
+            if (await RefreshMaskOptionsAsync().ConfigureAwait(true))
+            {
+                maskId = ResolveMaskId(target);
+            }
+        }
+
+        if (target.TargetType == "mask" && maskId is null)
+        {
+            // 掩码确实没了。此时传上去的 Id 一定匹配不到，后台会回「掩码不存在」——
+            // 提前拦下来，提示用户重选。
             return (false, "选中的掩码已不存在，请重新选一次");
         }
 
@@ -1178,13 +1202,23 @@ public class ProcessViewModel : ViewModelBase
         => SavedRules.FirstOrDefault(
             r => string.Equals(r.ProcessName, processName, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>规则引用的掩码 Id。按掩码 **值** 找回选项，再取它的 Id。</summary>
+    /// <summary>规则要绑的掩码 Id。先认界面选中的 key，再退到掩码值，最后认已经是 Id 的旧规则</summary>
     private string? ResolveMaskId(AffinityTarget target)
     {
+        if (MaskOption.Resolve(target.MaskKey)?.MaskId is { } byKey)
+        {
+            return byKey;
+        }
+
         foreach (MaskOption option in MaskOptions)
         {
-            if (option.TargetType == "mask"
-                && string.Equals(option.TargetValue, target.TargetValue, StringComparison.Ordinal))
+            if (option.TargetType != "mask" || option.MaskId is null)
+            {
+                continue;
+            }
+
+            if (string.Equals(option.TargetValue, target.TargetValue, StringComparison.Ordinal)
+                || string.Equals(option.MaskId, target.TargetValue, StringComparison.Ordinal))
             {
                 return option.MaskId;
             }
@@ -1509,22 +1543,31 @@ public abstract class AffinityTarget : ViewModelBase
         set => SetProperty(ref _targetValue, value);
     }
 
+    /// <summary>界面选中的掩码。写进 key 的同时必须把类型与值一起改掉 —— 否则会出现「显示已选、实际还是旧值」</summary>
     public string? MaskKey
     {
         get => _maskKey;
         set
         {
-            MaskOption? option = MaskOption.Resolve(value);
-
-            if (option is null)
+            if (MaskOption.Resolve(value) is { } option)
             {
-                SetProperty(ref _maskKey, value);
-                OnPropertyChanged(nameof(HasMaskKey));
+                // key 相同也要比对值：旧版本留下的不一致状态靠这里自愈。
+                if (string.Equals(_maskKey, option.Key, StringComparison.Ordinal)
+                    && string.Equals(_targetValue, option.TargetValue, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                WriteMask(option.Label, option.TargetType, option.TargetValue);
+                NotifyMaskChanged();
                 return;
             }
 
-            WriteMask(option.Label, option.TargetType, option.TargetValue);
-            NotifyMaskChanged();
+            // 选项表里查不到（掩码刚被删、下拉被清空）：只更新 key，保存时会要求重选。
+            if (SetProperty(ref _maskKey, value))
+            {
+                OnPropertyChanged(nameof(HasMaskKey));
+            }
         }
     }
 

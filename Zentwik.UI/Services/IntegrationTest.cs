@@ -1225,6 +1225,12 @@ public static class IntegrationTest
 
             Check("进程：改进程绑核后自动生成同名规则", made is not null, fresh.ProcessName);
             Check("进程：生成的规则带着新的掩码", made?.MaskLabel == mask.Label, made?.MaskLabel ?? "-");
+
+            // key 没变、内部值被改脏时，重设同一个 key 必须能修回来（否则界面上选了掩码，保存仍报「掩码不存在」）。
+            fresh.TargetValue = string.Empty;
+            fresh.MaskKey = mask.Key;
+            Check("进程：重设同一掩码能修回内部值",
+                  fresh.TargetValue == mask.TargetValue, fresh.TargetValue);
         }
         else
         {
