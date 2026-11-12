@@ -1,19 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    Zentwik 外壳与业务页（前端进程）。
-
-    【与 Zentwik.Core / Zentwik.Worker 的关系】
-    引用在产 Core（IPC 契约与序列化上下文），运行期通过命名管道与本机 Worker 通信。
-    进程名与在产 UI 一致，合并回主仓库后即为正式的前端工程。
-
-    【为什么用 net10.0-windows】
-    与 Zentwik.Core / Zentwik.Worker 对齐，避免迁移时再动 TFM。
-
-    【版本号唯一来源】
-    本工程的 <Version> 是版本号的唯一真源，MainWindow 侧栏通过
-    AssemblyInformationalVersionAttribute 读取，不在任何 XAML / C# 里硬编码。
-  -->
+  <!-- WPF 前端；经命名管道与 Worker 通信，版本号在此唯一定义。 -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -26,64 +13,31 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
 
-    <!--
-      性能相关（桌面 UI 应用，不是服务端）：
-      - 工作站 GC：Server GC 会为每个核各开一代堆，桌面应用纯亏内存。
-      - 并发 GC：后台线程收，避免大堆回收时卡 UI 线程。
-      - Tiered PGO：分层编译 + 剖面引导，长期运行的热路径更快。
-
-      不要开 InvariantGlobalization：WPF 的 XmlLanguage.GetSpecificCulture()
-      依赖真实 culture 数据，开了会在 XAML 解析期直接抛
-      "Cannot find non-neutral culture related to 'en-us'"。
-    -->
+    <!-- 桌面 UI：工作站 GC + 并发 GC + TieredPGO；不可开 InvariantGlobalization，WPF 依赖真实 culture。 -->
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
 
-    <!-- 版本号唯一真源：侧栏显示的版本文本从这里派生，不硬编码。与 Zentwik.Core 同一口径。 -->
     <Version>2.3.0</Version>
-    <FileVersion>2.1.11.0</FileVersion>
-    <AssemblyVersion>2.1.11.0</AssemblyVersion>
+    <FileVersion>2.3.0.0</FileVersion>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
 
-    <!--
-      应用图标：Windows 任务栏 / 资源管理器 / Alt-Tab 都用它。
-      内含 16/24/32/48/64/128/256 七档，任意缩放比例都有原生帧，
-      不会出现缩放模糊。
-    -->
+    <!-- 图标内含 16～256 七档，任意缩放均有原生帧。 -->
     <ApplicationIcon>Assets\Zentwik.ico</ApplicationIcon>
 
-    <!--
-      产物直接落到部署目录，与 Zentwik.Worker 同目录（两工程 OutputPath 必须一致）。
-      分开输出时 Worker 找不到同目录的 UI，就会回退到主仓库的旧构建 —— 开机自启因此
-      一直拉起老界面。Release 平铺到 D:\Projects\Zentwik-App（安装目录），Debug 落子目录。
-    -->
+    <!-- 与 Worker 同目录输出，否则开机自启会拉起另一份 UI。 -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Projects\Zentwik-App\</OutputPath>
     <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Projects\Zentwik-App\$(Configuration)\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <!--
-      接入在产 Core：ViewModel 直接走 WorkerPipeClient 与 Worker 通信，
-      不再维护一份自造的假数据层。
-
-      Core 是 net10.0-windows + 零 WPF 依赖（红线由编译器守，见 Zentwik.Core.csproj），
-      与本工程 TFM 一致，引用后不会把 WinUI / WPF 任何东西带进来。
-    -->
+    <!-- Core：IPC 契约与序列化，零 WPF 依赖。 -->
     <ProjectReference Include="..\Zentwik.Core\Zentwik.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!--
-      调校页起，业务页改用 CommunityToolkit.Mvvm 的源生成视图模型
-      （[ObservableProperty] / [AsyncRelayCommand]）。
-
-      【为什么不用手写的 ViewModelBase】
-      手写版没有异步命令、没有 CanExecute 失效通知、没有并发保护。
-      「应用参数」是异步 IPC，双击会并发下发两次 SMU 写入 ——
-      AsyncRelayCommand 默认不并发执行，正好堵住这个口子。
-      其余页面暂时保留手写基类，逐页迁移，不一次性重写。
-    -->
+    <!-- 源生成 MVVM；AsyncRelayCommand 不并发执行，防止重复下发 SMU 写入。 -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
 

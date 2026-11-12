@@ -1,34 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    ============================================================
-    Zentwik.UiSmoke —— UI 冒烟探针（不进 Zentwik.slnx）
-    ============================================================
-
-    【为什么需要它】
-    XAML 里 StaticResource 找不到是**运行期** XamlParseException：
-    编译 100% 通过，tools/xamlcheck.py 也查不出来（它只查"模板内跨作用域"）。
-    本项目真踩过两次：
-      · 删掉 Themes/Shell.xaml 却没迁走隐式 ToolTip / DataGrid 样式 → 28 处 ToolTip 变米色、进程页表格变白底；
-      · 颜色字典的 TextMeta（画刷）被样式字典的 TextMeta（TextBlock 样式）覆盖 → ComboBox 箭头直接崩。
-
-    仓库自带的工具都覆盖不到这一类，只能把窗口真的 new 出来才能证明资源能解析。
-
-    【本探针做五件事】
-      1) 建 Application 并按 App.xaml 的同一顺序合并三份资源字典；
-      2) 逐个 new 全部页面 —— 任何 StaticResource 缺失都会在这里抛；
-      3) 跨字典键名冲突检测（同 key 不同类型 = 静默覆盖 = 迟早炸）；
-      4) 全仓库 StaticResource 键的静态审计（含页面局部资源）；
-      5) 离屏渲染成 PNG + 交互验证（侧栏折叠、切页选中态），供人眼验收。
-
-    【为什么不调用 Run()】
-    调 Run() 会触发 App.OnStartup → 拉起 Worker → UAC 弹窗，还可能写 SMU。
-    本探针只做资源解析与渲染，绝不碰硬件与提权。
-
-    【怎么跑】
-      在本目录执行：dotnet run -c Release
-      产物：build/Zentwik.UiSmoke/out/*.png 与 smoke.log
-      退出码 0 = 全过；非 0 = 有问题。
+    UI 冒烟探针（不进 Zentwik.slnx）：合并资源字典、new 全部页面、离屏渲染，
+    捕捉 XAML 静态检查覆盖不到的 StaticResource 运行期异常。不调 Run()，不碰硬件与提权。
+    运行：dotnet run -c Release，产物 out/*.png 与 smoke.log，退出码 0 = 全过。
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -43,4 +18,5 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Zentwik.UI\Zentwik.UI.csproj" />
   </ItemGroup>
+
 </Project>

@@ -1,39 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- WinExe 而不是 Exe：双击不能弹黑色 Console 窗口。
-         写成 Exe 后编译、运行、日志全都正常，只有用户双击时才会看到黑框。 -->
+    <!-- WinExe：避免双击弹出控制台窗口。 -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
 
-    <!-- 提权清单：Worker 的全部职责（SMU 写入 / 任务计划 / 注册表）都要求管理员令牌。 -->
+    <!-- 提权清单：SMU 写入 / 任务计划 / 注册表均需管理员令牌。 -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
-    <!--
-      产物直接落到部署目录，和 UI 同目录 —— 这是「开机跑的是老 UI」的根因所在：
-      Worker 拉起界面时优先找自己所在目录，两者分居两地就必然各拉各的版本。
-      Release 平铺到 D:\Projects\Zentwik-App（安装目录，计划任务指向这里）；
-      Debug 落到子目录，避免调试构建覆盖安装目录。
-    -->
+    <!-- 与 UI 同目录输出；Debug 落子目录，避免调试构建覆盖安装目录。 -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Projects\Zentwik-App\</OutputPath>
     <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Projects\Zentwik-App\$(Configuration)\</OutputPath>
 
-    <!-- 与 Zentwik.Core / Zentwik.UI 同一口径，任务管理器里能对上版本 -->
     <Version>2.3.0</Version>
-    <FileVersion>2.1.11.0</FileVersion>
-    <AssemblyVersion>2.1.11.0</AssemblyVersion>
+    <FileVersion>2.3.0.0</FileVersion>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Zentwik.Core\Zentwik.Core.csproj" />
   </ItemGroup>
 
-  <!-- 测试要直接钉住 apply-tuning 的分派映射（PipeServerService.BuildApplyTuningResponse）。
-       该类是 internal：不开放内部可见性，就只能把映射逻辑复制进测试里，
-       那种测试验的是副本、不是产品代码。 -->
+  <!-- 测试钉住 internal 的 apply-tuning 分派映射，避免复制一份逻辑。 -->
   <ItemGroup>
     <InternalsVisibleTo Include="Zentwik.Tests" />
   </ItemGroup>

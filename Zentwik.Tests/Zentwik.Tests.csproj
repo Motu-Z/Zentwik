@@ -1,20 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    ============================================================
-    Zentwik.Tests —— 业务层的单元测试（批次 A-4）
-    ============================================================
-
-    【为什么是类库而不是 exe】
-    OutputType 用默认值（Library）：xunit 的测试工程由 test host 加载运行，
-    不需要自己的入口点。改成 WinExe/Exe 反而会让 dotnet test 去找 Main。
-
-    【为什么没有 UseWPF / UseWindowsForms / IsAotCompatible】
-    · Core 的红线是「零 WPF 依赖」，测试工程跟着引 WPF 会把一条本该在编译期
-      就红的越界变成静默通过 —— 测试项目的引用图会被误当成 Core 允许的依赖。
-    · 测试跑在 test host 上，不进最终产物，AOT 分析与它无关；开 IsAotCompatible
-      只会把测试代码里的反射/动态写法报成警告，与产品能否 AOT 发布无关。
-  -->
+  <!-- xunit 测试工程：由 test host 加载，不需要入口点；不引 WPF，保持 Core 依赖红线可验证。 -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -25,8 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zentwik.Core\Zentwik.Core.csproj" />
-    <!-- 引用 Worker 只为测 apply-tuning 的分派映射；测试工程不进最终产物，
-         不会把 Worker 的宿主依赖带进产品。 -->
+    <!-- 仅测 internal 的 apply-tuning 分派映射；测试不进最终产物。 -->
     <ProjectReference Include="..\Zentwik.Worker\Zentwik.Worker.csproj" />
   </ItemGroup>
 
