@@ -1,21 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    ============================================================
-    Zentwik.AotProbe —— Core 的 Native AOT 冒烟工程
-    ============================================================
-
-    【它存在的唯一理由】
-    WPF 与 WinUI 3 都不能直接 Native AOT 发布，Core 的 AOT 只是「配置正确」
-    没有意义，必须真编出原生二进制并跑一遍。这个控制台工程把 Core 的全部
-    服务构造、JSON 读写、以及改造过的 31 处源生成 P/Invoke 全部走一遍，
-    链接失败或运行时裁掉类型都会在这里当场暴露。
-
-    【它不参与产品发布】
-    不进 Zentwik.slnx，不随主程序分发。CI 里单独调用：
-        dotnet publish build/Zentwik.AotProbe -c Release -r win-x64
-    返回码非 0 即视为 AOT 回归。
-  -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -25,34 +9,17 @@
     <RootNamespace>Zentwik.AotProbe</RootNamespace>
     <AssemblyName>Zentwik.AotProbe</AssemblyName>
 
-    <!-- 探针本身就是要被 AOT 编译的那个可执行工程。
-         PublishAot 只对可执行项目生效，所以这里设，Core 那边设 IsAotCompatible。 -->
     <PublishAot>true</PublishAot>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
-    <!-- 静态 ICU 体积大且与探针无关：探针只校验代码路径，不校验本地化。 -->
     <InvariantGlobalization>true</InvariantGlobalization>
 
-    <!-- 关掉单文件：探针需要验证原生资源是否真的落在输出目录。 -->
     <PublishSingleFile>false</PublishSingleFile>
 
-    <!-- 让未标注程序集的裁剪警告逐条列出（默认只给一条汇总）。
-         探针的意义就是把问题摊开，这里不能省。 -->
+    <!-- ZenStates-Core 的反射路径由 AOT 注解与 preserve="all" 覆盖；此处不设 NoWarn。 -->
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
 
-    <!--
-      这里**故意**没有任何 NoWarn。
-
-      上一版曾压掉 IL2026 / IL2075，来源是 ZenStates-Core 内部
-      BaseDramTimings 的按 Type 反射与 Type.GetProperty 取值。那条抑制
-      从一开始就是掩耳盗铃：它让探针「绿」，但拦不住运行期
-      MissingMetadataException。
-
-      ZenStates-Core 1.93.1-AOT 已把反射逻辑全部删除，改用显式类型映射。
-      抑制也随之删除 —— 探针必须对任何 trim/AOT 告警保持零容忍，
-      否则这条门禁就退化成装饰。
-    -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -60,7 +27,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 容器实现只在宿主侧，Core 只引 Abstractions。 -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
   </ItemGroup>
 
