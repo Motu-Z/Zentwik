@@ -1237,6 +1237,48 @@ public static class IntegrationTest
             Say("    （占位进程都已有规则，跳过自动生成断言）");
         }
 
+        // 规则刷新后主界面行必须跟着规则走：右侧已显示 CCD0、主界面还挂旧掩码的错位不能再出现。
+        {
+            MaskOption maskOpt = proc.MaskOptions.First(m => m.TargetType == "mask");
+
+            ScheduleRuleItem probeRule = new("r-sync", "probe-sync.exe", "probe", "旧掩码", "标准", enabled: true);
+            probeRule.ApplyMask(maskOpt.Label, "mask", maskOpt.TargetValue);
+            proc.SavedRules.Add(probeRule);
+
+            RunningProcessItem probeProc = new(65001, "probe-sync.exe", "probe", 0, "标准");
+            probeProc.ApplyMask("旧掩码", "mask", "4294901760");
+            proc.RunningProcesses.Add(probeProc);
+
+            proc.SyncFromRules();
+
+            Check("进程：规则刷新后主界面行同步到规则值",
+                  probeProc.MaskLabel == maskOpt.Label && probeProc.TargetValue == maskOpt.TargetValue,
+                  $"{probeProc.MaskLabel} / 期望 {maskOpt.Label}");
+
+            proc.SavedRules.Remove(probeRule);
+            proc.RunningProcesses.Remove(probeProc);
+        }
+
+        // 掩码表刷新走逐位替换，不能 Clear —— 清空会让下拉把已选项回写成 null。
+        {
+            MaskOption first = proc.MaskOptions.First(m => m.TargetType == "mask");
+
+            Zentwik.Core.Ipc.MaskListPayload payload = new();
+            payload.Masks.Add(new Zentwik.Core.Ipc.MaskEntryPayload
+            {
+                Id = first.MaskId ?? "m1",
+                Name = first.Label,
+                Mask = ulong.Parse(first.TargetValue, System.Globalization.CultureInfo.InvariantCulture)
+            });
+
+            proc.ApplyMasks(payload);
+
+            Check("进程：掩码表刷新后同名项仍是同一实例",
+                  proc.MaskOptions.Count == 2
+                  && ReferenceEquals(proc.MaskOptions.First(m => m.TargetType == "mask"), first),
+                  $"{proc.MaskOptions.Count} 项");
+        }
+
         // 场景：一条列表，每条形如 IF → 三个动作
         var scenes = new ScenariosViewModel();
         ScenariosViewModel.SuppressWorkerInit = true;

@@ -580,20 +580,83 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>把后台的掩码表铺进下拉，末尾补「不调度」</summary>
     internal void ApplyMasks(MaskListPayload payload)
     {
-        MaskOptions.Clear();
+        List<MaskOption> wanted = new(payload.Masks.Count + 1);
 
         foreach (MaskEntryPayload mask in payload.Masks)
         {
-            MaskOptions.Add(new MaskOption(
+            wanted.Add(new MaskOption(
                 mask.Name,
                 "mask",
                 mask.Mask.ToString(CultureInfo.InvariantCulture),
                 maskId: mask.Id));
         }
 
-        MaskOptions.Add(new MaskOption("不调度", "none", string.Empty));
+        wanted.Add(new MaskOption("不调度", "none", string.Empty));
+
+        // 按 key 合并而不是重建：实例一换，下拉的 SelectedValue 就掉，行上已选的那项跟着清空。
+        Dictionary<string, MaskOption> exist = new(StringComparer.Ordinal);
+
+        foreach (MaskOption option in MaskOptions)
+        {
+            exist[option.Key] = option;
+        }
+
+        // 同掩码值的两套掩码共用一个 key，下拉里只能出现一次。
+        List<MaskOption> unique = new(wanted.Count);
+        HashSet<string> wantedKeys = new(StringComparer.Ordinal);
+
+        foreach (MaskOption next in wanted)
+        {
+            if (!wantedKeys.Add(next.Key))
+            {
+                continue;
+            }
+
+            unique.Add(next);
+
+            if (exist.TryGetValue(next.Key, out MaskOption? current))
+            {
+                current.Relabel(next.Label);
+                continue;
+            }
+
+            MaskOptions.Add(next);
+            exist[next.Key] = next;
+        }
+
+        for (int i = MaskOptions.Count - 1; i >= 0; i--)
+        {
+            if (!wantedKeys.Contains(MaskOptions[i].Key))
+            {
+                MaskOptions.RemoveAt(i);
+            }
+        }
+
+        for (int i = 0; i < unique.Count; i++)
+        {
+            int at = IndexOfKey(unique[i].Key);
+
+            if (at >= 0 && at != i)
+            {
+                MaskOptions.Move(at, i);
+            }
+        }
 
         RebuildDrawerMasks();
+        RecomputeMaskLabels();
+    }
+
+    private int IndexOfKey(string key)
+    {
+        for (int i = 0; i < MaskOptions.Count; i++)
+        {
+            if (string.Equals(MaskOptions[i].Key, key, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private void ApplyRules(List<ScheduleRulePayload> payload)
@@ -628,7 +691,85 @@ public class ProcessViewModel : ViewModelBase
             _suppressSync = false;
         }
 
+        SyncFromRules();
         SyncRuleDirty();
+    }
+
+    /// <summary>规则是权威：规则表刷新后把值套回同名的运行行，否则右侧变了主界面还是旧值。</summary>
+    internal void SyncFromRules()
+    {
+        _suppressSync = true;
+
+        try
+        {
+            foreach (RunningProcessItem proc in RunningProcesses)
+            {
+                ScheduleRuleItem? rule = FindRule(proc.ProcessName);
+
+                if (rule is null)
+                {
+                    // 规则没了只剩掩码要清；优先级来自进程本身，不能顺手改成标准。
+                    if (proc.TargetType != "none")
+                    {
+                        proc.ApplyMask("不调度", "none", string.Empty);
+                    }
+
+                    continue;
+                }
+
+                if (_pending.Contains(proc.ProcessName))
+                {
+                    continue;
+                }
+
+                if (proc.TargetType == rule.TargetType
+                    && proc.TargetValue == rule.TargetValue
+                    && proc.MaskLabel == rule.MaskLabel
+                    && proc.Priority == rule.Priority)
+                {
+                    continue;
+                }
+
+                proc.CopyAffinityFrom(rule);
+            }
+        }
+        finally
+        {
+            _suppressSync = false;
+        }
+    }
+
+    /// <summary>掩码改名或数值变化后，规则与运行行的显示名跟着重算。</summary>
+    private void RecomputeMaskLabels()
+    {
+        _suppressSync = true;
+
+        try
+        {
+            foreach (ScheduleRuleItem rule in SavedRules)
+            {
+                string label = LabelOfValue(rule.TargetType, rule.TargetValue);
+
+                if (!string.Equals(rule.MaskLabel, label, StringComparison.Ordinal))
+                {
+                    rule.ApplyMask(label, rule.TargetType, rule.TargetValue);
+                }
+            }
+
+            foreach (RunningProcessItem proc in RunningProcesses)
+            {
+                string label = LabelOfValue(proc.TargetType, proc.TargetValue);
+
+                if (!string.Equals(proc.MaskLabel, label, StringComparison.Ordinal))
+                {
+                    proc.ApplyMask(label, proc.TargetType, proc.TargetValue);
+                }
+            }
+        }
+        finally
+        {
+            _suppressSync = false;
+        }
     }
 
     /// <summary>规则集与当前方案快照的指纹不一致，才算有没存进方案的改动。</summary>
@@ -681,25 +822,28 @@ public class ProcessViewModel : ViewModelBase
         return string.Equals(label, "—", StringComparison.Ordinal) ? string.Empty : label;
     }
 
-    /// <summary>规则的显示名：CCD 给 给「不调度」</summary>
-    private string MaskLabelOf(ScheduleRulePayload rule)
+    /// <summary>规则的显示名</summary>
+    private string MaskLabelOf(ScheduleRulePayload rule) => LabelOfValue(rule.TargetType, rule.TargetValue);
+
+    /// <summary>目标类型 + 值 → 下拉里显示的文字</summary>
+    private string LabelOfValue(string targetType, string targetValue)
     {
-        switch (rule.TargetType)
+        switch (targetType)
         {
             case "ccd":
-                return "CCD" + rule.TargetValue;
+                return "CCD" + targetValue;
 
             case "mask":
                 foreach (MaskOption option in MaskOptions)
                 {
                     if (option.TargetType == "mask"
-                        && string.Equals(option.TargetValue, rule.TargetValue, StringComparison.Ordinal))
+                        && string.Equals(option.TargetValue, targetValue, StringComparison.Ordinal))
                     {
                         return option.Label;
                     }
                 }
 
-                return string.IsNullOrWhiteSpace(rule.TargetValue) ? "不调度" : rule.TargetValue;
+                return string.IsNullOrWhiteSpace(targetValue) ? "不调度" : targetValue;
 
             default:
                 return "不调度";
@@ -928,6 +1072,9 @@ public class ProcessViewModel : ViewModelBase
 
     private bool _suppressSync;
 
+    /// <summary>正等着写进后台的进程名。这段窗口里后台还是旧值，不能拿它反向覆盖界面。</summary>
+    private readonly HashSet<string> _pending = new(StringComparer.OrdinalIgnoreCase);
+
     private void OnTargetChanged(AffinityTarget target, string propertyName)
     {
         if (_suppressSync) return;
@@ -998,8 +1145,14 @@ public class ProcessViewModel : ViewModelBase
             _suppressSync = false;
         }
 
+        foreach (AffinityTarget target in dirty)
+        {
+            _pending.Add(target.ProcessName);
+        }
+
         if (dirty.Count == 0)
         {
+            _pending.Clear();
             return;
         }
 
@@ -1018,6 +1171,7 @@ public class ProcessViewModel : ViewModelBase
             finally
             {
                 _suppressSync = false;
+                _pending.Clear();
             }
 
             return;
@@ -1031,20 +1185,29 @@ public class ProcessViewModel : ViewModelBase
     {
         List<string> failures = new();
 
-        foreach (AffinityTarget target in targets)
+        try
         {
-            (bool ok, string? error) = await ApplyTargetAsync(target).ConfigureAwait(true);
-
-            if (!ok)
+            foreach (AffinityTarget target in targets)
             {
-                failures.Add($"{target.ProcessName}：{error}");
-            }
-        }
+                (bool ok, string? error) = await ApplyTargetAsync(target).ConfigureAwait(true);
 
-        await RefreshRulesAsync().ConfigureAwait(true);
+                if (!ok)
+                {
+                    failures.Add($"{target.ProcessName}：{error}");
+                }
+            }
+
+            await RefreshRulesAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            _pending.Clear();
+        }
 
         if (failures.Count > 0)
         {
+            // 后台没落下：把界面拉回它的真实状态，别让用户以为已经生效。
+            SyncFromRules();
             ToastService.Instance.ShowError(failures[0]);
         }
     }
@@ -1732,7 +1895,9 @@ public sealed class MaskOption : ViewModelBase
 {
     private static readonly Dictionary<string, MaskOption> Registry = new();
 
-    public string Label { get; }
+    private string _label;
+
+    public string Label => _label;
     public string TargetType { get; }
     public string TargetValue { get; }
     public string Key => MakeKey(TargetType, TargetValue);
@@ -1750,10 +1915,22 @@ public sealed class MaskOption : ViewModelBase
 
     public MaskOption(string label, string targetType, string targetValue, string? maskId = null)
     {
-        Label = label;
+        _label = label;
         TargetType = targetType;
         TargetValue = targetValue;
         MaskId = maskId;
+    }
+
+    /// <summary>掩码改名：原地换标签，别换实例（换了实例下拉会丢选中）</summary>
+    internal void Relabel(string label)
+    {
+        if (string.Equals(_label, label, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _label = label;
+        OnPropertyChanged(nameof(Label));
     }
 
     /// <summary>用当前选项集重建查找表</summary>
