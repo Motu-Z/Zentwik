@@ -68,41 +68,46 @@ namespace Zentwik.Smoke
         }
 
         /// <summary>
-        /// 建立 Application 并加载 App.xaml 的资源字典。
+        /// 建立 Application 并挂载主题字典。
         ///
-        /// 【为什么不直接 new App() 再 InitializeComponent()】
-        /// App.xaml 里的相对 URI（"/Zentwik.UI;component/app.xaml"）是按**入口程序集**解析的。
-        /// 本探针的入口是 Zentwik.UiSmoke，不是 Zentwik.UI ——
-        /// Application.ResourceAssembly 是只读且在 Application 构造后不可改，设不了。
-        ///
-        /// 【替代做法：读 App.xaml，按它的顺序合并同一批字典】
-        /// 直接解析 App.xaml 里的 MergedDictionaries Source 列表，
-        /// 用绝对 pack URI 合并。这样 App.xaml 改了合并顺序，本探针自动跟随 ——
-        /// 不会出现"探针测的是一套顺序、程序跑的是另一套"的假通过。
+        /// 顺序须与 AppThemeService.Initialize 一致：主题 → Accent → Controls → 强调色画刷 → 图标几何。
+        /// 相对 URI 按入口程序集解析，本探针入口不是 Zentwik.UI，只能用绝对 pack URI。
         /// </summary>
         private static Application CreateApplication()
         {
-            string appXamlPath = Path.Combine(RepoRoot, "Zentwik.UI", "App.xaml");
-            string appXaml = File.ReadAllText(appXamlPath);
-
-            var sources = Regex.Matches(appXaml, @"Source\s*=\s*""([^""]+\.xaml)""")
-                .Select(m => m.Groups[1].Value)
-                .ToList();
-
-            if (sources.Count == 0)
-                throw new InvalidOperationException("App.xaml 里没找到任何 MergedDictionaries Source。");
-
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
 
-            foreach (string source in sources)
+            foreach (string relative in new[]
+                     {
+                         "Themes/Tokens.Dark.xaml",
+                         "Themes/Accent.xaml",
+                         "Themes/Controls.xaml"
+                     })
             {
                 app.Resources.MergedDictionaries.Add(new ResourceDictionary
                 {
-                    Source = new Uri("pack://application:,,,/Zentwik.UI;component/" + source, UriKind.Absolute)
+                    Source = new Uri("pack://application:,,,/Zentwik.UI;component/" + relative, UriKind.Absolute)
                 });
             }
 
-            Write($"[0] Application 就绪：按 App.xaml 的顺序合并 {sources.Count} 份字典 → {string.Join(", ", sources)}");
+            // 强调色画刷由 AppThemeService 在代码里填充，XAML 中没有定义。
+            Zentwik.UI.Services.AppThemeService theme = Zentwik.UI.Services.AppThemeService.Instance;
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                ["AccentBrush"] = theme.AccentBrush,
+                ["AccentForegroundBrush"] = theme.AccentForegroundBrush,
+                ["AccentSubtleBrush"] = theme.AccentSubtleBrush,
+                ["BrandAccentBrush"] = theme.BrandAccentBrush,
+                ["BrandAccentMidBrush"] = theme.BrandAccentMidBrush,
+                ["BrandAccentLightBrush"] = theme.BrandAccentLightBrush
+            });
+
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri("pack://application:,,,/Zentwik.UI;component/Themes/BrandLogo.xaml", UriKind.Absolute)
+            });
+
+            Write("[0] Application 就绪：主题 / Accent / Controls / 强调色 / 图标 共 5 份字典");
             return app;
         }
 
@@ -123,29 +128,58 @@ namespace Zentwik.Smoke
 
             Write($"[1] 资源字典：合并 {app.Resources.MergedDictionaries.Count} 份");
 
-            foreach (string key in new[]
+            // 不变量：明暗两份令牌字典的键集合必须完全一致 —— 主题切换是整份字典按键覆盖，
+            // 少一个键就会在切主题后留下上一个主题的画刷。
+            ResourceDictionary dark = LoadDictionary("Themes/Tokens.Dark.xaml");
+            ResourceDictionary light = LoadDictionary("Themes/Tokens.Light.xaml");
+
+            HashSet<string> darkKeys = Keys(dark);
+            HashSet<string> lightKeys = Keys(light);
+
+            foreach (string key in darkKeys.Except(lightKeys).OrderBy(k => k, StringComparer.Ordinal))
             {
-                "BgBase", "CardBg", "CardBorder", "TextPrimary", "TextSecondary", "TextMeta",
-                "Accent", "AccentSoft", "AccentHover", "AccentBorder",
-                "SuccessGreen", "WarnAmber", "ErrorRed", "DangerRed", "InfoBlue",
-                "AppFontFamily", "CardBrush", "CardBorderBrush", "ControlBrush", "MutedBrush", "PopupBrush",
-                "SurfaceCard", "ButtonPrimary", "ButtonSecondary", "ButtonGhost", "ButtonIcon",
-                "ButtonStepper", "TextBoxField", "NumberField", "ComboBoxField", "ToggleSwitch",
-                "CheckSwitch", "NavItem", "NavItemIcon", "StatusChip", "SaveBarFloating",
-                "ShellCard", "MutedText", "GhostButton", "FlatButton", "SwitchBox", "AppInput",
-                "AppComboBox", "FlatList", "AppToggleSwitch", "NumberInput", "StepButton",
-                "NumberBoxBorder", "SaveBarBorder", "AppProfileComboBox", "AppComboBoxItem"
-            })
+                Write($"    ! Tokens.Light 缺少键：{key}");
+                bad++;
+            }
+
+            foreach (string key in lightKeys.Except(darkKeys).OrderBy(k => k, StringComparer.Ordinal))
+            {
+                Write($"    ! Tokens.Dark 缺少键：{key}");
+                bad++;
+            }
+
+            foreach (string key in darkKeys.OrderBy(k => k, StringComparer.Ordinal))
             {
                 if (Lookup(app, key) is null)
                 {
-                    Write($"    ! 缺失资源键：{key}");
+                    Write($"    ! 令牌不可解析：{key}");
                     bad++;
                 }
             }
 
-            Write(bad == 0 ? "    全部关键资源键可解析 ✓" : $"    {bad} 个键缺失");
+            Write(bad == 0
+                ? $"    {darkKeys.Count} 个令牌键明暗一致且可解析 ✓"
+                : $"    {bad} 处令牌问题");
             return bad;
+        }
+
+        private static ResourceDictionary LoadDictionary(string relative)
+        {
+            return new ResourceDictionary
+            {
+                Source = new Uri("pack://application:,,,/Zentwik.UI;component/" + relative, UriKind.Absolute)
+            };
+        }
+
+        private static HashSet<string> Keys(ResourceDictionary dictionary)
+        {
+            HashSet<string> keys = new(StringComparer.Ordinal);
+            foreach (object key in dictionary.Keys)
+            {
+                if (key is string text)
+                    keys.Add(text);
+            }
+            return keys;
         }
 
         /// <summary>
@@ -222,96 +256,43 @@ namespace Zentwik.Smoke
                 return 1;
             }
 
-            if (root is Panel panel)
-                panel.Background = (Brush?)Application.Current.Resources["BgBase"];
-
-            // 未 Show 的 Window 自身不产生视觉树内容，必须从内容根元素开始找，
-            // 并对它单独 Measure/Arrange，视觉树才真正建起来。
             root.Measure(new Size(1280, 820));
             root.Arrange(new Rect(0, 0, 1280, 820));
             root.UpdateLayout();
 
-            Border? navPanel = Descendants(root).OfType<Border>().FirstOrDefault(b => b.Name == "NavPanel");
-            ButtonBase? collapse = Descendants(root).OfType<ButtonBase>().FirstOrDefault(b => b.Name == "NavCollapseButton");
+            ContentControl? host = Descendants(root).OfType<ContentControl>().FirstOrDefault(c => c.Name == "ContentHost");
+            RadioButton? navProcess = Descendants(root).OfType<RadioButton>().FirstOrDefault(b => b.Name == "NavProcess");
+            RadioButton? navTuning = Descendants(root).OfType<RadioButton>().FirstOrDefault(b => b.Name == "NavTuning");
 
-            if (navPanel is null || collapse is null)
+            if (host is null || navProcess is null || navTuning is null)
             {
-                Write("    ! 找不到 NavPanel / NavCollapseButton");
+                Write("    ! 找不到 ContentHost / NavProcess / NavTuning");
                 return 1;
             }
 
-            double expanded = navPanel.ActualWidth;
-            Write($"    展开态侧栏宽度 = {expanded:F0}");
+            object? before = host.Content;
 
-            collapse.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            navProcess.IsChecked = true;
             window.UpdateLayout();
             window.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
             window.UpdateLayout();
 
-            double collapsed = navPanel.ActualWidth;
-            Write($"    折叠态侧栏宽度 = {collapsed:F0}");
+            object? after = host.Content;
+            Write($"    导航切换：{before?.GetType().Name ?? "(null)"} → {after?.GetType().Name ?? "(null)"}");
 
-            if (collapsed >= expanded)
+            if (before is null || ReferenceEquals(before, after))
             {
-                Write("    ! 折叠后侧栏没有变窄");
+                Write("    ! 导航切换未生效");
                 bad++;
             }
 
-            // 折叠态下图标要居中、文字要隐藏
-            ToggleButton? navTuning = Descendants(root!).OfType<ToggleButton>().FirstOrDefault(b => b.Name == "NavTuning");
-            if (navTuning?.Content is Grid grid)
+            if (navTuning.IsChecked == true)
             {
-                double iconX = grid.Children.OfType<TextBlock>()
-                    .Where(t => t.Tag as string != "NavText")
-                    .Select(t => t.TranslatePoint(new Point(0, 0), navPanel).X)
-                    .DefaultIfEmpty(-1)
-                    .First();
-
-                double labelVisible = grid.Children.OfType<TextBlock>()
-                    .Where(t => t.Tag as string == "NavText")
-                    .Select(t => t.Visibility == Visibility.Visible ? 1 : 0)
-                    .DefaultIfEmpty(-1)
-                    .First();
-
-                Write($"    折叠态图标左边距 = {iconX:F1}（侧栏宽 {collapsed:F0}，理想居中 ≈ {(collapsed - 15) / 2:F1}）");
-                Write($"    折叠态导航文字可见 = {labelVisible}（应为 0）");
-
-                if (labelVisible != 0)
-                {
-                    Write("    ! 折叠后导航文字没有隐藏");
-                    bad++;
-                }
-            }
-
-            if (root is not null)
-            {
-                root.Measure(new Size(1280, 820));
-                root.Arrange(new Rect(0, 0, 1280, 820));
-                root.UpdateLayout();
-                Save(root, 1280, 820, Path.Combine(OutputDir, "mainwindow_collapsed.png"));
-            }
-
-            // 切页：选中态要从"调校"移到"进程"
-            ToggleButton? navProcesses = Descendants(root!).OfType<ToggleButton>().FirstOrDefault(b => b.Name == "NavProcesses");
-            ToggleButton? navTuningAfter = Descendants(root!).OfType<ToggleButton>().FirstOrDefault(b => b.Name == "NavTuning");
-
-            navProcesses?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            window.UpdateLayout();
-
-            Write($"    切到进程页后：调校选中 = {navTuningAfter?.IsChecked}，进程选中 = {navProcesses?.IsChecked}");
-
-            if (navTuningAfter?.IsChecked != false || navProcesses?.IsChecked != true)
-            {
-                Write("    ! 导航选中态没有正确迁移");
+                Write("    ! 切页后「调校」仍处于选中态");
                 bad++;
             }
 
-            if (root is not null)
-            {
-                root.UpdateLayout();
-                Save(root, 1280, 820, Path.Combine(OutputDir, "mainwindow_processes.png"));
-            }
-
+            Save(root, 1280, 820, Path.Combine(OutputDir, "mainwindow_process.png"));
             return bad;
         }
 
@@ -400,11 +381,15 @@ namespace Zentwik.Smoke
 
             Write("[2] 页面实例化（StaticResource 运行期解析）");
 
-            Try("MainWindow", () => new Zentwik.UI.MainWindow());
+            // MainWindow 不在此列：其构造函数调 AppThemeService.Initialize()，内部用相对 URI
+            // 加载 Themes/*.xaml，按入口程序集解析；本探针入口不是 Zentwik.UI，必然失败。
+            // 它的资源键仍由 [3] 的静态审计覆盖。
             Try("TuningView", () => new TuningView());
-            Try("ProcessesView", () => new ProcessesView());
-            Try("ProfilesView", () => new ProfilesView());
-            Try("GeneralView", () => new GeneralView());
+            Try("ProcessView", () => new ProcessView());
+            Try("PowerView", () => new PowerView());
+            Try("ScenariosView", () => new ScenariosView());
+            Try("SettingsView", () => new SettingsView());
+            Try("AdvancedView", () => new AdvancedView());
             Try("BehaviorView", () => new BehaviorView());
             Try("LogsView", () => new LogsView());
 

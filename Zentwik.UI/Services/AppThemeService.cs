@@ -148,6 +148,10 @@ public sealed class AppThemeService
 
     private bool _initialized;
 
+    // 绝对 pack URI：相对 URI 按入口程序集解析，非 Zentwik.UI 入口（如离屏探针）无法复现。
+    private static Uri ThemeUri(string relative) =>
+        new("pack://application:,,,/Zentwik.UI;component/" + relative, UriKind.Absolute);
+
     /// <summary>初始化：挂载资源字典</summary>
     public void Initialize()
     {
@@ -159,15 +163,15 @@ public sealed class AppThemeService
         // 主题字典放索引 0（最高优先级），Accent / Controls 依次在后。
         resources.MergedDictionaries.Add(new ResourceDictionary
         {
-            Source = new Uri("Themes/Tokens.Dark.xaml", UriKind.Relative)
+            Source = ThemeUri("Themes/Tokens.Dark.xaml")
         });
         resources.MergedDictionaries.Add(new ResourceDictionary
         {
-            Source = new Uri("Themes/Accent.xaml", UriKind.Relative)
+            Source = ThemeUri("Themes/Accent.xaml")
         });
         resources.MergedDictionaries.Add(new ResourceDictionary
         {
-            Source = new Uri("Themes/Controls.xaml", UriKind.Relative)
+            Source = ThemeUri("Themes/Controls.xaml")
         });
 
         // 强调色画刷单独成典，靠替换实例刷新（原因见类 remarks）。
@@ -183,7 +187,7 @@ public sealed class AppThemeService
         // 颜色由 AppThemeService 组装成 DrawingImage）
         resources.MergedDictionaries.Add(new ResourceDictionary
         {
-            Source = new Uri("Themes/BrandLogo.xaml", UriKind.Relative)
+            Source = ThemeUri("Themes/BrandLogo.xaml")
         });
 
         IsDark = true;
@@ -295,8 +299,7 @@ public sealed class AppThemeService
         var resources = Application.Current.Resources;
         resources.MergedDictionaries[ThemeSlot] = new ResourceDictionary
         {
-            Source = new Uri(newIsDark ? "Themes/Tokens.Dark.xaml" : "Themes/Tokens.Light.xaml",
-                             UriKind.Relative)
+            Source = ThemeUri(newIsDark ? "Themes/Tokens.Dark.xaml" : "Themes/Tokens.Light.xaml")
         };
 
         // 明暗切换会改变品牌色的 L 档（深色加亮 / 浅色压暗）→ 重算一次
