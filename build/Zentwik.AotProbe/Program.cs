@@ -285,7 +285,7 @@ internal static class Program
         Check("di.autoStart", true, "已构造（控制台代码页探测完成）");
 
         // SmuReader 放在最后：它的构造会真的去开 PawnIO 驱动。
-        // 若 ZenStates-Core 被裁剪或库内部用了动态代码生成，异常就在这里冒出来。
+        // 若 SMU 通道被裁剪或内部用了动态代码生成，异常就在这里冒出来。
         // 注意这不是「被裁剪」的证明 —— 没装驱动时它也返回 false。
         try
         {

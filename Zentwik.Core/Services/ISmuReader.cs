@@ -5,9 +5,7 @@ using System.Threading;
 namespace Zentwik.Core.Services
 {
     /// <summary>
-    /// SMU 访问通道。实现方保证进程内只有一个底层 Cpu 实例，
-    /// 且任何路径都不会 Dispose 它（ZenStates-Core 的 Opcode 是进程级静态资源，
-    /// 关闭任意一个 Cpu 都会让其余实例的 CPUID / SMU 能力一起失效）。
+    /// SMU 访问通道。实现方保证进程内只有一个 PawnIO 会话。
     /// </summary>
     public interface ISmuReader : IDisposable
     {

@@ -87,7 +87,7 @@ jobs:
           if (-not (Test-Path ./publish-worker/Zentwik.Worker.exe)) { throw "Zentwik.Worker.exe 缺失" }
           if (Test-Path ./publish-worker/Zentwik.Worker.dll) { throw "仍是托管产物（存在 .dll），Native AOT 未生效" }
           if (Test-Path ./publish-worker/Zentwik.Worker.runtimeconfig.json) { throw "存在 runtimeconfig.json，Native AOT 未生效" }
-          if (-not (Test-Path ./publish-worker/WmiLight.Native.dll)) { throw "WmiLight.Native.dll 未随包落地" }
+          if (-not (Test-Path ./publish-worker/PawnIO/RyzenSMU.bin)) { throw "PawnIO 模块未随包落地" }
           $exe = Get-Item ./publish-worker/Zentwik.Worker.exe
           Write-Host ("Worker native exe: {0:N2} MB" -f ($exe.Length / 1MB))
 

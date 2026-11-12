@@ -1,50 +1,31 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.ServiceProcess;
 using System.Threading;
-using ZenStates.Core;
 using Zentwik.Core.Helpers;
+using Zentwik.Core.Smu;
 
 namespace Zentwik.Core.Services
 {
     /// <summary>
     /// SMU 服务：只读探测 + 受控写入。
-    ///
-    /// 设计原则：
-    ///   1. 写入边界由调用方校验；本类只做输入合法性检查，
-    ///      不设「安全区间」——用户对硬件负全责。
-    ///   2. 每次写入后立即回读校验，回读值与写入值不一致视为失败，上报日志 / 弹窗。
-    ///   3. SMU 未初始化（驱动缺失 / 未提权）时，所有读写一律短路返回，绝不抛异常。
-    ///   4. 仅暴露经过验证的高层 Set（SetPsmMarginSingleCore / SetFMax），
-    ///      不提供任何写寄存器 / 原始 mailbox 的底层接口。
+    /// 写入后立即回读校验；SMU 未就绪时所有读写短路返回，不抛异常。
     /// </summary>
     public sealed class SmuReader : ISmuReader
     {
         private readonly ILogService _log;
 
-        private Cpu? _cpu;
+        private SmuSession? _session;
 
-        // 由 ReadSnapshot 填充，供写入时编码核心掩码（避免重复探测拓扑）
         private uint _coresPerCcd;
         private int _coreCount;
 
-        /// <summary>
-        /// SMU / PCI 总线访问锁。
-        ///
-        /// 为什么必须有：
-        ///   页面探测（ReadSnapshot）与 CO/FMax 写入共用同一个 Cpu 实例，
-        ///   而 ZenStates-Core 内部的 PCI 总线互斥只在单个方法调用期间生效。
-        ///   并发进入会互相踩踏总线，导致回读校验读到写了一半的状态。
-        ///
-        ///   SMU 邮箱是进程级硬件资源，不是实例级资源。即便容器保证了单实例，
-        ///   这把锁也不该随对象走：将来若出现第二个访问通道（诊断工具、独立进程内嵌），
-        ///   实例锁会让两者各持一把，等于没有互斥——页面探测与后台写入同时碰同一个
-        ///   邮箱时，回读就会莫名不一致。
-        /// </summary>
+        /// <summary>SMU 邮箱是进程级硬件资源，锁不随实例走。</summary>
         private static readonly object _syncRoot = new();
 
-        /// <summary>ZenStates-Core 是否初始化成功（PawnIO 驱动 + 管理员权限就绪）。</summary>
+        /// <summary>PawnIO 驱动与管理员权限是否就绪。</summary>
         public bool IsAvailable { get; private set; }
 
         /// <summary>初始化或读取失败的原因。</summary>
@@ -63,26 +44,7 @@ namespace Zentwik.Core.Services
         /// </summary>
         public uint CoresPerCcdRaw => _coresPerCcd;
 
-        // ---------- 进程内只创建一个 Cpu，且永不销毁 ----------
-        //
-        // 这是硬约束，原因在库的实现里：
-        //   Cpu.Dispose() -> Opcode.Close() + Mutexes.Close() + _pawnRyzenSmu.Dispose()
-        // 而 Opcode 是 internal static class，codeBuffer / Cpuid / Rdtsc 都是静态的，
-        // 即进程级共享。所以只要销毁任何一个 Cpu 实例：
-        //   · Opcode.Close() 会释放那块静态代码缓存；
-        //   · 之后所有 Cpu（包括没被销毁的那个）都不再能执行 CPUID / SMU 命令。
-        // 表现出来就是「SMU 可用，但读 CO 全部 null、读 FMax 全部 0」，
-        // 因为 CPUID 缓存下来的 CPU 名 / 代号 / SMU 版本仍然正常显示。
-        //
-        // 因此本类的规则是：
-        //   1. 由依赖注入容器以 Singleton 注册，保证全进程只有一个实例；
-        //   2. 任何路径都不 Dispose（Dispose 已改为 no-op）；
-        //   3. 驱动没就绪时只重试「测试消息」，不重建实例。
-
-        /// <summary>
-        /// 本进程累计创建过多少个 Cpu 实例。正常必须是 1。
-        /// 大于 1 说明存在重复创建路径，自检会报出来。
-        /// </summary>
+        /// <summary>本进程累计创建的会话数，正常为 1。</summary>
         private static int _createdCount;
 
         internal static int CreatedCount => Volatile.Read(ref _createdCount);
@@ -117,23 +79,26 @@ namespace Zentwik.Core.Services
             Initialize();
         }
 
+        private static string ModulePath => Path.Combine(AppContext.BaseDirectory, "PawnIO", "RyzenSMU.bin");
+
         private void Initialize()
         {
             try
             {
-                // 1.93.1 起 Cpu 没有无参构造，必须显式给 CoreOptions。
-                // 传 Current 而不是 new CoreOptions()：库内部把这份实例当作
-                // 「进程级全局配置」，自己 new 一个会拿到与库内静态状态脱钩的副本。
-                _cpu = new Cpu(CoreOptions.Current);
+                _session = SmuSession.TryOpen(ModulePath);
                 Interlocked.Increment(ref _createdCount);
 
-                // 「构造成功」不等于「SMU 能应答」：Cpu 的构造函数在 SendTestMessage()
-                // 失败时只记 LastError、不抛异常，甚至把 Status 设成 OK。
-                // 旧版只看有无异常，会把一个 SMU 已不应答的实例当成可用并缓存起来。
+                if (_session is null)
+                {
+                    IsAvailable = false;
+                    LastError = "PawnIO 设备不可用（驱动未安装或无管理员权限）";
+                    return;
+                }
+
                 bool responding;
                 try
                 {
-                    responding = _cpu.SendTestMessage();
+                    responding = _session.TryTestMessage();
                 }
                 catch (Exception ex)
                 {
@@ -143,32 +108,25 @@ namespace Zentwik.Core.Services
 
                 if (!responding)
                 {
-                    // 不能 Dispose：Cpu.Dispose 会 Opcode.Close()，那是进程级静态资源。
-                    // 保留实例，稍后只重发一次测试消息（见 RetryAvailabilityProbe）。
                     IsAvailable = false;
                     LastError ??= "SMU 未应答测试消息（驱动可能尚未就绪）";
-                    _log.Warn($"ZenStates-Core 已构造但 SMU 无应答：{LastError}");
+                    _log.Warn(LastError);
                     return;
                 }
 
                 IsAvailable = true;
                 LastError = null;
-                _log.Info($"ZenStates-Core 初始化成功：{_cpu.info.cpuName} ({_cpu.info.codeName})");
+                _log.Info($"SMU 初始化成功：{_session.Cpu.Name} ({_session.Cpu.CodeName})");
             }
             catch (Exception ex)
             {
                 IsAvailable = false;
                 LastError = ex.Message;
-                _log.Error($"ZenStates-Core 初始化失败: {ex}");
+                _log.Error($"SMU 初始化失败: {ex}");
             }
         }
 
-        /// <summary>
-        /// 等待 PawnIO 驱动就绪（自启 / 静默场景专用）。
-        ///
-        /// 只对当前实例反复重发测试消息，不创建新实例 ——
-        /// 进程内出现第二个 Cpu 会破坏 Opcode 的进程级静态状态。
-        /// </summary>
+        /// <summary>等待 PawnIO 驱动就绪（自启 / 静默场景专用）。</summary>
         /// <param name="maxSeconds">最长等待秒数（默认 60）。</param>
         /// <param name="token">取消令牌：关机或用户放弃时可中断等待，不拖住后台线程。</param>
         public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default)
@@ -231,23 +189,21 @@ namespace Zentwik.Core.Services
         /// </summary>
         private void RetryAvailabilityProbe()
         {
-            if (_cpu == null)
+            if (_session is null)
             {
-                try
+                _session = SmuSession.TryOpen(ModulePath);
+                Interlocked.Increment(ref _createdCount);
+
+                if (_session is null)
                 {
-                    _cpu = new Cpu(CoreOptions.Current);
-                    Interlocked.Increment(ref _createdCount);
-                }
-                catch (Exception ex)
-                {
-                    LastError = ex.Message;
+                    LastError = "PawnIO 设备不可用";
                     return;
                 }
             }
 
             try
             {
-                if (_cpu.SendTestMessage())
+                if (_session.TryTestMessage())
                 {
                     IsAvailable = true;
                     LastError = null;
@@ -266,7 +222,7 @@ namespace Zentwik.Core.Services
         public SmuSnapshot ReadSnapshot()
         {
             SmuSnapshot snapshot = new();
-            if (_cpu == null || !IsAvailable)
+            if (_session is null || !IsAvailable)
             {
                 snapshot.Success = false;
                 snapshot.Error = LastError ?? "SMU 未初始化";
@@ -284,37 +240,36 @@ namespace Zentwik.Core.Services
         {
             try
             {
-                Cpu cpu = _cpu!;
+                SmuSession session = _session!;
+                CpuIdentity info = session.Cpu;
 
-                // ---------- 1. CPU 基本信息 ----------
-                snapshot.CpuName = cpu.info.cpuName ?? string.Empty;
-                snapshot.CodeName = cpu.info.codeName.ToString();
-                snapshot.Family = cpu.info.family.ToString();
-                snapshot.SmuType = cpu.smu.SMU_TYPE.ToString();
-                snapshot.Ccds = cpu.info.topology.ccds;
-                snapshot.Cores = cpu.info.topology.cores;
-                snapshot.PhysicalCores = cpu.info.topology.physicalCores;
-                snapshot.ThreadsPerCore = cpu.info.topology.threadsPerCore;
+                snapshot.CpuName = info.Name;
+                snapshot.CodeName = info.CodeName;
+                snapshot.Family = $"0x{info.FamilyId:X2}";
+                snapshot.SmuType = info.Family.ToString();
+                snapshot.Ccds = (uint)info.Ccds;
+                snapshot.Cores = (uint)info.LogicalCores;
+                snapshot.PhysicalCores = (uint)info.PhysicalCores;
+                snapshot.ThreadsPerCore = (uint)info.ThreadsPerCore;
 
-                snapshot.SmuVersion = SmuVersionString(cpu);
+                snapshot.SmuVersion = SmuVersionString();
 
                 _log.Info(
                     $"CPU: {snapshot.CpuName} | {snapshot.CodeName} | {snapshot.Family} | " +
                     $"SMU {snapshot.SmuVersion} ({snapshot.SmuType}) | " +
                     $"{snapshot.Ccds} CCD / {snapshot.Cores} 核 / {snapshot.ThreadsPerCore} 线程每核");
 
-                // ---------- 2. 每核 Curve Optimizer 当前值 ----------
-                uint coresPerCcd = cpu.info.topology.coresPerCcx;
+                uint coresPerCcd = (uint)info.CoresPerCcd;
                 if (coresPerCcd == 0)
-                    coresPerCcd = 8; // 取不到拓扑时按 8 核每 CCD 兜底
+                    coresPerCcd = 8;
 
-                int coreCount = (int)cpu.info.topology.physicalCores;
+                int coreCount = info.PhysicalCores;
                 snapshot.CoreMargins = new int[coreCount];
                 int okCount = 0;
                 for (int i = 0; i < coreCount; i++)
                 {
                     (uint core, uint ccd, uint ccx) = SplitCore(i);
-                    uint? margin = cpu.GetPsmMarginSingleCore(core, ccd, ccx);
+                    uint? margin = session.GetMargin(core, ccd, ccx);
                     if (margin.HasValue)
                     {
                         // SMU 返回无符号计数，取负视角即为 CO 值（负数 = 降压）
@@ -333,8 +288,7 @@ namespace Zentwik.Core.Services
                 _log.Info($"Curve Optimizer 读取完成：{okCount}/{coreCount} 个核心返回有效值");
                 _log.Info($"核心拓扑：每 CCD {coresPerCcd} 核，共 {coreCount} 物理核心");
 
-                // ---------- 3. FMax 当前限制（MHz） ----------
-                snapshot.FMaxMHz = cpu.GetFMax();
+                snapshot.FMaxMHz = session.GetFMax();
                 _log.Info($"FMax 当前上限：{snapshot.FMaxMHz} MHz");
 
                 snapshot.Success = true;
@@ -377,7 +331,7 @@ namespace Zentwik.Core.Services
         public SmuWriteResult WriteCurveOptimizer(IReadOnlyList<int> margins)
         {
             SmuWriteResult result = new();
-            if (_cpu == null || !IsAvailable)
+            if (_session is null || !IsAvailable)
             {
                 result.Fatal = LastError ?? "SMU 未初始化";
                 return result;
@@ -393,15 +347,12 @@ namespace Zentwik.Core.Services
 
         private SmuWriteResult WriteCurveOptimizerCore(IReadOnlyList<int> margins, SmuWriteResult result)
         {
-            Cpu cpu = _cpu!;
+            SmuSession session = _session!;
             int count = _coreCount > 0 ? Math.Min(margins.Count, _coreCount) : margins.Count;
 
-            // 写入前先把拓扑与 SMU 型号打出来：CO 被整片拒绝时，最常见的原因就是
-            // 核心序号 → (core, ccd, ccx) 的拆分与 SMU 的预期不一致，
-            // 而这条信息只有在这里才看得到。
             _log.Info(
                 $"CO 写入开始：{count} 核，每 CCD {CoresPerCcd} 核，" +
-                $"SMU 型号 {cpu.smu.SMU_TYPE}，版本 0x{cpu.smu.Version:X}");
+                $"平台 {session.Cpu.Family}，SMU 版本 {SmuVersionString()}");
             for (int i = 0; i < count; i++)
             {
                 int value = margins[i];
@@ -425,12 +376,12 @@ namespace Zentwik.Core.Services
                 uint coreMask = 0;
                 try
                 {
-                    coreMask = cpu.MakeCoreMask(core, ccd, ccx);
-                    accepted = cpu.SetPsmMarginSingleCore(core, ccd, ccx, value);
+                    coreMask = session.MakeCoreMask(core, ccd, ccx);
+                    accepted = session.SetMargin(core, ccd, ccx, value);
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"SetPsmMarginSingleCore 核心 {i} 异常: {ex}");
+                    _log.Error($"SetMargin 核心 {i} 异常: {ex}");
                 }
 
                 _log.Info(
@@ -448,13 +399,13 @@ namespace Zentwik.Core.Services
                 int readBack = int.MinValue;
                 try
                 {
-                    uint? rb = cpu.GetPsmMarginSingleCore(core, ccd, ccx);
+                    uint? rb = session.GetMargin(core, ccd, ccx);
                     if (rb.HasValue)
                         readBack = unchecked((int)rb.Value);
                 }
                 catch (Exception ex)
                 {
-                    _log.Warn($"GetPsmMarginSingleCore 回读 核心 {i} 异常: {ex.Message}");
+                    _log.Warn($"GetMargin 回读 核心 {i} 异常: {ex.Message}");
                 }
 
                 if (readBack != value)
@@ -479,7 +430,7 @@ namespace Zentwik.Core.Services
         public SmuFMaxResult WriteFMax(uint mhz)
         {
             SmuFMaxResult result = new() { Requested = mhz };
-            if (_cpu == null || !IsAvailable)
+            if (_session is null || !IsAvailable)
             {
                 result.Fatal = LastError ?? "SMU 未初始化";
                 return result;
@@ -495,16 +446,17 @@ namespace Zentwik.Core.Services
 
             try
             {
+                SmuSession session = _session;
                 lock (_syncRoot)
                 {
                     // 写入前先读一次基线：如果基线本身就是 0，说明这台机器的
                     // FMax 读取通道不可用（部分移动平台 SMU 不实现该消息），
                     // 那么「写入后回读 0」不能当作写入失败 —— 要能区分这两件事。
-                    uint before = _cpu.GetFMax();
+                    uint before = session.GetFMax();
                     _log.Info($"FMax 写入前基线：{before} MHz");
 
-                    result.SmuAccepted = _cpu.SetFMax(mhz);
-                    result.ReadBack = _cpu.GetFMax();
+                    result.SmuAccepted = session.SetFMax(mhz);
+                    result.ReadBack = session.GetFMax();
 
                     _log.Info(
                         $"FMax 写入：请求 {mhz}，SMU 接受 {result.SmuAccepted}，" +
@@ -554,25 +506,21 @@ namespace Zentwik.Core.Services
         internal (uint Core, uint Ccd, uint Ccx) SplitCoreForDiagnostics(int coreIndex)
             => SplitCore(coreIndex);
 
-        /// <summary>调用库的 MakeCoreMask，供报告展示实际掩码值。</summary>
+        /// <summary>掩码值，供报告展示。</summary>
         internal uint MakeCoreMaskForDiagnostics(uint core, uint ccd, uint ccx)
-        {
-            if (_cpu == null)
-                return 0;
-            return _cpu.MakeCoreMask(core, ccd, ccx);
-        }
+            => _session?.MakeCoreMask(core, ccd, ccx) ?? 0;
 
         /// <summary>直接下发一次 CO（不做范围校验、不回读），返回 SMU 是否接受。</summary>
         internal bool TrySetCoForDiagnostics(uint core, uint ccd, uint ccx, int margin)
         {
-            if (_cpu == null || !IsAvailable)
+            if (_session is null || !IsAvailable)
                 return false;
 
             lock (_syncRoot)
             {
                 try
                 {
-                    return _cpu.SetPsmMarginSingleCore(core, ccd, ccx, margin);
+                    return _session.SetMargin(core, ccd, ccx, margin);
                 }
                 catch
                 {
@@ -581,28 +529,21 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>底层 Cpu 的状态与错误，供自检报告判断「SMU 是否真的在应答」。</summary>
+        /// <summary>会话状态，供自检报告判断「SMU 是否真的在应答」。</summary>
         internal (string Status, string? LastError) CpuStateForDiagnostics()
-        {
-            Cpu? cpu = _cpu;
-            if (cpu == null)
-                return ("(无 Cpu 实例)", LastError);
-
-            return (cpu.Status.ToString(), cpu.LastError?.Message);
-        }
+            => (_session is null ? "(无会话)" : IsAvailable ? "可用" : "不可用", LastError);
 
         /// <summary>单独跑一次 SMU 测试消息，看邮箱是否真的通。</summary>
         internal (bool Ok, string? Error) TestMessageForDiagnostics()
         {
-            Cpu? cpu = _cpu;
-            if (cpu == null || !IsAvailable)
+            if (_session is null || !IsAvailable)
                 return (false, LastError ?? "SMU 未初始化");
 
             lock (_syncRoot)
             {
                 try
                 {
-                    return (cpu.SendTestMessage(), null);
+                    return (_session.TryTestMessage(), null);
                 }
                 catch (Exception ex)
                 {
@@ -618,27 +559,24 @@ namespace Zentwik.Core.Services
         /// </summary>
         internal (uint GetDldo, uint SetDldo, uint SetBoostAll, uint GetBoost) SmuMsgIdsForDiagnostics()
         {
-            Cpu? cpu = _cpu;
-            if (cpu == null)
+            if (_session is null)
                 return (0, 0, 0, 0);
 
-            return (cpu.smu.Rsmu.SMU_MSG_GetDldoPsmMargin,
-                    cpu.smu.Rsmu.SMU_MSG_SetDldoPsmMargin,
-                    cpu.smu.Rsmu.SMU_MSG_SetBoostLimitFrequencyAllCores,
-                    cpu.smu.Rsmu.SMU_MSG_GetBoostLimitFrequency);
+            SmuMessages messages = SmuMessages.For(_session.Cpu.Family);
+            return (messages.GetMargin, messages.SetMargin, messages.SetBoostLimit, messages.GetBoostLimit);
         }
 
         /// <summary>直接读一次 FMax，不缓存、不做容差判断。</summary>
         internal uint GetFMaxForDiagnostics()
         {
-            if (_cpu == null || !IsAvailable)
+            if (_session is null || !IsAvailable)
                 return 0;
 
             lock (_syncRoot)
             {
                 try
                 {
-                    return _cpu.GetFMax();
+                    return _session.GetFMax();
                 }
                 catch
                 {
@@ -647,31 +585,14 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>SMU 版本的统一字符串形式，与 ReadSnapshot 的写法保持一致。</summary>
-        private static string SmuVersionString(Cpu cpu)
-        {
-            uint version = cpu.smu.Version;
-            if (version == 0)
-                version = cpu.GetSmuVersion();
-            return version == 0 ? "未知" : $"0x{version:X}";
-        }
+        private string SmuVersionString()
+            => _session is not null && _session.TryGetVersion(out uint version) && version != 0
+                ? $"0x{version:X}"
+                : "未知";
 
-        /// <summary>
-        /// 故意留空。
-        ///
-        /// Cpu.Dispose() 会依次调用 Opcode.Close() / Mutexes.Close() / RyzenSmu.Dispose，
-        /// 其中 Opcode 是 internal static class，内部缓存（codeBuffer、Cpuid、Rdtsc）
-        /// 都是进程级静态资源。只要有一个 Cpu 被销毁，**所有** Cpu 的
-        /// CPUID 与 SMU 命令都会失效 —— 而失败现场看起来只是「读不到 CO / FMax」，
-        /// 极难反推。
-        ///
-        /// 本工具是单实例桌面程序，Cpu 的生命周期本就等于进程生命周期，
-        /// 因此这里不做任何释放：既避免误伤，也不存在真正的泄漏问题。
-        /// 保留 IDisposable 实现只是为了不给调用方的 using 写法添麻烦。
-        /// </summary>
+        /// <summary>DI 单例，实例生命周期等于进程；退出期不关闭设备，避免并发访问抛异常。</summary>
         public void Dispose()
         {
-            // 见上：刻意不释放任何东西
         }
     }
 

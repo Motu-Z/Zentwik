@@ -4,6 +4,22 @@
 
 ---
 
+## [2.3.0]
+
+### Changed (变更)
+
+- **SMU 访问层改为自研，移除 `ZenStates-Core` 依赖**：原先经 `libs/ZenStates-Core/ZenStates-Core.dll`（GPL-3.0）在进程内调用其 `Cpu` 接口；现改为 `Zentwik.Core/Smu/` 下的 PawnIO 通道与 RSMU 命令封装，直接调用驱动模块 `RyzenSMU` 的 `ioctl_send_smu_command`。
+  - 移除：`libs/ZenStates-Core/`、`Reference ZenStates-Core`、`TrimmerRootAssembly ZenStates-Core`、`TrimmerRootAssembly WmiLight`、`PackageReference WmiLight`、`libs/ZenStates-Core/**` 的 sys/bin 拷贝规则（原本即空匹配）。
+  - 新增：`libs/PawnIO/RyzenSMU.bin`（来自 PawnIO.Modules，LGPL-2.1），运行时由驱动加载，作为独立文件随包分发。
+- **CO 核心掩码与命令号按平台内建**：掩码沿用 `[31-28] CCD / [27-24] CCX / [23-20] 核内序号`，family 17h 起 CCX 恒为 0；命令号按 Zen2 / Zen3 / Zen4 / Zen5 四组分列。
+- **每 CCD 核数改由拓扑规律推导**：8 核及以下视为单 CCD，12 核为 2×6，16 核及以上为 2×8；EPYC 的多 CCX 形态不在支持范围。
+- **SMU 契约不变**：`ISmuReader` 与 `SmuSnapshot` 对外形态未改，UI 与 IPC 无需调整。
+
+### Verified (验证)
+
+- 本机 Ryzen 9 9955HX（Granite Ridge / Zen5，16 核 2 CCD）：测试消息、SMU 版本、FMax 读取、16 核 CO 逐核读取全部正常。
+- `dotnet build Zentwik.slnx -c Release --no-incremental` 0 警告 0 错误；单元测试 220 项通过。
+
 ## [2.2.9]
 
 ### Changed (变更)

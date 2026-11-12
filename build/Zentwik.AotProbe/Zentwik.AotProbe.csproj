@@ -16,7 +16,6 @@
 
     <PublishSingleFile>false</PublishSingleFile>
 
-    <!-- ZenStates-Core 的反射路径由 AOT 注解与 preserve="all" 覆盖；此处不设 NoWarn。 -->
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <SuppressTrimAnalysisWarnings>false</SuppressTrimAnalysisWarnings>
 

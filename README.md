@@ -48,7 +48,7 @@
 | `Zentwik.Tests/` | 单元测试 |
 | `installer/` | Inno Setup 安装脚本与中文语言文件 |
 | `build/`、`tools/` | 构建辅助（含 AOT 探针）与 XAML 静态检查 |
-| `libs/` | ZenStates-Core 二进制依赖 |
+| `libs/` | PawnIO 驱动模块（`RyzenSMU.bin`） |
 | `.github/workflows/` | 发布与 AOT 门禁 |
 
 ## 自行构建
@@ -65,10 +65,9 @@ dotnet test  Zentwik.Tests/Zentwik.Tests.csproj -c Release
 
 - [SMUDebugTool](https://github.com/irusanov/SMUDebugTool/)：Ryzen SMU 参数读写的参考实现
 - [CPUSetSetter](https://github.com/SimonvBez/CPUSetSetter)：CPU Sets 进程调度与双 CCD 拓扑识别的行为参照
-- [ZenStates-Core-AOT](https://github.com/Motu-Z/ZenStates-Core-AOT)：SMU 消息收发与 PawnIO 模块加载
 - [PawnIO](https://github.com/namazso/PawnIO)：SMU 访问的内核驱动
-- [WmiLight](https://github.com/MartinKuschnik/WmiLight)：Native AOT 下可用的 WMI 封装
+- [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)：`RyzenSMU` 驱动模块（LGPL-2.1）
 
 ## 许可证
 
-[GPL-3.0](LICENSE)。本项目随包分发 [ZenStates-Core-AOT](https://github.com/Motu-Z/ZenStates-Core-AOT)（对 [irusanov/ZenStates-Core](https://github.com/irusanov/ZenStates-Core) 的 Native AOT 适配构建），因此整体以 GPL-3.0 发布。Zentwik 的完整源码即本仓库；ZenStates-Core-AOT 及其上游的对应源码见其对应仓库。
+[GPL-3.0](LICENSE)。SMU 访问层为本仓库自研实现，不再分发第三方 GPL 组件；`libs/PawnIO/RyzenSMU.bin` 来自 [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)（LGPL-2.1），以独立文件随包分发、可由用户替换。

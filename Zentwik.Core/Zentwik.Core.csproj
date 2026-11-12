@@ -8,7 +8,7 @@
     <AssemblyName>Zentwik.Core</AssemblyName>
     <LangVersion>latest</LangVersion>
 
-    <Version>2.2.9</Version>
+    <Version>2.3.0</Version>
     <FileVersion>2.1.11.0</FileVersion>
     <AssemblyVersion>2.1.11.0</AssemblyVersion>
 
@@ -28,34 +28,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 裸 DLL 引用不传递依赖；取 net8.0-windows 资产。 -->
-    <Reference Include="ZenStates-Core">
-      <HintPath>..\libs\ZenStates-Core\ZenStates-Core.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-
-    <!-- 裸 DLL 无裁剪标注，须整程序集保全。 -->
-    <TrimmerRootAssembly Include="ZenStates-Core" />
-
-    <!-- WmiLight 原生侧按名回查成员，裁剪器不可见。 -->
-    <TrimmerRootAssembly Include="WmiLight" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="..\libs\ZenStates-Core\**\*.sys;..\libs\ZenStates-Core\**\*.bin"
-          Link="%(Filename)%(Extension)"
+    <!-- PawnIO 模块由驱动加载，不进单文件包。 -->
+    <None Include="..\libs\PawnIO\RyzenSMU.bin"
+          Link="PawnIO\RyzenSMU.bin"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
           ExcludeFromSingleFile="true" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- WmiLight 版本须与 ZenStates-Core.dll 的引用对齐。 -->
-    <PackageReference Include="WmiLight" Version="7.3.0" />
-
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="9.0.0" />
 
-    <!-- 裸 DLL 引用断掉传递链，ServiceController 需显式声明。 -->
+    <!-- 唤醒 PawnIO 服务需显式声明。 -->
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
 
     <!-- 版本须与 Worker 的 Hosting 10.0.x 对齐。 -->
