@@ -4,6 +4,24 @@
 
 ---
 
+## [2.3.2]
+
+### Changed (变更)
+
+- **Worker 改用自带的最小宿主**：移除 `Microsoft.Extensions.Hosting`，由 `Program` 自己持有 DI 容器并按序启停。原宿主只为三件事引入——容器、`IHostedService` 顺序、`IHostApplicationLifetime`；实际未使用配置、日志提供器与 Windows 服务集成。
+  - 新增 `IWorkerService`（启动 / 停止）与 `IWorkerLifetime`（停止信号）替代 `IHostedService` / `IHostApplicationLifetime`。
+  - Worker 依赖图由 29 个包降至 3 个（`DependencyInjection` + `Abstractions` + `SystemEvents`）。
+- **移除 PawnIO 服务唤醒逻辑**：`TryWakeDriverServices` 轮询启动 `PawnIO` / `PawnIO2` / `pawnio`，但 `PawnIO2` 并不存在，另两个只是同一注册表键的大小写形式；该服务 `Start=3`（按需启动），打开设备即由 SCM 加载。连带移除 `System.ServiceProcess.ServiceController`。
+- `Zentwik.AotProbe` 的 `Microsoft.Extensions.DependencyInjection` 由 9.0.0 对齐到 10.0.14。
+
+### Verified (验证)
+
+- 真机（Ryzen 9 9955HX）：删除唤醒逻辑后 `SmuSession.TryOpen` 仍成功，`test_message=True`，SMU 版本 `0x4621A00`。
+- 真机端到端：Worker 启动 → 管道 `ping` 返回 `pong` → `shutdown` 返回 `bye` → 进程优雅退出，日志可见监听按逆序停止。
+- `dotnet build` 0 警告 0 错误；单元测试 220 项通过；AOT 发布 ILC 阶段无警告（本机缺 Windows SDK 导入库，链接未完成）。
+
+---
+
 ## [2.3.1]
 
 ### Changed (变更)
