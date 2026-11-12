@@ -36,7 +36,6 @@
     <SolidColorBrush x:Key="DangerSubtleBrush" Color="#1ADC2626" />
     <SolidColorBrush x:Key="DangerBorderBrush" Color="#4DDC2626" />
     <SolidColorBrush x:Key="SuccessBrush" Color="#FF16A34A" />
-    <SolidColorBrush x:Key="SuccessSubtleBrush" Color="#1716A34A" />
     <SolidColorBrush x:Key="WarningBrush" Color="#FFD97706" />
     <SolidColorBrush x:Key="WarningSubtleBrush" Color="#1AD97706" />
     <SolidColorBrush x:Key="WarningBorderBrush" Color="#4DD97706" />

@@ -40,7 +40,6 @@
     <!-- rgba(248,113,113,0.3)：危险区外框 -->
     <SolidColorBrush x:Key="DangerBorderBrush" Color="#4DF87171" />
     <SolidColorBrush x:Key="SuccessBrush" Color="#FF4ADE80" />
-    <SolidColorBrush x:Key="SuccessSubtleBrush" Color="#1A4ADE80" />
     <SolidColorBrush x:Key="WarningBrush" Color="#FFFBBF24" />
     <SolidColorBrush x:Key="WarningSubtleBrush" Color="#1AFBBF24" />
     <SolidColorBrush x:Key="WarningBorderBrush" Color="#4DFBBF24" />

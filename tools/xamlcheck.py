@@ -182,7 +182,63 @@ def sibling_keys(el):
     return keys
 
 
-def check_template_staticresource(root, fname, out, parents=None, document_keys=None):
+def normalize(p):
+    return p.replace('\\', '/').lstrip('./')
+
+
+def dictionary_sources(path):
+    """字典里 MergedDictionaries 引用的 Source，归一化为 XXX/YYY.xaml。"""
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return []
+    out = []
+    for n in root.iter():
+        if not isinstance(n.tag, str):
+            continue
+        src = n.attrib.get('Source')
+        if not src:
+            continue
+        m = re.search(r'([\w.\-]+/[\w.\-]+\.xaml)$', src.strip())
+        out.append(m.group(1) if m else src.strip())
+    return out
+
+
+def reachable_keys(files):
+    """运行期挂在 Application.Resources 下的键，即模板内 StaticResource 真正可达的范围。
+
+    两个来源：App.xaml 的静态合并，以及代码里以字面量挂载的字典（AppThemeService）。
+    只进局部 Resources 的字典不算 —— 那种引用才是运行期会抛 XamlParseException 的。
+    """
+    files = {normalize(f) for f in files}
+    queue = [f for f in files if f.endswith('App.xaml')]
+    for f in glob.glob('**/*.cs', recursive=True):
+        if '/obj/' in normalize(f):
+            continue
+        queue += re.findall(r'"(Themes/[\w.\-]+\.xaml)"',
+                            open(f, encoding='utf-8-sig').read())
+
+    keys, seen = set(), set()
+    while queue:
+        name = normalize(queue.pop())
+        path = name if name in files else next(
+            (f for f in files if f.endswith('/' + name)), None)
+        if path is None or path in seen:
+            continue
+        seen.add(path)
+        try:
+            root = ET.parse(path).getroot()
+        except Exception:
+            continue
+        for n in root.iter():
+            if isinstance(n.tag, str) and n.attrib.get(NS_X + 'Key'):
+                keys.add(n.attrib[NS_X + 'Key'])
+        queue += dictionary_sources(path)
+    return keys
+
+
+def check_template_staticresource(root, fname, out, parents=None,
+                                  document_keys=None, global_keys=None):
     """root 为模板节点（ControlTemplate / DataTemplate / ItemsPanelTemplate）。"""
     for el in root.iter():
         if not isinstance(el.tag, str) or tag(el) not in TEMPLATE_TAGS:
@@ -198,6 +254,7 @@ def check_template_staticresource(root, fname, out, parents=None, document_keys=
 
         local = sibling_keys(el)          # 模板自身子树里定义的键
         enclosing = document_keys or set()   # 同字典顶层定义的键
+        global_keys = global_keys or set()   # Application.Resources 可达的键
 
         for node in el.iter():
             if not isinstance(node.tag, str):
@@ -211,19 +268,19 @@ def check_template_staticresource(root, fname, out, parents=None, document_keys=
                 # 本工程的键就叫 Text.MetaBrush 这种。
                 if '+' in key or ':' in key:
                     continue
-                if key in local:
+                if key in local or key in enclosing or key in global_keys:
                     continue
-                scope = '同字典顶层' if key in enclosing else '本工程其它字典'
-                out.append((fname, tag(node), key, scope))
+                out.append((fname, tag(node), key, '本工程任何字典里都没有这个键'))
 
 
-def walk3(root, fname, sr_out):
+def walk3(root, fname, sr_out, global_keys):
     parents = parent_tag_map(root)
     document_keys = {n.attrib.get(NS_X + 'Key') for n in root.iter()
                      if isinstance(n.tag, str) and n.attrib.get(NS_X + 'Key')}
     for node in root.iter():
         if isinstance(node.tag, str) and tag(node) in TEMPLATE_TAGS:
-            check_template_staticresource(node, fname, sr_out, parents, document_keys)
+            check_template_staticresource(node, fname, sr_out, parents,
+                                          document_keys, global_keys)
 
 
 def main():
@@ -238,11 +295,13 @@ def main():
         except ET.ParseError as e:
             parse_fail.append((f, str(e)))
 
+    global_keys = reachable_keys(files)
+
     for f, root in trees.items():
         walk(root, None, f, type_out, kt)
         walk2(root, None, f, struct_out)
         check_events(root, f, ctl_out)
-        walk3(root, f, sr_out)
+        walk3(root, f, sr_out, global_keys)
 
     print(f'[1] XML 解析失败：{len(parse_fail)}')
     for f, e in parse_fail:
@@ -261,11 +320,11 @@ def main():
     for o in ctl_out:
         print(f'    {o[0]}  <{o[1]}>  {o[2]}')
 
-    print(f'[5] 模板内引用了模板外看不见的 StaticResource：{len(sr_out)}')
+    print(f'[5] 模板内引用了查无定义的 StaticResource：{len(sr_out)}')
     for f, t, key, scope in sr_out:
-        print(f'    {f}  <{t}>  StaticResource "{key}"（该键定义在{scope}，')
-        print(f'        模板解析时查找链到不了，运行期首次套模板即抛 XamlParseException）')
-        print(f'        改法：内联写出，或改用 DynamicResource')
+        print(f'    {f}  <{t}>  StaticResource "{key}"（{scope}，')
+        print(f'        运行期首次套模板即抛 XamlParseException）')
+        print(f'        改法：补定义、内联写出，或改用 DynamicResource')
 
     return 1 if (parse_fail or type_out or struct_out or ctl_out or sr_out) else 0
 

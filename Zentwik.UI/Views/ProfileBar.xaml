@@ -10,7 +10,6 @@
     <UserControl.Resources>
         <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
-        <conv:StringEmptyToVisibilityConverter x:Key="StringEmptyToVis" />
     </UserControl.Resources>
 
     <StackPanel Orientation="Horizontal">

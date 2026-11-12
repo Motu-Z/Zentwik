@@ -1233,8 +1233,6 @@ public class ProcessViewModel : ViewModelBase
         SavedRules.Add(rule);
     }
 
-    public void ShowToast(string message) => ToastService.Instance.Show(message);
-
     /// <summary>把异步动作塞进同步命令里</summary>
     private static void Fire(Func<Task> action) => AsyncRunner.Fire(action);
 

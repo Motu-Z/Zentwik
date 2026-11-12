@@ -65,10 +65,6 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);
 
-    /// <summary>GetDpiForWindow —— 取窗口所在显示器的 DPI</summary>
-    [DllImport("user32.dll")]
-    public static extern uint GetDpiForWindow(IntPtr hwnd);
-
     /// <summary>NOTIFYICONDATA —— 托盘图标描述结构。</summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct NOTIFYICONDATA
@@ -165,9 +161,6 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr CreateIconIndirect(ref ICONINFO piconinfo);
-
-    [DllImport("gdi32.dll", SetLastError = true)]
-    public static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
 
     [DllImport("gdi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

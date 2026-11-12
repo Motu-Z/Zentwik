@@ -214,17 +214,6 @@ public static class WorkerLauncher
         }
     }
 
-    /// <summary>兼容旧调用点：不阻塞，让后台线程去发。</summary>
-    public static void ShutdownIfOwned()
-    {
-        if (!_startedByUs)
-        {
-            return;
-        }
-
-        _ = Task.Run(() => RequestShutdown(TimeSpan.FromSeconds(2)));
-    }
-
     private static void Finish(bool ready)
     {
         _nextAttemptUtc = ready ? DateTime.MinValue : DateTime.UtcNow + FailureCooldown;

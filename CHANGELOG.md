@@ -4,6 +4,33 @@
 
 ---
 
+## [2.3.4]
+
+### Changed (变更)
+
+- **`Microsoft.Win32.SystemEvents` 9.0.0 → 10.0.0**：与其余 `Microsoft.Extensions.*` 包的主版本对齐。
+- **`tools/xamlcheck.py` 的 `[5]` 重写判据**：原先按「键是否定义在同一文件顶层」判定，把合并进 `Application.Resources` 的合法引用全部误报（恒 19 条）。现按运行期可达集合判定——`App.xaml` 静态合并 + 代码里挂载的字典（`AppThemeService`）递归展开，只报全工程查无定义的键。负向测试（故意拼错键名）仍能命中。
+
+### Removed (移除)
+
+- 4 个零引用资源键：`RuleStyle`、`TagWarnStyle`、`SuccessSubtleBrush`（明暗两版）、`StringEmptyToVis`。
+- 2 个零引用转换器：`StringEmptyToVisibilityConverter`、`StringEqualsBoolConverter`。
+- 3 个零引用成员：`TrayIconService.RefreshForDpiChange`、`WorkerLauncher.ShutdownIfOwned`、`ProcessViewModel.ShowToast`。
+- 2 个未使用的 P/Invoke 声明（`GetDpiForWindow`、`SelectObject`）与 2 处未使用的 `xmlns`。
+
+### Fixed (修复)
+
+- **`Zentwik.UiSmoke` 的渲染底色**：4 处引用了早已移除的 `BgBase` 键（索引器返回 null，静默渲染成透明）；改为 `WindowBgBrush`。`grayscale` 局部变量补 `string?` 消除 CS8600。
+
+### Verified (验证)
+
+- `dotnet build`（Core/Worker/Tests + UI + UiSmoke）→ 0 警告 0 错误；`dotnet test` → 220 项通过。
+- `tools/xamlcheck.py` → 五项全 0，退出码 0（此前 `[5]` 恒 19 条、退出码 1）。
+- UiSmoke → `failures=0`：8 个页面实例化通过，456 处 StaticResource 全部有定义，导航切换正常。
+- 本地 `Zentwik-App` 输出目录清除历史残留（旧 Hosting/Configuration/Logging 全家桶、`ZenStates-Core.dll`、`WmiLight.dll`、`win-x64` 自包含发布树），96 MB → 1.6 MB。
+
+---
+
 ## [2.3.3]
 
 ### Changed (变更)

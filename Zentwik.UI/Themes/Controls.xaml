@@ -3,8 +3,7 @@
                     xmlns:lm="clr-namespace:Zentwik.UI"
                     xmlns:nav="clr-namespace:Zentwik.UI.Controls"
                     xmlns:vm="clr-namespace:Zentwik.UI.ViewModels"
-                    xmlns:conv="clr-namespace:Zentwik.UI.Converters"
-                    xmlns:media="clr-namespace:System.Windows.Media;assembly=PresentationCore">
+                    xmlns:conv="clr-namespace:Zentwik.UI.Converters">
 
     <!-- 控件样式。口径：颜色一律 DynamicResource；面板 = 底 + 1px 描边 + 圆角，不用阴影渐变；行分隔线只有 LineFaintBrush 一种；等宽字体只用于机器数据；常驻元素不挂 Effect -->
 
@@ -69,11 +68,6 @@
         <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="6" />
-    </Style>
-
-    <!-- 分栏之间的通栏线：1px，横竖都用它 -->
-    <Style x:Key="RuleStyle" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource LineBrush}" />
     </Style>
 
     <!-- 卡片内的设置行：上下留白 20，底线 1px rgba(255,255,255,.03) -->
@@ -1024,10 +1018,6 @@
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="6,2" />
         <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-
-    <Style x:Key="TagWarnStyle" TargetType="Border" BasedOn="{StaticResource TagBaseStyle}">
-        <Setter Property="Background" Value="{DynamicResource WarningSubtleBrush}" />
     </Style>
 
     <!-- 列表 -->

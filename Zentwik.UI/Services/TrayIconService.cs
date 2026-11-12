@@ -145,13 +145,6 @@ public sealed class TrayIconService : IDisposable
         Rerender(force: true);
     }
 
-    /// <summary>DPI 变化时重新渲染（用户把窗口拖到另一块不同缩放的屏幕）</summary>
-    public void RefreshForDpiChange()
-    {
-        if (_source is null || !_added) return;
-        Rerender();
-    }
-
     /// <summary>重新渲染图标并替换托盘里的那一个</summary>
     private void Rerender(bool force = false)
     {

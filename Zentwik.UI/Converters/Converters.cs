@@ -71,42 +71,6 @@ public sealed class CountToVisibilityConverter : IValueConverter
     }
 }
 
-/// <summary>字符串 → Visibility</summary>
-public sealed class StringEmptyToVisibilityConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        bool empty = value is not string s || s.Length == 0;
-        return empty ? Visibility.Collapsed : Visibility.Visible;
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        return Binding.DoNothing;
-    }
-}
-
-/// <summary>字符串 → bool（按值相等），用于「按钮组绑定字符串枚举值」</summary>
-public sealed class StringEqualsBoolConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        return value is string s
-            && parameter is string p
-            && string.Equals(s, p, StringComparison.Ordinal);
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not bool b || !b || parameter is not string p)
-        {
-            return Binding.DoNothing;
-        }
-
-        return p;
-    }
-}
-
 /// <summary>排序键相等 → Visibility（用于表头的 ▼ 指示箭头）</summary>
 public sealed class SortKeyEqualsConverter : IValueConverter
 {

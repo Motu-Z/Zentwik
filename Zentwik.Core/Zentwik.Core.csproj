@@ -8,9 +8,9 @@
     <AssemblyName>Zentwik.Core</AssemblyName>
     <LangVersion>latest</LangVersion>
 
-    <Version>2.3.3</Version>
-    <FileVersion>2.3.3.0</FileVersion>
-    <AssemblyVersion>2.3.3.0</AssemblyVersion>
+    <Version>2.3.4</Version>
+    <FileVersion>2.3.4.0</FileVersion>
+    <AssemblyVersion>2.3.4.0</AssemblyVersion>
 
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
@@ -37,7 +37,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.0" />
 
     <!-- 不走 Hosting，容器由宿主进程创建。 -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />

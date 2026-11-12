@@ -421,10 +421,10 @@ namespace Zentwik.Smoke
                 // 【为什么要铺底色】离屏渲染出的 PNG 是带 alpha 的。
                 // 窗口根 Grid 没有自己的 Background，透明区域的白色文字会被写成
                 // 预乘 alpha，存成 PNG 再看就是"字被啃掉一块"的假象 —— 那是渲染伪影，不是界面问题。
-                // 真实运行时窗口有 Background="{DynamicResource BgBase}" 兜着，
+                // 真实运行时窗口有 Background="{DynamicResource WindowBgBrush}" 兜着，
                 // 这里补上同一层底色，模拟真实观感。
                 if (root is Panel panel)
-                    panel.Background = (Brush)app.Resources["BgBase"];
+                    panel.Background = (Brush)app.Resources["WindowBgBrush"];
 
                 window.Measure(new Size(1280, 820));
                 window.Arrange(new Rect(0, 0, 1280, 820));
@@ -459,7 +459,7 @@ namespace Zentwik.Smoke
                     Width = 1000,
                     Height = 1450,
                     // 铺底色：消除透明底导致的预乘 alpha 伪影（详见 RenderWindow 里的说明）
-                    Background = (Brush)app.Resources["BgBase"]
+                    Background = (Brush)app.Resources["WindowBgBrush"]
                 };
 
                 view.Measure(new Size(1000, 1450));
@@ -485,7 +485,7 @@ namespace Zentwik.Smoke
 
                 // 用 Enum.Parse 而不是直接写枚举成员：成员名各框架版本有出入，
                 // 写死会在编译期就炸，而这里只是想拿到一个"非 ClearType"的对照。
-                string grayscale = renderingModes.FirstOrDefault(n => n.Contains("Gray", StringComparison.OrdinalIgnoreCase))
+                string? grayscale = renderingModes.FirstOrDefault(n => n.Contains("Gray", StringComparison.OrdinalIgnoreCase))
                                    ?? renderingModes.FirstOrDefault(n => n.Contains("Ideal", StringComparison.OrdinalIgnoreCase));
 
                 if (grayscale is not null)
@@ -494,7 +494,7 @@ namespace Zentwik.Smoke
                     {
                         Width = 1000,
                         Height = 1450,
-                        Background = (Brush)app.Resources["BgBase"]
+                        Background = (Brush)app.Resources["WindowBgBrush"]
                     };
                     TextOptions.SetTextRenderingMode(
                         plain,

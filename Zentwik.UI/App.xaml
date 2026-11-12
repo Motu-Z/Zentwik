@@ -1,7 +1,6 @@
 <Application x:Class="Zentwik.UI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:sys="clr-namespace:System.Windows;assembly=PresentationFramework">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!-- 资源字典在 AppThemeService 里按索引热切换，不在这里静态合并：令牌(索引0) → 强调色 → 控件样式 -->
     <Application.Resources>
         <ResourceDictionary>
