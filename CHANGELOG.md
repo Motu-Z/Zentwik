@@ -14,6 +14,7 @@
 - **CO 核心掩码与命令号按平台内建**：掩码沿用 `[31-28] CCD / [27-24] CCX / [23-20] 核内序号`，family 17h 起 CCX 恒为 0；命令号按 Zen2 / Zen3 / Zen4 / Zen5 四组分列。
 - **每 CCD 核数改由拓扑规律推导**：8 核及以下视为单 CCD，12 核为 2×6，16 核及以上为 2×8；EPYC 的多 CCX 形态不在支持范围。
 - **SMU 契约不变**：`ISmuReader` 与 `SmuSnapshot` 对外形态未改，UI 与 IPC 无需调整。
+- **许可证改为 Apache-2.0**：自研实现替换后不再分发 GPL 组件，主项目由 GPL-3.0 改为 Apache-2.0；随包的 `RyzenSMU.bin` 仍为 LGPL-2.1，以独立文件分发。
 
 ### Verified (验证)
 
