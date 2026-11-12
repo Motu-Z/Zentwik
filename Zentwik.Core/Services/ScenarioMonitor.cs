@@ -77,22 +77,6 @@ namespace Zentwik.Core.Services
 
 
 
-        /// <summary>当前是否在监听任何输入源。false 等于「零占用」（无订阅、无活动定时器）。</summary>
-        public bool IsActive
-        {
-            get { lock (Gate) return _active; }
-        }
-
-        public bool IsProcessSourceAttached
-        {
-            get { lock (Gate) return _processHooked; }
-        }
-
-        public bool IsPowerSourceAttached
-        {
-            get { lock (Gate) return _powerHooked; }
-        }
-
         /// <summary>
         /// 按当前规则内容对齐监听范围。幂等，任何时刻调用都安全。
         /// 启动时、规则变更后都要调一次。

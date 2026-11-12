@@ -35,11 +35,10 @@ namespace Zentwik.Core.Services
     /// </summary>
     public sealed class CpuCoreGroup
     {
-        public CpuCoreGroup(int index, ulong mask, int logicalCount)
+        public CpuCoreGroup(int index, ulong mask)
         {
             Index = index;
             Mask = mask;
-            LogicalCount = logicalCount;
         }
 
         /// <summary>组序号（0 起，按最小逻辑核序号排序）。</summary>
@@ -47,9 +46,6 @@ namespace Zentwik.Core.Services
 
         /// <summary>该组覆盖的逻辑核掩码。</summary>
         public ulong Mask { get; }
-
-        /// <summary>该组包含的逻辑处理器数。</summary>
-        public int LogicalCount { get; }
     }
 
     /// <summary>
@@ -186,18 +182,6 @@ namespace Zentwik.Core.Services
         /// <summary>最近一次拓扑读取失败的原因（成功时为 null），供 UI 警告横幅展示。</summary>
         public string? LastTopologyError { get; private set; }
 
-        /// <summary>
-        /// 拓扑是否可用。false 表示无法枚举 CPU Sets，此时所有绑定都会失败，
-        /// UI 必须禁用绑定下拉框并显示红色警告，避免用户误以为绑定成功。
-        /// </summary>
-        public bool IsTopologyAvailable
-        {
-            get
-            {
-                EnsureTopology();
-                return _ccdCpuSetIds is { Length: > 0 } && _lpToCpuSetId is { Length: > 0 };
-            }
-        }
 
         /// <summary>清空拓扑缓存，下次访问时重新读取（供 UI「重试」或排障用）。</summary>
         public void ResetTopology()
@@ -614,7 +598,6 @@ namespace Zentwik.Core.Services
             {
                 HashSet<uint> ids = new(groups[g]);
                 ulong mask = 0;
-                int count = 0;
 
                 for (int i = 0; i < table.Length && i < 64; i++)
                 {
@@ -622,10 +605,9 @@ namespace Zentwik.Core.Services
                         continue;
 
                     mask |= 1UL << i;
-                    count++;
                 }
 
-                result[g] = new CpuCoreGroup(g, mask, count);
+                result[g] = new CpuCoreGroup(g, mask);
             }
 
             return result;

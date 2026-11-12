@@ -29,7 +29,7 @@ namespace Zentwik.Core.Helpers
         public const string DuplicateError = "这个名称已经用过了，请换一个。";
 
         /// <summary>单个字符的显示权重：全角 / 中日韩 / 代理对（emoji）计 2，其余计 1。</summary>
-        public static int WeightOf(char c)
+        private static int WeightOf(char c)
         {
             if (char.IsHighSurrogate(c) || char.IsLowSurrogate(c))
                 return 2;   // 代理对的一半，成对出现时由 Weight(string) 合并成一次计数
@@ -74,102 +74,6 @@ namespace Zentwik.Core.Helpers
                 total += WeightOf(text[i]);
             }
             return total;
-        }
-
-        /// <summary>
-        /// 判断名称是否可用。空名称与超重分别给出不同的提示，便于界面精确定位问题。
-        /// </summary>
-        public static bool IsValid(string? text, out string error)
-        {
-            string name = (text ?? string.Empty).Trim();
-
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                error = "掩码名称为空。";
-                return false;
-            }
-
-            int weight = Weight(name);
-            if (weight > MaxWeight)
-            {
-                error = $"掩码名称过长：当前 {weight}／{MaxWeight}（{Hint}）。";
-                return false;
-            }
-
-            error = string.Empty;
-            return true;
-        }
-
-        /// <summary>
-        /// 完整校验：长度 + 重名。重名比较**忽略大小写**——
-        /// 左栏就是一串纯文字，「Game」与「game」在列表里几乎分不出是哪条，
-        /// 允许并存只会让调度规则指向一个用户自己也说不清的对象。
-        /// </summary>
-        /// <param name="text">待校验名称。</param>
-        /// <param name="others">
-        /// 会被判定为冲突的其它名称。调用方负责把「自己」从里面剔掉
-        /// （见 <see cref="MaskStore.NamesExceptId"/>），本方法不做身份判断。
-        /// </param>
-        /// <param name="error">不可用时的原因。</param>
-        public static bool IsValid(string? text, IEnumerable<string>? others, out string error)
-        {
-            if (!IsValid(text, out error))
-                return false;
-
-            string name = (text ?? string.Empty).Trim();
-
-            if (others != null)
-            {
-                foreach (string other in others)
-                {
-                    if (string.IsNullOrWhiteSpace(other))
-                        continue;
-
-                    if (string.Equals(other.Trim(), name, StringComparison.OrdinalIgnoreCase))
-                    {
-                        error = DuplicateError;
-                        return false;
-                    }
-                }
-            }
-
-            error = string.Empty;
-            return true;
-        }
-
-        /// <summary>
-        /// 把文本裁到指定权重以内，返回不超过上限的最长前缀。
-        ///
-        /// 用于输入框的实时截断：超过上限就停在边界上，而不是等用户
-        /// 打完再告诉他超了。代理对（emoji）整体保留或整体丢弃，不劈成半个。
-        /// </summary>
-        public static string TrimToWeight(string? text, int maxWeight)
-        {
-            if (string.IsNullOrEmpty(text) || maxWeight <= 0)
-                return string.Empty;
-
-            int total = 0;
-            int cut = 0;
-
-            for (int i = 0; i < text.Length; i++)
-            {
-                int step;
-                if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-                    step = 2;
-                else
-                    step = WeightOf(text[i]);
-
-                if (total + step > maxWeight)
-                    break;
-
-                total += step;
-                cut = i + ((step == 2 && char.IsHighSurrogate(text[i])) ? 2 : 1);
-
-                if (step == 2 && char.IsHighSurrogate(text[i]))
-                    i++;    // 跳过低位代理
-            }
-
-            return text.Substring(0, Math.Min(cut, text.Length));
         }
     }
 }

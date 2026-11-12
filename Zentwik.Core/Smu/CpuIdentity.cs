@@ -6,13 +6,12 @@ namespace Zentwik.Core.Smu;
 
 internal sealed class CpuIdentity
 {
-    private CpuIdentity(string name, string codeName, SmuFamily family, uint familyId, uint modelId, int physicalCores, int logicalCores, int coresPerCcd)
+    private CpuIdentity(string name, string codeName, SmuFamily family, uint familyId, int physicalCores, int logicalCores, int coresPerCcd)
     {
         Name = name;
         CodeName = codeName;
         Family = family;
         FamilyId = familyId;
-        ModelId = modelId;
         PhysicalCores = physicalCores;
         LogicalCores = logicalCores;
         CoresPerCcd = coresPerCcd;
@@ -22,7 +21,6 @@ internal sealed class CpuIdentity
     public string CodeName { get; }
     public SmuFamily Family { get; }
     public uint FamilyId { get; }
-    public uint ModelId { get; }
     public int PhysicalCores { get; }
     public int LogicalCores { get; }
     public int CoresPerCcd { get; }
@@ -41,7 +39,6 @@ internal sealed class CpuIdentity
             ResolveCodeName(familyId, modelId),
             ResolveFamily(familyId, modelId),
             familyId,
-            modelId,
             physical,
             logical,
             CoresPerCcdFor(physical));

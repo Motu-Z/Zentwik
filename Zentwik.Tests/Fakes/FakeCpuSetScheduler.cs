@@ -41,7 +41,7 @@ namespace Zentwik.Tests.Fakes
                 for (int i = start; i < end && i < 64; i++)
                     mask |= 1UL << i;
 
-                groups[g] = new CpuCoreGroup(g, mask, Math.Max(0, end - start));
+                groups[g] = new CpuCoreGroup(g, mask);
             }
 
             return groups;
