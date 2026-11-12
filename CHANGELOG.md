@@ -4,6 +4,26 @@
 
 ---
 
+## [2.3.3]
+
+### Changed (变更)
+
+- **主题字典改用绝对 pack URI**：相对 URI 按入口程序集解析，非 `Zentwik.UI` 入口（离屏探针）加载不到。
+- **移除死成员**：`MaskNamePolicy.IsValid` 两个重载与 `TrimToWeight`（`MaskStore` 直接校验权重）、`CpuCoreGroup.LogicalCount`、`CpuSetScheduler.IsTopologyAvailable`、`ScenarioMonitor` 的两个来源标志、`CpuIdentity.ModelId`。
+- **删除 16 个未引用的 XAML 样式键**：`Controls.xaml` 1788 → 1538 行。
+- 精简 `installer/zentwik.iss` 与 `tools/xamlcheck.py` 的注释。
+
+### Fixed (修复)
+
+- **`Zentwik.UiSmoke` 恢复可用**：视图列表与资源装配跟上当前实现，资源键改为从令牌字典推导（不再维护硬编码清单）；`[5]` 的模板键作用域误取模板节点而非文档根，已修正。探针现为 `failures=0`。
+
+### Verified (验证)
+
+- `dotnet build Zentwik.slnx -c Release --no-incremental` → 0 警告 0 错误；`dotnet test` → 220 项通过。
+- UiSmoke：8 个页面实例化通过，457 处 StaticResource 全部有定义，明暗令牌 114 键一致，导航切换 SettingsView → ProcessView。
+
+---
+
 ## [2.3.2]
 
 ### Changed (变更)

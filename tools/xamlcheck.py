@@ -5,9 +5,7 @@ NS_P = '{http://schemas.microsoft.com/winfx/2006/xaml/presentation}'
 NS_X = '{http://schemas.microsoft.com/winfx/2006/xaml}'
 
 def tag(el):
-    # 自定义命名空间（xmlns:ctl="clr-namespace:..."）解析出来是
-    # "{clr-namespace:Zenwik.Controls}SearchBox" —— 必须连花括号一起剥掉，
-    # 否则前面的 "xxx}" 会留在结果里，名称比对永远不命中。
+    # 自定义命名空间的 tag 带 "{clr-namespace:...}" 前缀，必须连花括号剥掉。
     return re.sub(r'^\{[^}]*\}', '', el.tag).split(':')[-1]
 
 def collect_keytypes(files):
@@ -69,12 +67,11 @@ def walk(el, parent_tag, fname, out, kt):
             walk(c, t, fname, out, kt)
 
 def check_structure(el, parent_tag, fname, out):
-    """容器与属性/子元素的匹配检查。
+    """容器结构检查：以下写法编译期 0 警告，只在运行期炸或静默错位。
 
-    这三条都只在运行时才炸，编译期 0 警告：
-      · StackPanel 里写 Grid.ColumnDefinitions -> InvalidCastException，整页加载失败
-      · 父级不是 Grid 却写 Grid.Row / Grid.Column -> 附加属性被忽略，布局静默错位
-      · Border 多个子元素 -> MC3089
+    · 非 Grid 里写 Grid.ColumnDefinitions -> InvalidCastException，整页加载失败
+    · 父级不是 Grid 却写 Grid.Row / Grid.Column -> 附加属性被忽略
+    · Border 多个子元素 -> MC3089
     """
     t = tag(el)
 
@@ -100,14 +97,7 @@ def check_structure(el, parent_tag, fname, out):
 # ============================================================
 # [4] 事件与属性名是否存在于控件上
 # ============================================================
-# 这一条是为「SearchBox 从 TextBox 换成自定义控件」那次事故加的：
-# XAML 里仍然写着 GotFocus="SearchBox_GotFocus"、代码里也仍然实现着
-# private void SearchBox_GotFocus(...)，编译期 0 报错；
-# 运行期才在 FindName/模板套用阶段抛「找不到名为 TextChanged 的事件」，
-# 或者事件根本不触发（占位符永远不消失）。
-#
-# 判据只能覆盖本项目自己的控件（SearchBox / ToastHost）：它们的成员是已知的，
-# 而 WPF 内置控件的成员表写不全，一写就会误报。
+# 只查本项目自己的控件：成员表已知；WPF 内置控件写不全，一写就误报。
 KNOWN_CONTROLS = {
     'SearchBox': {
         'props': {'Text', 'Placeholder', 'Height', 'Width', 'Margin',
@@ -133,18 +123,13 @@ def check_events(root, fname, out):
                 continue
             if attr in spec['props']:
                 continue
-            # 事件 attribute 的特征：值是一个 C# 方法名（Page_Loaded / OnChanged）
-            # attribute 名含下划线的一定是事件；否则只有「值是可调用标识符」
-            # 且名字不以常见属性前缀开头时才可能是事件 —— 这样
-            # GotFocus="X_Y"（真事件、名字未登记）与 FontWieght="Bold"（打字错误）
-            # 报出来的措辞不会互相误导。
+            # 名含下划线的是事件（处理函数命名约定）；否则值像标识符时也按事件报。
             looks_like_event = (attr in spec['events']) or ('_' in attr)
             if looks_like_event:
                 if attr not in spec['events']:
                     out.append((fname, t, f'{t} 上没有事件 {attr}（处理函数 {val}）'))
             elif attr not in spec['props']:
-                # 值为标识符（PascalCase）说明作者以为这是事件，措辞按事件报，
-                # 否则真的是属性名写错
+                # 值是 PascalCase 标识符说明作者当成事件写了。
                 kind = '事件（或属性）' if re.fullmatch(r'[A-Z][A-Za-z0-9_]*', val) else '属性'
                 out.append((fname, t, f'{t} 上没有{kind} {attr}'))
 
@@ -156,42 +141,20 @@ def walk2(el, parent_tag, fname, struct_out):
 
 
 # ============================================================
-# [5] 模板内引用 StaticResource —— 1.0.0-can9 的整机卡死就是这条
+# [5] 模板内引用 StaticResource
 # ============================================================
-# ControlTemplate / DataTemplate 的内容是在**模板被解析的那一刻**求值的，
-# 而 StaticResource 按元素树向上查找。模板里的元素此刻还没有父级，
-# 查找链只走到模板本身，永远到不了 Application.Resources。于是：
+# 模板内容在解析瞬间求值，而 StaticResource 只沿元素树向上找，到不了
+# Application.Resources —— 首次 ApplyTemplate 即抛 XamlParseException。
 #
-#     XamlParseException: 无法找到名为"AppTextBoxStyle"的资源
+# 例外：挂在外部容器的 DataTemplate（ItemTemplate / ContentTemplate / CellTemplate）
+# 由容器在已有元素树里实例化，能走到 App.Resources，合法写法。
+# ControlTemplate 无此例外。
 #
-# 更糟的是它**只在控件第一次真正套模板时**才炸（ApplyTemplate → Measure），
-# 编译期 0 警告、启动时一声不响 —— 用户点开进程页的瞬间才整页白掉。
-#
-# 判据：模板内出现的 StaticResource 键，只允许是本文件自己定义的
-#      （模板内的 <Template.Resources> / 同字典顶层 x:Key），
-#      以及框架内置键（求值后带 "+" 或命名空间前缀的，本工程定义不了）。
-#
-# 例外（**合法写法，不算问题**）：挂在外部容器上的模板。xx.ItemTemplate /
-# xx.ContentTemplate / xx.CellTemplate 的内容由容器在**已有元素树**里实例化
-# （ItemsControl 的视觉子树、ContentPresenter），StaticResource 能沿树一路
-# 走到 App.Resources。项目里 LogPage / ProcessBindingPage / MaskManagerWindow
-# 的那些 DataTemplate 都是这种，一次都没崩过 —— 把它们算进来会造成 20 条误报，
-# 把真问题淹掉。
-#
-# ControlTemplate 没有这个例外：WPF 在首次 ApplyTemplate 时解析它，
-# 此刻元素树根本没搭好，找不到就是找不到。
-#
-# 注意只查 StaticResource：DynamicResource 是运行期查字典，能走到
-# Application.Resources，不受这个限制。也不要为了「保险」把静态引用全改成
-# DynamicResource —— 样式类对象每帧重新查字典会重建模板，产生抖动。
+# 只查 StaticResource：DynamicResource 运行期查字典，不受限；且样式改动态会重建模板。
 
 TEMPLATE_TAGS = {'ControlTemplate', 'DataTemplate', 'ItemsPanelTemplate'}
 
-# 模板的 DataTemplate 外层命中这些元素时，模板内容其实挂在**元素树的外部容器**上
-# （ItemsPanel 是 ItemsControl 的视觉子树、ContentTemplate 是 ContentPresenter 的），
-# StaticResource 能沿元素树走到 App.Resources —— 这正是 TuningPage.xaml /
-# MaskManagerWindow.xaml 里那份写法合法的原因。ControlTemplate 没有这种例外：
-# WPF 在首次 ApplyTemplate 时解析它，此时元素树根本没搭好。
+# 模板挂在外部容器上时，实例化发生在已有元素树里，StaticResource 可达 App.Resources。
 EXTERNAL_CONTAINER = {'ItemsPanel', 'ItemsControl.ItemsPanel'}
 
 
@@ -219,13 +182,13 @@ def sibling_keys(el):
     return keys
 
 
-def check_template_staticresource(root, fname, out, parents=None):
-    """root 是一个模板节点（ControlTemplate / DataTemplate / ItemsPanelTemplate）。"""
+def check_template_staticresource(root, fname, out, parents=None, document_keys=None):
+    """root 为模板节点（ControlTemplate / DataTemplate / ItemsPanelTemplate）。"""
     for el in root.iter():
         if not isinstance(el.tag, str) or tag(el) not in TEMPLATE_TAGS:
             continue
 
-        # 挂在外部容器上时跳过（见文件上方「例外」的说明）
+        # 挂在外部容器上时跳过（见上方「例外」）
         if parents is not None and tag(el) in ('DataTemplate', 'ItemsPanelTemplate'):
             outer = parents.get(el) or ''
             # xx.ItemTemplate / xx.CellTemplate / xx.ContentTemplate 都是「外部容器」
@@ -234,9 +197,7 @@ def check_template_staticresource(root, fname, out, parents=None):
                 continue
 
         local = sibling_keys(el)          # 模板自身子树里定义的键
-        # 模板外围（同字典顶层）定义的键
-        enclosing = {n.attrib.get(NS_X + 'Key') for n in root.iter()
-                     if isinstance(n.tag, str) and n.attrib.get(NS_X + 'Key')}
+        enclosing = document_keys or set()   # 同字典顶层定义的键
 
         for node in el.iter():
             if not isinstance(node.tag, str):
@@ -246,10 +207,8 @@ def check_template_staticresource(root, fname, out, parents=None):
                 if not m:
                     continue
                 key = m.group(1).strip()
-                # 框架内置键（{x:Static SystemColors.WindowBrushKey} 求值后是
-                # "SystemColors+WindowBrushKey"，带命名空间或加号），本工程定义不了。
-                # 只认这一种，不能把「带点号的键」一刀切跳过 —— 本项目大量
-                # 资源键就叫 Text.MetaBrush / Icon.Width，一刀切会把真问题放过去。
+                # 框架内置键求值后带 "+" 或命名空间前缀。不能按点号跳过：
+                # 本工程的键就叫 Text.MetaBrush 这种。
                 if '+' in key or ':' in key:
                     continue
                 if key in local:
@@ -260,9 +219,11 @@ def check_template_staticresource(root, fname, out, parents=None):
 
 def walk3(root, fname, sr_out):
     parents = parent_tag_map(root)
+    document_keys = {n.attrib.get(NS_X + 'Key') for n in root.iter()
+                     if isinstance(n.tag, str) and n.attrib.get(NS_X + 'Key')}
     for node in root.iter():
         if isinstance(node.tag, str) and tag(node) in TEMPLATE_TAGS:
-            check_template_staticresource(node, fname, sr_out, parents)
+            check_template_staticresource(node, fname, sr_out, parents, document_keys)
 
 
 def main():
