@@ -4,6 +4,19 @@
 
 ---
 
+## [2.3.1]
+
+### Changed (变更)
+
+- **移除孤立组件**：`SmuDiagnostics`（351 行）、`ScenarioSelfCheck`（243 行），以及 `SmuReader` 中专为其服务的 8 个诊断入口。两者在 DI 中注册但全仓无调用点——UI 的 `--selftest` 只跑颜色与集成测试，`ScenarioSelfCheck.Run()` 的触发链早已断开。
+- **注释精简**：各 `csproj` 的长注释压缩为单行约束说明；`FileVersion` / `AssemblyVersion` 对齐 `2.3.1.0`。
+
+### Removed (移除)
+
+- `build/installer/Zentwik.iss`：2.0.0-can3 时期的副本，CI 始终使用 `installer/zentwik.iss`。
+
+---
+
 ## [2.3.0]
 
 ### Changed (变更)
