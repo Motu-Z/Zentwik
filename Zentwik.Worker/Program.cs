@@ -1,12 +1,11 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Zentwik.Core.DependencyInjection;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
@@ -14,12 +13,11 @@ using Zentwik.Core.Services;
 
 namespace Zentwik.Worker
 {
-    /// <summary>Worker 进程入口：抢单实例互斥体 → 挂全局异常兜底 → 建宿主 → 跑起来。</summary>
+    /// <summary>Worker 进程入口：抢单实例互斥体 → 挂全局异常兜底 → 建容器 → 按序启停。</summary>
     internal static class Program
     {
         private static int Main(string[] args)
         {
-            // 单实例。
             Mutex mutex = new(
                 initiallyOwned: true,
                 name: WorkerPipeContract.WorkerMutexName,
@@ -38,64 +36,54 @@ namespace Zentwik.Worker
                 AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
                 TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-                // 参数过滤。
                 bool openUi = args.Contains(AutoStartService.OpenUiArgument);
                 bool tray = args.Contains(AutoStartService.TrayArgument);
 
-                string[] hostArgs = args
-                    .Where(a => a != AutoStartService.OpenUiArgument && a != AutoStartService.TrayArgument)
-                    .ToArray();
+                ServiceCollection services = new();
+                services.AddSingleton<IWorkerLifetime, WorkerLifetime>();
 
-                HostApplicationBuilder builder = Host.CreateApplicationBuilder(hostArgs);
+                // FilePrefix 是双进程日志不冲突的关键：UI 用 zentwik-，Worker 用 worker-。
+                services.AddZentwikCore(cfg => cfg.FilePrefix = "worker-");
 
-                // WinExe 没有控制台，默认的 Console logger 是一个写不出任何东西的黑洞。
-                builder.Logging.ClearProviders();
+                services.AddSingleton<BackendHostService>();
+                services.AddSingleton<PipeServerService>();
 
-                // FilePrefix 是双进程日志不冲突的关键：UI 用 zentwik-，Worker 用 worker-，
-                // 同一 Logs 目录下两套文件按前缀分开，排障时不会互相盖掉。
-                builder.Services.AddZentwikCore(cfg => cfg.FilePrefix = "worker-");
+                using ServiceProvider provider = services.BuildServiceProvider();
 
-                // 注册顺序即启动顺序：先起后端（Load / Apply / 监听），再开管道。
-                builder.Services.AddHostedService<BackendHostService>();
-                builder.Services.AddHostedService<PipeServerService>();
+                BackendHostService backend = provider.GetRequiredService<BackendHostService>();
+                PipeServerService pipe = provider.GetRequiredService<PipeServerService>();
+                IWorkerLifetime lifetime = provider.GetRequiredService<IWorkerLifetime>();
 
-                IHost host = builder.Build();
+                try
+                {
+                    // 注册顺序即启动顺序：先起后端（Load / Apply / 监听），再开管道。
+                    backend.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    pipe.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    StartupCrashReporter.Report(ex, interactive: false);
+                    return 1;
+                }
 
                 if (Debugger.IsAttached)
                     Console.WriteLine("Worker 已启动，调试模式");
 
-                // 登录后拉起 UI。
+                // 登录后拉起 UI：openUi 优先，只留托盘时把 --tray 原样转给 UI。
                 if (openUi || tray)
                 {
-                    ILogService uiLog = host.Services.GetRequiredService<ILogService>();
-
-                    // IHost 接口本身没有 Lifetime 属性（只有 Services），
-                    // 生命周期对象必须从容器里取。
-                    IHostApplicationLifetime hostLifetime =
-                        host.Services.GetRequiredService<IHostApplicationLifetime>();
-
-                    // openUi 优先（见上面的参数过滤注释）：开窗口时不带任何参数，
-                    // 只留托盘时把 --tray 原样转给 UI，由 UI 决定「不建 MainWindow、只建托盘」。
+                    ILogService uiLog = provider.GetRequiredService<ILogService>();
                     string? uiArgs = openUi ? null : AutoStartService.TrayArgument;
 
-                    hostLifetime.ApplicationStarted.Register(() =>
-                    {
-                        // fire-and-forget：拉不起 UI 不能让常驻进程退出，
-                        // 异常必须在 LaunchUi 内部吃掉。
-                        _ = Task.Run(() => LaunchUi(uiLog, uiArgs));
-                    });
+                    // fire-and-forget：拉不起 UI 不能让常驻进程退出，异常在 LaunchUi 内部吃掉。
+                    _ = Task.Run(() => LaunchUi(uiLog, uiArgs));
                 }
 
-                try
-                {
-                    host.Run();
-                }
-                catch (Exception ex)
-                {
-                    // 启动失败：落盘堆栈，返回非 0 让计划任务 / 启动方看到失败。
-                    StartupCrashReporter.Report(ex, interactive: false);
-                    return 1;
-                }
+                // 阻塞至管道 shutdown 命令触发停止信号。
+                lifetime.StoppingToken.WaitHandle.WaitOne();
+
+                pipe.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                backend.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             }
             finally
             {
@@ -144,7 +132,7 @@ namespace Zentwik.Worker
                     return false;
                 }
 
-                // Worker 是提权进程，子进程继承提权令牌 —— 不弹 UAC（。
+                // Worker 是提权进程，子进程继承提权令牌，不弹 UAC。
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = uiPath,
@@ -196,8 +184,7 @@ namespace Zentwik.Worker
                 if (e.ExceptionObject is Exception ex)
                     StartupCrashReporter.Report(ex, interactive: false);
 
-                // WinExe 没有控制台，这行在正常启动时写进黑洞；
-                // 调试器附加 / 从控制台以管道方式拉起时才有意义。
+                // WinExe 没有控制台，这行在正常启动时写进黑洞；调试器附加时才有意义。
                 Console.Error.WriteLine($"[Worker] 未处理异常：{e.ExceptionObject}");
             }
             catch

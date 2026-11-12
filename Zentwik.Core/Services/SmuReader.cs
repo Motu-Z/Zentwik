@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.ServiceProcess;
 using System.Threading;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Smu;
@@ -134,9 +133,6 @@ namespace Zentwik.Core.Services
             if (IsAvailable)
                 return true;
 
-            // best-effort 先尝试唤醒候选驱动服务，给加载器一点时间
-            TryWakeDriverServices();
-
             var sw = Stopwatch.StartNew();
             while (sw.Elapsed.TotalSeconds < maxSeconds)
             {
@@ -159,28 +155,6 @@ namespace Zentwik.Core.Services
 
             _log.Error($"PawnIO 未加载（{maxSeconds}s 内未就绪）");
             return false;
-        }
-
-        /// <summary>
-        /// best-effort 唤醒候选内核驱动服务（PawnIO / PawnIO2 等）。
-        /// 服务不存在、未安装或权限不足时静默忽略，绝不崩溃。
-        /// </summary>
-        private static void TryWakeDriverServices()
-        {
-            string[] candidates = { "PawnIO", "PawnIO2", "pawnio" };
-            foreach (string name in candidates)
-            {
-                try
-                {
-                    using ServiceController sc = new(name);
-                    if (sc.Status != ServiceControllerStatus.Running)
-                        sc.Start();
-                }
-                catch
-                {
-                    // 服务不存在 / 无权限 / 不支持：忽略
-                }
-            }
         }
 
         /// <summary>

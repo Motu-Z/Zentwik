@@ -228,7 +228,7 @@ namespace Zentwik.Tests
             IUiSettingsStore? settings = null)
             => new(
                 new FakeLogService(),
-                new FakeHostApplicationLifetime(),
+                new FakeWorkerLifetime(),
                 new AutoStartService(new FakeLogService()),
                 apply,
                 smu,

@@ -39,10 +39,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="9.0.0" />
 
-    <!-- 唤醒 PawnIO 服务需显式声明。 -->
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
-
-    <!-- 版本须与 Worker 的 Hosting 10.0.x 对齐。 -->
+    <!-- 不走 Hosting，容器由宿主进程创建。 -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
   </ItemGroup>
 

@@ -1,14 +1,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Services;
 
 namespace Zentwik.Worker
 {
     /// <summary>Worker 的后端宿主服务：把 Core 的服务按固定顺序拉起来，退出时按相反顺序停掉</summary>
-    internal sealed class BackendHostService : IHostedService
+    internal sealed class BackendHostService : IWorkerService
     {
         private readonly ILogService _log;
         private readonly ITuningStore _tuning;

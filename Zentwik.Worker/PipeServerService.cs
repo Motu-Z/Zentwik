@@ -9,7 +9,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
@@ -18,10 +17,10 @@ using Zentwik.Core.Services;
 namespace Zentwik.Worker
 {
     /// <summary>命名管道服务端：请求-响应，一行一条 JSON，每次请求一个连接。</summary>
-    internal sealed class PipeServerService : IHostedService
+    internal sealed class PipeServerService : IWorkerService
     {
         private readonly ILogService _log;
-        private readonly IHostApplicationLifetime _lifetime;
+        private readonly IWorkerLifetime _lifetime;
         private readonly AutoStartService _autoStart;
         private readonly TuningApplyService _tuningApply;
         private readonly ISmuReader _smu;
@@ -43,7 +42,7 @@ namespace Zentwik.Worker
 
         public PipeServerService(
             ILogService log,
-            IHostApplicationLifetime lifetime,
+            IWorkerLifetime lifetime,
             AutoStartService autoStart,
             TuningApplyService tuningApply,
             ISmuReader smu,
@@ -205,7 +204,7 @@ namespace Zentwik.Worker
                             async () =>
                             {
                                 await Task.Delay(100, CancellationToken.None);
-                                _lifetime.StopApplication();
+                                _lifetime.Stop();
                             },
                             CancellationToken.None);
                     }
