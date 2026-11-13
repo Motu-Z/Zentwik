@@ -1258,7 +1258,12 @@ namespace Zentwik.Worker
             if (string.Equals(targetType, "ccd", StringComparison.OrdinalIgnoreCase))
             {
                 // 旧协议：ccd + 核心组序号。换算成掩码后按掩码规则存，不再有 CCD 枚举。
-                if (!int.TryParse(targetValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int groupIndex))
+                // 早期界面发的是 "CCD0"，这里一并兼容。
+                string ccdText = targetValue.StartsWith("CCD", StringComparison.OrdinalIgnoreCase)
+                    ? targetValue[3..]
+                    : targetValue;
+
+                if (!int.TryParse(ccdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int groupIndex))
                     return Fail($"ccd 的 targetValue 必须是核心组序号，收到：{targetValue}");
 
                 if (!TryResolveGroupMask(groupIndex, out ulong groupMask, out CustomMask? preset))
@@ -2168,6 +2173,9 @@ namespace Zentwik.Worker
             if (request.MaxProcessorState is int maxState)
                 MergeWriteResult(errors, ref applied, power.WriteMaxProcessorState(maxState));
 
+            if (request.CoreParkingMin is int coreParking)
+                MergeWriteResult(errors, ref applied, power.WriteCoreParkingMin(coreParking));
+
             if (request.Aspm is int aspm)
                 MergeWriteResult(errors, ref applied, power.WriteAspm(aspm));
 
@@ -2182,6 +2190,9 @@ namespace Zentwik.Worker
 
             if (request.DcMaxProcessorState is int dcMaxState)
                 MergeWriteResult(errors, ref applied, power.WriteMaxProcessorState(dcMaxState, dc: true));
+
+            if (request.DcCoreParkingMin is int dcCoreParking)
+                MergeWriteResult(errors, ref applied, power.WriteCoreParkingMin(dcCoreParking, dc: true));
 
             if (request.DcAspm is int dcAspm)
                 MergeWriteResult(errors, ref applied, power.WriteAspm(dcAspm, dc: true));

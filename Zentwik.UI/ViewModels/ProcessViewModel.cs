@@ -248,6 +248,14 @@ public class ProcessViewModel : ViewModelBase
             ApplyFilterAndSort();
         });
         ApplyRuleCommand = new RelayCommand(_ => AutoApply());
+
+        DismissScheduleBlockCommand = new RelayCommand(_ =>
+        {
+            _scheduleBlockDismissed = true;
+            IsScheduleBlocked = false;
+        });
+
+        FixScheduleBlockCommand = new RelayCommand(_ => Fire(FixScheduleBlockAsync));
         ManageMaskCommand = new RelayCommand(_ => OpenMaskManager());
         ToggleDrawerCommand = new RelayCommand(_ => IsDrawerOpen = !IsDrawerOpen);
         ApplyPlanCommand = new RelayCommand(_ => RequestApplyPlan());
@@ -509,6 +517,32 @@ public class ProcessViewModel : ViewModelBase
         await RefreshAsync().ConfigureAwait(true);
     }
 
+    // 调度前置条件：核心停泊开启时被停泊的核不参与调度，CPU Set 是软约束，线程会跑出目标集合。
+
+    /// <summary>低于这个值就认为停泊会影响绑核。</summary>
+    private const int CoreParkingSafeMinimum = 100;
+
+    private bool _scheduleBlocked;
+    private string _scheduleBlockText = string.Empty;
+    private bool _scheduleBlockDismissed;
+    private bool _coreParkingOnBattery;
+
+    public RelayCommand DismissScheduleBlockCommand { get; private set; } = null!;
+
+    public RelayCommand FixScheduleBlockCommand { get; private set; } = null!;
+
+    public bool IsScheduleBlocked
+    {
+        get => _scheduleBlocked;
+        private set => SetProperty(ref _scheduleBlocked, value);
+    }
+
+    public string ScheduleBlockText
+    {
+        get => _scheduleBlockText;
+        private set => SetProperty(ref _scheduleBlockText, value);
+    }
+
     /// <summary>重新拉一份进程表、规则表与掩码表</summary>
     public async Task RefreshAsync(bool quiet = false)
     {
@@ -518,6 +552,8 @@ public class ProcessViewModel : ViewModelBase
         }
 
         WorkerBridge bridge = WorkerBridge.Instance;
+
+        await CheckScheduleReadinessAsync().ConfigureAwait(true);
 
         IpcOutcome<List<ProcessEntryPayload>> processes = await bridge
             .QueryProcessesAsync().ConfigureAwait(true);
@@ -550,6 +586,69 @@ public class ProcessViewModel : ViewModelBase
         }
 
         ApplyProcesses(processes.Value);
+    }
+
+    /// <summary>核心停泊会把核从可用集合里摘掉，CPU Set 是软约束，绑核随之失效。</summary>
+    private async Task CheckScheduleReadinessAsync()
+    {
+        if (!UseWorker || _scheduleBlockDismissed)
+        {
+            return;
+        }
+
+        IpcOutcome<PowerPolicySnapshot> outcome = await WorkerBridge.Instance
+            .QueryPowerPolicyAsync().ConfigureAwait(true);
+
+        if (!outcome.Success || outcome.Value is not PowerPolicySnapshot snapshot)
+        {
+            return;
+        }
+
+        _coreParkingOnBattery = snapshot.OnAcPower == false;
+
+        bool supported = _coreParkingOnBattery
+            ? snapshot.DcCoreParkingMinSupported
+            : snapshot.CoreParkingMinSupported;
+
+        int? value = _coreParkingOnBattery
+            ? snapshot.DcCoreParkingMin
+            : snapshot.CoreParkingMin;
+
+        if (!supported || value is not int parked || parked >= CoreParkingSafeMinimum)
+        {
+            IsScheduleBlocked = false;
+            return;
+        }
+
+        ScheduleBlockText = $"电源方案把核心停泊设为 {parked}%，停泊的核不参与调度，绑核可能跑出目标范围";
+        IsScheduleBlocked = true;
+    }
+
+    private async Task FixScheduleBlockAsync()
+    {
+        ApplyPowerPolicyPayload payload = new();
+
+        if (_coreParkingOnBattery)
+        {
+            payload.DcCoreParkingMin = CoreParkingSafeMinimum;
+        }
+        else
+        {
+            payload.CoreParkingMin = CoreParkingSafeMinimum;
+        }
+
+        IpcOutcome<PowerPolicySnapshot> outcome = await WorkerBridge.Instance
+            .ApplyPowerPolicyAsync(payload).ConfigureAwait(true);
+
+        if (!outcome.Success)
+        {
+            ToastService.Instance.ShowError(
+                outcome.Message.Length > 0 ? outcome.Message : "写入电源策略失败");
+            return;
+        }
+
+        IsScheduleBlocked = false;
+        ToastService.Instance.Show($"核心停泊已关闭，绑核恢复稳定");
     }
 
     /// <summary>定时心跳。只查进程表：PID 集合没变就完全不碰 UI， 有增减才走一次完整刷新，避免每轮重建几百行</summary>
@@ -1197,6 +1296,9 @@ public class ProcessViewModel : ViewModelBase
                 }
             }
 
+            // 回拉前必须清 _pending：SyncFromRules 会跳过仍在提交中的进程，
+            // 不清的话保存失败的条目会一直停在乐观值上，界面对着磁盘说谎。
+            _pending.Clear();
             await RefreshRulesAsync().ConfigureAwait(true);
         }
         finally
@@ -1350,7 +1452,8 @@ public class ProcessViewModel : ViewModelBase
             Id = existing?.Id ?? string.Empty,
             ProcessName = target.ProcessName,
             TargetType = target.TargetType,
-            TargetValue = target.TargetType == "ccd" ? "CCD" + target.TargetValue : maskId!,
+            // ccd 分支后台只认纯序号，带 "CCD" 前缀会被 int.TryParse 拒掉。
+            TargetValue = target.TargetType == "ccd" ? target.TargetValue : maskId!,
             Priority = PriorityConstantOf(target.Priority),
             Enabled = existing?.Enabled ?? true
         };

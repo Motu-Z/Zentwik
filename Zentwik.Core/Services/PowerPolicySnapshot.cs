@@ -69,6 +69,21 @@ namespace Zentwik.Core.Services
         [JsonPropertyName("maxProcessorStateError")]
         public string? MaxProcessorStateError { get; set; }
 
+        /// <summary>
+        /// 核心停泊最小核心数，0-100（百分比）。100 = 所有核都不停泊。
+        /// 低于 100 时 Windows 会停泊空闲核，CPU Set 是软约束，线程会被调度到集合外。
+        /// </summary>
+        [JsonPropertyName("coreParkingMin")]
+        public int? CoreParkingMin { get; set; }
+
+        /// <summary>核心停泊这一项是否可读。</summary>
+        [JsonPropertyName("coreParkingMinSupported")]
+        public bool CoreParkingMinSupported { get; set; }
+
+        /// <summary>核心停泊不可读的原因。</summary>
+        [JsonPropertyName("coreParkingMinError")]
+        public string? CoreParkingMinError { get; set; }
+
         /// <summary>ASPM（PCIe 链路电源管理），0-2（0 关闭 / 1 中等 / 2 最大节能）。</summary>
         [JsonPropertyName("aspm")]
         public int? Aspm { get; set; }
@@ -153,6 +168,18 @@ namespace Zentwik.Core.Services
         [JsonPropertyName("dcMaxProcessorStateError")]
         public string? DcMaxProcessorStateError { get; set; }
 
+        /// <summary>电池供电下的核心停泊最小核心数，0-100。</summary>
+        [JsonPropertyName("dcCoreParkingMin")]
+        public int? DcCoreParkingMin { get; set; }
+
+        /// <summary>电池核心停泊是否可读。</summary>
+        [JsonPropertyName("dcCoreParkingMinSupported")]
+        public bool DcCoreParkingMinSupported { get; set; }
+
+        /// <summary>电池核心停泊不可读的原因。</summary>
+        [JsonPropertyName("dcCoreParkingMinError")]
+        public string? DcCoreParkingMinError { get; set; }
+
         /// <summary>电池供电下的 ASPM，0-2。</summary>
         [JsonPropertyName("dcAspm")]
         public int? DcAspm { get; set; }
@@ -194,6 +221,8 @@ namespace Zentwik.Core.Services
             BoostModeError = error,
             MaxProcessorStateSupported = false,
             MaxProcessorStateError = error,
+            CoreParkingMinSupported = false,
+            CoreParkingMinError = error,
             AspmSupported = false,
             AspmError = error,
             IdleDisableSupported = false,
@@ -209,6 +238,8 @@ namespace Zentwik.Core.Services
             DcBoostModeError = error,
             DcMaxProcessorStateSupported = false,
             DcMaxProcessorStateError = error,
+            DcCoreParkingMinSupported = false,
+            DcCoreParkingMinError = error,
             DcAspmSupported = false,
             DcAspmError = error,
             DcIdleDisableSupported = false,

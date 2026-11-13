@@ -203,11 +203,13 @@ public class AdvancedViewModel : ViewModelBase
             Epp = ac.Epp,
             BoostMode = ac.BoostMode,
             MaxProcessorState = ac.MaxProcessorState,
+            CoreParkingMin = ac.CoreParkingMin,
             Aspm = ac.Aspm,
             IdleDisable = ac.IdleDisable,
             DcEpp = dc.Epp,
             DcBoostMode = dc.BoostMode,
             DcMaxProcessorState = dc.MaxProcessorState,
+            DcCoreParkingMin = dc.CoreParkingMin,
             DcAspm = dc.Aspm,
             DcIdleDisable = dc.IdleDisable
         };

@@ -29,6 +29,10 @@ namespace Zentwik.Core.Ipc
         [JsonPropertyName("maxProcessorState")]
         public int? MaxProcessorState { get; set; }
 
+        /// <summary>核心停泊最小核心数，0-100（100 = 不停泊）。null = 不改。</summary>
+        [JsonPropertyName("coreParkingMin")]
+        public int? CoreParkingMin { get; set; }
+
         /// <summary>ASPM，0-2。null = 不改。</summary>
         [JsonPropertyName("aspm")]
         public int? Aspm { get; set; }
@@ -52,11 +56,13 @@ namespace Zentwik.Core.Ipc
             Epp is null
             && BoostMode is null
             && MaxProcessorState is null
+            && CoreParkingMin is null
             && Aspm is null
             && IdleDisable is null
             && DcEpp is null
             && DcBoostMode is null
             && DcMaxProcessorState is null
+            && DcCoreParkingMin is null
             && DcAspm is null
             && DcIdleDisable is null;
 
@@ -76,6 +82,10 @@ namespace Zentwik.Core.Ipc
         /// <summary>电池供电下的最大处理器状态，50-100。null = 不改。</summary>
         [JsonPropertyName("dcMaxProcessorState")]
         public int? DcMaxProcessorState { get; set; }
+
+        /// <summary>电池供电下的核心停泊最小核心数，0-100。null = 不改。</summary>
+        [JsonPropertyName("dcCoreParkingMin")]
+        public int? DcCoreParkingMin { get; set; }
 
         /// <summary>电池供电下的 ASPM，0-2。null = 不改。</summary>
         [JsonPropertyName("dcAspm")]

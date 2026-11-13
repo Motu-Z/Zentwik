@@ -735,18 +735,19 @@ public static class IntegrationTest
                 Check($"{name}：页标题左缘 = 32（与卡片同一条线）", Math.Abs(tx - 32) < 1, $"{tx:F1}");
             }
 
-            // 顶栏所在网格必须只有「64 + 剩余」两行 —— 有第三行就是浮条回来了
+            // 顶栏固定 64、末行必须吃满剩余高度；横幅等 Auto 行允许插在中间
             if (VisualTreeHelper.GetParent(bar) is Grid host)
             {
-                bool twoRows = host.RowDefinitions.Count == 2
-                               && Math.Abs(host.RowDefinitions[0].Height.Value - 64) < 0.5
-                               && host.RowDefinitions[1].Height.IsStar;
+                int last = host.RowDefinitions.Count - 1;
+                bool rowsOk = host.RowDefinitions.Count >= 2
+                              && Math.Abs(host.RowDefinitions[0].Height.Value - 64) < 0.5
+                              && host.RowDefinitions[last].Height.IsStar;
 
-                Check($"{name}：顶栏下没有第二条页脚行", twoRows,
+                Check($"{name}：末行为内容区（无底部浮条）", rowsOk,
                       $"{host.RowDefinitions.Count} 行");
 
                 var body = host.Children.OfType<FrameworkElement>()
-                    .FirstOrDefault(c => Grid.GetRow(c) == 1);
+                    .FirstOrDefault(c => Grid.GetRow(c) == last);
 
                 if (body is not null)
                 {

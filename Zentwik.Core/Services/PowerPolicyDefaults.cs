@@ -13,6 +13,7 @@ namespace Zentwik.Core.Services
         int Epp,
         int BoostMode,
         int MaxProcessorState,
+        int CoreParkingMin,
         int Aspm,
         bool IdleDisable)
     {
@@ -21,6 +22,7 @@ namespace Zentwik.Core.Services
             Epp: 50,
             BoostMode: 1,
             MaxProcessorState: 100,
+            CoreParkingMin: 100,
             Aspm: 1,
             IdleDisable: false);
 
@@ -29,6 +31,7 @@ namespace Zentwik.Core.Services
             Epp: 80,
             BoostMode: 1,
             MaxProcessorState: 80,
+            CoreParkingMin: 100,
             Aspm: 2,
             IdleDisable: false);
     }

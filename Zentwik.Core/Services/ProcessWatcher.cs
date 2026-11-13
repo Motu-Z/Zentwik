@@ -275,6 +275,8 @@ namespace Zentwik.Core.Services
         /// <summary>启动补扫：把已经在跑的程序过一遍，事件式监听盖不到它们。</summary>
         private void InitialScan()
         {
+            long started = Environment.TickCount64;
+
             try
             {
                 List<ProcessIdentity> frame = NativeProcessList.Capture(new List<ProcessIdentity>(512));
@@ -293,7 +295,7 @@ namespace Zentwik.Core.Services
 
                 // 不设 _lastAlive：让第一轮 ScanOnce 走全量路径并广播一次，
                 // 场景规则才知道启动时都有哪些进程在跑。
-                _log.Info($"进程调度启动补扫完成，共检查 {frame.Count} 个进程");
+                _log.Info($"进程调度启动补扫完成，共检查 {frame.Count} 个进程，耗时 {Environment.TickCount64 - started} ms");
             }
             catch (Exception ex)
             {
@@ -332,14 +334,49 @@ namespace Zentwik.Core.Services
             if (!running)
                 return;
 
-            ResetCache();
+            Volatile.Write(ref _reapplyDirty, 1);
 
-            _ = Task.Run(() =>
+            // 标记要撑到 worker 退出。在 worker 开头清零，防抖窗口内每次调用都会另起一个，
+            // 18 条规则能凑出二十多个 InitialScan 并发，互相把线程搬回另一个 CCD。
+            if (Interlocked.CompareExchange(ref _reapplyRunning, 1, 0) != 0)
+                return;
+
+            _ = Task.Run(async () =>
             {
-                try { InitialScan(); }
-                catch (Exception ex) { _log.Warn($"按新规则重扫进程失败：{ex.Message}"); }
+                try
+                {
+                    while (true)
+                    {
+                        await Task.Delay(ReapplyDebounceMs).ConfigureAwait(false);
+
+                        // 先清旗标再扫，扫描期间进来的请求才不会被本轮吞掉。
+                        Interlocked.Exchange(ref _reapplyDirty, 0);
+                        ResetCache();
+                        InitialScan();
+
+                        if (Volatile.Read(ref _reapplyDirty) == 0)
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.Warn($"按新规则重扫进程失败：{ex.Message}");
+                }
+                finally
+                {
+                    Volatile.Write(ref _reapplyRunning, 0);
+
+                    if (Volatile.Read(ref _reapplyDirty) == 1)
+                        ReapplyNow();
+                }
             });
         }
+
+        private const int ReapplyDebounceMs = 400;
+
+        private int _reapplyRunning;
+
+        private int _reapplyDirty;
 
         /// <summary>清空「已处理」缓存，让规则立即重新应用（保存规则后调用）。</summary>
         public void ResetCache()
@@ -347,7 +384,9 @@ namespace Zentwik.Core.Services
             lock (_lock)
             {
                 _handledPids.Clear();
-                _boundPids.Clear();
+
+                // _boundPids 是「已绑、未解绑」的账本，重扫不解绑，不能清 ——
+                // 清了之后 ClearAllSchedules 会静默什么都不做。
 
                 // 下一轮走「全量重扫」路径，正在运行的进程才会被重新绑到新规则上。
                 _lastAlive = null;

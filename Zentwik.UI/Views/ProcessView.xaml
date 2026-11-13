@@ -26,6 +26,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="64" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -75,7 +76,54 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="1">
+            <!-- 前置条件：核心停泊会让软亲和失效，绑核看起来成功但线程会跑出目标集合 -->
+            <Border Grid.Row="1"
+                    Margin="32,0,32,8"
+                    Padding="14,10"
+                    CornerRadius="6"
+                    Background="{DynamicResource WarningSubtleBrush}"
+                    Visibility="{Binding IsScheduleBlocked, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="&#xE7BA;"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="14"
+                               Foreground="{DynamicResource WarningBrush}"
+                               VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding ScheduleBlockText}"
+                               Margin="10,0,16,0"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                    <Button Grid.Column="2"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Command="{Binding FixScheduleBlockCommand}"
+                            automation:AutomationProperties.Name="关闭核心停泊"
+                            Content="修复" />
+
+                    <Button Grid.Column="3"
+                            Style="{StaticResource IconButtonStyle}"
+                            Margin="6,0,0,0"
+                            Command="{Binding DismissScheduleBlockCommand}"
+                            automation:AutomationProperties.Name="关闭提示"
+                            Content="&#xE711;"
+                            FontFamily="Segoe MDL2 Assets"
+                            FontSize="11" />
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />

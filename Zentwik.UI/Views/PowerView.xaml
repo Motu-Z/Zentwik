@@ -467,6 +467,69 @@
                         </Grid>
                     </Border>
 
+                    <!-- 核心停泊：低于 100% 时被停泊的核不算可用，CPU Set 软约束会让线程跑出集合 -->
+                    <Border Style="{StaticResource RowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="核心停泊最小核心数" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="低于 100% 会停泊空闲核，绑核可能越界"
+                                           Style="{StaticResource RowDescStyle}"
+                                           Visibility="{Binding CoreParkingWarns, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+
+                            <Grid Grid.Column="1"
+                                  Visibility="{Binding CoreParkingMinSupported, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Slider Grid.Column="0"
+                                        Style="{StaticResource ThinSliderStyle}"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        Value="{Binding CoreParkingMin, Mode=TwoWay}"
+                                        VerticalAlignment="Center" />
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                            Margin="16,0,0,0" MinWidth="52" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding CoreParkingMin, Mode=OneWay}"
+                                               FontFamily="{DynamicResource AppMonoFontFamily}"
+                                               FontSize="20"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CoreParkingWarns}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="%"
+                                               FontSize="13"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="2,0,0,2" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding CoreParkingMinError}"
+                                       Visibility="{Binding CoreParkingMinSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
                     <!-- 升频模式 -->
                     <Border Style="{StaticResource RowStyle}">
                         <Grid>

@@ -46,6 +46,9 @@ namespace Zentwik.Core.Services
         /// <summary>Maximum processor state，0-100（本工具只开放 50-100）。</summary>
         public static readonly Guid SettingMaxProcessorState = new("bc5038f7-23e0-4960-96da-33abaf5935ec");
 
+        /// <summary>Processor performance core parking min cores（CPMINCORES），0-100。</summary>
+        public static readonly Guid SettingCoreParkingMin = new("0cc5b647-c1df-4637-891a-dec35c318583");
+
         /// <summary>Processor idle disable：1 = 禁用空闲（关 C-State），0 = 允许空闲。</summary>
         public static readonly Guid SettingIdleDisable = new("5d76a2ca-e8c0-402f-a133-2158492d58ad");
 
@@ -127,6 +130,9 @@ namespace Zentwik.Core.Services
         /// <summary>最大处理器状态的参数名。</summary>
         public const string LabelMaxProcessorState = "最大处理器状态";
 
+        /// <summary>核心停泊的参数名。</summary>
+        public const string LabelCoreParkingMin = "核心停泊最小核心数（CPMINCORES）";
+
         /// <summary>C-State 总开关的参数名。</summary>
         public const string LabelIdleDisable = "空闲禁用（C-State）";
 
@@ -176,6 +182,9 @@ namespace Zentwik.Core.Services
             (snapshot.MaxProcessorStateSupported, snapshot.MaxProcessorState, snapshot.MaxProcessorStateError) =
                 ReadIndex(scheme, SubProcessor, SettingMaxProcessorState, dc: false, LabelMaxProcessorState);
 
+            (snapshot.CoreParkingMinSupported, snapshot.CoreParkingMin, snapshot.CoreParkingMinError) =
+                ReadIndex(scheme, SubProcessor, SettingCoreParkingMin, dc: false, LabelCoreParkingMin);
+
             (snapshot.AspmSupported, snapshot.Aspm, snapshot.AspmError) =
                 ReadIndex(scheme, SubPciExpress, SettingAspm, dc: false, LabelAspm);
 
@@ -195,6 +204,9 @@ namespace Zentwik.Core.Services
 
             (snapshot.DcMaxProcessorStateSupported, snapshot.DcMaxProcessorState, snapshot.DcMaxProcessorStateError) =
                 ReadIndex(scheme, SubProcessor, SettingMaxProcessorState, dc: true, LabelMaxProcessorState);
+
+            (snapshot.DcCoreParkingMinSupported, snapshot.DcCoreParkingMin, snapshot.DcCoreParkingMinError) =
+                ReadIndex(scheme, SubProcessor, SettingCoreParkingMin, dc: true, LabelCoreParkingMin);
 
             (snapshot.DcAspmSupported, snapshot.DcAspm, snapshot.DcAspmError) =
                 ReadIndex(scheme, SubPciExpress, SettingAspm, dc: true, LabelAspm);
@@ -289,6 +301,20 @@ namespace Zentwik.Core.Services
                 return (false, DescribeOutOfRange(label, 50, 100));
 
             return WriteCore(SubProcessor, SettingMaxProcessorState, (uint)value, label, dc);
+        }
+
+        /// <summary>
+        /// 核心停泊最小核心数，0-100。100 = 不停泊。
+        /// 低于 100 时被停泊的核不算「可用」，CPU Set 软约束会让线程跑出集合。
+        /// </summary>
+        public (bool Success, string? Error) WriteCoreParkingMin(int value, bool dc = false)
+        {
+            string label = ScopeLabel(LabelCoreParkingMin, dc);
+
+            if (value < 0 || value > 100)
+                return (false, DescribeOutOfRange(label, 0, 100));
+
+            return WriteCore(SubProcessor, SettingCoreParkingMin, (uint)value, label, dc);
         }
 
         /// <summary>ASPM，0-2（0 关闭 / 1 中等节能 / 2 最大节能）。</summary>
