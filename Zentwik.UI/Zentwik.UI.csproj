@@ -18,9 +18,9 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
 
-    <Version>2.3.7</Version>
-    <FileVersion>2.3.7.0</FileVersion>
-    <AssemblyVersion>2.3.7.0</AssemblyVersion>
+    <Version>2.3.8</Version>
+    <FileVersion>2.3.8.0</FileVersion>
+    <AssemblyVersion>2.3.8.0</AssemblyVersion>
 
     <!-- 图标内含 16～256 七档，任意缩放均有原生帧。 -->
     <ApplicationIcon>Assets\Zentwik.ico</ApplicationIcon>

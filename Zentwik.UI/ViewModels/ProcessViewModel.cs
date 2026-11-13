@@ -648,7 +648,7 @@ public class ProcessViewModel : ViewModelBase
         }
 
         IsScheduleBlocked = false;
-        ToastService.Instance.Show($"核心停泊已关闭，绑核恢复稳定");
+        ToastService.Instance.Show($"核心停泊已关闭，正在按规则重新绑核");
     }
 
     /// <summary>定时心跳。只查进程表：PID 集合没变就完全不碰 UI， 有增减才走一次完整刷新，避免每轮重建几百行</summary>

@@ -359,7 +359,7 @@ namespace Zentwik.Worker
                     return RunQueryPowerPolicy(_power);
 
                 case WorkerPipeContract.CommandApplyPowerPolicy:
-                    return RunApplyPowerPolicy(_power, request.Payload);
+                    return RunApplyPowerPolicy(_power, request.Payload, _watcher);
 
                 case WorkerPipeContract.CommandQueryPowerSchemes:
                     return RunQueryPowerSchemes(_power);
@@ -1060,7 +1060,8 @@ namespace Zentwik.Worker
 
                     PipeResponse write = RunApplyPowerPolicy(
                         _power,
-                        JsonSerializer.Serialize(patch, IpcJsonContext.Default.ApplyPowerPolicyPayload));
+                        JsonSerializer.Serialize(patch, IpcJsonContext.Default.ApplyPowerPolicyPayload),
+                        _watcher);
 
                     return write.Success
                         ? (true, result.Message, result.Status)
@@ -2142,7 +2143,8 @@ namespace Zentwik.Worker
         }
 
         /// <summary>apply-power-policy：逐项写、逐项报，最后统一激活一次。</summary>
-        internal static PipeResponse RunApplyPowerPolicy(PowerPolicyService power, string? payload)
+        internal static PipeResponse RunApplyPowerPolicy(
+            PowerPolicyService power, string? payload, IProcessWatcher? watcher = null)
         {
             if (string.IsNullOrWhiteSpace(payload))
                 return Fail(PowerPolicyService.EmptyPayloadMessage);
@@ -2163,6 +2165,7 @@ namespace Zentwik.Worker
 
             List<string> errors = new();
             int applied = 0;
+            bool parkingWritten = false;
 
             if (request.Epp is int epp)
                 MergeWriteResult(errors, ref applied, power.WriteEpp(epp));
@@ -2174,7 +2177,11 @@ namespace Zentwik.Worker
                 MergeWriteResult(errors, ref applied, power.WriteMaxProcessorState(maxState));
 
             if (request.CoreParkingMin is int coreParking)
+            {
+                int before = errors.Count;
                 MergeWriteResult(errors, ref applied, power.WriteCoreParkingMin(coreParking));
+                parkingWritten |= errors.Count == before;
+            }
 
             if (request.Aspm is int aspm)
                 MergeWriteResult(errors, ref applied, power.WriteAspm(aspm));
@@ -2192,7 +2199,11 @@ namespace Zentwik.Worker
                 MergeWriteResult(errors, ref applied, power.WriteMaxProcessorState(dcMaxState, dc: true));
 
             if (request.DcCoreParkingMin is int dcCoreParking)
+            {
+                int before = errors.Count;
                 MergeWriteResult(errors, ref applied, power.WriteCoreParkingMin(dcCoreParking, dc: true));
+                parkingWritten |= errors.Count == before;
+            }
 
             if (request.DcAspm is int dcAspm)
                 MergeWriteResult(errors, ref applied, power.WriteAspm(dcAspm, dc: true));
@@ -2209,6 +2220,10 @@ namespace Zentwik.Worker
 
             // 至少一项写成功就必须重新激活，部分成功也要。
             (bool activated, string? activateError) = power.RefreshActiveScheme();
+
+            // 停泊变了就重绑：旧 CPU Set 是按停泊时期下发的，不重扫回不到目标集合。
+            if (parkingWritten)
+                watcher?.ReapplyNow();
 
             // 部分失败仍报失败，否则界面会把没写成的项也画成已应用。
             if (errors.Count > 0)

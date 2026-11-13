@@ -24,7 +24,8 @@ namespace Zentwik.Core.Services
             LogThrottle throttle,
             ICpuSetScheduler cpuSets,
             ISchedulingStore bindings,
-            IMaskStore masks)
+            IMaskStore masks,
+            PowerPolicyService power)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -36,6 +37,8 @@ namespace Zentwik.Core.Services
             _scheduling = bindings;
             ArgumentNullException.ThrowIfNull(masks);
             _masks = masks;
+            ArgumentNullException.ThrowIfNull(power);
+            _power = power;
         }
 
         private readonly ILogService _log;
@@ -43,6 +46,7 @@ namespace Zentwik.Core.Services
         private readonly ICpuSetScheduler _cpuSets;
         private readonly ISchedulingStore _scheduling;
         private readonly IMaskStore _masks;
+        private readonly PowerPolicyService _power;
 
         private readonly object _lock = new();
 
@@ -475,7 +479,7 @@ namespace Zentwik.Core.Services
                 _throttle.Reset(throttleKey);
 
                 _boundPids.TryAdd(pid);
-                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{result.AppliedCount} 个 CPU Set");
+                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{result.AppliedCount} 个 CPU Set{ParkingSuffix()}");
             }
             else if (_throttle.TryAcquire(throttleKey, out int suppressed))
             {
@@ -487,6 +491,49 @@ namespace Zentwik.Core.Services
             // 关掉再开就还是 Normal。放在绑定之后 —— 绑都没绑上就别继续动手。
             if (result.Success && !string.IsNullOrEmpty(rule.Priority))
                 ApplyPriority(pid, name, rule.Priority);
+        }
+
+        /// <summary>
+        /// 停泊开启时绑定只是「写进了默认集合」，实际调度范围是默认集合减停泊核。
+        /// 缓存 10 秒：每次绑定都读一次电源策略不划算。
+        /// </summary>
+        private string ParkingSuffix()
+        {
+            int? parked = CoreParkingPercent();
+            return parked is int value && value < 100
+                ? $"，核心停泊 {value}%，实际范围可能更大"
+                : string.Empty;
+        }
+
+        private long _parkingTick = long.MinValue / 2;
+        private int? _parkingValue;
+
+        private int? CoreParkingPercent()
+        {
+            long now = Environment.TickCount64;
+            if (now - Interlocked.Read(ref _parkingTick) < 10_000)
+                return _parkingValue;
+
+            Interlocked.Exchange(ref _parkingTick, now);
+
+            try
+            {
+                PowerPolicySnapshot snapshot = _power.ReadSnapshot();
+                bool onBattery = snapshot.OnAcPower == false;
+                bool supported = onBattery
+                    ? snapshot.DcCoreParkingMinSupported
+                    : snapshot.CoreParkingMinSupported;
+
+                _parkingValue = supported
+                    ? (onBattery ? snapshot.DcCoreParkingMin : snapshot.CoreParkingMin)
+                    : null;
+            }
+            catch
+            {
+                _parkingValue = null;
+            }
+
+            return _parkingValue;
         }
 
         /// <summary>把单个进程设成指定优先级档位。后台路径只记日志，不弹 Toast。</summary>
