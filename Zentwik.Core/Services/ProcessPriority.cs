@@ -56,6 +56,9 @@ namespace Zentwik.Core.Services
         public const string BelowNormal = "Below Normal";
         public const string Low = "Low";
 
+        /// <summary>效率模式：空闲优先级 + EcoQoS 限速，与优先级类正交，占用下拉末位。</summary>
+        public const string EcoQoS = "EcoQoS";
+
         /// <summary>
         /// 下拉顺序：由高到低，与页面其他下拉一致。
         ///
@@ -63,7 +66,7 @@ namespace Zentwik.Core.Services
         /// 能让鼠标键盘完全失去响应。任务管理器里那个选项我们也不提供 ——
         /// 不是做不到，是失败代价与收益完全不成比例。
         /// </summary>
-        public static readonly string[] Options = { High, AboveNormal, Normal, BelowNormal, Low };
+        public static readonly string[] Options = { High, AboveNormal, Normal, BelowNormal, Low, EcoQoS };
 
         /// <summary>档位常量 → 界面文案；数据层仍是英文常量。文案取 Windows 官方优先级类名。</summary>
         public static string DisplayOf(string label) => label switch
@@ -73,6 +76,7 @@ namespace Zentwik.Core.Services
             Normal => "正常",
             BelowNormal => "低于正常",
             Low => "空闲",
+            EcoQoS => "效率模式",
             "RealTime" => "实时",
             _ => string.IsNullOrEmpty(label) ? "—" : label,
         };
@@ -86,6 +90,18 @@ namespace Zentwik.Core.Services
         private const uint PROCESS_SET_INFORMATION = 0x0200;
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
+        private const int ProcessPowerThrottling = 4;
+        private const uint PowerThrottlingVersion = 1;
+        private const uint PowerThrottlingExecutionSpeed = 0x1;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PROCESS_POWER_THROTTLING_STATE
+        {
+            public uint Version;
+            public uint ControlMask;
+            public uint StateMask;
+        }
+
         /// <summary>档位标签 → SetPriorityClass 常量。0 表示不认识的标签。</summary>
         public static uint ClassOf(string label) => label switch
         {
@@ -94,6 +110,7 @@ namespace Zentwik.Core.Services
             Normal => PRIORITY_CLASS_NORMAL,
             BelowNormal => PRIORITY_CLASS_BELOW_NORMAL,
             Low => PRIORITY_CLASS_IDLE,
+            EcoQoS => PRIORITY_CLASS_IDLE,
             _ => 0,
         };
 
@@ -134,9 +151,11 @@ namespace Zentwik.Core.Services
             string lastError = string.Empty;
             int lastCode = 0;
 
+            bool eco = label == EcoQoS;
+
             foreach (int pid in pids)
             {
-                (bool success, int code, string error) = ApplyOne(pid, cls);
+                (bool success, int code, string error) = ApplyOne(pid, cls, eco);
                 if (success)
                 {
                     ok++;
@@ -165,13 +184,13 @@ namespace Zentwik.Core.Services
             if (cls == 0)
                 return new PriorityApplyResult { Error = $"未知的优先级档位：{label}" };
 
-            (bool success, int code, string error) = ApplyOne(pid, cls);
+            (bool success, int code, string error) = ApplyOne(pid, cls, label == EcoQoS);
             return success
                 ? PriorityApplyResult.Ok1()
                 : PriorityApplyResult.Fail(code, error);
         }
 
-        private static (bool Ok, int Code, string Error) ApplyOne(int pid, uint cls)
+        private static (bool Ok, int Code, string Error) ApplyOne(int pid, uint cls, bool eco)
         {
             // 只有 SET_INFORMATION 时，OpenProcess 可能成功而 SetPriorityClass 报 5，
             // 原因是内核在判定「受保护进程」时需要查询权限（见类注释）。
@@ -185,16 +204,38 @@ namespace Zentwik.Core.Services
 
             try
             {
-                if (SetPriorityClass(handle, cls))
-                    return (true, 0, string.Empty);
+                if (!SetPriorityClass(handle, cls))
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    return (false, err, DescribeSetFailure(err));
+                }
 
-                int err = Marshal.GetLastWin32Error();
-                return (false, err, DescribeSetFailure(err));
+                // 效率模式必须显式写：置位失败算失败，清位失败不报错。
+                if (!SetThrottle(handle, eco) && eco)
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    return (false, err, DescribeThrottleFailure(err));
+                }
+
+                return (true, 0, string.Empty);
             }
             finally
             {
                 CloseHandle(handle);
             }
+        }
+
+        private static bool SetThrottle(IntPtr handle, bool on)
+        {
+            PROCESS_POWER_THROTTLING_STATE state = new()
+            {
+                Version = PowerThrottlingVersion,
+                ControlMask = PowerThrottlingExecutionSpeed,
+                StateMask = on ? PowerThrottlingExecutionSpeed : 0,
+            };
+
+            return SetProcessInformation(handle, ProcessPowerThrottling, ref state,
+                                         Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
         }
 
         /// <summary>OpenProcess 失败的原文。</summary>
@@ -215,6 +256,15 @@ namespace Zentwik.Core.Services
             _ => $"设置失败（错误 {code}：{new Win32Exception(code).Message}）",
         };
 
+        /// <summary>SetProcessInformation 失败的原文。</summary>
+        private static string DescribeThrottleFailure(int code) => code switch
+        {
+            5 => "拒绝访问（错误 5）：系统或反作弊保护拒绝开启效率模式",
+            87 => "进程已退出（错误 87）",
+            1168 => "进程已退出（错误 1168）",
+            _ => $"设置效率模式失败（错误 {code}：{new Win32Exception(code).Message}）",
+        };
+
         /// <summary>
         /// 判断失败是否只是「进程在这一瞬间退出了」。
         ///
@@ -229,6 +279,12 @@ namespace Zentwik.Core.Services
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static partial bool SetPriorityClass(IntPtr hProcess, uint priorityClass);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool SetProcessInformation(
+            IntPtr hProcess, int processInformationClass,
+            ref PROCESS_POWER_THROTTLING_STATE processInformation, int processInformationSize);
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         private static partial IntPtr OpenProcess(

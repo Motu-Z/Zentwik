@@ -1689,19 +1689,19 @@ public class ProcessViewModel : ViewModelBase
     private void SeedRunning()
     {
         AddProcess(8124, "cs2.exe", @"D:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive\game\bin\win64\cs2.exe", 4.2, "高", "CCD0");
-        AddProcess(4210, "steam.exe", @"C:\Program Files (x86)\Steam\steam.exe", 0.8, "标准", null);
-        AddProcess(4211, "steam.exe", @"C:\Program Files (x86)\Steam\steam.exe", 0.2, "标准", null);
+        AddProcess(4210, "steam.exe", @"C:\Program Files (x86)\Steam\steam.exe", 0.8, "正常", null);
+        AddProcess(4211, "steam.exe", @"C:\Program Files (x86)\Steam\steam.exe", 0.2, "正常", null);
         AddProcess(6332, "obs64.exe", @"C:\Program Files\obs-studio\bin\64bit\obs64.exe", 2.1, "高于标准", null);
-        AddProcess(1908, "chrome.exe", @"C:\Program Files\Google\Chrome\Application\chrome.exe", 6.4, "标准", null);
+        AddProcess(1908, "chrome.exe", @"C:\Program Files\Google\Chrome\Application\chrome.exe", 6.4, "正常", null);
         AddProcess(7745, "agent.exe", @"C:\ProgramData\Zentwik\worker\agent.exe", 0.3, "低于标准", null);
 
-        AddProcess(4, "System", @"N/A", 0.1, "标准", null, isSystem: true);
-        AddProcess(612, "csrss.exe", @"C:\Windows\System32\csrss.exe", 0.0, "标准", null, isSystem: true);
-        AddProcess(728, "dwm.exe", @"C:\Windows\System32\dwm.exe", 1.1, "标准", null, isSystem: true);
-        AddProcess(1184, "svchost.exe", @"C:\Windows\System32\svchost.exe", 0.4, "标准", null, isSystem: true);
-        AddProcess(1201, "svchost.exe", @"C:\Windows\System32\svchost.exe", 0.2, "标准", null, isSystem: true);
-        AddProcess(1268, "lsass.exe", @"C:\Windows\System32\lsass.exe", 0.0, "标准", null, isSystem: true);
-        AddProcess(3052, "explorer.exe", @"C:\Windows\explorer.exe", 0.6, "标准", null, isSystem: true);
+        AddProcess(4, "System", @"N/A", 0.1, "正常", null, isSystem: true);
+        AddProcess(612, "csrss.exe", @"C:\Windows\System32\csrss.exe", 0.0, "正常", null, isSystem: true);
+        AddProcess(728, "dwm.exe", @"C:\Windows\System32\dwm.exe", 1.1, "正常", null, isSystem: true);
+        AddProcess(1184, "svchost.exe", @"C:\Windows\System32\svchost.exe", 0.4, "正常", null, isSystem: true);
+        AddProcess(1201, "svchost.exe", @"C:\Windows\System32\svchost.exe", 0.2, "正常", null, isSystem: true);
+        AddProcess(1268, "lsass.exe", @"C:\Windows\System32\lsass.exe", 0.0, "正常", null, isSystem: true);
+        AddProcess(3052, "explorer.exe", @"C:\Windows\explorer.exe", 0.6, "正常", null, isSystem: true);
 
         for (int i = 0; i < BulkSeedCount; i++)
         {
@@ -1710,7 +1710,7 @@ public class ProcessViewModel : ViewModelBase
                 $"worker-{i:D4}.exe",
                 $@"C:\ProgramData\Zentwik\bulk\worker-{i:D4}.exe",
                 i % 40 * 0.25,
-                "标准",
+                "正常",
                 null);
         }
 
@@ -1779,7 +1779,7 @@ public abstract class AffinityTarget : ViewModelBase
     private string? _maskLabel = "默认";
     private string _targetType = "none";
     private string _targetValue = string.Empty;
-    private string _priority = "标准";
+    private string _priority = "正常";
     private bool _isDirty;
     private string? _maskKey = MaskOption.MakeKey("none", string.Empty);
 
@@ -1887,7 +1887,7 @@ public abstract class AffinityTarget : ViewModelBase
     public void ResetAffinity()
     {
         WriteMask("默认", "none", string.Empty);
-        _priority = "标准";
+        _priority = "正常";
 
         NotifyMaskChanged();
         OnPropertyChanged(nameof(Priority));

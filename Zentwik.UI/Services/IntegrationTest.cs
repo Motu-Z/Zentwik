@@ -1199,10 +1199,10 @@ public static class IntegrationTest
         }
 
         // 进程：下拉口径与「改进程即落成规则」
-        Check("进程：优先级下拉 5 档且为中文",
-              proc.PriorityOptions.Count == 5
+        Check("进程：优先级下拉 6 档且为中文",
+              proc.PriorityOptions.Count == 6
               && proc.PriorityOptions[0] == "高"
-              && proc.PriorityOptions[4] == "空闲",
+              && proc.PriorityOptions[5] == "效率模式",
               string.Join("/", proc.PriorityOptions));
 
         // 核心组也在掩码表里：下拉不再有独立的一套 CCD 选项。
@@ -1242,11 +1242,11 @@ public static class IntegrationTest
         {
             MaskOption maskOpt = proc.MaskOptions.First(m => m.TargetType == "mask");
 
-            ScheduleRuleItem probeRule = new("r-sync", "probe-sync.exe", "probe", "旧掩码", "标准", enabled: true);
+            ScheduleRuleItem probeRule = new("r-sync", "probe-sync.exe", "probe", "旧掩码", "正常", enabled: true);
             probeRule.ApplyMask(maskOpt.Label, "mask", maskOpt.TargetValue);
             proc.SavedRules.Add(probeRule);
 
-            RunningProcessItem probeProc = new(65001, "probe-sync.exe", "probe", 0, "标准");
+            RunningProcessItem probeProc = new(65001, "probe-sync.exe", "probe", 0, "正常");
             probeProc.ApplyMask("旧掩码", "mask", "4294901760");
             proc.RunningProcesses.Add(probeProc);
 
