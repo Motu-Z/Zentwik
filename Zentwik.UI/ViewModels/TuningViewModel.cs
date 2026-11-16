@@ -418,6 +418,11 @@ public partial class TuningViewModel : ObservableObject
             // 脏标记没变时上面那条回调不会触发，这里补一次：
             // 回读把值换成了硬件真值，方案条要跟着显示「保存至」。
             SyncPlanDirty();
+
+            // 回读得到的是硬件真值，方案里存的是旧值，两者是否一致不足以判断 ——
+            // 有方案就直接标未保存，保证「保存至」可点。
+            if (PlanHub.Tuning.Current is not null)
+                PlanHub.Tuning.SetUnsaved(true);
         }
     }
 
