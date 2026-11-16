@@ -904,7 +904,10 @@ namespace Zentwik.Tests
                 new ScheduleRule { Name = "a.exe", Target = (SchedulingTarget)1, Priority = ProcessPriority.High, Path = @"C:\a.exe" },
                 new ScheduleRule { Name = "b.exe", Target = (SchedulingTarget)2, Enabled = false },
                 new ScheduleRule { Name = "c.exe", Target = SchedulingTarget.TargetMask, TargetMask = 0xFF00, MaskId = "m1", MaskName = "纯大核" },
-                new ScheduleRule { Name = "d.exe", Target = SchedulingTarget.None }
+                new ScheduleRule { Name = "d.exe", Target = SchedulingTarget.None },
+                // 2.3.x 及以前存的规则只有掩码位、没有 MaskId：掩码表里查不到就退回掩码位，
+                // 保证界面与方案两边算指纹时用的是同一个值。
+                new ScheduleRule { Name = "e.exe", Target = SchedulingTarget.TargetMask, TargetMask = 0xFF }
             });
 
             PipeServerService service = BuildServer(
@@ -921,7 +924,7 @@ namespace Zentwik.Tests
                 response.Payload!, IpcJsonContext.Default.ListScheduleRulePayload);
 
             Assert.NotNull(items);
-            Assert.Equal(4, items!.Count);
+            Assert.Equal(5, items!.Count);
 
             Assert.Equal("ccd", items[0].TargetType);
             Assert.Equal("0", items[0].TargetValue);
@@ -933,12 +936,16 @@ namespace Zentwik.Tests
             Assert.Equal("1", items[1].TargetValue);
             Assert.False(items[1].Enabled);
 
-            // mask 给的是掩码**值**的十进制字符串，不是掩码 Id。
+            // mask 给的是掩码 Id：界面按它算方案指纹，与方案快照必须同口径。
             Assert.Equal("mask", items[2].TargetType);
-            Assert.Equal("65280", items[2].TargetValue);
+            Assert.Equal("m1", items[2].TargetValue);
 
             Assert.Equal("none", items[3].TargetType);
             Assert.Equal(string.Empty, items[3].TargetValue);
+
+            // 没有 MaskId 的旧规则退回掩码位（掩码表里查不到时）。
+            Assert.Equal("mask", items[4].TargetType);
+            Assert.Equal("255", items[4].TargetValue);
         }
 
         // ==================== 场景规则查询 / 增删 ====================
