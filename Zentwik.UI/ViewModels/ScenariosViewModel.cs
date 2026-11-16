@@ -156,6 +156,14 @@ public sealed class ScenariosViewModel : ViewModelBase
             // 状态必须落在新列表里：留在「启动时」而大类已切到电源，
             // 下拉会显示空白，保存下去就是一条参数对不上的规则。
             SelectedState = TriggerStates[0];
+
+            // 进程名只对「进程」大类有意义：切走之后还留着，保存时会带着一个
+            // 界面上已经看不到的参数下去。
+            if (!IsProcessKind)
+            {
+                EditorProcessName = string.Empty;
+                SetProcessNameError(string.Empty);
+            }
         }
     }
 
@@ -372,12 +380,11 @@ public sealed class ScenariosViewModel : ViewModelBase
         await FillActionOptionsAsync(bridge, PlanKind.Scheduling, EditorMasks).ConfigureAwait(true);
         await FillActionOptionsAsync(bridge, PlanKind.Power, EditorPowerSchemes).ConfigureAwait(true);
 
-        if (!IsKnownOption(EditorProfiles, EditorProfileId))
-            EditorProfileId = string.Empty;
-        if (!IsKnownOption(EditorMasks, EditorMaskId))
-            EditorMaskId = string.Empty;
-        if (!IsKnownOption(EditorPowerSchemes, EditorPowerSchemeId))
-            EditorPowerSchemeId = string.Empty;
+        // 方案被删后不能悄悄把动作改成「保持原样」：保留引用并在下拉里标出来，
+        // 由用户自己决定换成什么，保存时再拦一次。
+        EnsureStaleOption(EditorProfiles, EditorProfileId, "（调校方案已删除）");
+        EnsureStaleOption(EditorMasks, EditorMaskId, "（调度方案已删除）");
+        EnsureStaleOption(EditorPowerSchemes, EditorPowerSchemeId, "（电源方案已删除）");
 
         RebindActionSelection();
         RefreshRuleDisplayNames();
@@ -413,8 +420,34 @@ public sealed class ScenariosViewModel : ViewModelBase
             target.Add(new ScenarioActionOption(entry.Id, entry.Name));
     }
 
-    private static bool IsKnownOption(ObservableCollection<ScenarioActionOption> options, string id)
-        => string.IsNullOrEmpty(id) || options.Any(o => string.Equals(o.Id, id, StringComparison.Ordinal));
+    /// <summary>引用的方案已不在候选里时补一个占位项，下拉才不会显示成空白。</summary>
+    private static void EnsureStaleOption(
+        ObservableCollection<ScenarioActionOption> options,
+        string id,
+        string label)
+    {
+        if (string.IsNullOrEmpty(id)
+            || options.Any(o => string.Equals(o.Id, id, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        options.Add(new ScenarioActionOption(id, label, IsStale: true));
+    }
+
+    /// <summary>当前选中的是不是一个已删除的方案；是则返回它的类别名。</summary>
+    private static string? StaleActionLabel(
+        ObservableCollection<ScenarioActionOption> options,
+        string id,
+        string label)
+    {
+        if (string.IsNullOrEmpty(id))
+            return null;
+
+        return options.Any(o => o.IsStale && string.Equals(o.Id, id, StringComparison.Ordinal))
+            ? label
+            : null;
+    }
 
     /// <summary>候选刷新后把已列出规则卡上的名字按 Id 重解析一遍</summary>
     private void RefreshRuleDisplayNames()
@@ -675,6 +708,17 @@ public sealed class ScenariosViewModel : ViewModelBase
 
         SetProcessNameError(string.Empty);
 
+        // 引用的方案已被删除：不替用户改成「保持原样」，让他自己重新选。
+        string? stale = StaleActionLabel(EditorProfiles, EditorProfileId, "调校方案")
+            ?? StaleActionLabel(EditorMasks, EditorMaskId, "调度方案")
+            ?? StaleActionLabel(EditorPowerSchemes, EditorPowerSchemeId, "电源方案");
+
+        if (stale is not null)
+        {
+            Toast($"{stale}已删除，请重新选择");
+            return;
+        }
+
         // 三个动作全空的规则命中后什么也不会发生，后台同样会拒。
         if (EditorProfileId.Length == 0 && EditorMaskId.Length == 0 && EditorPowerSchemeId.Length == 0)
         {
@@ -864,8 +908,8 @@ public sealed record ScenarioKindOption(ScenarioTrigger Representative, string L
 /// <summary>大类的具体状态（第二级下拉）。<see cref="Trigger"/> 才是真正下发的值。</summary>
 public sealed record ScenarioStateOption(ScenarioTrigger Trigger, string Label);
 
-/// <summary>下拉里的一项动作目标；Id 为空串表示「不修改」。</summary>
-public sealed record ScenarioActionOption(string Id, string Name);
+/// <summary>下拉里的一项动作目标；Id 为空串表示「不修改」。<see cref="IsStale"/> 表示引用的方案已被删除。</summary>
+public sealed record ScenarioActionOption(string Id, string Name, bool IsStale = false);
 
 /// <summary>进程搜索下拉的一行。</summary>
 public sealed record ScenarioProcessOption(string Name, int Pid);

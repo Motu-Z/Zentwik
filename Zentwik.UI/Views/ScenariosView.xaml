@@ -7,7 +7,8 @@
              xmlns:vm="clr-namespace:Zentwik.UI.ViewModels"
              FontFamily="{DynamicResource AppFontFamily}"
              FontSize="13"
-             PreviewMouseLeftButtonDown="OnSurfacePreviewMouseDown">
+             PreviewMouseLeftButtonDown="OnSurfacePreviewMouseDown"
+             PreviewKeyDown="OnPreviewKeyDown">
 
     <UserControl.Resources>
         <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -291,7 +292,8 @@
                     Margin="0,0,0,10"
                     AllowDrop="True"
                     Drop="OnRuleDrop"
-                    DragOver="OnRuleDragOver">
+                    DragOver="OnRuleDragOver"
+                    MouseLeftButtonDown="OnCardMouseDown">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -415,37 +417,13 @@
                         </Border>
                     </Grid>
 
-                    <!-- 行尾：开关 + 删除 -->
+                    <!-- 行尾：开关 + 修改 + 删除；排序只在左侧手柄上 -->
                     <Border Grid.Column="4"
                             Margin="18,0,0,0"
                             Padding="16,0,0,0"
                             BorderThickness="1,0,0,0"
                             BorderBrush="{DynamicResource LineBrush}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Style="{StaticResource IconButtonStyle}"
-                                    Width="26" Height="26"
-                                    automation:AutomationProperties.Name="上移规则"
-                                    Command="{Binding DataContext.MoveRuleUpCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding}">
-                                <Path Style="{StaticResource IconGlyphStyle}"
-                                      Width="12" Height="12"
-                                      Data="M6 14 L12 8 L18 14"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                            </Button>
-
-                            <Button Style="{StaticResource IconButtonStyle}"
-                                    Width="26" Height="26"
-                                    Margin="4,0,0,0"
-                                    automation:AutomationProperties.Name="下移规则"
-                                    Command="{Binding DataContext.MoveRuleDownCommand,
-                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding}">
-                                <Path Style="{StaticResource IconGlyphStyle}"
-                                      Width="12" Height="12"
-                                      Data="M6 10 L12 16 L18 10"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                            </Button>
 
                             <ToggleButton Style="{StaticResource MiniToggleStyle}"
                                           VerticalAlignment="Center"
@@ -455,6 +433,18 @@
                                                             RelativeSource={RelativeSource AncestorType=UserControl}}"
                                           CommandParameter="{Binding}"
                                           ToolTip="{Binding ToggleLabel}" />
+                            <Button Style="{StaticResource IconButtonStyle}"
+                                    Width="26" Height="26"
+                                    Margin="8,0,0,0"
+                                    automation:AutomationProperties.Name="修改此规则"
+                                    Command="{Binding DataContext.EditRuleCommand,
+                                                      RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}">
+                                <Path Style="{StaticResource IconGlyphStyle}"
+                                      Width="13" Height="13"
+                                      Data="M5 19 L5 15 L15 5 L19 9 L9 19 Z M13 7 L17 11"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                            </Button>
 
                             <Button Style="{StaticResource DangerIconButtonStyle}"
                                     Margin="8,0,0,0"
@@ -554,7 +544,8 @@
         <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
             <StackPanel x:Name="ContentHost" Margin="32,27,32,32" MaxWidth="1320">
 
-                <Border Background="{DynamicResource PanelBrush}"
+                <Border x:Name="EditorPanel"
+                        Background="{DynamicResource PanelBrush}"
                         BorderBrush="{DynamicResource LineBrush}"
                         BorderThickness="1"
                         CornerRadius="6"

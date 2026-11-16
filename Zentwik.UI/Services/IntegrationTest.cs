@@ -1333,6 +1333,35 @@ public static class IntegrationTest
                   && FindByAutomationName(view, "重命名此方案") is null);
             Check("场景：每张卡都带拖拽手柄",
                   FindByAutomationName(view, "拖动调整优先级") is not null);
+            Check("场景：每张卡都有「修改」入口",
+                  FindByAutomationName(view, "修改此规则") is not null);
+            Check("场景：排序只留拖拽一个入口",
+                  FindByAutomationName(view, "上移规则") is null
+                  && FindByAutomationName(view, "下移规则") is null);
+
+            // 修改入口必须真把那一条装进表单，否则等于又给了一个点不动的按钮。
+            if (view.DataContext is ScenariosViewModel live && live.Rules.FirstOrDefault() is { } first)
+            {
+                live.EditRuleCommand.Execute(first);
+
+                Check("场景：点「修改」打开表单并带出原值",
+                      live.IsEditorOpen
+                      && live.EditorProcessName == first.Argument
+                      && live.EditorProfileId == first.ProfileId
+                      && live.EditorMaskId == first.MaskId
+                      && live.EditorPowerSchemeId == first.PowerSchemeId);
+
+                live.IsEditorOpen = false;
+
+                // 进程名只属于「进程」大类：切到电源还留着就是界面上看不见的脏参数。
+                live.NewRuleCommand.Execute(null);
+                live.EditorProcessName = "cs2.exe";
+                live.SelectedKind = live.TriggerKinds.First(k => k.Label == "电源");
+
+                Check("场景：切到电源大类会清掉进程名", live.EditorProcessName.Length == 0, live.EditorProcessName);
+
+                live.IsEditorOpen = false;
+            }
 
             // 总控关掉后整组置灰，但规则本身不能丢。
             // 开关必须在构造视图之前置好：DataContext 里的 VM 是 InitializeComponent 建的。

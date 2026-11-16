@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
@@ -32,7 +34,10 @@ public partial class ScenariosView : UserControl
         DetachHostWindow();
 
         if (ViewModel is { } vm)
+        {
             vm.IsProcessPickerOpen = false;
+            vm.PropertyChanged -= OnViewModelPropertyChanged;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -41,6 +46,9 @@ public partial class ScenariosView : UserControl
 
         if (ViewModel is null)
             return;
+
+        ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         // 主窗口缓存页面实例：总闸 / 规则只在首次拉，动作候选每次可见重拉。
         if (_initialized)
@@ -52,6 +60,20 @@ public partial class ScenariosView : UserControl
 
         _initialized = true;
         _ = ViewModel.InitializeAsync();
+    }
+
+    /// <summary>表单内联在列表上方：页面滚到下方时点开它，必须把表单带进视野，否则看着「没反应」。</summary>
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ScenariosViewModel.IsEditorOpen))
+            return;
+
+        if (ViewModel is not { IsEditorOpen: true })
+            return;
+
+        Dispatcher.BeginInvoke(
+            new Action(() => EditorPanel.BringIntoView()),
+            DispatcherPriority.Loaded);
     }
 
     /// <summary>窗口失焦时收起浮层：Popup 是独立 HWND，会盖在别的应用上面。</summary>
@@ -208,5 +230,61 @@ public partial class ScenariosView : UserControl
 
         ViewModel?.PickProcessCommand.Execute(option);
         e.Handled = true;
+    }
+
+    /// <summary>双击卡片进编辑：与行尾「修改」等价，给鼠标用户一条近路。</summary>
+    private void OnCardMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2)
+            return;
+
+        if ((sender as FrameworkElement)?.DataContext is not ScenarioRuleItem item)
+            return;
+
+        if (ViewModel is not { } vm)
+            return;
+
+        vm.EditRuleCommand.Execute(item);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 行尾的上移 / 下移已经去掉，键盘用 Alt+↑ / Alt+↓ 代替。
+    /// 焦点落在某一行内的任意控件上都算选中该行，不必额外做一个「当前行」状态。
+    /// </summary>
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) == 0)
+            return;
+
+        int delta = e.Key switch
+        {
+            Key.Up => -1,
+            Key.Down => 1,
+            _ => 0
+        };
+
+        if (delta == 0)
+            return;
+
+        if (FindRuleItem(Keyboard.FocusedElement as DependencyObject) is not { } item)
+            return;
+
+        if (ViewModel is not { } vm)
+            return;
+
+        vm.MoveRuleTo(item, vm.Rules.IndexOf(item) + delta);
+        e.Handled = true;
+    }
+
+    private static ScenarioRuleItem? FindRuleItem(DependencyObject? node)
+    {
+        for (DependencyObject? cursor = node; cursor is not null; cursor = ParentOf(cursor))
+        {
+            if (cursor is FrameworkElement { DataContext: ScenarioRuleItem item })
+                return item;
+        }
+
+        return null;
     }
 }
