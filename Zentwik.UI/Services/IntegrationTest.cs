@@ -1282,7 +1282,8 @@ public static class IntegrationTest
             {
                 Id = first.MaskId ?? "m1",
                 Name = first.Label,
-                Mask = ulong.Parse(first.TargetValue, System.Globalization.CultureInfo.InvariantCulture)
+                // 自定义掩码的 TargetValue 是掩码 Id，位值在 MaskBits 上。
+                Mask = first.MaskBits
             });
 
             proc.ApplyMasks(payload);
