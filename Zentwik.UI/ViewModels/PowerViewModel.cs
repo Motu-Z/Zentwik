@@ -341,7 +341,7 @@ public partial class PowerViewModel : ObservableObject
 
         // 电源页的改动同样是「改了没下发」，方案面板据此贴未保存并拦住切换。
         // 方案条只看「与方案是否一致」；IsDirty 与方案无关，混进来会残留「未保存」。
-        PlanHub.Power.SetUnsaved(DiffersFromPlan());
+        SyncPlanDirty();
     }
 
     [ObservableProperty]
@@ -499,6 +499,7 @@ public partial class PowerViewModel : ObservableObject
 
         NotifyAllValues();
         IsDirty = false;
+        SyncPlanDirty();
     }
 
     /// <summary>按方案快照覆盖两项值；快照里为 null 的项保持现状（增量语义）。</summary>
@@ -747,6 +748,7 @@ public partial class PowerViewModel : ObservableObject
 
         NotifyAllValues();
         IsDirty = false;
+        SyncPlanDirty();
     }
 
     // 新建 / 改名 / 删除
@@ -1314,7 +1316,7 @@ public partial class PowerViewModel : ObservableObject
 
         // 回读拿到系统真值，IsDirty 归零；方案条要按「与方案的差异」重新判定，
         // 否则值明明与方案不同、按钮却落回不可点的「应用」。
-        PlanHub.Power.SetUnsaved(DiffersFromPlan());
+        SyncPlanDirty();
     }
 
     // 降级
@@ -1335,7 +1337,7 @@ public partial class PowerViewModel : ObservableObject
 
         NotifyAllValues();
         IsDirty = false;
-        PlanHub.Power.SetUnsaved(DiffersFromPlan());
+        SyncPlanDirty();
     }
 
     private static void MarkSetUnsupported(PowerSet set, string reason)
@@ -1395,6 +1397,9 @@ public partial class PowerViewModel : ObservableObject
         RefreshDirty();
     }
 
+    /// <summary>把「与方案的差异」同步给方案条；整体换值后调用，不能只看 IsDirty 的跳变。</summary>
+    private void SyncPlanDirty() => PlanHub.Power.SetUnsaved(DiffersFromPlan());
+
     /// <summary>界面值与当前方案里存的对不上；方案缺该字段视为「不关心」。</summary>
     private bool DiffersFromPlan()
     {
@@ -1437,7 +1442,7 @@ public partial class PowerViewModel : ObservableObject
 
         // 每次值变都同步方案条：保存到方案后它要能重新亮起「未保存」。
         // 回读会把 IsDirty 归零，但界面值可能仍与方案不同，方案条要给「保存至」。
-        PlanHub.Power.SetUnsaved(DiffersFromPlan());
+        SyncPlanDirty();
     }
 
     private void NotifyAllValues()

@@ -744,12 +744,14 @@ public partial class TuningViewModel : ObservableObject
 
             bool fMaxDiffers = item.FMaxMHz > 0 && item.FMaxMHz != (uint)Math.Max(0, FMaxMHz);
 
+            // 方案里 int.MinValue 表示「当时这核读不到」，不是值，跳过比较。
             bool coresDiffer = item.CoreMargins.Length > 0
-                               && !now.SequenceEqual(item.CoreMargins);
+                               && (now.Length != item.CoreMargins.Length
+                                   || now.Select((v, i) => (v, plan: item.CoreMargins[i]))
+                                         .Any(t => t.plan != int.MinValue && t.plan != t.v));
 
             differs = fMaxDiffers || coresDiffer;
 
-            TuningDirtyLog.Write(item.Name, FMaxMHz, item.FMaxMHz, IsDirty, differs, now, item.CoreMargins);
         }
 
         // 方案条只看「与方案是否一致」：改回方案值就不该再挂未保存。
@@ -776,27 +778,6 @@ public partial class TuningViewModel : ObservableObject
 }
 
 /// <summary>单个核心的 CO 偏移项</summary>
-internal static class TuningDirtyLog
-{
-    public static void Write(string name, int fMaxNow, uint fMaxPlan, bool dirty, bool differs, int[] now, int[] plan)
-    {
-        try
-        {
-            string dir = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Zentwik", "Logs");
-
-            System.IO.Directory.CreateDirectory(dir);
-
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(dir, "tune-dirty.log"),
-                $"{DateTime.Now:HH:mm:ss} name={name} fmax={fMaxNow}/{fMaxPlan} dirty={dirty} differs={differs} now=[{string.Join(",", now)}] plan=[{string.Join(",", plan)}]\n");
-        }
-        catch
-        {
-        }
-    }
-}
-
 public partial class CoreMarginItem : ObservableObject
 {
     /// <summary>该核读不到值时的占位字符（与数字等宽）。</summary>
