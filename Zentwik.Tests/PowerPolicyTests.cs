@@ -32,6 +32,8 @@ namespace Zentwik.Tests
             api.AcValues[PowerPolicyService.SettingEpp] = 50;
             api.AcValues[PowerPolicyService.SettingBoostMode] = 2;
             api.AcValues[PowerPolicyService.SettingMaxProcessorState] = 100;
+            api.AcValues[PowerPolicyService.SettingMinProcessorState] = 5;
+            api.AcValues[PowerPolicyService.SettingCoolingPolicy] = 1;
             api.AcValues[PowerPolicyService.SettingAspm] = 1;
             api.AcValues[PowerPolicyService.SettingIdleDisable] = 0;
             return api;
@@ -66,6 +68,8 @@ namespace Zentwik.Tests
             Assert.Equal(50, snapshot.Epp);
             Assert.Equal(2, snapshot.BoostMode);
             Assert.Equal(100, snapshot.MaxProcessorState);
+            Assert.Equal(5, snapshot.MinProcessorState);
+            Assert.Equal(1, snapshot.CoolingPolicy);
             Assert.Equal(1, snapshot.Aspm);
             Assert.False(snapshot.IdleDisable);
 
@@ -212,6 +216,10 @@ namespace Zentwik.Tests
         [InlineData("{\"epp\":-1}", PowerPolicyService.LabelEpp, 0, 100)]
         [InlineData("{\"maxProcessorState\":49}", PowerPolicyService.LabelMaxProcessorState, 50, 100)]
         [InlineData("{\"maxProcessorState\":101}", PowerPolicyService.LabelMaxProcessorState, 50, 100)]
+        [InlineData("{\"minProcessorState\":-1}", PowerPolicyService.LabelMinProcessorState, 0, 100)]
+        [InlineData("{\"minProcessorState\":101}", PowerPolicyService.LabelMinProcessorState, 0, 100)]
+        [InlineData("{\"coolingPolicy\":-1}", PowerPolicyService.LabelCoolingPolicy, 0, 1)]
+        [InlineData("{\"coolingPolicy\":2}", PowerPolicyService.LabelCoolingPolicy, 0, 1)]
         [InlineData("{\"aspm\":3}", PowerPolicyService.LabelAspm, 0, 2)]
         [InlineData("{\"boostMode\":5}", PowerPolicyService.LabelBoostMode, 0, 4)]
         [InlineData("{\"boostMode\":-1}", PowerPolicyService.LabelBoostMode, 0, 4)]
@@ -299,6 +307,32 @@ namespace Zentwik.Tests
             Assert.Single(api.Writes);
             Assert.Equal(PowerPolicyService.SettingIdleDisable, api.Writes[0].Setting);
             Assert.Equal(expected, api.Writes[0].Value);
+        }
+
+        [Fact]
+        public void ApplyPowerPolicy_MinAndCooling_WrittenForBothScopes()
+        {
+            FakePowerPolicyApi api = BuildApi();
+            api.HasBatteryHardware = true;
+
+            PipeResponse response = PipeServerService.RunApplyPowerPolicy(
+                new PowerPolicyService(api),
+                "{\"minProcessorState\":20,\"coolingPolicy\":0,\"dcMinProcessorState\":30,\"dcCoolingPolicy\":1}");
+
+            Assert.True(response.Success);
+            Assert.Equal(4, api.Writes.Count);
+            Assert.Single(api.CalledGuids);
+
+            Assert.Equal(20u, api.AcValues[PowerPolicyService.SettingMinProcessorState]);
+            Assert.Equal(0u, api.AcValues[PowerPolicyService.SettingCoolingPolicy]);
+            Assert.Equal(30u, api.DcValues[PowerPolicyService.SettingMinProcessorState]);
+            Assert.Equal(1u, api.DcValues[PowerPolicyService.SettingCoolingPolicy]);
+
+            PowerPolicySnapshot snapshot = ReadPayload(response);
+            Assert.Equal(20, snapshot.MinProcessorState);
+            Assert.Equal(0, snapshot.CoolingPolicy);
+            Assert.Equal(30, snapshot.DcMinProcessorState);
+            Assert.Equal(1, snapshot.DcCoolingPolicy);
         }
 
         // ==================== 写：失败语义 ====================

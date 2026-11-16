@@ -46,6 +46,12 @@ namespace Zentwik.Core.Services
         /// <summary>Maximum processor state，0-100（本工具只开放 50-100）。</summary>
         public static readonly Guid SettingMaxProcessorState = new("bc5038f7-23e0-4960-96da-33abaf5935ec");
 
+        /// <summary>Minimum processor state，0-100。</summary>
+        public static readonly Guid SettingMinProcessorState = new("893dee8e-2bef-41e0-89c6-b55d0929964c");
+
+        /// <summary>System cooling policy：0 = 被动，1 = 主动。</summary>
+        public static readonly Guid SettingCoolingPolicy = new("94d3a615-a899-4ac5-ae2b-e4d8f634367f");
+
         /// <summary>Processor performance core parking min cores（CPMINCORES），0-100。</summary>
         public static readonly Guid SettingCoreParkingMin = new("0cc5b647-c1df-4637-891a-dec35c318583");
 
@@ -130,6 +136,12 @@ namespace Zentwik.Core.Services
         /// <summary>最大处理器状态的参数名。</summary>
         public const string LabelMaxProcessorState = "最大处理器状态";
 
+        /// <summary>最小处理器状态的参数名。</summary>
+        public const string LabelMinProcessorState = "最小处理器状态";
+
+        /// <summary>系统散热方式的参数名。</summary>
+        public const string LabelCoolingPolicy = "系统散热方式";
+
         /// <summary>核心停泊的参数名。</summary>
         public const string LabelCoreParkingMin = "核心停泊最小核心数（CPMINCORES）";
 
@@ -182,6 +194,12 @@ namespace Zentwik.Core.Services
             (snapshot.MaxProcessorStateSupported, snapshot.MaxProcessorState, snapshot.MaxProcessorStateError) =
                 ReadIndex(scheme, SubProcessor, SettingMaxProcessorState, dc: false, LabelMaxProcessorState);
 
+            (snapshot.MinProcessorStateSupported, snapshot.MinProcessorState, snapshot.MinProcessorStateError) =
+                ReadIndex(scheme, SubProcessor, SettingMinProcessorState, dc: false, LabelMinProcessorState);
+
+            (snapshot.CoolingPolicySupported, snapshot.CoolingPolicy, snapshot.CoolingPolicyError) =
+                ReadIndex(scheme, SubProcessor, SettingCoolingPolicy, dc: false, LabelCoolingPolicy);
+
             (snapshot.CoreParkingMinSupported, snapshot.CoreParkingMin, snapshot.CoreParkingMinError) =
                 ReadIndex(scheme, SubProcessor, SettingCoreParkingMin, dc: false, LabelCoreParkingMin);
 
@@ -204,6 +222,12 @@ namespace Zentwik.Core.Services
 
             (snapshot.DcMaxProcessorStateSupported, snapshot.DcMaxProcessorState, snapshot.DcMaxProcessorStateError) =
                 ReadIndex(scheme, SubProcessor, SettingMaxProcessorState, dc: true, LabelMaxProcessorState);
+
+            (snapshot.DcMinProcessorStateSupported, snapshot.DcMinProcessorState, snapshot.DcMinProcessorStateError) =
+                ReadIndex(scheme, SubProcessor, SettingMinProcessorState, dc: true, LabelMinProcessorState);
+
+            (snapshot.DcCoolingPolicySupported, snapshot.DcCoolingPolicy, snapshot.DcCoolingPolicyError) =
+                ReadIndex(scheme, SubProcessor, SettingCoolingPolicy, dc: true, LabelCoolingPolicy);
 
             (snapshot.DcCoreParkingMinSupported, snapshot.DcCoreParkingMin, snapshot.DcCoreParkingMinError) =
                 ReadIndex(scheme, SubProcessor, SettingCoreParkingMin, dc: true, LabelCoreParkingMin);
@@ -301,6 +325,28 @@ namespace Zentwik.Core.Services
                 return (false, DescribeOutOfRange(label, 50, 100));
 
             return WriteCore(SubProcessor, SettingMaxProcessorState, (uint)value, label, dc);
+        }
+
+        /// <summary>最小处理器状态，0-100。</summary>
+        public (bool Success, string? Error) WriteMinProcessorState(int value, bool dc = false)
+        {
+            string label = ScopeLabel(LabelMinProcessorState, dc);
+
+            if (value < 0 || value > 100)
+                return (false, DescribeOutOfRange(label, 0, 100));
+
+            return WriteCore(SubProcessor, SettingMinProcessorState, (uint)value, label, dc);
+        }
+
+        /// <summary>系统散热方式，0 = 被动（降温优先），1 = 主动（风扇优先）。</summary>
+        public (bool Success, string? Error) WriteCoolingPolicy(int value, bool dc = false)
+        {
+            string label = ScopeLabel(LabelCoolingPolicy, dc);
+
+            if (value < 0 || value > 1)
+                return (false, DescribeOutOfRange(label, 0, 1));
+
+            return WriteCore(SubProcessor, SettingCoolingPolicy, (uint)value, label, dc);
         }
 
         /// <summary>

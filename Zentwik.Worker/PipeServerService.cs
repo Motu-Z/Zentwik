@@ -2240,6 +2240,12 @@ namespace Zentwik.Worker
             if (request.MaxProcessorState is int maxState)
                 MergeWriteResult(errors, ref applied, power.WriteMaxProcessorState(maxState));
 
+            if (request.MinProcessorState is int minState)
+                MergeWriteResult(errors, ref applied, power.WriteMinProcessorState(minState));
+
+            if (request.CoolingPolicy is int cooling)
+                MergeWriteResult(errors, ref applied, power.WriteCoolingPolicy(cooling));
+
             if (request.CoreParkingMin is int coreParking)
             {
                 int before = errors.Count;
@@ -2261,6 +2267,12 @@ namespace Zentwik.Worker
 
             if (request.DcMaxProcessorState is int dcMaxState)
                 MergeWriteResult(errors, ref applied, power.WriteMaxProcessorState(dcMaxState, dc: true));
+
+            if (request.DcMinProcessorState is int dcMinState)
+                MergeWriteResult(errors, ref applied, power.WriteMinProcessorState(dcMinState, dc: true));
+
+            if (request.DcCoolingPolicy is int dcCooling)
+                MergeWriteResult(errors, ref applied, power.WriteCoolingPolicy(dcCooling, dc: true));
 
             if (request.DcCoreParkingMin is int dcCoreParking)
             {

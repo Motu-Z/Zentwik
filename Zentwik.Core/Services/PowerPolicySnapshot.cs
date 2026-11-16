@@ -69,6 +69,30 @@ namespace Zentwik.Core.Services
         [JsonPropertyName("maxProcessorStateError")]
         public string? MaxProcessorStateError { get; set; }
 
+        /// <summary>最小处理器状态，0-100。</summary>
+        [JsonPropertyName("minProcessorState")]
+        public int? MinProcessorState { get; set; }
+
+        /// <summary>最小处理器状态这一项是否可读。</summary>
+        [JsonPropertyName("minProcessorStateSupported")]
+        public bool MinProcessorStateSupported { get; set; }
+
+        /// <summary>最小处理器状态不可读的原因。</summary>
+        [JsonPropertyName("minProcessorStateError")]
+        public string? MinProcessorStateError { get; set; }
+
+        /// <summary>系统散热方式，0 = 被动，1 = 主动。</summary>
+        [JsonPropertyName("coolingPolicy")]
+        public int? CoolingPolicy { get; set; }
+
+        /// <summary>系统散热方式这一项是否可读。</summary>
+        [JsonPropertyName("coolingPolicySupported")]
+        public bool CoolingPolicySupported { get; set; }
+
+        /// <summary>系统散热方式不可读的原因。</summary>
+        [JsonPropertyName("coolingPolicyError")]
+        public string? CoolingPolicyError { get; set; }
+
         /// <summary>
         /// 核心停泊最小核心数，0-100（百分比）。100 = 所有核都不停泊。
         /// 低于 100 时 Windows 会停泊空闲核，CPU Set 是软约束，线程会被调度到集合外。
@@ -168,6 +192,30 @@ namespace Zentwik.Core.Services
         [JsonPropertyName("dcMaxProcessorStateError")]
         public string? DcMaxProcessorStateError { get; set; }
 
+        /// <summary>电池供电下的最小处理器状态，0-100。</summary>
+        [JsonPropertyName("dcMinProcessorState")]
+        public int? DcMinProcessorState { get; set; }
+
+        /// <summary>电池最小处理器状态是否可读。</summary>
+        [JsonPropertyName("dcMinProcessorStateSupported")]
+        public bool DcMinProcessorStateSupported { get; set; }
+
+        /// <summary>电池最小处理器状态不可读的原因。</summary>
+        [JsonPropertyName("dcMinProcessorStateError")]
+        public string? DcMinProcessorStateError { get; set; }
+
+        /// <summary>电池供电下的系统散热方式，0 = 被动，1 = 主动。</summary>
+        [JsonPropertyName("dcCoolingPolicy")]
+        public int? DcCoolingPolicy { get; set; }
+
+        /// <summary>电池系统散热方式是否可读。</summary>
+        [JsonPropertyName("dcCoolingPolicySupported")]
+        public bool DcCoolingPolicySupported { get; set; }
+
+        /// <summary>电池系统散热方式不可读的原因。</summary>
+        [JsonPropertyName("dcCoolingPolicyError")]
+        public string? DcCoolingPolicyError { get; set; }
+
         /// <summary>电池供电下的核心停泊最小核心数，0-100。</summary>
         [JsonPropertyName("dcCoreParkingMin")]
         public int? DcCoreParkingMin { get; set; }
@@ -221,6 +269,10 @@ namespace Zentwik.Core.Services
             BoostModeError = error,
             MaxProcessorStateSupported = false,
             MaxProcessorStateError = error,
+            MinProcessorStateSupported = false,
+            MinProcessorStateError = error,
+            CoolingPolicySupported = false,
+            CoolingPolicyError = error,
             CoreParkingMinSupported = false,
             CoreParkingMinError = error,
             AspmSupported = false,
@@ -238,6 +290,10 @@ namespace Zentwik.Core.Services
             DcBoostModeError = error,
             DcMaxProcessorStateSupported = false,
             DcMaxProcessorStateError = error,
+            DcMinProcessorStateSupported = false,
+            DcMinProcessorStateError = error,
+            DcCoolingPolicySupported = false,
+            DcCoolingPolicyError = error,
             DcCoreParkingMinSupported = false,
             DcCoreParkingMinError = error,
             DcAspmSupported = false,

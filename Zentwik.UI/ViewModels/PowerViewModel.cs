@@ -7,7 +7,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>电源页视图模型：系统电源方案 + 五项处理器 / PCIe 策略的 AC / DC 两套值</summary>
+/// <summary>电源页视图模型：系统电源方案 + 处理器 / PCIe 策略的 AC / DC 两套值</summary>
 public partial class PowerViewModel : ObservableObject
 {
     private const int QueryTimeoutMs = 6_000;
@@ -33,6 +33,14 @@ public partial class PowerViewModel : ObservableObject
         public bool MaxProcessorStateSupported = true;
         public string MaxProcessorStateError = string.Empty;
 
+        public int MinProcessorState;
+        public bool MinProcessorStateSupported = true;
+        public string MinProcessorStateError = string.Empty;
+
+        public int CoolingPolicy;
+        public bool CoolingPolicySupported = true;
+        public string CoolingPolicyError = string.Empty;
+
         public int CoreParkingMin;
         public bool CoreParkingMinSupported = true;
         public string CoreParkingMinError = string.Empty;
@@ -50,6 +58,8 @@ public partial class PowerViewModel : ObservableObject
             Epp = ac ? 50 : 80,
             BoostMode = 1,
             MaxProcessorState = ac ? 100 : 80,
+            MinProcessorState = 5,
+            CoolingPolicy = ac ? 1 : 0,
             CoreParkingMin = 100,
             IdleDisable = false,
             Aspm = ac ? 1 : 2,
@@ -70,6 +80,14 @@ public partial class PowerViewModel : ObservableObject
             MaxProcessorStateSupported = other.MaxProcessorStateSupported;
             MaxProcessorStateError = other.MaxProcessorStateError;
 
+            MinProcessorState = other.MinProcessorState;
+            MinProcessorStateSupported = other.MinProcessorStateSupported;
+            MinProcessorStateError = other.MinProcessorStateError;
+
+            CoolingPolicy = other.CoolingPolicy;
+            CoolingPolicySupported = other.CoolingPolicySupported;
+            CoolingPolicyError = other.CoolingPolicyError;
+
             CoreParkingMin = other.CoreParkingMin;
             CoreParkingMinSupported = other.CoreParkingMinSupported;
             CoreParkingMinError = other.CoreParkingMinError;
@@ -88,6 +106,8 @@ public partial class PowerViewModel : ObservableObject
             a.Epp == b.Epp
             && a.BoostMode == b.BoostMode
             && a.MaxProcessorState == b.MaxProcessorState
+            && a.MinProcessorState == b.MinProcessorState
+            && a.CoolingPolicy == b.CoolingPolicy
             && a.CoreParkingMin == b.CoreParkingMin
             && a.IdleDisable == b.IdleDisable
             && a.Aspm == b.Aspm;
@@ -97,6 +117,8 @@ public partial class PowerViewModel : ObservableObject
             Epp = defaults.Epp;
             BoostMode = defaults.BoostMode;
             MaxProcessorState = defaults.MaxProcessorState;
+            MinProcessorState = defaults.MinProcessorState;
+            CoolingPolicy = defaults.CoolingPolicy;
             CoreParkingMin = defaults.CoreParkingMin;
             IdleDisable = defaults.IdleDisable;
             Aspm = defaults.Aspm;
@@ -242,7 +264,7 @@ public partial class PowerViewModel : ObservableObject
     /// <summary>最大处理器状态的滑块下限</summary>
     public int MaxProcessorStateMinimum => 50;
 
-    // 五项
+    // 策略项
 
     public int Epp
     {
@@ -277,6 +299,34 @@ public partial class PowerViewModel : ObservableObject
     public bool MaxProcessorStateSupported => Current.MaxProcessorStateSupported;
 
     public string MaxProcessorStateError => Current.MaxProcessorStateError;
+
+    public int MinProcessorState
+    {
+        get => Current.MinProcessorState;
+        set => SetValue(
+            current => current.MinProcessorState,
+            (current, v) => current.MinProcessorState = v,
+            value,
+            nameof(MinProcessorState));
+    }
+
+    public bool MinProcessorStateSupported => Current.MinProcessorStateSupported;
+
+    public string MinProcessorStateError => Current.MinProcessorStateError;
+
+    public int CoolingPolicy
+    {
+        get => Current.CoolingPolicy;
+        set => SetValue(
+            current => current.CoolingPolicy,
+            (current, v) => current.CoolingPolicy = v,
+            value,
+            nameof(CoolingPolicy));
+    }
+
+    public bool CoolingPolicySupported => Current.CoolingPolicySupported;
+
+    public string CoolingPolicyError => Current.CoolingPolicyError;
 
     public int CoreParkingMin
     {
@@ -527,6 +577,12 @@ public partial class PowerViewModel : ObservableObject
         if (policy.MaxProcessorState is not null)
             _ac.MaxProcessorState = policy.MaxProcessorState.Value;
 
+        if (policy.MinProcessorState is not null)
+            _ac.MinProcessorState = policy.MinProcessorState.Value;
+
+        if (policy.CoolingPolicy is not null)
+            _ac.CoolingPolicy = policy.CoolingPolicy.Value;
+
         if (policy.CoreParkingMin is not null)
             _ac.CoreParkingMin = policy.CoreParkingMin.Value;
 
@@ -547,6 +603,12 @@ public partial class PowerViewModel : ObservableObject
 
         if (policy.DcMaxProcessorState is not null)
             _dc.MaxProcessorState = policy.DcMaxProcessorState.Value;
+
+        if (policy.DcMinProcessorState is not null)
+            _dc.MinProcessorState = policy.DcMinProcessorState.Value;
+
+        if (policy.DcCoolingPolicy is not null)
+            _dc.CoolingPolicy = policy.DcCoolingPolicy.Value;
 
         if (policy.DcCoreParkingMin is not null)
             _dc.CoreParkingMin = policy.DcCoreParkingMin.Value;
@@ -746,6 +808,8 @@ public partial class PowerViewModel : ObservableObject
         if (_ac.Epp != _appliedAc.Epp) payload.Epp = _ac.Epp;
         if (_ac.BoostMode != _appliedAc.BoostMode) payload.BoostMode = _ac.BoostMode;
         if (_ac.MaxProcessorState != _appliedAc.MaxProcessorState) payload.MaxProcessorState = _ac.MaxProcessorState;
+        if (_ac.MinProcessorState != _appliedAc.MinProcessorState) payload.MinProcessorState = _ac.MinProcessorState;
+        if (_ac.CoolingPolicy != _appliedAc.CoolingPolicy) payload.CoolingPolicy = _ac.CoolingPolicy;
         if (_ac.CoreParkingMin != _appliedAc.CoreParkingMin) payload.CoreParkingMin = _ac.CoreParkingMin;
         if (_ac.IdleDisable != _appliedAc.IdleDisable) payload.IdleDisable = _ac.IdleDisable;
         if (_ac.Aspm != _appliedAc.Aspm) payload.Aspm = _ac.Aspm;
@@ -758,6 +822,8 @@ public partial class PowerViewModel : ObservableObject
         if (_dc.Epp != _appliedDc.Epp) payload.DcEpp = _dc.Epp;
         if (_dc.BoostMode != _appliedDc.BoostMode) payload.DcBoostMode = _dc.BoostMode;
         if (_dc.MaxProcessorState != _appliedDc.MaxProcessorState) payload.DcMaxProcessorState = _dc.MaxProcessorState;
+        if (_dc.MinProcessorState != _appliedDc.MinProcessorState) payload.DcMinProcessorState = _dc.MinProcessorState;
+        if (_dc.CoolingPolicy != _appliedDc.CoolingPolicy) payload.DcCoolingPolicy = _dc.CoolingPolicy;
         if (_dc.CoreParkingMin != _appliedDc.CoreParkingMin) payload.DcCoreParkingMin = _dc.CoreParkingMin;
         if (_dc.IdleDisable != _appliedDc.IdleDisable) payload.DcIdleDisable = _dc.IdleDisable;
         if (_dc.Aspm != _appliedDc.Aspm) payload.DcAspm = _dc.Aspm;
@@ -918,6 +984,8 @@ public partial class PowerViewModel : ObservableObject
         if (_ac.EppSupported) payload.Epp = _ac.Epp;
         if (_ac.BoostModeSupported) payload.BoostMode = _ac.BoostMode;
         if (_ac.MaxProcessorStateSupported) payload.MaxProcessorState = _ac.MaxProcessorState;
+        if (_ac.MinProcessorStateSupported) payload.MinProcessorState = _ac.MinProcessorState;
+        if (_ac.CoolingPolicySupported) payload.CoolingPolicy = _ac.CoolingPolicy;
         if (_ac.CoreParkingMinSupported) payload.CoreParkingMin = _ac.CoreParkingMin;
         if (_ac.IdleDisableSupported) payload.IdleDisable = _ac.IdleDisable;
         if (_ac.AspmSupported) payload.Aspm = _ac.Aspm;
@@ -928,6 +996,8 @@ public partial class PowerViewModel : ObservableObject
         if (_dc.EppSupported) payload.DcEpp = _dc.Epp;
         if (_dc.BoostModeSupported) payload.DcBoostMode = _dc.BoostMode;
         if (_dc.MaxProcessorStateSupported) payload.DcMaxProcessorState = _dc.MaxProcessorState;
+        if (_dc.MinProcessorStateSupported) payload.DcMinProcessorState = _dc.MinProcessorState;
+        if (_dc.CoolingPolicySupported) payload.DcCoolingPolicy = _dc.CoolingPolicy;
         if (_dc.CoreParkingMinSupported) payload.DcCoreParkingMin = _dc.CoreParkingMin;
         if (_dc.IdleDisableSupported) payload.DcIdleDisable = _dc.IdleDisable;
         if (_dc.AspmSupported) payload.DcAspm = _dc.Aspm;
@@ -1308,6 +1378,14 @@ public partial class PowerViewModel : ObservableObject
             _ac.MaxProcessorStateSupported = snapshot.MaxProcessorStateSupported;
             _ac.MaxProcessorStateError = snapshot.MaxProcessorStateError ?? string.Empty;
 
+            _ac.MinProcessorState = snapshot.MinProcessorState ?? _ac.MinProcessorState;
+            _ac.MinProcessorStateSupported = snapshot.MinProcessorStateSupported;
+            _ac.MinProcessorStateError = snapshot.MinProcessorStateError ?? string.Empty;
+
+            _ac.CoolingPolicy = snapshot.CoolingPolicy ?? _ac.CoolingPolicy;
+            _ac.CoolingPolicySupported = snapshot.CoolingPolicySupported;
+            _ac.CoolingPolicyError = snapshot.CoolingPolicyError ?? string.Empty;
+
             _ac.CoreParkingMin = snapshot.CoreParkingMin ?? _ac.CoreParkingMin;
             _ac.CoreParkingMinSupported = snapshot.CoreParkingMinSupported;
             _ac.CoreParkingMinError = snapshot.CoreParkingMinError ?? string.Empty;
@@ -1333,6 +1411,14 @@ public partial class PowerViewModel : ObservableObject
                 _dc.MaxProcessorState = snapshot.DcMaxProcessorState ?? _dc.MaxProcessorState;
                 _dc.MaxProcessorStateSupported = snapshot.DcMaxProcessorStateSupported;
                 _dc.MaxProcessorStateError = snapshot.DcMaxProcessorStateError ?? string.Empty;
+
+                _dc.MinProcessorState = snapshot.DcMinProcessorState ?? _dc.MinProcessorState;
+                _dc.MinProcessorStateSupported = snapshot.DcMinProcessorStateSupported;
+                _dc.MinProcessorStateError = snapshot.DcMinProcessorStateError ?? string.Empty;
+
+                _dc.CoolingPolicy = snapshot.DcCoolingPolicy ?? _dc.CoolingPolicy;
+                _dc.CoolingPolicySupported = snapshot.DcCoolingPolicySupported;
+                _dc.CoolingPolicyError = snapshot.DcCoolingPolicyError ?? string.Empty;
 
                 _dc.CoreParkingMin = snapshot.DcCoreParkingMin ?? _dc.CoreParkingMin;
                 _dc.CoreParkingMinSupported = snapshot.DcCoreParkingMinSupported;
@@ -1402,6 +1488,10 @@ public partial class PowerViewModel : ObservableObject
         set.BoostModeError = reason;
         set.MaxProcessorStateSupported = false;
         set.MaxProcessorStateError = reason;
+        set.MinProcessorStateSupported = false;
+        set.MinProcessorStateError = reason;
+        set.CoolingPolicySupported = false;
+        set.CoolingPolicyError = reason;
         set.CoreParkingMinSupported = false;
         set.CoreParkingMinError = reason;
         set.IdleDisableSupported = false;
@@ -1491,6 +1581,8 @@ public partial class PowerViewModel : ObservableObject
             return (plan.Epp is int epp && epp != set.Epp)
                    || (plan.BoostMode is int boost && boost != set.BoostMode)
                    || (plan.MaxProcessorState is int max && max != set.MaxProcessorState)
+                   || (plan.MinProcessorState is int min && min != set.MinProcessorState)
+                   || (plan.CoolingPolicy is int cooling && cooling != set.CoolingPolicy)
                    || (plan.CoreParkingMin is int park && park != set.CoreParkingMin)
                    || (plan.Aspm is int aspm && aspm != set.Aspm)
                    || (plan.IdleDisable is bool idle && idle != set.IdleDisable);
@@ -1499,6 +1591,8 @@ public partial class PowerViewModel : ObservableObject
         return (plan.DcEpp is int dcEpp && dcEpp != set.Epp)
                || (plan.DcBoostMode is int dcBoost && dcBoost != set.BoostMode)
                || (plan.DcMaxProcessorState is int dcMax && dcMax != set.MaxProcessorState)
+               || (plan.DcMinProcessorState is int dcMin && dcMin != set.MinProcessorState)
+               || (plan.DcCoolingPolicy is int dcCooling && dcCooling != set.CoolingPolicy)
                || (plan.DcCoreParkingMin is int dcPark && dcPark != set.CoreParkingMin)
                || (plan.DcAspm is int dcAspm && dcAspm != set.Aspm)
                || (plan.DcIdleDisable is bool dcIdle && dcIdle != set.IdleDisable);
@@ -1531,6 +1625,14 @@ public partial class PowerViewModel : ObservableObject
         OnPropertyChanged(nameof(MaxProcessorState));
         OnPropertyChanged(nameof(MaxProcessorStateSupported));
         OnPropertyChanged(nameof(MaxProcessorStateError));
+
+        OnPropertyChanged(nameof(MinProcessorState));
+        OnPropertyChanged(nameof(MinProcessorStateSupported));
+        OnPropertyChanged(nameof(MinProcessorStateError));
+
+        OnPropertyChanged(nameof(CoolingPolicy));
+        OnPropertyChanged(nameof(CoolingPolicySupported));
+        OnPropertyChanged(nameof(CoolingPolicyError));
 
         OnPropertyChanged(nameof(CoreParkingMin));
         OnPropertyChanged(nameof(CoreParkingMinSupported));

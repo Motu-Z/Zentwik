@@ -470,6 +470,93 @@
                         </Grid>
                     </Border>
 
+                    <!-- 最小处理器状态 -->
+                    <Border Style="{StaticResource RowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="最小处理器状态" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <Grid Grid.Column="1"
+                                  Visibility="{Binding MinProcessorStateSupported, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Slider Grid.Column="0"
+                                        Style="{StaticResource ThinSliderStyle}"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        Value="{Binding MinProcessorState, Mode=TwoWay}"
+                                        VerticalAlignment="Center" />
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                            Margin="16,0,0,0" MinWidth="52" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding MinProcessorState, Mode=OneWay}"
+                                               FontFamily="{DynamicResource AppMonoFontFamily}"
+                                               FontSize="20"
+                                               FontWeight="Bold"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="%"
+                                               FontSize="13"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="2,0,0,2" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding MinProcessorStateError}"
+                                       Visibility="{Binding MinProcessorStateSupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 系统散热方式：台式机没有这一项 -->
+                    <Border Style="{StaticResource RowStyle}"
+                            Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="系统散热方式" Style="{StaticResource RowTitleStyle}" />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Style="{StaticResource SegmentGroupStyle}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding CoolingPolicySupported, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton GroupName="CoolingPolicy" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding CoolingPolicy, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=0}">
+                                        <TextBlock Text="被动" />
+                                    </RadioButton>
+                                    <RadioButton GroupName="CoolingPolicy" Style="{StaticResource SegmentRadioButtonStyle}"
+                                                 IsChecked="{Binding CoolingPolicy, Mode=TwoWay, Converter={StaticResource IntEqualsBool}, ConverterParameter=1}">
+                                        <TextBlock Text="主动" />
+                                    </RadioButton>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding UnavailableText}"
+                                       Style="{StaticResource UnsupportedTextStyle}"
+                                       ToolTip="{Binding CoolingPolicyError}"
+                                       Visibility="{Binding CoolingPolicySupported, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+                    </Border>
+
                     <!-- 核心停泊：低于 100% 时被停泊的核不算可用，CPU Set 软约束会让线程跑出集合 -->
                     <Border Style="{StaticResource RowStyle}">
                         <Grid>
