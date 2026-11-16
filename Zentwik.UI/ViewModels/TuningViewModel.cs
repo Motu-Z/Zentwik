@@ -631,6 +631,9 @@ public partial class TuningViewModel : ObservableObject
         _baselineMargins = Snapshot();
         _baselineFMax = FMaxMHz;
         IsDirty = false;
+
+        // IsDirty 本来已是 false 时上面不会触发回调，方案条的「未保存」会残留不走。
+        SyncPlanDirty();
     }
 
     private void MarkDirty()
