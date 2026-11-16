@@ -644,6 +644,9 @@ public partial class TuningViewModel : ObservableObject
         }
 
         IsDirty = FMaxMHz != _baselineFMax || !Snapshot().SequenceEqual(_baselineMargins);
+
+        // IsDirty 一直为 true 时不会触发 OnIsDirtyChanged，方案条就停在旧判定上。
+        SyncPlanDirty();
     }
 
     private void ClearBlocking()
@@ -736,7 +739,8 @@ public partial class TuningViewModel : ObservableObject
 
         if (item is not null)
         {
-            int[] now = Snapshot();
+            // 比显示值：PayloadValue 对不可用核返回 int.MinValue，会让「看起来一致」判成不一致。
+            int[] now = CoreMargins.Select(c => c.Margin).ToArray();
 
             bool fMaxDiffers = item.FMaxMHz > 0 && item.FMaxMHz != (uint)Math.Max(0, FMaxMHz);
 
@@ -744,6 +748,8 @@ public partial class TuningViewModel : ObservableObject
                                && !now.SequenceEqual(item.CoreMargins);
 
             differs = fMaxDiffers || coresDiffer;
+
+            TuningDirtyLog.Write(item.Name, FMaxMHz, item.FMaxMHz, IsDirty, differs, now, item.CoreMargins);
         }
 
         // 方案条只看「与方案是否一致」：改回方案值就不该再挂未保存。
@@ -770,6 +776,27 @@ public partial class TuningViewModel : ObservableObject
 }
 
 /// <summary>单个核心的 CO 偏移项</summary>
+internal static class TuningDirtyLog
+{
+    public static void Write(string name, int fMaxNow, uint fMaxPlan, bool dirty, bool differs, int[] now, int[] plan)
+    {
+        try
+        {
+            string dir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Zentwik", "Logs");
+
+            System.IO.Directory.CreateDirectory(dir);
+
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(dir, "tune-dirty.log"),
+                $"{DateTime.Now:HH:mm:ss} name={name} fmax={fMaxNow}/{fMaxPlan} dirty={dirty} differs={differs} now=[{string.Join(",", now)}] plan=[{string.Join(",", plan)}]\n");
+        }
+        catch
+        {
+        }
+    }
+}
+
 public partial class CoreMarginItem : ObservableObject
 {
     /// <summary>该核读不到值时的占位字符（与数字等宽）。</summary>
