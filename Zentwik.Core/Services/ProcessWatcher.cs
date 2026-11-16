@@ -545,10 +545,12 @@ namespace Zentwik.Core.Services
                 ? (found?.Mask ?? rule.TargetMask)
                 : 0;
 
+            bool byAffinityMask = !rule.IsLegacyCcd && found?.Type == MaskType.AffinityMask;
+
             // 旧版 CCD 规则只在迁移还没跑过时走到这里
             CpuSetScheduleResult result = rule.IsLegacyCcd
                 ? _cpuSets.ScheduleToCcd(pid, rule.LegacyCcdIndex)
-                : found?.Type == MaskType.AffinityMask
+                : byAffinityMask
                     ? BindAffinity(pid, mask)
                     : BindCpuSets(pid, mask);
 
@@ -563,7 +565,10 @@ namespace Zentwik.Core.Services
                 _throttle.Reset(throttleKey);
 
                 _boundPids.TryAdd(pid);
-                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{result.AppliedCount} 个 CPU Set{ParkingSuffix()}");
+
+                // 关联掩码是硬约束，停泊不会缩范围，不追加警告。
+                string parkingSuffix = byAffinityMask ? string.Empty : ParkingSuffix();
+                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{result.AppliedCount} 个 CPU Set{parkingSuffix}");
             }
             else if (_throttle.TryAcquire(throttleKey, out int suppressed))
             {
@@ -578,8 +583,7 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
-        /// 停泊开启时绑定只是「写进了默认集合」，实际调度范围是默认集合减停泊核。
-        /// 缓存 10 秒：每次绑定都读一次电源策略不划算。
+        /// CPU Set 是软约束：停泊开启时实际范围是默认集合减停泊核。缓存 10 秒。
         /// </summary>
         private string ParkingSuffix()
         {

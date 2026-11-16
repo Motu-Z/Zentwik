@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows.Input;
+using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
 using Zentwik.UI.Services;
@@ -529,6 +530,7 @@ public class ProcessViewModel : ViewModelBase
     private string _scheduleBlockText = string.Empty;
     private bool _scheduleBlockDismissed;
     private bool _coreParkingOnBattery;
+    private readonly HashSet<string> _affinityMaskIds = new(StringComparer.Ordinal);
 
     public RelayCommand DismissScheduleBlockCommand { get; private set; } = null!;
 
@@ -556,8 +558,6 @@ public class ProcessViewModel : ViewModelBase
 
         WorkerBridge bridge = WorkerBridge.Instance;
 
-        await CheckScheduleReadinessAsync().ConfigureAwait(true);
-
         IpcOutcome<List<ProcessEntryPayload>> processes = await bridge
             .QueryProcessesAsync().ConfigureAwait(true);
 
@@ -576,6 +576,8 @@ public class ProcessViewModel : ViewModelBase
         {
             ApplyRules(rules.Value);
         }
+
+        await CheckScheduleReadinessAsync().ConfigureAwait(true);
 
         if (!processes.Success || processes.Value is null)
         {
@@ -596,6 +598,13 @@ public class ProcessViewModel : ViewModelBase
     {
         if (!UseWorker || _scheduleBlockDismissed)
         {
+            return;
+        }
+
+        // 启用规则全走关联掩码时停泊不影响绑定，不出提示。
+        if (AllRulesUseAffinityMask())
+        {
+            IsScheduleBlocked = false;
             return;
         }
 
@@ -625,6 +634,26 @@ public class ProcessViewModel : ViewModelBase
 
         ScheduleBlockText = $"电源方案把核心停泊设为 {parked}%，停泊的核不参与调度，绑核可能跑出目标范围";
         IsScheduleBlocked = true;
+    }
+
+    /// <summary>有 CPU Set / CCD 规则时才提示停泊；关联掩码是硬约束。</summary>
+    private bool AllRulesUseAffinityMask()
+    {
+        if (SavedRules.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (ScheduleRuleItem rule in SavedRules)
+        {
+            if (rule.Enabled
+                && (rule.TargetType != "mask" || !_affinityMaskIds.Contains(rule.TargetValue)))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task FixScheduleBlockAsync()
@@ -682,10 +711,17 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>把后台的掩码表铺进下拉，末尾补「默认」</summary>
     internal void ApplyMasks(MaskListPayload payload)
     {
+        _affinityMaskIds.Clear();
+
         List<MaskOption> wanted = new(payload.Masks.Count + 1);
 
         foreach (MaskEntryPayload mask in payload.Masks)
         {
+            if (string.Equals(mask.Type, MaskTypeNames.AffinityMask, StringComparison.Ordinal))
+            {
+                _affinityMaskIds.Add(mask.Id);
+            }
+
             // TargetValue 用掩码 Id 而不是掩码值：值相同的两套掩码是两种不同的绑定方式
             // （CPU 集 / 关联掩码），按值去重会把后建的那套直接吞掉，
             // 用户看到的就是「新建成功了，下拉里却没有」。拓扑展示另走 MaskBits。
