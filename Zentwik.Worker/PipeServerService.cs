@@ -803,7 +803,7 @@ namespace Zentwik.Worker
             };
         }
 
-        private static PlanEntryPayload ToPayload(PlanEntry entry) => new()
+        private PlanEntryPayload ToPayload(PlanEntry entry) => new()
         {
             Id = entry.Id,
             Name = entry.Name,
@@ -1747,13 +1747,13 @@ namespace Zentwik.Worker
         }
 
         /// <summary>ScheduleRule → 协议投影。</summary>
-        internal static List<ScheduleRulePayload> BuildScheduleRulePayloads(IReadOnlyList<ScheduleRule> rules)
+        internal List<ScheduleRulePayload> BuildScheduleRulePayloads(IReadOnlyList<ScheduleRule> rules)
         {
             List<ScheduleRulePayload> items = new(rules.Count);
 
             foreach (ScheduleRule rule in rules)
             {
-                // 旧版 CCD 规则给组序号，掩码规则给掩码值，none 给空串 —— 格式见 ScheduleRulePayload 注释。
+                // 旧版 CCD 规则给组序号，掩码规则给掩码 Id，none 给空串 —— 格式见 ScheduleRulePayload 注释。
                 string targetType;
                 string targetValue;
 
@@ -1765,7 +1765,7 @@ namespace Zentwik.Worker
                 else if (rule.Target == SchedulingTarget.TargetMask)
                 {
                     targetType = "mask";
-                    targetValue = rule.TargetMask.ToString(CultureInfo.InvariantCulture);
+                    targetValue = MaskTargetValueOf(rule);
                 }
                 else
                 {
@@ -1787,6 +1787,41 @@ namespace Zentwik.Worker
             }
 
             return items;
+        }
+
+        /// <summary>
+        /// 规则指向的掩码，按 Id 输出。
+        ///
+        /// 2.3.x 及以前的规则只有掩码位、没有 MaskId：直接按位反查掩码表补上，
+        /// 让「规则」与「方案快照」投影出同一个值 —— 否则界面按 Id 算指纹、
+        /// 方案按掩码位算指纹，两边永不相等，「调度未保存」会一直亮着且保存不掉。
+        /// 掩码已被删除时退回掩码位，两侧一致。
+        /// </summary>
+        private string MaskTargetValueOf(ScheduleRule rule)
+        {
+            if (!string.IsNullOrEmpty(rule.MaskId))
+            {
+                return rule.MaskId;
+            }
+
+            CustomMask? fallback = null;
+
+            foreach (CustomMask candidate in _masks.Masks)
+            {
+                if (candidate.Mask != rule.TargetMask)
+                {
+                    continue;
+                }
+
+                if (candidate.Type == MaskType.CpuSets)
+                {
+                    return candidate.Id;
+                }
+
+                fallback ??= candidate;
+            }
+
+            return fallback?.Id ?? rule.TargetMask.ToString(CultureInfo.InvariantCulture);
         }
 
 
