@@ -163,7 +163,7 @@ public partial class PowerViewModel : ObservableObject
                 new[]
                 {
                     $"切到「{target.Name}」会丢弃页面上的改动",
-                    "想保留就先点「应用参数」，再回来切",
+                    "想保留就先点「保存并应用」，再回来切",
                 },
                 () => SwitchConfirmed(target),
                 "丢弃并切换");
@@ -357,7 +357,7 @@ public partial class PowerViewModel : ObservableObject
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>后台服务是否可写。false 时应用参数禁用。</summary>
+    /// <summary>后台服务是否可写。false 时「保存并应用」禁用。</summary>
     [ObservableProperty]
     private bool _isWorkerAvailable = true;
 
@@ -632,7 +632,7 @@ public partial class PowerViewModel : ObservableObject
 
     // 应用
 
-    /// <summary>「应用参数」：只发跟上次生效值不同的项</summary>
+    /// <summary>「保存并应用」：先把这套值写进当前方案，再只发跟上次生效值不同的项</summary>
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
@@ -648,6 +648,10 @@ public partial class PowerViewModel : ObservableObject
 
         try
         {
+            // 与调校页同一顺序：存不上方案就不下发，免得硬件已改、方案里还是旧值。
+            if (!await SaveToPlanBeforeApplyAsync().ConfigureAwait(true))
+                return;
+
             IpcOutcome<PowerPolicySnapshot> outcome = await WorkerBridge.Instance
                 .ApplyPowerPolicyAsync(patch, ApplyTimeoutMs)
                 .ConfigureAwait(true);
@@ -666,11 +670,6 @@ public partial class PowerViewModel : ObservableObject
                 ApplySnapshot(outcome.Value);
             }
 
-            // 应用成功顺手把这一套值记进当前选中的方案，否则「方案存参数」
-            // 只在新建那一刻发生过，之后改参数方案里永远是旧值。
-            if (outcome.Success)
-                await PersistCurrentPlanAsync().ConfigureAwait(true);
-
             if (!outcome.Success)
             {
                 // 原因里带着哪几项没写成（含 Win32 错误码），原样给用户看。
@@ -681,6 +680,10 @@ public partial class PowerViewModel : ObservableObject
                 // 清脏依赖 ApplySnapshot。成功却没带回快照时保留脏标记，
                 // 否则用户看到「点了没反应」，会反复点、反复下发同一份 patch。
                 ToastService.Instance.ShowError("已写入，但未能回读电源策略，请刷新确认");
+            }
+            else
+            {
+                ToastService.Instance.Show($"已应用到「{CurrentPlanName()}」");
             }
         }
         catch (Exception ex)
@@ -890,37 +893,42 @@ public partial class PowerViewModel : ObservableObject
         return payload;
     }
 
-    /// <summary>把当前生效的一套值记进当前选中的方案，方案才有内容可还原</summary>
-    private async Task PersistCurrentPlanAsync()
+    /// <summary>下发前先把界面这套值写进当前方案；返回 false 时调用方不得继续下发</summary>
+    private async Task<bool> SaveToPlanBeforeApplyAsync()
     {
+        if (PlanHub.SuppressWorkerInit)
+            return true;
+
         PlanItem? current = PlanHub.Power.Current;
-        if (current is null || current.IsLocal || PlanHub.SuppressWorkerInit)
-            return;
+        ApplyPowerPolicyPayload snapshot = BuildFullSnapshot();
+        bool hasScheme = ActiveSchemeGuid != Guid.Empty;
+        string? schemeGuid = hasScheme ? ActiveSchemeGuid.ToString("D") : null;
 
-        try
+        // 没有选中方案时由 SaveAsync 新建一份：与调校页「保存并应用」同一条路径。
+        PlanItem? saved = await PlanHub.Power
+            .SaveAsync(name: current?.Name, powerSchemeGuid: schemeGuid, powerPolicy: snapshot)
+            .ConfigureAwait(true);
+
+        if (saved is null)
+            return false;
+
+        saved.PowerPolicy = snapshot;
+
+        if (hasScheme)
         {
-            ApplyPowerPolicyPayload snapshot = BuildFullSnapshot();
-
-            IpcOutcome<string> saved = await WorkerBridge.Instance
-                .SavePlanAsync(
-                    PlanKind.Power,
-                    current.Id,
-                    current.Name,
-                    powerPolicy: snapshot,
-                    timeoutMs: ApplyTimeoutMs)
-                .ConfigureAwait(true);
-
-            if (!saved.Success)
-                return;
-
-            current.PowerPolicy = snapshot;
-            PlanHub.Power.UpdateCurrentSummary();
+            saved.PowerSchemeGuid = schemeGuid!;
+            saved.PowerSchemeName = ActiveSchemeName;
         }
-        catch (Exception)
-        {
-            // 主流程是「写系统」，记账失败不打扰用户。
-        }
+
+        PlanHub.Power.UpdateCurrentSummary();
+
+        // 值已经进方案：方案条上的「未保存」必须立刻消失，否则用户会一直点。
+        PlanHub.Power.SetUnsaved(false);
+        return true;
     }
+
+    /// <summary>成功提示里的方案名：没有方案时用页面上的通用称呼</summary>
+    private string CurrentPlanName() => PlanHub.Power.Current?.Name ?? "当前电源方案";
 
     /// <summary>「保存到当前方案」：把界面上这套参数存进选中的方案，并让它认领当前这份系统计划</summary>
     [RelayCommand(CanExecute = nameof(CanSaveToPlan))]

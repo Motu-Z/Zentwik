@@ -101,10 +101,11 @@
 
                     <Button Style="{StaticResource PrimaryButtonStyle}"
                             Margin="8,0,0,0"
-                            automation:AutomationProperties.Name="应用电源策略"
+                            automation:AutomationProperties.Name="保存并应用电源参数"
+                            ToolTip="把当前设置保存到当前方案，并立即写入系统"
                             Command="{Binding ApplyCommand}"
                             IsEnabled="{Binding CanApply}">
-                        <TextBlock Text="应用参数" />
+                        <TextBlock Text="保存并应用" />
                     </Button>
                 </StackPanel>
             </Grid>

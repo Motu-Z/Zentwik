@@ -258,11 +258,11 @@ public class ProcessViewModel : ViewModelBase
         FixScheduleBlockCommand = new RelayCommand(_ => Fire(FixScheduleBlockAsync));
         ManageMaskCommand = new RelayCommand(_ => OpenMaskManager());
         ToggleDrawerCommand = new RelayCommand(_ => IsDrawerOpen = !IsDrawerOpen);
-        ApplyPlanCommand = new RelayCommand(_ => RequestApplyPlan());
+        ApplyPlanCommand = new RelayCommand(_ => Fire(ApplyRulesAsync), _ => CanApplyRules);
 
         // 规则改完只落在 schedules.json，方案快照不动：底部按钮据此切「保存至」。
         PlanHub.Scheduling.CanSavePending = () => UseWorker;
-        PlanHub.Scheduling.SavePending = () => Fire(SaveRulesToPlanAsync);
+        PlanHub.Scheduling.SavePending = () => Fire(() => SaveRulesToPlanAsync());
 
         // 面板应用调度方案会整块换掉规则，本页的规则表与进程行都得重拉。
         System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
@@ -884,6 +884,9 @@ public class ProcessViewModel : ViewModelBase
         PlanHub.Scheduling.SetUnsaved(
             current is not null
             && !string.Equals(LiveRuleDigest(), current.RuleDigest, StringComparison.Ordinal));
+
+        // 顶栏「保存并应用」跟着脏标记走：与调校、电源两页同一个判据。
+        OnPropertyChanged(nameof(CanApplyRules));
     }
 
     /// <summary>把界面上的规则按协议投影算一遍指纹，与后台给的方案指纹同口径。</summary>
@@ -1315,56 +1318,36 @@ public class ProcessViewModel : ViewModelBase
     }
 
     /// <summary>「保存至「方案x」」：把当前规则整份写进方案，不碰硬件</summary>
-    private async Task SaveRulesToPlanAsync()
+    private async Task<bool> SaveRulesToPlanAsync()
     {
-        await PlanHub.Scheduling.SaveAsync().ConfigureAwait(true);
+        PlanItem? saved = await PlanHub.Scheduling.SaveAsync().ConfigureAwait(true);
 
         // SaveAsync 已重拉方案列表：RuleCount 跟上了，脏标记自动落回 false。
         SyncRuleDirty();
+        return saved is not null;
     }
 
-    /// <summary>面板上点「应用规则」：规则被覆盖前先说清会丢几条。</summary>
-    private void RequestApplyPlan()
+    /// <summary>「保存并应用」：先把当前规则整份写进方案，再按方案下发</summary>
+    private async Task ApplyRulesAsync()
     {
         PlanScope session = PlanHub.Scheduling;
         PlanItem? plan = session.Current;
 
         if (plan is null)
         {
+            ToastService.Instance.Show("先选一份调度方案");
             return;
         }
 
-        int live = SavedRules.Count;
-
-        // 指纹一致 = 眼前就是方案里那份，覆盖也不会丢东西。
-        if (!UseWorker || !session.HasUnsavedChanges)
-        {
-            session.ApplyCommand.Execute(null);
+        // 与调校、电源两页同一顺序：存不上方案就不下发，改动绝不丢。
+        if (UseWorker && session.HasUnsavedChanges && !await SaveRulesToPlanAsync().ConfigureAwait(true))
             return;
-        }
 
-        List<string> lines = new() { $"用「{plan.Name}」里的 {plan.RuleCount} 条规则替换当前 {live} 条" };
-
-        if (live != plan.RuleCount)
-        {
-            int diff = Math.Abs(live - plan.RuleCount);
-            lines.Add(live > plan.RuleCount
-                ? $"多出来的 {diff} 条规则会被删除"
-                : $"方案里的 {diff} 条规则会被重新加回来");
-        }
-        else
-        {
-            lines.Add("规则内容与方案里存的不一样，改动会被方案覆盖");
-        }
-
-        lines.Add("已经绑好核心的进程会按新规则重算");
-
-        ConfirmService.Instance.Request(
-            "应用规则",
-            lines,
-            () => session.ApplyCommand.Execute(null),
-            "应用");
+        session.ApplyCommand.Execute(null);
     }
+
+    /// <summary>按钮可点条件：有没存进方案的规则改动才能「保存并应用」。</summary>
+    public bool CanApplyRules => !UseWorker || PlanHub.Scheduling.HasUnsavedChanges;
 
     /// <summary>方案应用完规则被换掉了，重拉规则表与进程表。</summary>
     private void OnPlanApplied(object? sender, EventArgs e)

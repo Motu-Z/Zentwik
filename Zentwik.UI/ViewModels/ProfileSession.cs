@@ -489,7 +489,7 @@ public sealed class PlanScope : ViewModelBase
                 new[]
                 {
                     $"切到「{item.Name}」会丢弃这些改动",
-                    "想保留就先点「应用参数」，再回来切",
+                    "想保留就先点「保存并应用」，再回来切",
                 },
                 () => Current = item,
                 "丢弃并切换");

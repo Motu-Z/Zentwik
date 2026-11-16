@@ -36,7 +36,7 @@ public partial class TuningViewModel : ObservableObject
     [ObservableProperty]
     private int _cpuCoreCount = SeedCoreCount;
 
-    /// <summary>SMU 是否可写。false 时整页遮罩、应用参数禁用。</summary>
+    /// <summary>SMU 是否可写。false 时整页遮罩、「保存并应用」禁用。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private bool _smuAvailable = !ForceSmuOffline;
@@ -114,7 +114,7 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>回读 / 取消是否可点：只受「正在通信」限制</summary>
     public bool CanOperate => !IsBusy;
 
-    /// <summary>应用参数是否可点：有改动、SMU 可写、且当前没有正在跑的通信。</summary>
+    /// <summary>「保存并应用」是否可点：有改动、SMU 可写、且当前没有正在跑的通信。</summary>
     public bool CanSave => !IsBusy && SmuAvailable && IsDirty;
 
     /// <summary>界面挂载期间冻结脏标记</summary>
@@ -198,7 +198,7 @@ public partial class TuningViewModel : ObservableObject
     private async Task ReadbackAsync()
         => await RefreshFromWorkerAsync(notifyOnFailure: true, reloadPlan: false).ConfigureAwait(true);
 
-    /// <summary>应用参数：先存进当前方案，再下发硬件</summary>
+    /// <summary>保存并应用：先存进当前方案，再下发硬件</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task ApplyAsync()
     {

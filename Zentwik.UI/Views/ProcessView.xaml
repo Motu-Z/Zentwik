@@ -66,11 +66,12 @@
 
                         <Button Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="8,0,0,0"
-                                automation:AutomationProperties.Name="应用规则"
+                                automation:AutomationProperties.Name="保存并应用调度规则"
+                                ToolTip="把当前规则保存到当前方案，并立即应用"
                                 Command="{Binding ApplyPlanCommand}"
-                                IsEnabled="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=HasCurrent}"
+                                IsEnabled="{Binding CanApplyRules}"
 >
-                            <TextBlock Text="应用规则" />
+                            <TextBlock Text="保存并应用" />
                         </Button>
                     </StackPanel>
                 </Grid>
