@@ -253,7 +253,10 @@ public partial class TuningViewModel : ObservableObject
     private async Task SaveToPlanAsync()
     {
         if (IsBusy)
+        {
+            ToastService.Instance.Show("正在通信，稍后再保存");
             return;
+        }
 
         IsBusy = true;
 
@@ -417,12 +420,8 @@ public partial class TuningViewModel : ObservableObject
 
             // 脏标记没变时上面那条回调不会触发，这里补一次：
             // 回读把值换成了硬件真值，方案条要跟着显示「保存至」。
+            // 回读拿到硬件真值，与方案值比较后决定方案条显示「保存至」还是「应用」。
             SyncPlanDirty();
-
-            // 回读得到的是硬件真值，方案里存的是旧值，两者是否一致不足以判断 ——
-            // 有方案就直接标未保存，保证「保存至」可点。
-            if (PlanHub.Tuning.Current is not null)
-                PlanHub.Tuning.SetUnsaved(true);
         }
     }
 
@@ -730,16 +729,22 @@ public partial class TuningViewModel : ObservableObject
     {
         PlanItem? item = PlanHub.Tuning.Current;
 
-        bool differs = false;
+        bool differs;
 
-        if (item is not null)
+        if (item is null)
+        {
+            // 没有当前方案：界面这套值无处可存，同样算未保存。
+            differs = true;
+        }
+        else
         {
             int[] now = Snapshot();
 
             bool fMaxDiffers = item.FMaxMHz > 0 && item.FMaxMHz != (uint)Math.Max(0, FMaxMHz);
 
-            bool coresDiffer = item.CoreMargins.Length > 0
-                               && !now.SequenceEqual(item.CoreMargins);
+            // 长度不等也算差异：方案里没存核值（空）时必须允许保存。
+            bool coresDiffer = item.CoreMargins.Length != now.Length
+                               || !now.SequenceEqual(item.CoreMargins);
 
             differs = fMaxDiffers || coresDiffer;
         }
