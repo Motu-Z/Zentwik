@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Zentwik.Core.Helpers;
 
 namespace Zentwik.Core.Ipc
 {
@@ -25,5 +26,9 @@ namespace Zentwik.Core.Ipc
         /// <summary>逻辑核掩码，位 i = 1 表示包含逻辑处理器 i。</summary>
         [JsonPropertyName("mask")]
         public ulong Mask { get; set; }
+
+        /// <summary>下发方式：<c>cpuSets</c>（默认）或 <c>affinityMask</c>。</summary>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = MaskTypeNames.CpuSets;
     }
 }

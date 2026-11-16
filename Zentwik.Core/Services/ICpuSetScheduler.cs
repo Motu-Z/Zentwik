@@ -21,9 +21,18 @@ namespace Zentwik.Core.Services
 
         CpuSetScheduleResult ScheduleToMask(int processId, ulong mask);
 
+        /// <summary>按逻辑核掩码写进程的关联掩码（传统亲和性）。</summary>
+        CpuSetScheduleResult ScheduleToAffinityMask(int processId, ulong mask);
+
+        /// <summary>多处理器组时为 false：关联掩码只能覆盖处理器组 0。</summary>
+        bool IsAffinityMaskSupported { get; }
+
         CpuSetScheduleResult ScheduleToCcd(int processId, int ccdIndex);
 
         bool ClearDefaultCpuSets(int processId, out string? error);
+
+        /// <summary>把进程的关联掩码还原成系统掩码。</summary>
+        bool ClearAffinityMask(int processId, out string? error);
 
         bool IsCcdAvailable(int ccdIndex);
     }

@@ -148,6 +148,24 @@ namespace Zentwik.Core.Services
             [MarshalUsing(CountElementName = nameof(CpuSetIdCount))] uint[] CpuSetIds,
             uint CpuSetIdCount);
 
+        /// <summary>
+        /// 写入目标进程的关联掩码（传统亲和性）。
+        /// 掩码宽度固定 64 位，只覆盖处理器组 0。
+        /// </summary>
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool SetProcessAffinityMask(IntPtr hProcess, nuint dwProcessAffinityMask);
+
+        /// <summary>查询目标进程当前的关联掩码，用于「解绑」时把进程放回全部核。</summary>
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool GetProcessAffinityMask(
+            IntPtr hProcess, out nuint lpProcessAffinityMask, out nuint lpSystemAffinityMask);
+
+        /// <summary>系统活动处理器组数量。> 1 时关联掩码无法表达全部逻辑处理器。</summary>
+        [LibraryImport("kernel32.dll")]
+        private static partial ushort GetActiveProcessorGroupCount();
+
         [LibraryImport("kernel32.dll", SetLastError = true)]
         private static partial IntPtr OpenProcess(
             uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, int dwProcessId);
@@ -313,6 +331,123 @@ namespace Zentwik.Core.Services
                 return Fail($"掩码 0x{mask:X} 未命中任何逻辑核（本机仅 {table.Length} 个）", -1);
 
             return ApplyCpuSets(processId, ids.ToArray(), -1);
+        }
+
+        /// <summary>
+        /// 本机能否用关联掩码表达全部逻辑处理器。
+        ///
+        /// 关联掩码是 64 位，且只作用于处理器组 0：多组机器上它覆盖不到后面的组，
+        /// 绑上去只会生效一部分。所以多组时不提供这一项，而不是马上下发再报错。
+        /// </summary>
+        public bool IsAffinityMaskSupported => GetActiveProcessorGroupCount() <= 1;
+
+        /// <summary>
+        /// 按逻辑核掩码写进程的关联掩码（<c>SetProcessAffinityMask</c>）。
+        ///
+        /// 与 <see cref="ScheduleToMask"/> 的关系：对进程的最终约束相同，机制是两套 ——
+        /// CPU 集按 CpuSetId 下发，不受 64 位宽度与处理器组限制；
+        /// 关联掩码是传统亲和性，位 i 直接对应逻辑处理器 i。
+        ///
+        /// 注意两者会叠加：进程实际可跑的核 = 关联掩码 ∩ 默认 CPU 集。
+        /// 所以「先用 CPU 集绑过、再换成关联掩码」时旧限制仍在，表现为「换了掩码却没变化」。
+        /// 由下发方（<c>ProcessWatcher</c>）在切换类型时清掉另一侧的旧限制。
+        /// </summary>
+        /// <param name="processId">目标进程 ID。</param>
+        /// <param name="mask">逻辑核掩码，位 i = 1 表示包含逻辑处理器 i。</param>
+        public CpuSetScheduleResult ScheduleToAffinityMask(int processId, ulong mask)
+        {
+            ushort groups = GetActiveProcessorGroupCount();
+
+            if (groups > 1)
+                return Fail($"本机有 {groups} 个处理器组，关联掩码只能覆盖处理器组 0", -1);
+
+            if (mask == 0)
+                return Fail("掩码为 0，没有可绑定的逻辑核", -1);
+
+            int logical = LogicalProcessorCount;
+            ulong effective = mask & MaskWidth(logical);
+
+            if (effective == 0)
+                return Fail($"掩码 0x{mask:X} 未命中任何逻辑核（本机仅 {logical} 个）", -1);
+
+            // SetProcessAffinityMask 只认 PROCESS_SET_INFORMATION，没有「有限」版本。
+            IntPtr handle = OpenProcess(PROCESS_SET_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+            {
+                int err = Marshal.GetLastWin32Error();
+                return Fail($"OpenProcess 失败（错误 {err}，通常是权限不足或进程已退出）", -1, err);
+            }
+
+            try
+            {
+                if (!SetProcessAffinityMask(handle, (nuint)effective))
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    return Fail($"SetProcessAffinityMask 失败（错误 {err}）", -1, err);
+                }
+
+                return new CpuSetScheduleResult
+                {
+                    Success = true,
+                    CcdIndex = -1,
+                    AppliedCount = System.Numerics.BitOperations.PopCount(effective)
+                };
+            }
+            catch (Exception ex)
+            {
+                return Fail(ex.Message, -1);
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        /// <summary>
+        /// 把进程的关联掩码还原成系统掩码（本处理器组内全部逻辑处理器）。
+        ///
+        /// 只对被本工具用关联掩码绑过的进程调用：别处设的亲和性不该被我们覆盖，
+        /// 而本工具用 CPU 集绑过的进程更不该被顺手改掉亲和性。
+        /// </summary>
+        public bool ClearAffinityMask(int processId, out string? error)
+        {
+            error = null;
+
+            IntPtr handle = OpenProcess(PROCESS_SET_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+            {
+                error = $"OpenProcess 失败（错误 {Marshal.GetLastWin32Error()}）";
+                return false;
+            }
+
+            try
+            {
+                // 系统掩码随进程所在的处理器组而定，问系统要，不自己拼。
+                if (!GetProcessAffinityMask(handle, out _, out nuint systemMask))
+                {
+                    error = $"GetProcessAffinityMask 失败（错误 {Marshal.GetLastWin32Error()}）";
+                    return false;
+                }
+
+                if (!SetProcessAffinityMask(handle, systemMask))
+                {
+                    error = $"SetProcessAffinityMask 失败（错误 {Marshal.GetLastWin32Error()}）";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
         }
 
         /// <summary>

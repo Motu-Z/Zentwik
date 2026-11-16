@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Numerics;
+using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.UI.Services;
 
@@ -123,6 +124,64 @@ public sealed class MaskManagerViewModel : ViewModelBase
         private set => SetProperty(ref _nameError, value ?? string.Empty);
     }
 
+    private MaskType _selectedMaskType = MaskType.CpuSets;
+
+    /// <summary>这条掩码的下发方式。切换时不动已勾的核：换的只是怎么绑，不是绑到哪。</summary>
+    public MaskType SelectedMaskType
+    {
+        get => _selectedMaskType;
+        set
+        {
+            if (!SetProperty(ref _selectedMaskType, value))
+                return;
+
+            OnPropertyChanged(nameof(IsCpuSetsType));
+            OnPropertyChanged(nameof(IsAffinityMaskType));
+        }
+    }
+
+    /// <summary>单选项绑定用：WPF 的 RadioButton 没有枚举转换器，两个布尔最省事。</summary>
+    public bool IsCpuSetsType
+    {
+        get => SelectedMaskType == MaskType.CpuSets;
+        set
+        {
+            if (value)
+                SelectedMaskType = MaskType.CpuSets;
+        }
+    }
+
+    public bool IsAffinityMaskType
+    {
+        get => SelectedMaskType == MaskType.AffinityMask;
+        set
+        {
+            if (value)
+                SelectedMaskType = MaskType.AffinityMask;
+        }
+    }
+
+    private bool _affinityMaskSupported = true;
+
+    /// <summary>
+    /// 本机能否用关联掩码。多处理器组时为 false —— 关联掩码只有 64 位，
+    /// 只能覆盖处理器组 0，那种机器上让用户选等于给他一个绑不干净的选项。
+    /// </summary>
+    public bool AffinityMaskSupported
+    {
+        get => _affinityMaskSupported;
+        private set
+        {
+            if (!SetProperty(ref _affinityMaskSupported, value))
+                return;
+
+            // 本机不支持时把选择退回 CPU 集：留在不可用的那一项上，
+            // 保存下去就是一条永远绑不全的掩码。
+            if (!value && SelectedMaskType == MaskType.AffinityMask)
+                SelectedMaskType = MaskType.CpuSets;
+        }
+    }
+
     private int _selectedCoreCount;
 
     public int SelectedCoreCount
@@ -226,8 +285,13 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
         SavedMasks.Clear();
 
+        AffinityMaskSupported = payload.AffinityMaskSupported;
+
         foreach (MaskEntryPayload mask in payload.Masks)
-            SavedMasks.Add(new SavedMaskItem(mask.Id, mask.Name, mask.Mask));
+        {
+            SavedMasks.Add(new SavedMaskItem(
+                mask.Id, mask.Name, mask.Mask, MaskTypeNames.Parse(mask.Type)));
+        }
 
         if (selectedId is null)
         {
@@ -264,6 +328,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
     {
         SelectedMask = item;
         MaskName = item.Name;
+        SelectedMaskType = item.Type;
         ApplyMaskToGrid(item.Mask);
         IsNewMask = false;
         SetEditing(true);
@@ -275,6 +340,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
     {
         SelectedMask = null;
         MaskName = string.Empty;
+        SelectedMaskType = MaskType.CpuSets;
         SetAll(false);
         IsNewMask = true;
         SetEditing(true);
@@ -351,7 +417,11 @@ public sealed class MaskManagerViewModel : ViewModelBase
         Fire(async () =>
         {
             IpcOutcome<MaskListPayload> outcome = await WorkerBridge.Instance
-                .SaveMaskAsync(SelectedMask?.Id, name, mask).ConfigureAwait(true);
+                .SaveMaskAsync(
+                    SelectedMask?.Id,
+                    name,
+                    mask,
+                    MaskTypeNames.ToName(SelectedMaskType)).ConfigureAwait(true);
 
             if (!outcome.Success || outcome.Value is null)
             {
@@ -529,11 +599,12 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
 public sealed class SavedMaskItem : ViewModelBase
 {
-    public SavedMaskItem(string id, string name, ulong mask)
+    public SavedMaskItem(string id, string name, ulong mask, MaskType type = MaskType.CpuSets)
     {
         Id = id;
         Name = name;
         Mask = mask;
+        Type = type;
     }
 
     public string Id { get; }
@@ -541,6 +612,16 @@ public sealed class SavedMaskItem : ViewModelBase
     public string Name { get; }
 
     public ulong Mask { get; }
+
+    public MaskType Type { get; }
+
+    /// <summary>
+    /// 只在关联掩码时显示。CPU 集是默认方式，每条都标一遍等于没有信息量，
+    /// 反而把名字挤窄。
+    /// </summary>
+    public string TypeLabel => Type == MaskType.AffinityMask ? "Affinity Mask" : string.Empty;
+
+    public bool ShowTypeLabel => Type == MaskType.AffinityMask;
 
     public string RangeText => MaskText.ToRangeText(Mask);
 

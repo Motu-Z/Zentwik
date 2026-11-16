@@ -216,6 +216,12 @@
                                                     <Run Text="CORE  " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding RangeText, Mode=OneWay}" />
                                                 </TextBlock>
                                             </Border>
+
+                                            <TextBlock Text="{Binding TypeLabel}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}"
+                                                       Margin="0,8,0,0"
+                                                       Visibility="{Binding ShowTypeLabel, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                     </Border>
                                 </Button>
@@ -313,6 +319,38 @@
                              conv:InputAssist.ErrorText="{Binding MaskManager.NameError}"
                              automation:AutomationProperties.Name="掩码名称"
                              Text="{Binding MaskManager.MaskName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" />
+
+                    <!-- 绑定方式 -->
+                    <TextBlock Text="绑定方式"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,20,0,8" />
+
+                    <Border Style="{StaticResource SegmentGroupStyle}"
+                            Padding="4"
+                            HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="MaskBindType"
+                                         Style="{StaticResource SegmentRadioButtonStyle}"
+                                         Height="28"
+                                         automation:AutomationProperties.Name="CPU 集"
+                                         ToolTip="SetProcessDefaultCpuSets：按 CPU 集下发，不受 64 个逻辑处理器与处理器组的限制"
+                                         IsChecked="{Binding MaskManager.IsCpuSetsType, Mode=TwoWay}">
+                                <TextBlock Text="CPU Sets" />
+                            </RadioButton>
+
+                            <RadioButton GroupName="MaskBindType"
+                                         Style="{StaticResource SegmentRadioButtonStyle}"
+                                         Height="28"
+                                         automation:AutomationProperties.Name="关联掩码"
+                                         ToolTip="SetProcessAffinityMask：传统亲和性，仅覆盖处理器组 0，最多 64 个逻辑处理器"
+                                         IsEnabled="{Binding MaskManager.AffinityMaskSupported}"
+                                         IsChecked="{Binding MaskManager.IsAffinityMaskType, Mode=TwoWay}">
+                                <TextBlock Text="Affinity Mask" />
+                            </RadioButton>
+                        </StackPanel>
+                    </Border>
 
                     <!-- 快捷勾选 -->
                     <TextBlock Text="快捷勾选"

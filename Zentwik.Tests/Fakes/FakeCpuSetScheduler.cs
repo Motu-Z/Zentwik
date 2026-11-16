@@ -67,6 +67,28 @@ namespace Zentwik.Tests.Fakes
             return new CpuSetScheduleResult { Success = true, AppliedCount = 1 };
         }
 
+        /// <summary>用关联掩码成功绑定的掩码，按调用顺序记录。</summary>
+        public List<ulong> AffinityMasks { get; } = new();
+
+        public bool AffinitySupported { get; set; } = true;
+
+        public int ClearAffinityCount { get; private set; }
+
+        public CpuSetScheduleResult ScheduleToAffinityMask(int processId, ulong mask)
+        {
+            AffinityMasks.Add(mask);
+            return new CpuSetScheduleResult { Success = true, AppliedCount = 1, CcdIndex = -1 };
+        }
+
+        public bool IsAffinityMaskSupported => AffinitySupported;
+
+        public bool ClearAffinityMask(int processId, out string? error)
+        {
+            ClearAffinityCount++;
+            error = null;
+            return true;
+        }
+
         public CpuSetScheduleResult ScheduleToCcd(int processId, int ccdIndex)
         {
             Ccds.Add(ccdIndex);

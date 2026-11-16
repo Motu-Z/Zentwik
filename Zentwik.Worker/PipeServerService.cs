@@ -1653,7 +1653,8 @@ namespace Zentwik.Worker
             CustomMask mask = new()
             {
                 Name = (request.Name ?? string.Empty).Trim(),
-                Mask = request.Mask
+                Mask = request.Mask,
+                Type = MaskTypeNames.Parse(request.Type)
             };
 
             if (id.Length > 0)
@@ -1701,7 +1702,11 @@ namespace Zentwik.Worker
 
         private MaskListPayload BuildMaskListPayload()
         {
-            MaskListPayload payload = new() { Limit = MaskStore.MaxCount };
+            MaskListPayload payload = new()
+            {
+                Limit = MaskStore.MaxCount,
+                AffinityMaskSupported = _cpuSets.IsAffinityMaskSupported
+            };
 
             foreach (CustomMask mask in _masks.Masks)
             {
@@ -1710,7 +1715,8 @@ namespace Zentwik.Worker
                     Id = mask.Id,
                     Name = mask.Name,
                     Mask = mask.Mask,
-                    CoreCount = mask.CoreCount
+                    CoreCount = mask.CoreCount,
+                    Type = MaskTypeNames.ToName(mask.Type)
                 });
             }
 

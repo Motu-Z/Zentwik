@@ -8,6 +8,48 @@ using Zentwik.Core.Serialization;
 
 namespace Zentwik.Core.Helpers
 {
+    /// <summary>掩码的下发方式。</summary>
+    /// <remarks>
+    /// 两者对进程的最终约束相同（都只会跑到掩码里的核上），差别在覆盖面与可撤销性：
+    /// <list type="bullet">
+    /// <item><see cref="CpuSets"/> 走 <c>SetProcessDefaultCpuSets</c>，按 CpuSetId 下发，
+    /// 不受 64 个逻辑处理器与处理器组的限制，撤销时清默认集合即可。</item>
+    /// <item><see cref="AffinityMask"/> 走 <c>SetProcessAffinityMask</c>，是传统亲和性，
+    /// 受 64 位掩码宽度与处理器组限制 —— 只有处理器组 0 能被正确表达。</item>
+    /// </list>
+    /// 值 0 必须保持为 <see cref="CpuSets"/>：masks.json 里老数据没有这个字段，
+    /// 反序列化后落到 0，行为与加字段之前完全一致。
+    /// </remarks>
+    public enum MaskType
+    {
+        /// <summary>CPU 集（默认）。</summary>
+        CpuSets = 0,
+
+        /// <summary>关联掩码。</summary>
+        AffinityMask = 1,
+    }
+
+    /// <summary>
+    /// <see cref="MaskType"/> 的线上写法。
+    ///
+    /// IPC 里用字符串而不是数字：协议两端可能不同版本，数字改一次含义就变，
+    /// 字符串至少能看出对不上。界面与 Worker 共用这一处，避免各拼一份。
+    /// </summary>
+    public static class MaskTypeNames
+    {
+        public const string CpuSets = "cpuSets";
+
+        public const string AffinityMask = "affinityMask";
+
+        public static MaskType Parse(string? value) =>
+            string.Equals(value, AffinityMask, StringComparison.OrdinalIgnoreCase)
+                ? MaskType.AffinityMask
+                : MaskType.CpuSets;
+
+        public static string ToName(MaskType type) =>
+            type == MaskType.AffinityMask ? AffinityMask : CpuSets;
+    }
+
     /// <summary>一条用户自定义的 CPU 核心掩码配置。</summary>
     public sealed class CustomMask
     {
@@ -19,6 +61,9 @@ namespace Zentwik.Core.Helpers
 
         /// <summary>逻辑核掩码，位 i = 1 表示包含逻辑处理器 i。</summary>
         public ulong Mask { get; set; }
+
+        /// <summary>下发方式。老数据没有这个字段，反序列化后为 <see cref="MaskType.CpuSets"/>。</summary>
+        public MaskType Type { get; set; }
 
         /// <summary>
         /// 是否由核心组自动铺出来的预置项。

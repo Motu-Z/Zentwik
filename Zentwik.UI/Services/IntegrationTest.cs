@@ -2279,6 +2279,25 @@ public static class IntegrationTest
               topologyList is not null && topologyList.ActualHeight > 100,
               topologyList is null ? "找不到拓扑列表" : $"{topologyList.ActualHeight:0} px");
 
+        // 绑定方式：两个单选项要真的铺出来，选中状态要落到 VM。
+        FrameworkElement? cpuSetsRadio = FindByAutomationName(maskPane, "CPU 集");
+        FrameworkElement? affinityRadio = FindByAutomationName(maskPane, "关联掩码");
+
+        Check("掩码：编辑器铺出两个绑定方式选项",
+              cpuSetsRadio is not null && affinityRadio is not null,
+              $"{cpuSetsRadio?.GetType().Name ?? "null"} / {affinityRadio?.GetType().Name ?? "null"}");
+
+        Check("掩码：默认绑定方式为 CPU 集",
+              mask.IsCpuSetsType && !mask.IsAffinityMaskType,
+              mask.SelectedMaskType.ToString());
+
+        mask.SelectedMaskType = Zentwik.Core.Helpers.MaskType.AffinityMask;
+        Check("掩码：切到关联掩码后单选项跟着走",
+              mask.IsAffinityMaskType && !mask.IsCpuSetsType,
+              mask.SelectedMaskType.ToString());
+
+        mask.SelectedMaskType = Zentwik.Core.Helpers.MaskType.CpuSets;
+
         // 方案浮层
         var profiles = PlanHub.Tuning;
         Check("方案：方案库非空", profiles.Items.Count >= 1, $"{profiles.Items.Count}");

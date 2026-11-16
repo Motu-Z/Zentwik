@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Windows;
+using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
 using Zentwik.Core.Services;
@@ -591,6 +592,7 @@ public sealed class WorkerBridge
         string? id,
         string name,
         ulong mask,
+        string? type = null,
         int timeoutMs = 5_000,
         CancellationToken cancellationToken = default)
     {
@@ -599,7 +601,8 @@ public sealed class WorkerBridge
             {
                 Id = string.IsNullOrWhiteSpace(id) ? string.Empty : id,
                 Name = name,
-                Mask = mask
+                Mask = mask,
+                Type = string.IsNullOrWhiteSpace(type) ? MaskTypeNames.CpuSets : type
             },
             IpcJsonContext.Default.SaveMaskPayload);
 

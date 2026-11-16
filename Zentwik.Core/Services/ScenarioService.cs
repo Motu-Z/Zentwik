@@ -529,7 +529,9 @@ namespace Zentwik.Core.Services
 
             foreach (int pid in FindProcessIds(outcome.TriggerArgument))
             {
-                CpuSetScheduleResult result = _scheduler.ScheduleToMask(pid, mask.Mask);
+                CpuSetScheduleResult result = mask.Type == MaskType.AffinityMask
+                    ? ScheduleWithAffinity(pid, mask)
+                    : _scheduler.ScheduleToMask(pid, mask.Mask);
 
                 if (result.Success)
                 {
@@ -543,6 +545,30 @@ namespace Zentwik.Core.Services
 
             if (applied > 0)
                 _log.Info($"场景调度：{outcome.TriggerArgument} → {mask.Name}（{applied} 个进程）");
+        }
+
+        /// <summary>
+        /// 按关联掩码下发。默认 CPU 集若还留着，进程实际可跑的核是两者交集，
+        /// 看上去就像「换了掩码没反应」，所以先清掉我们设过的那条限制。
+        /// 反向（CPU 集路径上清亲和性）不做：亲和性可能是用户自己在别处设的。
+        /// </summary>
+        private CpuSetScheduleResult ScheduleWithAffinity(int pid, CustomMask mask)
+        {
+            if (!_scheduler!.IsAffinityMaskSupported)
+            {
+                return new CpuSetScheduleResult
+                {
+                    Success = false,
+                    ErrorCode = -1,
+                    CcdIndex = -1,
+                    Error = "本机有多个处理器组，关联掩码只能覆盖处理器组 0，请改用 CPU 集掩码"
+                };
+            }
+
+            if (!_scheduler.ClearDefaultCpuSets(pid, out string? error) && !string.IsNullOrEmpty(error))
+                _log.Info($"场景调度：按关联掩码绑定前清除默认 CPU 集失败（PID {pid}）：{error}");
+
+            return _scheduler.ScheduleToAffinityMask(pid, mask.Mask);
         }
 
         /// <summary>电源动作：切到规则指定的电源方案。已经是那一套就不重复下发。</summary>

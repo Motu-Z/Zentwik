@@ -86,6 +86,13 @@ namespace Zentwik.Core.Services
         /// <summary>本工具**成功**绑过的 PID。解绑只碰这个集合里的进程。</summary>
         private readonly PidSet _boundPids = new();
 
+        /// <summary>
+        /// 其中用关联掩码绑过的那部分。
+        /// 解绑要按当初的方式各清各的：CPU 集用空集合清除，关联掩码要还原成系统掩码，
+        /// 混着清会动到用户自己设的亲和性。
+        /// </summary>
+        private readonly PidSet _affinityPids = new();
+
         /// <summary>上一轮的存活 PID 集合，用于判断「进程集合是否真的变了」。</summary>
         private HashSet<int>? _lastAlive;
 
@@ -113,6 +120,7 @@ namespace Zentwik.Core.Services
 
                 _handledPids.Clear();
                 _boundPids.Clear();
+                _affinityPids.Clear();
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
 
@@ -188,6 +196,7 @@ namespace Zentwik.Core.Services
                 _running = false;
                 _handledPids.Clear();
                 _boundPids.Clear();
+                _affinityPids.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -271,6 +280,7 @@ namespace Zentwik.Core.Services
             // 按存活名单裁剪，防止 PID 复用后被误判为已处理。
             _handledPids.PruneTo(alive);
             _boundPids.PruneTo(alive);
+            _affinityPids.PruneTo(alive);
 
             _lastAlive = alive;
             RaiseProcessSetChanged();
@@ -414,7 +424,7 @@ namespace Zentwik.Core.Services
 
             foreach (int pid in pids)
             {
-                if (_cpuSets.ClearDefaultCpuSets(pid, out string? error))
+                if (Unbind(pid, out string? error))
                 {
                     unbound++;
                 }
@@ -432,13 +442,79 @@ namespace Zentwik.Core.Services
         /// <summary>解绑单个 PID。返回是否真的清掉了 CPU Set。</summary>
         public bool ClearSchedule(int pid)
         {
-            bool ok = _cpuSets.ClearDefaultCpuSets(pid, out string? error);
+            bool ok = Unbind(pid, out string? error);
 
             if (!ok && !string.IsNullOrEmpty(error))
                 _log.Info($"解绑 PID {pid} 跳过：{error}");
 
             _boundPids.Remove(pid);
             return ok;
+        }
+
+        /// <summary>按当初的绑定方式解绑，两类互不牵连。</summary>
+        private bool Unbind(int pid, out string? error)
+        {
+            error = null;
+
+            if (_affinityPids.Contains(pid))
+            {
+                _affinityPids.Remove(pid);
+
+                if (_cpuSets.ClearAffinityMask(pid, out error))
+                    return true;
+
+                // 关联掩码没清掉也别放弃另一侧：这个 PID 可能先后被两种方式绑过。
+                bool ok = _cpuSets.ClearDefaultCpuSets(pid, out string? other);
+                error ??= other;
+                return ok;
+            }
+
+            return _cpuSets.ClearDefaultCpuSets(pid, out error);
+        }
+
+        /// <summary>
+        /// 按 CPU 集绑定。同一 PID 之前若用关联掩码绑过，先把亲和性放回系统值 ——
+        /// 两者是求交集的关系，留着旧掩码会让新的核集合看上去没生效。
+        /// </summary>
+        private CpuSetScheduleResult BindCpuSets(int pid, ulong mask)
+        {
+            if (_affinityPids.Contains(pid))
+            {
+                _affinityPids.Remove(pid);
+
+                if (!_cpuSets.ClearAffinityMask(pid, out string? error) && !string.IsNullOrEmpty(error))
+                    _log.Info($"改用 CPU 集前清除关联掩码失败（PID {pid}）：{error}");
+            }
+
+            return _cpuSets.ScheduleToMask(pid, mask);
+        }
+
+        /// <summary>
+        /// 按关联掩码绑定。默认 CPU 集还留着时，进程实际可跑的核是两者交集，
+        /// 所以先清掉旧的那条限制，再写亲和性。
+        /// </summary>
+        private CpuSetScheduleResult BindAffinity(int pid, ulong mask)
+        {
+            if (!_cpuSets.IsAffinityMaskSupported)
+            {
+                return new CpuSetScheduleResult
+                {
+                    Success = false,
+                    ErrorCode = -1,
+                    CcdIndex = -1,
+                    Error = "本机有多个处理器组，关联掩码只能覆盖处理器组 0，请改用 CPU 集掩码"
+                };
+            }
+
+            if (!_cpuSets.ClearDefaultCpuSets(pid, out string? error) && !string.IsNullOrEmpty(error))
+                _log.Info($"按关联掩码绑定前清除默认 CPU 集失败（PID {pid}）：{error}");
+
+            CpuSetScheduleResult result = _cpuSets.ScheduleToAffinityMask(pid, mask);
+
+            if (result.Success)
+                _affinityPids.TryAdd(pid);
+
+            return result;
         }
 
         /// <summary>处理一个进程：查规则 → 命中且未处理则下发 CPU Set。</summary>
@@ -459,14 +535,22 @@ namespace Zentwik.Core.Services
             if (!_handledPids.TryAdd(pid))
                 return;
 
+            // 掩码内容与下发方式都取自掩码本身：规则只存 Id，
+            // 用户改掩码的核或改方式之后，下一次命中就该按新的一组来。
+            CustomMask? found = rule.Target == SchedulingTarget.TargetMask
+                ? _masks.FindById(rule.MaskId)
+                : null;
+
             ulong mask = rule.Target == SchedulingTarget.TargetMask
-                ? (_masks.FindById(rule.MaskId)?.Mask ?? rule.TargetMask)
+                ? (found?.Mask ?? rule.TargetMask)
                 : 0;
 
             // 旧版 CCD 规则只在迁移还没跑过时走到这里
             CpuSetScheduleResult result = rule.IsLegacyCcd
                 ? _cpuSets.ScheduleToCcd(pid, rule.LegacyCcdIndex)
-                : _cpuSets.ScheduleToMask(pid, mask);
+                : found?.Type == MaskType.AffinityMask
+                    ? BindAffinity(pid, mask)
+                    : BindCpuSets(pid, mask);
 
             string label = rule.Label;
 

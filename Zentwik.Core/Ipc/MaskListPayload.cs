@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Zentwik.Core.Helpers;
 
 namespace Zentwik.Core.Ipc
 {
@@ -28,6 +29,10 @@ namespace Zentwik.Core.Ipc
         /// <summary>置位的核数。</summary>
         [JsonPropertyName("coreCount")]
         public int CoreCount { get; set; }
+
+        /// <summary>下发方式：<c>cpuSets</c> 或 <c>affinityMask</c>。老版本 Worker 不带这个字段。</summary>
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = MaskTypeNames.CpuSets;
     }
 
     /// <summary>
@@ -46,5 +51,12 @@ namespace Zentwik.Core.Ipc
         /// <summary>允许的最大套数。</summary>
         [JsonPropertyName("limit")]
         public int Limit { get; set; }
+
+        /// <summary>
+        /// 关联掩码在本机是否可用。多处理器组时为 false —— 关联掩码只有 64 位，
+        /// 只能覆盖处理器组 0，那种机器上这一项要置灰而不是让用户选完才发现绑不干净。
+        /// </summary>
+        [JsonPropertyName("affinityMaskSupported")]
+        public bool AffinityMaskSupported { get; set; }
     }
 }
