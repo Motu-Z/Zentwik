@@ -162,6 +162,12 @@ namespace Zentwik.Core.Services
         private static partial bool GetProcessAffinityMask(
             IntPtr hProcess, out nuint lpProcessAffinityMask, out nuint lpSystemAffinityMask);
 
+        /// <summary>读进程当前的默认 CPU Set 列表，用于写入后回读校验。</summary>
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool GetProcessDefaultCpuSets(
+            IntPtr process, IntPtr cpuSetIds, uint cpuSetIdCount, out uint requiredIdCount);
+
         /// <summary>系统活动处理器组数量。> 1 时关联掩码无法表达全部逻辑处理器。</summary>
         [LibraryImport("kernel32.dll")]
         private static partial ushort GetActiveProcessorGroupCount();
@@ -181,6 +187,14 @@ namespace Zentwik.Core.Services
         /// Win10 1607 及更早版本没有这个位，届时回退到 PROCESS_SET_INFORMATION。
         /// </summary>
         private const uint PROCESS_SET_LIMITED_INFORMATION = 0x2000;
+
+        /// <summary>读回校验用。只查不写，避免为了验证去要写权限。</summary>
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        private const int ErrorInsufficientBuffer = 122;
+
+        /// <summary>写入成功但回读不一致。与 Win32 错误码分开，日志节流按它分桶。</summary>
+        private const int ErrorReadbackMismatch = -2;
 
         // ---------------- 拓扑缓存 ----------------
 
@@ -387,6 +401,9 @@ namespace Zentwik.Core.Services
                     return Fail($"SetProcessAffinityMask 失败（错误 {err}）", -1, err);
                 }
 
+                if (!VerifyAffinityMask(processId, effective, out string? mismatch))
+                    return Fail(mismatch ?? "写入后回读不一致", -1, ErrorReadbackMismatch);
+
                 return new CpuSetScheduleResult
                 {
                     Success = true,
@@ -508,11 +525,119 @@ namespace Zentwik.Core.Services
                     return Fail($"SetProcessDefaultCpuSets 失败（错误 {err}）", ccdIndex, err);
                 }
 
+                if (!VerifyCpuSets(processId, ids, out string? mismatch))
+                    return Fail(mismatch ?? "写入后回读不一致", ccdIndex, ErrorReadbackMismatch);
+
                 return Ok(ids, ccdIndex);
             }
             catch (Exception ex)
             {
                 return Fail(ex.Message, ccdIndex);
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        /// <summary>
+        /// 写入后回读：系统可能拒绝写入，也可能写进去后被进程改回去。
+        /// 读不到（权限不足、进程已退出）不算写失败，只有读到了且不一致才判失败。
+        /// </summary>
+        private bool VerifyCpuSets(int processId, uint[] expected, out string? detail)
+        {
+            detail = null;
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+                return true;
+
+            try
+            {
+                if (!GetProcessDefaultCpuSets(handle, IntPtr.Zero, 0, out uint required) &&
+                    Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
+                {
+                    return true;
+                }
+
+                if (required == 0)
+                {
+                    detail = "写入后回读不到任何 CPU Set";
+                    return false;
+                }
+
+                IntPtr buffer = Marshal.AllocHGlobal((int)required * sizeof(uint));
+
+                try
+                {
+                    if (!GetProcessDefaultCpuSets(handle, buffer, required, out uint written))
+                        return true;
+
+                    int[] raw = new int[written];
+                    Marshal.Copy(buffer, raw, 0, (int)written);
+
+                    if (CpuSetsMatch(expected, raw))
+                        return true;
+
+                    detail = $"写入后回读不一致（期望 {expected.Length} 个 CPU Set，实际 {written} 个）";
+                    return false;
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+            catch
+            {
+                return true;
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        /// <summary>两组 CPU Set 是否相同，不计顺序。</summary>
+        internal static bool CpuSetsMatch(uint[] expected, int[] actual)
+        {
+            if (expected.Length != actual.Length)
+                return false;
+
+            uint[] left = expected.OrderBy(v => v).ToArray();
+            int[] right = actual.OrderBy(v => v).ToArray();
+
+            for (int i = 0; i < left.Length; i++)
+            {
+                if (left[i] != (uint)right[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>关联掩码写入后的回读校验。</summary>
+        private bool VerifyAffinityMask(int processId, ulong expected, out string? detail)
+        {
+            detail = null;
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+                return true;
+
+            try
+            {
+                if (!GetProcessAffinityMask(handle, out nuint actual, out _))
+                    return true;
+
+                if ((ulong)actual == expected)
+                    return true;
+
+                detail = $"写入后回读不一致（期望 0x{expected:X}，实际 0x{(ulong)actual:X}）";
+                return false;
+            }
+            catch
+            {
+                return true;
             }
             finally
             {

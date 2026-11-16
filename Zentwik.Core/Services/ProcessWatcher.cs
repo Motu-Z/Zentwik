@@ -78,7 +78,7 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
-        /// 已尝试绑定的 PID（成功或失败都记，避免重复尝试刷日志）。
+        /// 正在处理或已成功绑定的 PID。失败会移除，交给重试账本排队。
         /// 用带锁容器：扫描线程与 UI 线程（ResetCache）都会碰它。
         /// </summary>
         private readonly PidSet _handledPids = new();
@@ -92,6 +92,12 @@ namespace Zentwik.Core.Services
         /// 混着清会动到用户自己设的亲和性。
         /// </summary>
         private readonly PidSet _affinityPids = new();
+
+        /// <summary>绑定失败的重试计划。失败的 PID 不占「已处理」位，由这里排期。</summary>
+        private readonly ScheduleRetryLedger _retry = new();
+
+        /// <summary>串行化下发：启动补扫、按新规则重扫、每秒扫描共用，避免同一 PID 交叉清另一侧。</summary>
+        private readonly object _applyGate = new();
 
         /// <summary>上一轮的存活 PID 集合，用于判断「进程集合是否真的变了」。</summary>
         private HashSet<int>? _lastAlive;
@@ -121,6 +127,7 @@ namespace Zentwik.Core.Services
                 _handledPids.Clear();
                 _boundPids.Clear();
                 _affinityPids.Clear();
+                _retry.Clear();
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
 
@@ -197,6 +204,7 @@ namespace Zentwik.Core.Services
                 _handledPids.Clear();
                 _boundPids.Clear();
                 _affinityPids.Clear();
+                _retry.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -247,43 +255,64 @@ namespace Zentwik.Core.Services
             foreach (ProcessIdentity item in frame)
                 alive.Add(item.Pid);
 
-            // 兜底：每分钟全量重扫一次，覆盖 PID 复用（同 PID 换了进程）这类漏网情况。
-            if (++_roundsSinceFullScan >= FullScanEveryRounds)
+            bool changed;
+
+            lock (_applyGate)
             {
-                _roundsSinceFullScan = 0;
-                _lastAlive = null;
-            }
-
-            HashSet<int>? previous = _lastAlive;
-
-            if (previous is not null && previous.SetEquals(alive))
-            {
-                return;
-            }
-
-            foreach (ProcessIdentity item in frame)
-            {
-                // 首帧全量；之后只处理上一帧没有的 PID。
-                if (previous is not null && previous.Contains(item.Pid))
-                    continue;
-
-                try
+                // 兜底：每分钟全量重扫一次，覆盖 PID 复用（同 PID 换了进程）这类漏网情况。
+                if (++_roundsSinceFullScan >= FullScanEveryRounds)
                 {
-                    HandleProcess(item.Pid, item.Name);
+                    _roundsSinceFullScan = 0;
+                    _lastAlive = null;
                 }
-                catch (Exception ex)
+
+                HashSet<int>? previous = _lastAlive;
+                changed = previous is null || !previous.SetEquals(alive);
+
+                if (changed)
                 {
-                    _log.Warn($"绑定 {item.Name}（PID {item.Pid}）时异常：{ex.Message}");
+                    foreach (ProcessIdentity item in frame)
+                    {
+                        // 首帧全量；之后只处理上一帧没有的 PID。
+                        if (previous is not null && previous.Contains(item.Pid))
+                            continue;
+
+                        TryHandle(item.Pid, item.Name);
+                    }
                 }
+
+                RetryDue(alive);
+
+                // 按存活名单裁剪，防止 PID 复用后被误判为已处理。
+                _handledPids.PruneTo(alive);
+                _boundPids.PruneTo(alive);
+                _affinityPids.PruneTo(alive);
+                _retry.PruneTo(alive);
+
+                _lastAlive = alive;
             }
 
-            // 按存活名单裁剪，防止 PID 复用后被误判为已处理。
-            _handledPids.PruneTo(alive);
-            _boundPids.PruneTo(alive);
-            _affinityPids.PruneTo(alive);
+            if (changed)
+                RaiseProcessSetChanged();
+        }
 
-            _lastAlive = alive;
-            RaiseProcessSetChanged();
+        /// <summary>到期且仍存活的失败项再试一次。</summary>
+        private void RetryDue(HashSet<int> alive)
+        {
+            foreach ((int pid, string name) in _retry.Due(alive))
+                TryHandle(pid, name);
+        }
+
+        private void TryHandle(int pid, string name)
+        {
+            try
+            {
+                HandleProcess(pid, name);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"绑定 {name}（PID {pid}）时异常：{ex.Message}");
+            }
         }
 
         /// <summary>启动补扫：把已经在跑的程序过一遍，事件式监听盖不到它们。</summary>
@@ -295,16 +324,10 @@ namespace Zentwik.Core.Services
             {
                 List<ProcessIdentity> frame = NativeProcessList.Capture(new List<ProcessIdentity>(512));
 
-                foreach (ProcessIdentity item in frame)
+                lock (_applyGate)
                 {
-                    try
-                    {
-                        HandleProcess(item.Pid, item.Name);
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.Warn($"启动补扫单个进程失败：{ex.Message}");
-                    }
+                    foreach (ProcessIdentity item in frame)
+                        TryHandle(item.Pid, item.Name);
                 }
 
                 // 不设 _lastAlive：让第一轮 ScanOnce 走全量路径并广播一次，
@@ -398,11 +421,15 @@ namespace Zentwik.Core.Services
             lock (_lock)
             {
                 _handledPids.Clear();
+                _retry.Clear();
 
                 // _boundPids 是「已绑、未解绑」的账本，重扫不解绑，不能清 ——
                 // 清了之后 ClearAllSchedules 会静默什么都不做。
+            }
 
-                // 下一轮走「全量重扫」路径，正在运行的进程才会被重新绑到新规则上。
+            // 下一轮走「全量重扫」路径，正在运行的进程才会被重新绑到新规则上。
+            lock (_applyGate)
+            {
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
             }
@@ -563,6 +590,7 @@ namespace Zentwik.Core.Services
             {
                 // 成功过就说明进程可达，把窗口清掉：之后再失败应当立刻看到。
                 _throttle.Reset(throttleKey);
+                _retry.Remove(pid);
 
                 _boundPids.TryAdd(pid);
 
@@ -573,10 +601,23 @@ namespace Zentwik.Core.Services
                     : $"{result.AppliedCount} 个 CPU Sets";
                 _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{scope}{parkingSuffix}");
             }
-            else if (_throttle.TryAcquire(throttleKey, out int suppressed))
+            else
             {
-                _log.Warn(
-                    $"绑定失败 {name}（PID {pid}）→ {label}：{result.Error}{LogThrottle.SuppressedSuffix(suppressed)}");
+                // 失败不占位：交给重试账本排队，否则这个 PID 到退出都不会再试。
+                _handledPids.Remove(pid);
+
+                int attempts = _retry.Bump(pid, name);
+
+                if (attempts == _retry.MaxAttempts + 1)
+                {
+                    _log.Warn(
+                        $"绑定失败 {name}（PID {pid}）→ {label}：{result.Error}（已重试 {_retry.MaxAttempts} 次，暂不重试）");
+                }
+                else if (attempts <= _retry.MaxAttempts && _throttle.TryAcquire(throttleKey, out int suppressed))
+                {
+                    _log.Warn(
+                        $"绑定失败 {name}（PID {pid}）→ {label}：{result.Error}{LogThrottle.SuppressedSuffix(suppressed)}");
+                }
             }
 
             // 优先级跟规则一起下发：否则「cs2.exe → High」只对当前那批实例生效，

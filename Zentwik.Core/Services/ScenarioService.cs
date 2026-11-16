@@ -518,7 +518,13 @@ namespace Zentwik.Core.Services
                 return;
             }
 
-            string key = outcome.MaskId + "|" + outcome.TriggerArgument;
+            List<int> pids = FindProcessIds(outcome.TriggerArgument);
+
+            // 没有目标进程就不记键：记了会让进程真正启动时被这个空集合的口径挡住。
+            if (pids.Count == 0)
+                return;
+
+            string key = SchedulingKey(outcome.MaskId, outcome.TriggerArgument, pids);
 
             if (string.Equals(Volatile.Read(ref _lastMaskKey), key, StringComparison.Ordinal))
                 return;
@@ -527,7 +533,7 @@ namespace Zentwik.Core.Services
 
             int applied = 0;
 
-            foreach (int pid in FindProcessIds(outcome.TriggerArgument))
+            foreach (int pid in pids)
             {
                 CpuSetScheduleResult result = mask.Type == MaskType.AffinityMask
                     ? ScheduleWithAffinity(pid, mask)
@@ -545,6 +551,19 @@ namespace Zentwik.Core.Services
 
             if (applied > 0)
                 _log.Info($"场景调度：{outcome.TriggerArgument} → {mask.Name}（{applied} 个进程）");
+        }
+
+        /// <summary>
+        /// 场景调度的去重键：掩码 + 触发参数 + 当前进程集合。
+        /// 只比前两项会让同名进程重启后被跳过 —— 新实例的 PID 不在旧键里。
+        /// </summary>
+        internal static string SchedulingKey(string maskId, string argument, IReadOnlyList<int> pids)
+        {
+            if (pids.Count == 0)
+                return $"{maskId}|{argument}";
+
+            int[] sorted = pids.OrderBy(p => p).ToArray();
+            return $"{maskId}|{argument}|{string.Join(',', sorted)}";
         }
 
         /// <summary>
