@@ -159,7 +159,8 @@ public partial class TuningViewModel : ObservableObject
         LoadProfileValues();
 
         // 面板底部按钮脏值时改成「保存至」：只写 plans.json，不碰 SMU。
-        PlanHub.Tuning.CanSavePending = () => !IsBusy && IsDirty;
+        // 判据不能带 IsDirty：回读后页面是硬件真值、方案是旧值，此时按钮该能保存。
+        PlanHub.Tuning.CanSavePending = () => !IsBusy;
         PlanHub.Tuning.SavePending = () => _ = SaveToPlanAsync();
 
         // 顶栏切方案 = 本页换一组值。用弱事件订阅：页面实例被外壳缓存着，
