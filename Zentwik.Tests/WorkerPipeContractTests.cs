@@ -13,7 +13,7 @@ namespace Zentwik.Tests
             // 12：save-mask / query-masks 增加掩码下发方式（type）。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
             // 否则「顺手把版本号往上加」这种改动没人会注意到。
-            Assert.Equal(13, WorkerPipeContract.ProtocolVersion);
+            Assert.Equal(14, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }

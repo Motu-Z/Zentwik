@@ -376,13 +376,24 @@ public sealed class ScenariosViewModel : ViewModelBase
 
         WorkerBridge bridge = WorkerBridge.Instance;
 
-        await FillActionOptionsAsync(bridge, PlanKind.Tuning, EditorProfiles).ConfigureAwait(true);
+        if (WorkerStatus.Instance.IsTuningSupported)
+        {
+            await FillActionOptionsAsync(bridge, PlanKind.Tuning, EditorProfiles).ConfigureAwait(true);
+        }
+        else
+        {
+            EditorProfiles.Clear();
+            EditorProfiles.Add(new ScenarioActionOption(string.Empty, KeepActionLabel));
+        }
+
         await FillActionOptionsAsync(bridge, PlanKind.Scheduling, EditorMasks).ConfigureAwait(true);
         await FillActionOptionsAsync(bridge, PlanKind.Power, EditorPowerSchemes).ConfigureAwait(true);
 
         // 方案被删后不能悄悄把动作改成「保持原样」：保留引用并在下拉里标出来，
         // 由用户自己决定换成什么，保存时再拦一次。
-        EnsureStaleOption(EditorProfiles, EditorProfileId, "（调校方案已删除）");
+        if (WorkerStatus.Instance.IsTuningSupported)
+            EnsureStaleOption(EditorProfiles, EditorProfileId, "（调校方案已删除）");
+
         EnsureStaleOption(EditorMasks, EditorMaskId, "（调度方案已删除）");
         EnsureStaleOption(EditorPowerSchemes, EditorPowerSchemeId, "（电源方案已删除）");
 

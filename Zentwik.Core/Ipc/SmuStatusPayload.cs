@@ -23,5 +23,9 @@ namespace Zentwik.Core.Ipc
         /// <summary><c>ISmuReader.LastError</c> 原文；可用时为 null。</summary>
         [JsonPropertyName("error")]
         public string? Error { get; set; }
+
+        /// <summary>处理器厂商：<c>amd</c> / <c>intel</c> / <c>unknown</c>。</summary>
+        [JsonPropertyName("vendor")]
+        public string? Vendor { get; set; }
     }
 }

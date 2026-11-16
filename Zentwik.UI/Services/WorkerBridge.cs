@@ -176,6 +176,7 @@ public sealed class WorkerBridge
         IpcOutcome<SmuStatusPayload> smu = await QuerySmuStatusAsync().ConfigureAwait(true);
 
         status.IsElevated = smu is { TransportFailed: false, Success: true, Value.Available: true };
+        status.Vendor = smu is { TransportFailed: false, Success: true } ? smu.Value?.Vendor : null;
     }
 
     // 调校页的三条命令（强类型出口）

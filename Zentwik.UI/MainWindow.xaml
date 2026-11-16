@@ -7,6 +7,7 @@
         xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
         xmlns:views="clr-namespace:Zentwik.UI.Views"
         xmlns:svc="clr-namespace:Zentwik.UI.Services"
+        xmlns:conv="clr-namespace:Zentwik.UI.Converters"
         xmlns:lm="clr-namespace:Zentwik.UI"
         Title="Zentwik"
         Width="1240" Height="820"
@@ -30,6 +31,10 @@
                             CornerRadius="0"
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
 
     <Grid>
         <Grid x:Name="BlurTarget" ClipToBounds="True">
@@ -206,6 +211,7 @@
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True">
                         <RadioButton x:Name="NavTuning" Style="{StaticResource NavRailItemStyle}"
                                      GroupName="Nav" Tag="Tuning"
+                                     Visibility="{Binding Source={x:Static vm:WorkerStatus.Instance}, Path=IsTuningSupported, Converter={StaticResource BoolToVis}}"
                                      nav:NavRail.Label="调校" ToolTip="调校" Checked="OnNavChecked">
                             <Path Style="{StaticResource IconGlyphStyle}" Width="20" Height="20"
                                   Data="M3 21 V14 M3 10 V3 M11 21 V12 M11 8 V3 M19 21 V16 M19 12 V3 M1 14 H5 M9 8 H13 M17 16 H21"

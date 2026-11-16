@@ -76,6 +76,9 @@ internal sealed class PlanWatcher
 
             foreach (PlanKind kind in Kinds)
             {
+                if (kind == PlanKind.Tuning && !ViewModels.WorkerStatus.Instance.IsTuningSupported)
+                    continue;
+
                 string? id = outcome.Value.For(kind);
                 bool known = _seen.TryGetValue(kind, out string? previous);
                 _seen[kind] = id;

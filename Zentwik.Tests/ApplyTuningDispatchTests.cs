@@ -126,6 +126,8 @@ namespace Zentwik.Tests
             Assert.True(response.Success);
             Assert.Equal(WorkerPipeContract.ProtocolVersion, response.Version);
             Assert.Contains("\"available\":true", response.Payload!, StringComparison.Ordinal);
+            // 厂商随状态一起下发：界面据此决定调校页出不出现。
+            Assert.Contains("\"vendor\":", response.Payload!, StringComparison.Ordinal);
         }
 
         [Fact]

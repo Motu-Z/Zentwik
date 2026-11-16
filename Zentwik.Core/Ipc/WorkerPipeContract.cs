@@ -24,10 +24,11 @@ namespace Zentwik.Core.Ipc
         /// 5 掩码与场景命令（删 apply-process-priority）｜ 6 clear-logs ｜ 7 场景三动作 ｜
         /// 8 ProcessExited 触发源 ｜ 9 方案拆三类 ｜ 10 界面设置读写与 factory-reset ｜
         /// 11 query-active-plans ｜ 12 掩码下发方式（save-mask / query-masks 的 type）｜
-        /// 13 最小处理器状态与系统散热方式（apply-power-policy / query-power-policy 新字段）。
+        /// 13 最小处理器状态与系统散热方式（apply-power-policy / query-power-policy 新字段）｜
+        /// 14 query-smu-status 下发处理器厂商。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 13;
+        public const int ProtocolVersion = 14;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。

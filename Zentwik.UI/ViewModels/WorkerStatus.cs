@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Zentwik.Core.Services;
 
 namespace Zentwik.UI.ViewModels;
 
@@ -57,6 +58,24 @@ public sealed class WorkerStatus : ViewModelBase
             }
         }
     }
+
+    private string? _vendor;
+
+    /// <summary>Worker 报上来的处理器厂商；老版本不带该字段时为 null。</summary>
+    public string? Vendor
+    {
+        get => _vendor;
+        set
+        {
+            if (SetProperty(ref _vendor, value))
+            {
+                OnPropertyChanged(nameof(IsTuningSupported));
+            }
+        }
+    }
+
+    /// <summary>调校页只在 AMD 上有意义；厂商未知时照常显示，别把功能藏没了。</summary>
+    public bool IsTuningSupported => !string.Equals(Vendor, CpuVendorNames.Intel, StringComparison.OrdinalIgnoreCase);
 
     public string StatusText => IsConnected ? "Worker 已连接" : "Worker 未连接";
 

@@ -2460,7 +2460,8 @@ namespace Zentwik.Worker
             SmuStatusPayload status = new()
             {
                 Available = smu.IsAvailable,
-                Error = smu.IsAvailable ? null : smu.LastError
+                Error = smu.IsAvailable ? null : smu.LastError,
+                Vendor = CpuVendorNames.ToName(CpuVendorProbe.Detect())
             };
 
             return new PipeResponse

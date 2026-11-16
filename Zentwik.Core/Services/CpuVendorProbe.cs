@@ -56,4 +56,26 @@ namespace Zentwik.Core.Services
                 _ => $"分组{index}"
             };
     }
+
+    /// <summary>厂商在协议里的写法。线格式用小写字符串，两端共用一份换算。</summary>
+    public static class CpuVendorNames
+    {
+        public const string Amd = "amd";
+        public const string Intel = "intel";
+        public const string Unknown = "unknown";
+
+        public static string ToName(CpuVendor vendor) => vendor switch
+        {
+            CpuVendor.Amd => Amd,
+            CpuVendor.Intel => Intel,
+            _ => Unknown
+        };
+
+        public static CpuVendor Parse(string? name) => name?.Trim().ToLowerInvariant() switch
+        {
+            Amd => CpuVendor.Amd,
+            Intel => CpuVendor.Intel,
+            _ => CpuVendor.Unknown
+        };
+    }
 }

@@ -209,7 +209,7 @@
                                    Foreground="{DynamicResource AccentBrush}"
                                    HorizontalAlignment="Center" />
 
-                        <TextBlock Text="轻量级硬件调校与核心调度工具，涵盖调压调频、核心绑定与电源方案。"
+                        <TextBlock Text="轻量级硬件调校与核心调度工具。"
                                    MaxWidth="260"
                                    Margin="0,0,0,32"
                                    FontSize="13"
@@ -267,7 +267,7 @@
                                    FontSize="11"
                                    TextAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Text="Licensed under GPL-3.0 · © 2026 Zentwik Project"
+                        <TextBlock Text="Licensed under Apache-2.0 · © 2026 Zentwik Project"
                                    Margin="0,10,0,0"
                                    FontFamily="{DynamicResource AppMonoFontFamily}"
                                    FontSize="11"

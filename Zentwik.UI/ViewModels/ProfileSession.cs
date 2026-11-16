@@ -950,10 +950,13 @@ public static class PlanHub
         if (SuppressWorkerInit)
             return;
 
-        await Task.WhenAll(
-            Tuning.InitializeAsync(),
-            Scheduling.InitializeAsync(),
-            Power.InitializeAsync()).ConfigureAwait(true);
+        List<Task> work = [Scheduling.InitializeAsync(), Power.InitializeAsync()];
+
+        // 非 AMD 上不拉调校方案：方案条与动作候选里都不该出现用不了的东西。
+        if (WorkerStatus.Instance.IsTuningSupported)
+            work.Add(Tuning.InitializeAsync());
+
+        await Task.WhenAll(work).ConfigureAwait(true);
     }
 }
 
