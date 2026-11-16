@@ -746,7 +746,9 @@ public partial class TuningViewModel : ObservableObject
             differs = fMaxDiffers || coresDiffer;
         }
 
-        PlanHub.Tuning.SetUnsaved(IsDirty || differs);
+        // 方案条只看「与方案是否一致」：改回方案值就不该再挂未保存。
+        // 没有方案时无处可存，退回脏标记。
+        PlanHub.Tuning.SetUnsaved(item is null ? IsDirty : differs);
     }
 
     partial void OnSmuAvailableChanged(bool value) => ApplyCommand.NotifyCanExecuteChanged();

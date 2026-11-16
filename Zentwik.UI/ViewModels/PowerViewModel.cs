@@ -340,7 +340,8 @@ public partial class PowerViewModel : ObservableObject
         ApplyCommand.NotifyCanExecuteChanged();
 
         // 电源页的改动同样是「改了没下发」，方案面板据此贴未保存并拦住切换。
-        PlanHub.Power.SetUnsaved(value || DiffersFromPlan());
+        // 方案条只看「与方案是否一致」；IsDirty 与方案无关，混进来会残留「未保存」。
+        PlanHub.Power.SetUnsaved(DiffersFromPlan());
     }
 
     [ObservableProperty]
@@ -1436,7 +1437,7 @@ public partial class PowerViewModel : ObservableObject
 
         // 每次值变都同步方案条：保存到方案后它要能重新亮起「未保存」。
         // 回读会把 IsDirty 归零，但界面值可能仍与方案不同，方案条要给「保存至」。
-        PlanHub.Power.SetUnsaved(IsDirty || DiffersFromPlan());
+        PlanHub.Power.SetUnsaved(DiffersFromPlan());
     }
 
     private void NotifyAllValues()
