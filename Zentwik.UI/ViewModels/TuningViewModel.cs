@@ -114,8 +114,8 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>回读 / 取消是否可点：只受「正在通信」限制</summary>
     public bool CanOperate => !IsBusy;
 
-    /// <summary>应用参数是否可点：SMU 可写、且当前没有正在跑的通信。没改动也能点，等于重下发一次。</summary>
-    public bool CanSave => !IsBusy && SmuAvailable;
+    /// <summary>应用参数是否可点：有改动、SMU 可写、且当前没有正在跑的通信。</summary>
+    public bool CanSave => !IsBusy && SmuAvailable && IsDirty;
 
     /// <summary>界面挂载期间冻结脏标记</summary>
     public bool FreezeDirty { get; set; }
