@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Windows.Input;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
 using Zentwik.UI.Services;
@@ -261,7 +262,8 @@ public class ProcessViewModel : ViewModelBase
         ApplyPlanCommand = new RelayCommand(_ => Fire(ApplyRulesAsync), _ => CanApplyRules);
 
         // 规则改完只落在 schedules.json，方案快照不动：底部按钮据此切「保存至」。
-        PlanHub.Scheduling.CanSavePending = () => UseWorker;
+        // 提交中不可再点，与调校、电源两页的「保存至」同一条判据。
+        PlanHub.Scheduling.CanSavePending = () => UseWorker && !IsBusy;
         PlanHub.Scheduling.SavePending = () => Fire(() => SaveRulesToPlanAsync());
 
         // 面板应用调度方案会整块换掉规则，本页的规则表与进程行都得重拉。
@@ -1452,32 +1454,61 @@ public class ProcessViewModel : ViewModelBase
         // 按 Current 应用会打到别的方案上。
         PlanItem? target = session.Current;
 
-        // 与调校、电源两页同一顺序：存不上方案就不下发，改动绝不丢。
-        if (newPlanName is not null || session.HasUnsavedChanges)
+        IsBusy = true;
+
+        try
         {
-            target = await SaveRulesToPlanAsync(newPlanName).ConfigureAwait(true);
+            // 与调校、电源两页同一顺序：存不上方案就不下发，改动绝不丢。
+            if (newPlanName is not null || session.HasUnsavedChanges)
+            {
+                target = await SaveRulesToPlanAsync(newPlanName).ConfigureAwait(true);
+
+                if (target is null)
+                    return;
+            }
 
             if (target is null)
                 return;
+
+            await session.ApplyAsync(target).ConfigureAwait(true);
         }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
-        if (target is null)
-            return;
+    /// <summary>顶栏按钮的文案与可点状态都取自这一类方案的会话。</summary>
+    public PlanScope Plans => PlanHub.Scheduling;
 
-        await session.ApplyAsync(target).ConfigureAwait(true);
+    private bool _isBusy;
+
+    /// <summary>正在保存方案或下发。与调校、电源两页一致：期间按钮不再可点，避免重复提交。</summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                OnPropertyChanged(nameof(CanApplyRules));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
     }
 
     /// <summary>
     /// 按钮可点条件：有没存进方案的规则改动，或者一份方案都没有（此时点下去先新建）。
     /// 与调校、电源两页同一条规则 —— 只按「有没有东西要提交」判，不按「有没有台账」判。
+    ///
+    /// 没有方案时不看「未保存」：调度规则改完即落盘并生效，方案只是存档，
+    /// 没有方案就没有可比的基准。这一点与调校、电源两页不同，不做统一。
     /// </summary>
-    /// <summary>顶栏按钮的文案与可点状态都取自这一类方案的会话。</summary>
-    public PlanScope Plans => PlanHub.Scheduling;
-
     public bool CanApplyRules =>
-        !UseWorker
-        || PlanHub.Scheduling.Current is null
-        || PlanHub.Scheduling.HasUnsavedChanges;
+        !IsBusy
+        && (!UseWorker
+            || PlanHub.Scheduling.Current is null
+            || PlanHub.Scheduling.HasUnsavedChanges);
 
     /// <summary>方案应用完规则被换掉了，重拉规则表与进程表。</summary>
     private void OnPlanApplied(object? sender, EventArgs e)
