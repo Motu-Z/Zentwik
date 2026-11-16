@@ -66,11 +66,11 @@
 
                         <Button Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="8,0,0,0"
-                                automation:AutomationProperties.Name="应用调度方案"
+                                automation:AutomationProperties.Name="应用规则"
                                 Command="{Binding ApplyPlanCommand}"
                                 IsEnabled="{Binding Source={x:Static vm:PlanHub.Scheduling}, Path=HasCurrent}"
 >
-                            <TextBlock Text="应用方案" />
+                            <TextBlock Text="应用规则" />
                         </Button>
                     </StackPanel>
                 </Grid>

@@ -1323,7 +1323,7 @@ public class ProcessViewModel : ViewModelBase
         SyncRuleDirty();
     }
 
-    /// <summary>面板上点「应用方案」：规则被覆盖前先说清会丢几条。</summary>
+    /// <summary>面板上点「应用规则」：规则被覆盖前先说清会丢几条。</summary>
     private void RequestApplyPlan()
     {
         PlanScope session = PlanHub.Scheduling;
@@ -1360,7 +1360,7 @@ public class ProcessViewModel : ViewModelBase
         lines.Add("已经绑好核心的进程会按新规则重算");
 
         ConfirmService.Instance.Request(
-            "应用调度方案",
+            "应用规则",
             lines,
             () => session.ApplyCommand.Execute(null),
             "应用");
