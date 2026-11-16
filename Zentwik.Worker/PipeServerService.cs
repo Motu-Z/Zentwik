@@ -1283,6 +1283,29 @@ namespace Zentwik.Worker
 
                 // 掩码值一起快照进规则：掩码日后被删，规则仍能按快照下发。
                 CustomMask? mask = _masks.FindById(targetValue);
+
+                // 2.4.0 之前规则里存的是掩码位而不是 Id，这里按位反查，优先 CPU 集（那时只有这一种）。
+                if (mask is null
+                    && ulong.TryParse(targetValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong legacyBits)
+                    && legacyBits != 0)
+                {
+                    foreach (CustomMask candidate in _masks.Masks)
+                    {
+                        if (candidate.Mask != legacyBits)
+                        {
+                            continue;
+                        }
+
+                        if (candidate.Type == MaskType.CpuSets)
+                        {
+                            mask = candidate;
+                            break;
+                        }
+
+                        mask ??= candidate;
+                    }
+                }
+
                 if (mask is null)
                     return Fail($"掩码不存在：{targetValue}");
 

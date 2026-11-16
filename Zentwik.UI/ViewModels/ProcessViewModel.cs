@@ -747,6 +747,7 @@ public class ProcessViewModel : ViewModelBase
         }
 
         RebuildDrawerMasks();
+        NormalizeMaskTargets();
         RecomputeMaskLabels();
     }
 
@@ -773,18 +774,21 @@ public class ProcessViewModel : ViewModelBase
 
             foreach (ScheduleRulePayload rule in payload)
             {
+                // 旧规则存的是掩码位，先换成掩码 Id，否则下拉选不中、整列空白。
+                string targetValue = NormalizeMaskValue(rule.TargetType, RuleMaskValue(rule));
+
                 ScheduleRuleItem item = new(
                     rule.Id,
                     rule.ProcessName,
                     rule.Path,
-                    MaskLabelOf(rule),
+                    LabelOfValue(rule.TargetType, targetValue),
                     ProcessPriority.DisplayOf(rule.Priority),
                     rule.Enabled);
 
                 item.ApplyMask(
-                    MaskLabelOf(rule),
+                    LabelOfValue(rule.TargetType, targetValue),
                     rule.TargetType,
-                    RuleMaskValue(rule));
+                    targetValue);
 
                 item.PropertyChanged += (_, e) => OnTargetChanged(item, e.PropertyName ?? string.Empty);
                 SavedRules.Add(item);
@@ -959,6 +963,84 @@ public class ProcessViewModel : ViewModelBase
 
     private static string RuleMaskValue(ScheduleRulePayload rule)
         => rule.TargetType == "none" ? string.Empty : rule.TargetValue;
+
+    /// <summary>
+    /// 2.4.0 之前，规则里的 <c>targetValue</c> 存的是掩码位；掩码表现在按掩码 Id 识别。
+    /// 两者对不上，下拉的 SelectedValue 就找不到选项、整列显示空白 —— 这里把旧值换算成掩码 Id。
+    /// 换算只在内存里发生，用户下次保存规则时写回的就是 Id。
+    /// </summary>
+    private string NormalizeMaskValue(string targetType, string targetValue)
+    {
+        if (!string.Equals(targetType, "mask", StringComparison.Ordinal)
+            || string.IsNullOrEmpty(targetValue))
+        {
+            return targetValue;
+        }
+
+        foreach (MaskOption option in MaskOptions)
+        {
+            if (option.TargetType != "mask")
+            {
+                continue;
+            }
+
+            if (string.Equals(option.TargetValue, targetValue, StringComparison.Ordinal)
+                || string.Equals(option.MaskId, targetValue, StringComparison.Ordinal))
+            {
+                return option.TargetValue;
+            }
+        }
+
+        // 旧值一律是掩码位：只有 CPU 集时代存的，按位反查即可。
+        if (!ulong.TryParse(targetValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong bits)
+            || bits == 0)
+        {
+            return targetValue;
+        }
+
+        foreach (MaskOption option in MaskOptions)
+        {
+            if (option.TargetType == "mask" && option.MaskBits == bits)
+            {
+                return option.TargetValue;
+            }
+        }
+
+        return targetValue;
+    }
+
+    /// <summary>掩码表比规则先到 / 后到都可能，落位后再把两侧的旧掩码位统一换算一次。</summary>
+    private void NormalizeMaskTargets()
+    {
+        _suppressSync = true;
+
+        try
+        {
+            foreach (ScheduleRuleItem rule in SavedRules)
+            {
+                string value = NormalizeMaskValue(rule.TargetType, rule.TargetValue);
+
+                if (!string.Equals(value, rule.TargetValue, StringComparison.Ordinal))
+                {
+                    rule.ApplyMask(LabelOfValue(rule.TargetType, value), rule.TargetType, value);
+                }
+            }
+
+            foreach (RunningProcessItem proc in RunningProcesses)
+            {
+                string value = NormalizeMaskValue(proc.TargetType, proc.TargetValue);
+
+                if (!string.Equals(value, proc.TargetValue, StringComparison.Ordinal))
+                {
+                    proc.ApplyMask(LabelOfValue(proc.TargetType, value), proc.TargetType, value);
+                }
+            }
+        }
+        finally
+        {
+            _suppressSync = false;
+        }
+    }
 
     private void ApplyProcesses(List<ProcessEntryPayload> payload)
     {

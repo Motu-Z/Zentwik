@@ -1294,6 +1294,61 @@ public static class IntegrationTest
                   $"{proc.MaskOptions.Count} 项");
         }
 
+        // 2.4.0 之前规则里存的是掩码位，掩码表改按 Id 识别后旧值必须换算成 Id，
+        // 否则下拉 SelectedValue 找不到选项，AFFINITY 列整列空白。
+        {
+            MaskOption? legacy = proc.MaskOptions.FirstOrDefault(
+                m => m.TargetType == "mask" && m.MaskId is not null && m.MaskBits != 0);
+
+            if (legacy is not null)
+            {
+                string bits = legacy.MaskBits.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                ScheduleRuleItem oldRule = new("r-legacy", "legacy-mask.exe", "legacy", "旧掩码", "正常", enabled: true);
+                oldRule.ApplyMask("旧掩码", "mask", bits);
+                proc.SavedRules.Add(oldRule);
+
+                RunningProcessItem oldRow = new(65002, "legacy-mask.exe", "legacy", 0, "正常");
+                oldRow.ApplyMask("旧掩码", "mask", bits);
+                proc.RunningProcesses.Add(oldRow);
+
+                Zentwik.Core.Ipc.MaskListPayload full = new();
+
+                foreach (MaskOption option in proc.MaskOptions)
+                {
+                    if (option.TargetType != "mask" || option.MaskBits == 0)
+                    {
+                        continue;
+                    }
+
+                    full.Masks.Add(new Zentwik.Core.Ipc.MaskEntryPayload
+                    {
+                        Id = option.MaskId ?? option.TargetValue,
+                        Name = option.Label,
+                        Mask = option.MaskBits
+                    });
+                }
+
+                proc.ApplyMasks(full);
+
+                Check("进程：旧规则的掩码位换算成掩码 Id（AFFINITY 列不再空白）",
+                      oldRule.TargetValue == legacy.MaskId && oldRow.TargetValue == legacy.MaskId,
+                      $"规则 {oldRule.TargetValue} / 进程 {oldRow.TargetValue} / 期望 {legacy.MaskId}");
+
+                Check("进程：换算后下拉键命中同一项",
+                      ReferenceEquals(MaskOption.Resolve(oldRule.MaskKey), legacy)
+                      && oldRule.MaskLabel == legacy.Label,
+                      $"{oldRule.MaskKey} / {oldRule.MaskLabel}");
+
+                proc.SavedRules.Remove(oldRule);
+                proc.RunningProcesses.Remove(oldRow);
+            }
+            else
+            {
+                Say("    （掩码表里没有自定义掩码，跳过旧值换算断言）");
+            }
+        }
+
         // 场景：一条列表，每条形如 IF → 三个动作
         var scenes = new ScenariosViewModel();
         ScenariosViewModel.SuppressWorkerInit = true;
