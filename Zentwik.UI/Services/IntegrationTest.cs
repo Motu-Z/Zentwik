@@ -926,9 +926,9 @@ public static class IntegrationTest
 
         var cases = new (string Page, Func<FrameworkElement> Factory, string[] Names)[]
         {
-            ("调校", () => new Views.TuningView(), new[] { "回读", "保存并应用调校参数" }),
-            ("进程", () => new Views.ProcessView(), new[] { "清空所有规则", "解除全部绑核" }),
-            ("电源", () => new Views.PowerView(), new[] { "回读", "保存并应用电源参数" }),
+            ("调校", () => new Views.TuningView(), new[] { "回读", "保存并应用" }),
+            ("进程", () => new Views.ProcessView(), new[] { "清空所有规则", "全部解绑" }),
+            ("电源", () => new Views.PowerView(), new[] { "回读", "保存并应用" }),
             ("场景", () => new Views.ScenariosView(), new[] { "启用自动切换", "新建规则" }),
             ("日志", () => new Views.LogsView(), new[] { "控制中心", "打开日志目录", "清空日志" }),
             ("通用", () => new Views.SettingsView(), new[] { "打开项目源码", "检查更新" }),

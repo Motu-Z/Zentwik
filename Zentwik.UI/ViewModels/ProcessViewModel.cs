@@ -1318,36 +1318,75 @@ public class ProcessViewModel : ViewModelBase
     }
 
     /// <summary>「保存至「方案x」」：把当前规则整份写进方案，不碰硬件</summary>
-    private async Task<bool> SaveRulesToPlanAsync()
+    private async Task<PlanItem?> SaveRulesToPlanAsync(string? newPlanName = null)
     {
-        PlanItem? saved = await PlanHub.Scheduling.SaveAsync().ConfigureAwait(true);
+        PlanItem? saved = await PlanHub.Scheduling.SaveAsync(name: newPlanName).ConfigureAwait(true);
 
         // SaveAsync 已重拉方案列表：RuleCount 跟上了，脏标记自动落回 false。
         SyncRuleDirty();
-        return saved is not null;
+        return saved;
     }
 
     /// <summary>「保存并应用」：先把当前规则整份写进方案，再按方案下发</summary>
     private async Task ApplyRulesAsync()
     {
         PlanScope session = PlanHub.Scheduling;
-        PlanItem? plan = session.Current;
 
-        if (plan is null)
+        if (!UseWorker)
         {
-            ToastService.Instance.Show("先选一份调度方案");
+            session.ApplyCommand.Execute(null);
             return;
         }
 
-        // 与调校、电源两页同一顺序：存不上方案就不下发，改动绝不丢。
-        if (UseWorker && session.HasUnsavedChanges && !await SaveRulesToPlanAsync().ConfigureAwait(true))
-            return;
+        // 一份方案都没有时不能闷声建：先把要建的名字摆给用户看。
+        if (session.Current is null)
+        {
+            string name = session.NextNewName;
 
-        session.ApplyCommand.Execute(null);
+            ConfirmService.Instance.Request(
+                "当前没有调度方案",
+                new[] { $"将新建「{name}」，存入当前 {SavedRules.Count} 条规则", "随后立即应用" },
+                () => Fire(() => ApplyRulesCoreAsync(name)),
+                "新建并应用");
+
+            return;
+        }
+
+        await ApplyRulesCoreAsync(null).ConfigureAwait(true);
     }
 
-    /// <summary>按钮可点条件：有没存进方案的规则改动才能「保存并应用」。</summary>
-    public bool CanApplyRules => !UseWorker || PlanHub.Scheduling.HasUnsavedChanges;
+    /// <summary>真正执行：存进方案（必要时新建）再下发</summary>
+    private async Task ApplyRulesCoreAsync(string? newPlanName)
+    {
+        PlanScope session = PlanHub.Scheduling;
+
+        // 落点必须明确：刚新建的那份方案未必是列表里被选中的那份，
+        // 按 Current 应用会打到别的方案上。
+        PlanItem? target = session.Current;
+
+        // 与调校、电源两页同一顺序：存不上方案就不下发，改动绝不丢。
+        if (newPlanName is not null || session.HasUnsavedChanges)
+        {
+            target = await SaveRulesToPlanAsync(newPlanName).ConfigureAwait(true);
+
+            if (target is null)
+                return;
+        }
+
+        if (target is null)
+            return;
+
+        await session.ApplyAsync(target).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 按钮可点条件：有没存进方案的规则改动，或者一份方案都没有（此时点下去先新建）。
+    /// 与调校、电源两页同一条规则 —— 只按「有没有东西要提交」判，不按「有没有台账」判。
+    /// </summary>
+    public bool CanApplyRules =>
+        !UseWorker
+        || PlanHub.Scheduling.Current is null
+        || PlanHub.Scheduling.HasUnsavedChanges;
 
     /// <summary>方案应用完规则被换掉了，重拉规则表与进程表。</summary>
     private void OnPlanApplied(object? sender, EventArgs e)

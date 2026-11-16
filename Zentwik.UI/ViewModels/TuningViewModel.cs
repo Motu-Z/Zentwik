@@ -202,6 +202,26 @@ public partial class TuningViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task ApplyAsync()
     {
+        // 一份方案都没有时不能闷声建：先把要建的名字摆给用户看。
+        if (PlanHub.Tuning.Current is null && !PlanHub.SuppressWorkerInit)
+        {
+            string name = PlanHub.Tuning.NextNewName;
+
+            ConfirmService.Instance.Request(
+                "当前没有调校方案",
+                new[] { $"将新建「{name}」，把当前设置存进去", "随后立即写入硬件" },
+                () => Fire(() => ApplyCoreAsync(name)),
+                "新建并应用");
+
+            return;
+        }
+
+        await ApplyCoreAsync(null).ConfigureAwait(true);
+    }
+
+    /// <summary>真正执行：存进方案（必要时新建）再下发</summary>
+    private async Task ApplyCoreAsync(string? newPlanName)
+    {
         IsBusy = true;
 
         try
@@ -211,7 +231,7 @@ public partial class TuningViewModel : ObservableObject
 
             // 先存进方案再下发：应用读的是方案，保存失败要说清是哪一步出的问题。
             PlanItem? saved = await PlanHub.Tuning
-                .SaveAsync(margins, fMax, name: PlanHub.Tuning.Current?.Name)
+                .SaveAsync(margins, fMax, name: newPlanName ?? PlanHub.Tuning.Current?.Name)
                 .ConfigureAwait(true);
 
             if (saved is null)

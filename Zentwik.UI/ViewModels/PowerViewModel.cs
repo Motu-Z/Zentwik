@@ -636,6 +636,26 @@ public partial class PowerViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
+        // 一份方案都没有时不能闷声建：先把要建的名字摆给用户看。
+        if (PlanHub.Power.Current is null && !PlanHub.SuppressWorkerInit)
+        {
+            string name = PlanHub.Power.NextNewName;
+
+            ConfirmService.Instance.Request(
+                "当前没有电源方案",
+                new[] { $"将新建「{name}」，把当前参数存进去", "随后立即写入系统" },
+                () => AsyncRunner.Fire(() => ApplyCoreAsync(name)),
+                "新建并应用");
+
+            return;
+        }
+
+        await ApplyCoreAsync(null).ConfigureAwait(true);
+    }
+
+    /// <summary>真正执行：存进方案（必要时新建）再下发</summary>
+    private async Task ApplyCoreAsync(string? newPlanName)
+    {
         ApplyPowerPolicyPayload patch = BuildPatch();
 
         if (patch.IsEmpty)
@@ -649,7 +669,7 @@ public partial class PowerViewModel : ObservableObject
         try
         {
             // 与调校页同一顺序：存不上方案就不下发，免得硬件已改、方案里还是旧值。
-            if (!await SaveToPlanBeforeApplyAsync().ConfigureAwait(true))
+            if (!await SaveToPlanBeforeApplyAsync(newPlanName).ConfigureAwait(true))
                 return;
 
             IpcOutcome<PowerPolicySnapshot> outcome = await WorkerBridge.Instance
@@ -894,7 +914,7 @@ public partial class PowerViewModel : ObservableObject
     }
 
     /// <summary>下发前先把界面这套值写进当前方案；返回 false 时调用方不得继续下发</summary>
-    private async Task<bool> SaveToPlanBeforeApplyAsync()
+    private async Task<bool> SaveToPlanBeforeApplyAsync(string? newPlanName = null)
     {
         if (PlanHub.SuppressWorkerInit)
             return true;
@@ -905,8 +925,12 @@ public partial class PowerViewModel : ObservableObject
         string? schemeGuid = hasScheme ? ActiveSchemeGuid.ToString("D") : null;
 
         // 没有选中方案时由 SaveAsync 新建一份：与调校页「保存并应用」同一条路径。
+        // 新建的这份照旧认领当前活动的系统计划，否则之后「应用」就无从切回。
         PlanItem? saved = await PlanHub.Power
-            .SaveAsync(name: current?.Name, powerSchemeGuid: schemeGuid, powerPolicy: snapshot)
+            .SaveAsync(
+                name: newPlanName ?? current?.Name,
+                powerSchemeGuid: schemeGuid,
+                powerPolicy: snapshot)
             .ConfigureAwait(true);
 
         if (saved is null)

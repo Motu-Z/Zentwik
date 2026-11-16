@@ -58,7 +58,7 @@
 
                         <Button Style="{StaticResource DangerButtonStyle}"
                                 Margin="8,0,0,0"
-                                automation:AutomationProperties.Name="解除全部绑核"
+                                automation:AutomationProperties.Name="全部解绑"
                                 Command="{Binding ReleaseAllCommand}"
 >
                             <TextBlock Text="全部解绑" />
@@ -66,7 +66,7 @@
 
                         <Button Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="8,0,0,0"
-                                automation:AutomationProperties.Name="保存并应用调度规则"
+                                automation:AutomationProperties.Name="保存并应用"
                                 ToolTip="把当前规则保存到当前方案，并立即应用"
                                 Command="{Binding ApplyPlanCommand}"
                                 IsEnabled="{Binding CanApplyRules}"

@@ -517,6 +517,9 @@ public sealed class PlanScope : ViewModelBase
 
     private void CancelCreate() => IsCreating = false;
 
+    /// <summary>无方案时自动新建会用的默认名；确认层要提前把它显示给用户。</summary>
+    public string NextNewName => NextDefaultName();
+
     /// <summary>默认名带类别：三页都叫「新方案 1」时，用户分不清刚建的是哪一类。</summary>
     private string NextDefaultName()
     {

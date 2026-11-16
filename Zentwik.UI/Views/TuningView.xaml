@@ -63,7 +63,7 @@
 
                     <Button Style="{StaticResource PrimaryButtonStyle}"
                             Margin="8,0,0,0"
-                            automation:AutomationProperties.Name="保存并应用调校参数"
+                            automation:AutomationProperties.Name="保存并应用"
                             ToolTip="把当前设置保存到当前方案，并立即写入硬件"
                             Command="{Binding ApplyCommand}"
                             IsEnabled="{Binding CanSave}">
