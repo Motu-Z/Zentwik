@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Zentwik.UI.Services;
 using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI.Views;
@@ -154,11 +155,8 @@ public partial class ScenariosView : UserControl
         return false;
     }
 
-    /// <summary>水印那类 ContentElement 走逻辑树，Visual 走视觉树。</summary>
-    private static DependencyObject? ParentOf(DependencyObject node)
-        => node is Visual or System.Windows.Media.Media3D.Visual3D
-            ? VisualTreeHelper.GetParent(node)
-            : LogicalTreeHelper.GetParent(node);
+    /// <summary>水印那类 ContentElement 走逻辑树，Visual 走视觉树（口径统一在 VisualTreeAssist）。</summary>
+    private static DependencyObject? ParentOf(DependencyObject node) => VisualTreeAssist.ParentOf(node);
 
     private void OnGripDown(object sender, MouseButtonEventArgs e)
     {

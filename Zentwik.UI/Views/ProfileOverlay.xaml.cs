@@ -4,6 +4,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Zentwik.UI.ViewModels;
+using Zentwik.UI.Services;
 
 namespace Zentwik.UI.Views;
 
@@ -26,7 +27,7 @@ public partial class ProfileOverlay : UserControl
 
         for (DependencyObject? node = e.OriginalSource as DependencyObject;
              node is not null;
-             node = VisualTreeHelper.GetParent(node))
+             node = VisualTreeAssist.ParentOf(node))
         {
             if (node is FrameworkElement { DataContext: PlanItem })
                 return;
@@ -82,7 +83,7 @@ public partial class ProfileOverlay : UserControl
             if (source is ButtonBase || source is TextBox)
                 return true;
 
-            source = VisualTreeHelper.GetParent(source);
+            source = VisualTreeAssist.ParentOf(source);
         }
 
         return false;

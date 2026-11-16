@@ -471,7 +471,8 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>诊断模式专用的自定义掩码</summary>
     private void SeedMasks()
     {
-        MaskOptions.Add(new MaskOption("0-7,16-23", "mask", "16711935", maskId: "demo-mask"));
+        MaskOptions.Add(new MaskOption(
+            "0-7,16-23", "mask", "demo-mask", maskId: "demo-mask", maskBits: 16711935));
 
         // 必须走 RebuildDrawerMasks：它顺带刷新 MaskOption 的 label 反查表，
         // 漏了这一步，诊断模式下选中掩码回写会退回「默认」。
@@ -683,11 +684,15 @@ public class ProcessViewModel : ViewModelBase
 
         foreach (MaskEntryPayload mask in payload.Masks)
         {
+            // TargetValue 用掩码 Id 而不是掩码值：值相同的两套掩码是两种不同的绑定方式
+            // （CPU 集 / 关联掩码），按值去重会把后建的那套直接吞掉，
+            // 用户看到的就是「新建成功了，下拉里却没有」。拓扑展示另走 MaskBits。
             wanted.Add(new MaskOption(
                 mask.Name,
                 "mask",
-                mask.Mask.ToString(CultureInfo.InvariantCulture),
-                maskId: mask.Id));
+                mask.Id,
+                maskId: mask.Id,
+                maskBits: mask.Mask));
         }
 
         wanted.Add(new MaskOption("默认", "none", string.Empty));
@@ -1111,7 +1116,8 @@ public class ProcessViewModel : ViewModelBase
             if (option.TargetType != "mask")
                 continue;
 
-            string topology = MaskText.ToRangeText(ParseMask(option.TargetValue));
+            string topology = MaskText.ToRangeText(
+                option.MaskBits != 0 ? option.MaskBits : ParseMask(option.TargetValue));
             if (topology.Length > 0)
                 DrawerMasks.Add(new MaskPreviewItem(option.Label, topology));
         }
@@ -2029,7 +2035,15 @@ public sealed class MaskOption : ViewModelBase
     public string Label => _label;
     public string TargetType { get; }
     public string TargetValue { get; }
-    public string Key => MakeKey(TargetType, TargetValue);
+
+    /// <summary>自定义掩码的掩码位；0 表示这一项不是自定义掩码（CCD / 默认）。</summary>
+    public ulong MaskBits { get; }
+
+    /// <summary>
+    /// 下拉项的唯一标识。自定义掩码用 Id，其余用值。
+    /// 两套掩码可以有相同的位（同一个核集合换个绑定方式），按值做键会让它们互相覆盖。
+    /// </summary>
+    public string Key => MakeKey(TargetType, MaskId ?? TargetValue);
 
     /// <summary>自定义掩码的 Id，只有 TargetType = mask 且来自后台时才有值</summary>
     public string? MaskId { get; }
@@ -2042,12 +2056,18 @@ public sealed class MaskOption : ViewModelBase
         set => SetProperty(ref _isSelected, value);
     }
 
-    public MaskOption(string label, string targetType, string targetValue, string? maskId = null)
+    public MaskOption(
+        string label,
+        string targetType,
+        string targetValue,
+        string? maskId = null,
+        ulong maskBits = 0)
     {
         _label = label;
         TargetType = targetType;
         TargetValue = targetValue;
         MaskId = maskId;
+        MaskBits = maskBits;
     }
 
     /// <summary>掩码改名：原地换标签，别换实例（换了实例下拉会丢选中）</summary>

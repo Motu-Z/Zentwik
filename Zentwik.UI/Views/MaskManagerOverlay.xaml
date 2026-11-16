@@ -198,31 +198,51 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontSize="14"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                                       TextTrimming="CharacterEllipsis" />
+                                        <Grid>
+                                            <StackPanel Margin="0,0,40,0">
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="14"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
 
-                                            <Border Background="{DynamicResource AccentSubtleBrush}"
-                                                    CornerRadius="4"
-                                                    Padding="8,4"
-                                                    Margin="0,12,0,0"
-                                                    HorizontalAlignment="Left">
-                                                <TextBlock FontFamily="{DynamicResource AppMonoFontFamily}"
-                                                           FontSize="12"
-                                                           Foreground="{DynamicResource AccentBrush}">
-                                                    <Run Text="CORE  " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding RangeText, Mode=OneWay}" />
-                                                </TextBlock>
+                                                <Border Background="{DynamicResource AccentSubtleBrush}"
+                                                        CornerRadius="4"
+                                                        Padding="8,4"
+                                                        Margin="0,12,0,0"
+                                                        HorizontalAlignment="Left">
+                                                    <TextBlock FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource AccentBrush}">
+                                                        <Run Text="CORE  " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding RangeText, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- 绑定方式缩写：CS = CPU Sets，AM = Affinity Mask。两者都标，否则分不出哪套是哪种。 -->
+                                            <Border x:Name="TypeBadge"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    CornerRadius="3"
+                                                    BorderThickness="1"
+                                                    Padding="5,1">
+                                                <TextBlock x:Name="TypeBadgeText"
+                                                           Text="{Binding TypeLabel}"
+                                                           FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding TypeLabel}" Value="AM">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
                                             </Border>
-
-                                            <TextBlock Text="{Binding TypeLabel}"
-                                                       FontSize="11"
-                                                       Foreground="{DynamicResource TextTertiaryBrush}"
-                                                       Margin="0,8,0,0"
-                                                       Visibility="{Binding ShowTypeLabel, Converter={StaticResource BoolToVis}}" />
-                                        </StackPanel>
+                                        </Grid>
                                     </Border>
                                 </Button>
                             </DataTemplate>

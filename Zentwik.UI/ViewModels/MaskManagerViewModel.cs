@@ -615,13 +615,8 @@ public sealed class SavedMaskItem : ViewModelBase
 
     public MaskType Type { get; }
 
-    /// <summary>
-    /// 只在关联掩码时显示。CPU 集是默认方式，每条都标一遍等于没有信息量，
-    /// 反而把名字挤窄。
-    /// </summary>
-    public string TypeLabel => Type == MaskType.AffinityMask ? "Affinity Mask" : string.Empty;
-
-    public bool ShowTypeLabel => Type == MaskType.AffinityMask;
+    /// <summary>卡片右上角的绑定方式缩写：CS = CPU Sets，AM = Affinity Mask。两种都要标。</summary>
+    public string TypeLabel => Type == MaskType.AffinityMask ? "AM" : "CS";
 
     public string RangeText => MaskText.ToRangeText(Mask);
 

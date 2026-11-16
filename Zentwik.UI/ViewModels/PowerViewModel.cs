@@ -1452,15 +1452,34 @@ public partial class PowerViewModel : ObservableObject
     }
 
     /// <summary>把「与方案的差异」同步给方案条；整体换值后调用，不能只看 IsDirty 的跳变。</summary>
-    private void SyncPlanDirty() => PlanHub.Power.SetUnsaved(DiffersFromPlan());
+    /// <remarks>
+    /// 两个条件都要：<c>IsDirty</c> 抓「用户改过、但方案里恰好缺这个字段」（此时比对看不出差异），
+    /// <see cref="DiffersFromPlan"/> 抓「用户没动过、但界面值与方案不同」。
+    /// 只判后者会让「改了没存」在某些方案上漏提示。
+    /// </remarks>
+    private void SyncPlanDirty() => PlanHub.Power.SetUnsaved(IsDirty || DiffersFromPlan());
 
     /// <summary>界面值与当前方案里存的对不上；方案缺该字段视为「不关心」。</summary>
     private bool DiffersFromPlan()
     {
-        ApplyPowerPolicyPayload? plan = PlanHub.Power.Current?.PowerPolicy;
+        PlanItem? current = PlanHub.Power.Current;
+        ApplyPowerPolicyPayload? plan = current?.PowerPolicy;
 
         if (plan is null)
             return true;
+
+        // 方案绑的系统计划不是当前活动的那一个时，页面读回来的是另一套计划的值，
+        // 跟方案的快照本来就不会相等 —— 那不是「你有改动没保存」。
+        // 升级重启、或在 Windows 设置里手动切过计划都会落到这里，
+        // 之前一律判成未保存，用户看到的就是「什么都没动也提示未保存」。
+        string bound = current?.PowerSchemeGuid ?? string.Empty;
+
+        if (bound.Length > 0
+            && ActiveSchemeGuid != Guid.Empty
+            && !string.Equals(bound, ActiveSchemeGuid.ToString("D"), StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
 
         return Differs(_ac, plan, ac: true) || Differs(_dc, plan, ac: false);
     }
