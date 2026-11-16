@@ -381,7 +381,9 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="能效偏好 (EPP)" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="处理器能源性能首选项策略"
+                                           ToolTip="EPP：数值越高越省电；AMD 平台经 CPPC 实现"
+                                           Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <Grid Grid.Column="1"
@@ -476,7 +478,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="核心停泊最小核心数" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="处理器性能核心放置最小核心数量" Style="{StaticResource RowTitleStyle}" />
                                 <TextBlock Text="低于 100% 会停泊空闲核，绑核可能越界"
                                            Style="{StaticResource RowDescStyle}"
                                            Visibility="{Binding CoreParkingWarns, Converter={StaticResource BoolToVis}}" />
@@ -539,7 +541,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="升频模式 (Boost)" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="处理器性能提升模式" Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -587,7 +589,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="PCIe 链路电源管理 (ASPM)" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="链接状态电源管理" Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -627,7 +629,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="空闲禁用 (C-State)" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="处理器闲置禁用" Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"

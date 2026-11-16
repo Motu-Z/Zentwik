@@ -711,6 +711,7 @@ public partial class PowerViewModel : ObservableObject
         if (_dc.Epp != _appliedDc.Epp) payload.DcEpp = _dc.Epp;
         if (_dc.BoostMode != _appliedDc.BoostMode) payload.DcBoostMode = _dc.BoostMode;
         if (_dc.MaxProcessorState != _appliedDc.MaxProcessorState) payload.DcMaxProcessorState = _dc.MaxProcessorState;
+        if (_dc.CoreParkingMin != _appliedDc.CoreParkingMin) payload.DcCoreParkingMin = _dc.CoreParkingMin;
         if (_dc.IdleDisable != _appliedDc.IdleDisable) payload.DcIdleDisable = _dc.IdleDisable;
         if (_dc.Aspm != _appliedDc.Aspm) payload.DcAspm = _dc.Aspm;
 
@@ -1353,6 +1354,8 @@ public partial class PowerViewModel : ObservableObject
         set.BoostModeError = reason;
         set.MaxProcessorStateSupported = false;
         set.MaxProcessorStateError = reason;
+        set.CoreParkingMinSupported = false;
+        set.CoreParkingMinError = reason;
         set.IdleDisableSupported = false;
         set.IdleDisableError = reason;
         set.AspmSupported = false;

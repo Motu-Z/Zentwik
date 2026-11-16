@@ -10,7 +10,7 @@ namespace Zentwik.Core.Helpers
     /// <summary>
     /// 进程调度目标。
     ///
-    /// 只有「不调度」和「掩码」两种。旧版把 CCD0 / CCD1 做成枚举值（落盘是 1 和 2），
+    /// 只有「默认」和「掩码」两种。旧版把 CCD0 / CCD1 做成枚举值（落盘是 1 和 2），
     /// 于是 CCD 数一旦超过 2（Threadripper 有 12 个）第三块就存不进去。
     /// 现在核心组本身就是预置掩码项，规则统一按掩码走，任意组数都成立。
     /// </summary>
@@ -135,7 +135,7 @@ namespace Zentwik.Core.Helpers
                         : MaskName;
                 }
 
-                return "不调度";
+                return "默认";
             }
         }
     }

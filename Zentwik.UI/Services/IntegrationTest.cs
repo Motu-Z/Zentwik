@@ -1202,11 +1202,11 @@ public static class IntegrationTest
         Check("进程：优先级下拉 5 档且为中文",
               proc.PriorityOptions.Count == 5
               && proc.PriorityOptions[0] == "高"
-              && proc.PriorityOptions[4] == "低",
+              && proc.PriorityOptions[4] == "空闲",
               string.Join("/", proc.PriorityOptions));
 
         // 核心组也在掩码表里：下拉不再有独立的一套 CCD 选项。
-        Check("进程：掩码下拉 = 掩码项 + 不调度",
+        Check("进程：掩码下拉 = 掩码项 + 默认",
               proc.MaskOptions.Any(m => m.TargetType == "mask" && m.MaskId is not null)
               && proc.MaskOptions.Any(m => m.TargetType == "none"),
               $"{proc.MaskOptions.Count} 项");

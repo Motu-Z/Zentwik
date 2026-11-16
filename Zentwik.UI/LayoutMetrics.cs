@@ -75,17 +75,23 @@ public static class LayoutMetrics
 
     // 进程表列宽：只有进程名列吃剩余宽度
 
-    public static GridLength TablePid => new(56);
+    /// <summary>列间统一留白，表头与行共用。</summary>
+    public const double TableCellGap = 16;
+
+    /// <summary>列内容右侧留白。</summary>
+    public static Thickness CellGap => new(0, 0, TableCellGap, 0);
+
+    public static GridLength TablePid => new(64);
 
     /// <summary>进程名 + 路径：唯一弹性列。</summary>
     public static GridLength TableName => new(1, GridUnitType.Star);
 
-    public static GridLength TableCpu => new(72);
+    public static GridLength TableCpu => new(84);
 
-    /// <summary>绑定目标：下拉要装下「CCD0 物理核心」+ 箭头。</summary>
-    public static GridLength TableMask => new(136);
+    /// <summary>AFFINITY 列：下拉要装下「CCD0 物理核心」+ 箭头。</summary>
+    public static GridLength TableMask => new(152);
 
-    public static GridLength TablePriority => new(120);
+    public static GridLength TablePriority => new(132);
 
     public const double TableNameMinWidth = 160;
 }

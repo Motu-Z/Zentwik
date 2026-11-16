@@ -411,7 +411,7 @@ public class ProcessViewModel : ViewModelBase
                         {
                             foreach (ScheduleRuleItem rule in SavedRules.Where(r => r.Enabled).ToList())
                             {
-                                // 后台不存「不调度」规则，那种目标类型本来就没有规则可停用。
+                                // 后台不存「默认」规则，那种目标类型本来就没有规则可停用。
                                 if (rule.TargetType is not ("ccd" or "mask"))
                                 {
                                     continue;
@@ -474,7 +474,7 @@ public class ProcessViewModel : ViewModelBase
         MaskOptions.Add(new MaskOption("0-7,16-23", "mask", "16711935", maskId: "demo-mask"));
 
         // 必须走 RebuildDrawerMasks：它顺带刷新 MaskOption 的 label 反查表，
-        // 漏了这一步，诊断模式下选中掩码回写会退回「不调度」。
+        // 漏了这一步，诊断模式下选中掩码回写会退回「默认」。
         RebuildDrawerMasks();
     }
 
@@ -676,7 +676,7 @@ public class ProcessViewModel : ViewModelBase
         ApplyProcessSnapshot(processes.Value);
     }
 
-    /// <summary>把后台的掩码表铺进下拉，末尾补「不调度」</summary>
+    /// <summary>把后台的掩码表铺进下拉，末尾补「默认」</summary>
     internal void ApplyMasks(MaskListPayload payload)
     {
         List<MaskOption> wanted = new(payload.Masks.Count + 1);
@@ -690,7 +690,7 @@ public class ProcessViewModel : ViewModelBase
                 maskId: mask.Id));
         }
 
-        wanted.Add(new MaskOption("不调度", "none", string.Empty));
+        wanted.Add(new MaskOption("默认", "none", string.Empty));
 
         // 按 key 合并而不是重建：实例一换，下拉的 SelectedValue 就掉，行上已选的那项跟着清空。
         Dictionary<string, MaskOption> exist = new(StringComparer.Ordinal);
@@ -810,7 +810,7 @@ public class ProcessViewModel : ViewModelBase
                     // 规则没了只剩掩码要清；优先级来自进程本身，不能顺手改成标准。
                     if (proc.TargetType != "none")
                     {
-                        proc.ApplyMask("不调度", "none", string.Empty);
+                        proc.ApplyMask("默认", "none", string.Empty);
                     }
 
                     continue;
@@ -942,10 +942,10 @@ public class ProcessViewModel : ViewModelBase
                     }
                 }
 
-                return string.IsNullOrWhiteSpace(targetValue) ? "不调度" : targetValue;
+                return string.IsNullOrWhiteSpace(targetValue) ? "默认" : targetValue;
 
             default:
-                return "不调度";
+                return "默认";
         }
     }
 
@@ -1051,7 +1051,7 @@ public class ProcessViewModel : ViewModelBase
 
         if (byName.TryGetValue(entry.Name, out ScheduleRuleItem? matched))
         {
-            item.ApplyMask(matched.MaskLabel ?? "不调度", matched.TargetType, matched.TargetValue);
+            item.ApplyMask(matched.MaskLabel ?? "默认", matched.TargetType, matched.TargetValue);
             item.Priority = matched.Priority;
         }
 
@@ -1089,11 +1089,11 @@ public class ProcessViewModel : ViewModelBase
                && entry.Path.StartsWith(windows, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>基础目标只剩「不调度」；核心组本身就是掩码项，由掩码表铺进来</summary>
+    /// <summary>基础目标只剩「默认」；核心组本身就是掩码项，由掩码表铺进来</summary>
     private void ResetMaskOptions()
     {
         MaskOptions.Clear();
-        MaskOptions.Add(new MaskOption("不调度", "none", string.Empty));
+        MaskOptions.Add(new MaskOption("默认", "none", string.Empty));
         RebuildDrawerMasks();
     }
 
@@ -1411,7 +1411,7 @@ public class ProcessViewModel : ViewModelBase
         ApplyRules(rules.Value);
     }
 
-    /// <summary>把一个目标落成后台的一条规则（「不调度」等于删除这条规则）。</summary>
+    /// <summary>把一个目标落成后台的一条规则（「默认」等于删除这条规则）。</summary>
     private async Task<(bool Ok, string? Error)> ApplyTargetAsync(AffinityTarget target)
     {
         ScheduleRuleItem? existing = FindRule(target.ProcessName);
@@ -1523,7 +1523,7 @@ public class ProcessViewModel : ViewModelBase
             "r-" + Guid.NewGuid().ToString("N")[..8],
             target.ProcessName,
             target.Path,
-            target.MaskLabel ?? "不调度",
+            target.MaskLabel ?? "默认",
             target.Priority,
             enabled: true);
 
@@ -1644,15 +1644,16 @@ public class ProcessViewModel : ViewModelBase
         }
     }
 
-    private static int PriorityRank(string priority) => priority switch
+    private static int PriorityRank(string priority)
     {
-        "高" => 4,
-        "高于标准" => 3,
-        "标准" => 2,
-        "低于标准" => 1,
-        "低" => 0,
-        _ => 2,
-    };
+        for (int i = 0; i < ProcessPriority.Options.Length; i++)
+        {
+            if (string.Equals(ProcessPriority.DisplayOf(ProcessPriority.Options[i]), priority, StringComparison.Ordinal))
+                return ProcessPriority.Options.Length - i;
+        }
+
+        return 0;
+    }
 
     private bool Matches(RunningProcessItem item)
     {
@@ -1748,8 +1749,8 @@ public class ProcessViewModel : ViewModelBase
         var r2 = new ScheduleRuleItem("r-2", "obs64.exe", @"C:\Program Files\obs-studio", "0-7,16-23", "高于标准", enabled: true);
         r2.ApplyMask("0-7,16-23", "mask", "16711935");
 
-        var r3 = new ScheduleRuleItem("r-3", "steam.exe", @"C:\Program Files (x86)\Steam", "不调度", "低于标准", enabled: false);
-        r3.ApplyMask("不调度", "none", "");
+        var r3 = new ScheduleRuleItem("r-3", "steam.exe", @"C:\Program Files (x86)\Steam", "默认", "低于标准", enabled: false);
+        r3.ApplyMask("默认", "none", "");
 
         foreach (var rule in new[] { r1, r2, r3 })
         {
@@ -1758,7 +1759,7 @@ public class ProcessViewModel : ViewModelBase
         }
 
         // 命中了规则的进程，运行表里显示的就该是规则的值。
-        // 否则同一个 obs64.exe 上面写「不调度」、下面写「0-7,16-23」。
+        // 否则同一个 obs64.exe 上面写「默认」、下面写「0-7,16-23」。
         foreach (var rule in SavedRules)
         {
             foreach (var process in RunningProcesses)
@@ -1774,8 +1775,8 @@ public class ProcessViewModel : ViewModelBase
 
 public abstract class AffinityTarget : ViewModelBase
 {
-    // 默认就是「不调度」：它和下拉里的那一项是同一个状态（targetType=none、无掩码）。
-    private string? _maskLabel = "不调度";
+    // 默认就是「默认」：它和下拉里的那一项是同一个状态（targetType=none、无掩码）。
+    private string? _maskLabel = "默认";
     private string _targetType = "none";
     private string _targetValue = string.Empty;
     private string _priority = "标准";
@@ -1876,7 +1877,7 @@ public abstract class AffinityTarget : ViewModelBase
 
     public void CopyAffinityFrom(AffinityTarget other)
     {
-        WriteMask(other._maskLabel ?? "不调度", other._targetType, other._targetValue);
+        WriteMask(other._maskLabel ?? "默认", other._targetType, other._targetValue);
         _priority = other._priority;
 
         NotifyMaskChanged();
@@ -1885,7 +1886,7 @@ public abstract class AffinityTarget : ViewModelBase
 
     public void ResetAffinity()
     {
-        WriteMask("不调度", "none", string.Empty);
+        WriteMask("默认", "none", string.Empty);
         _priority = "标准";
 
         NotifyMaskChanged();

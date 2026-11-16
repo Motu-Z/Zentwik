@@ -39,7 +39,7 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="进程" Style="{StaticResource PageTitleStyle}" />
+                        <TextBlock Text="调度" Style="{StaticResource PageTitleStyle}" />
                         <views:ProfileBar Kind="{x:Static core:PlanKind.Scheduling}" Margin="16,0,0,0" VerticalAlignment="Center"
                                           shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                     </StackPanel>
@@ -243,7 +243,10 @@
                                           Command="{Binding SelectAllCommand}"
  />
 
-                            <TextBlock Grid.Column="1" Text="PID" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="1"
+                                       Text="PID"
+                                       Margin="{x:Static lm:LayoutMetrics.CellGap}"
+                                       Style="{StaticResource TableHeaderTextStyle}" />
 
                             <Button Grid.Column="2"
                                     Style="{StaticResource IconButtonStyle}"
@@ -267,7 +270,7 @@
                                     Width="Auto" Height="Auto"
                                     HorizontalAlignment="Right"
                                     Padding="0"
-                                    Margin="0,0,8,0"
+                                    Margin="{x:Static lm:LayoutMetrics.CellGap}"
                                     automation:AutomationProperties.Name="按占用排序"
                                     Command="{Binding SortCommand}"
                                     CommandParameter="cpu">
@@ -285,12 +288,12 @@
                                     Width="Auto" Height="Auto"
                                     HorizontalAlignment="Left"
                                     Padding="0"
-                                    Margin="8,0,0,0"
+                                    Margin="{x:Static lm:LayoutMetrics.CellGap}"
                                     automation:AutomationProperties.Name="按核心掩码排序"
                                     Command="{Binding SortCommand}"
                                     CommandParameter="mask">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="BIND TARGET" Style="{StaticResource TableHeaderTextStyle}" />
+                                    <TextBlock Text="AFFINITY" Style="{StaticResource TableHeaderTextStyle}" />
                                     <Path Data="M0 0 L4 5 L8 0 Z" Fill="{DynamicResource TextTertiaryBrush}"
                                           Margin="6,0,0,0" VerticalAlignment="Center"
                                           Visibility="{Binding DataContext.SortKey, RelativeSource={RelativeSource AncestorType=UserControl},
@@ -348,10 +351,11 @@
 
                                             <TextBlock Grid.Column="1"
                                                        Text="{Binding Pid}"
+                                                       Margin="{x:Static lm:LayoutMetrics.CellGap}"
                                                        Style="{StaticResource TableMonoCellStyle}"
                                                        VerticalAlignment="Center" />
 
-                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="{x:Static lm:LayoutMetrics.CellGap}">
                                                 <TextBlock Text="{Binding Name}"
                                                            FontSize="13"
                                                            FontWeight="SemiBold"
@@ -367,12 +371,13 @@
 
                                             <TextBlock Grid.Column="3"
                                                        Text="{Binding CpuText}"
+                                                       Margin="{x:Static lm:LayoutMetrics.CellGap}"
                                                        Style="{StaticResource TableMonoCellStyle}"
                                                        HorizontalAlignment="Right"
                                                        VerticalAlignment="Center" />
 
                                             <ComboBox Grid.Column="4"
-                                                      Margin="8,0,12,0"
+                                                      Margin="{x:Static lm:LayoutMetrics.CellGap}"
                                                       VerticalAlignment="Center"
                                                       Style="{StaticResource SelectComboBoxStyle}"
                                                       ItemsSource="{Binding DataContext.MaskOptions,

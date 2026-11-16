@@ -65,14 +65,14 @@ namespace Zentwik.Core.Services
         /// </summary>
         public static readonly string[] Options = { High, AboveNormal, Normal, BelowNormal, Low };
 
-        /// <summary>档位常量 → 界面文案；数据层仍是英文常量。</summary>
+        /// <summary>档位常量 → 界面文案；数据层仍是英文常量。文案取 Windows 官方优先级类名。</summary>
         public static string DisplayOf(string label) => label switch
         {
             High => "高",
-            AboveNormal => "较高",
-            Normal => "标准",
-            BelowNormal => "较低",
-            Low => "低",
+            AboveNormal => "高于正常",
+            Normal => "正常",
+            BelowNormal => "低于正常",
+            Low => "空闲",
             "RealTime" => "实时",
             _ => string.IsNullOrEmpty(label) ? "—" : label,
         };
