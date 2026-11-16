@@ -1,6 +1,8 @@
 # Zentwik
 
-轻量、离线的 Windows 本地调优工具：AMD Ryzen 处理器的 Curve Optimizer / FMax、CPU Sets 与关联掩码进程绑定、电源方案，可根据进程与电源状态自动应用对应方案。
+轻量、离线的 Windows 本地调优工具：逐核调 AMD Ryzen 的 Curve Optimizer 电压与 FMax 上限，用 CPU Sets 或 Affinity Mask 把进程绑到指定核心，切换电源方案并调整其中的策略。
+
+进程启停、接通或拔下电源时，可以按存好的方案自动切换。
 
 ![platform](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
@@ -9,21 +11,21 @@
 
 ## 功能
 
-- **调校**：AMD Ryzen 处理器 Curve Optimizer 电压偏移与 FMax 最大频率上限。
-- **调度**：通过 CPU Sets 或关联掩码（affinity mask）将进程绑定到指定的逻辑处理器集合，掩码表可自建与编辑。
-- **电源**：切换电源方案，调整处理器 Boost、PCIe ASPM 等策略，并区分交流供电与电池供电场景。
-- **场景**：监视进程启动与退出、电源接通与拔下，自动应用上述三类方案。
+- **调校**：给每个核心单独设 Curve Optimizer 电压偏移，并限制 FMax 最大频率。
+- **调度**：用 CPU Sets 或 Affinity Mask 把进程绑到指定核心，掩码表可自建、改名、编辑。
+- **电源**：切换电源方案，调整提升模式、最小处理器状态、链路电源管理等策略，交流与电池分开保存。
+- **场景**：监听进程启停与电源通断，套用事先存好的调校、调度或电源方案。
 
 ## 运行要求
 
-- Windows 10 1709 或更高版本，x64 架构
-- .NET 10 Desktop Runtime（`Setup.exe` 与 `Standalone.zip` 已内置运行时）
-- 调校功能仅适用于 AMD Ryzen 平台。SMU 写入依赖 [PawnIO](https://github.com/namazso/PawnIO) 驱动；若未安装该驱动或当前平台不支持调校，则仅调校不可用，其他功能不受影响。
-- 首次启动时，后台服务将请求一次管理员权限
+- Windows 10 1709 及以上，x64
+- .NET 10 Desktop Runtime（`Setup.exe` 与 `Standalone.zip` 已自带）
+- 调校只支持 AMD Ryzen，写 SMU 需要 [PawnIO](https://github.com/namazso/PawnIO) 驱动；没有驱动或平台不符时，其余功能照常可用
+- 首次启动会为后台服务申请一次管理员权限
 
 ## 安装
 
-从 [Releases](https://github.com/Motu-Z/Zentwik/releases) 页面选择以下任一安装包：
+从 [Releases](https://github.com/Motu-Z/Zentwik/releases) 选一个：
 
 | 文件 | 说明 |
 | --- | --- |
@@ -32,11 +34,11 @@
 | `Standalone.zip` | 免安装，自带运行时 |
 | `Portable.zip` | 免安装，需自备 .NET 10 Desktop Runtime |
 
-两个安装包使用同一 AppId，覆盖安装视为升级。配置位于 `%APPDATA%\Zentwik`，卸载时默认保留。
+两个安装包可以互相覆盖安装，覆盖即视为升级。配置位于 `%APPDATA%\Zentwik`，卸载时默认保留。
 
 ## 构建
 
-需要 .NET 10 SDK 及“.NET 桌面开发”工作负载。
+需要 .NET 10 SDK 与桌面开发工作负载。
 
 ```bash
 dotnet build Zentwik.slnx -c Release
@@ -44,12 +46,12 @@ dotnet build Zentwik.UI/Zentwik.UI.csproj -c Release
 dotnet test  Zentwik.Tests/Zentwik.Tests.csproj -c Release
 ```
 
-`Zentwik.UI` 为 WPF 界面，`Zentwik.Worker` 为以 Native AOT 发布的提权服务，SMU 访问层在 `Zentwik.Core/Smu`。
+`Zentwik.UI` 是 WPF 界面，`Zentwik.Worker` 是以 Native AOT 发布的提权服务，SMU 访问层位于 `Zentwik.Core/Smu`。
 
 ## 参考
 
 - [SMUDebugTool](https://github.com/irusanov/SMUDebugTool/)：Ryzen SMU 参数读写的参考实现
-- [CPUSetSetter](https://github.com/SimonvBez/CPUSetSetter)：CPU Sets 调度与双 CCD 拓扑识别的行为参考
+- [CPUSetSetter](https://github.com/SimonvBez/CPUSetSetter)：CPU Sets 调度与双 CCD 拓扑识别的行为参照
 - [PawnIO](https://github.com/namazso/PawnIO)：SMU 访问的内核驱动
 - [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)：`RyzenSMU` 驱动模块（LGPL-2.1）
 

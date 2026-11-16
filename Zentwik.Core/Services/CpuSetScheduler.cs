@@ -359,7 +359,7 @@ namespace Zentwik.Core.Services
             ushort groups = GetActiveProcessorGroupCount();
 
             if (groups > 1)
-                return Fail($"本机有 {groups} 个处理器组，关联掩码只能覆盖处理器组 0", -1);
+                return Fail($"本机有 {groups} 个处理器组，Affinity Mask 只能覆盖处理器组 0", -1);
 
             if (mask == 0)
                 return Fail("掩码为 0，没有可绑定的逻辑处理器", -1);

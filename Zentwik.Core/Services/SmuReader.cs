@@ -228,14 +228,16 @@ namespace Zentwik.Core.Services
 
                 snapshot.SmuVersion = SmuVersionString();
 
-                _log.Info(
-                    $"CPU: {snapshot.CpuName} | {snapshot.CodeName} | {snapshot.Family} | " +
-                    $"SMU {snapshot.SmuVersion} ({snapshot.SmuType}) | " +
-                    $"{snapshot.Ccds} CCD / {snapshot.PhysicalCores} 物理核 / {snapshot.Cores} 逻辑处理器");
-
                 uint coresPerCcd = (uint)info.CoresPerCcd;
                 if (coresPerCcd == 0)
                     coresPerCcd = 8;
+
+                _log.Info(
+                    $"CPU：{snapshot.CpuName}，{snapshot.CodeName}，Family {snapshot.Family}，" +
+                    $"SMU {snapshot.SmuVersion}（{snapshot.SmuType}）");
+                _log.Info(
+                    $"核心拓扑：{snapshot.Ccds} 个 CCD、{snapshot.PhysicalCores} 个物理核心、" +
+                    $"{snapshot.Cores} 个逻辑处理器");
 
                 int coreCount = info.PhysicalCores;
                 snapshot.CoreMargins = new int[coreCount];
@@ -260,7 +262,6 @@ namespace Zentwik.Core.Services
                 _coreCount = coreCount;
                 snapshot.CoresPerCcd = coresPerCcd;
                 _log.Info($"Curve Optimizer 读取完成：{okCount}/{coreCount} 个核心返回有效值");
-                _log.Info($"核心拓扑：每 CCD {coresPerCcd} 核，共 {coreCount} 物理核心");
 
                 snapshot.FMaxMHz = session.GetFMax();
                 _log.Info($"FMax 当前上限：{snapshot.FMaxMHz} MHz");

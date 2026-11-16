@@ -355,7 +355,7 @@
                                          Style="{StaticResource SegmentRadioButtonStyle}"
                                          Height="28"
                                          automation:AutomationProperties.Name="CPU 集"
-                                         ToolTip="SetProcessDefaultCpuSets：按 CPU 集下发，不受 64 个逻辑处理器与处理器组的限制"
+                                         ToolTip="SetProcessDefaultCpuSets：按 CPU Sets 下发，不受 64 个逻辑处理器与处理器组的限制"
                                          IsChecked="{Binding MaskManager.IsCpuSetsType, Mode=TwoWay}">
                                 <TextBlock Text="CPU Sets" />
                             </RadioButton>

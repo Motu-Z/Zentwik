@@ -2343,7 +2343,7 @@ public static class IntegrationTest
               cpuSetsRadio is not null && affinityRadio is not null,
               $"{cpuSetsRadio?.GetType().Name ?? "null"} / {affinityRadio?.GetType().Name ?? "null"}");
 
-        Check("掩码：默认绑定方式为 CPU 集",
+        Check("掩码：默认绑定方式为 CPU Sets",
               mask.IsCpuSetsType && !mask.IsAffinityMaskType,
               mask.SelectedMaskType.ToString());
 

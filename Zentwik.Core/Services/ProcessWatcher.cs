@@ -483,7 +483,7 @@ namespace Zentwik.Core.Services
                 _affinityPids.Remove(pid);
 
                 if (!_cpuSets.ClearAffinityMask(pid, out string? error) && !string.IsNullOrEmpty(error))
-                    _log.Info($"改用 CPU Sets 前清除关联掩码失败（PID {pid}）：{error}");
+                    _log.Info($"改用 CPU Sets 前清除 Affinity Mask 失败（PID {pid}）：{error}");
             }
 
             return _cpuSets.ScheduleToMask(pid, mask);
@@ -502,12 +502,12 @@ namespace Zentwik.Core.Services
                     Success = false,
                     ErrorCode = -1,
                     CcdIndex = -1,
-                    Error = "本机有多个处理器组，关联掩码只能覆盖处理器组 0，请改用 CPU Sets 掩码"
+                    Error = "本机有多个处理器组，Affinity Mask 只能覆盖处理器组 0，请改用 CPU Sets"
                 };
             }
 
             if (!_cpuSets.ClearDefaultCpuSets(pid, out string? error) && !string.IsNullOrEmpty(error))
-                _log.Info($"按关联掩码绑定前清除默认 CPU Sets 失败（PID {pid}）：{error}");
+                _log.Info($"按 Affinity Mask 绑定前清除默认 CPU Sets 失败（PID {pid}）：{error}");
 
             CpuSetScheduleResult result = _cpuSets.ScheduleToAffinityMask(pid, mask);
 
