@@ -118,7 +118,14 @@ public partial class TuningViewModel : ObservableObject
     public PlanScope Plans => PlanHub.Tuning;
 
     /// <summary>「保存并应用」是否可点：有改动、SMU 可写、且当前没有正在跑的通信。</summary>
-    public bool CanSave => !IsBusy && SmuAvailable && IsDirty;
+    /// <summary>
+    /// 「保存并应用」是否可点。没有方案时不看改动：此时点下去是把当前值存成一份新方案，
+    /// 硬件本来就是这些值，语义成立，按钮也不该灰着。
+    /// </summary>
+    public bool CanSave =>
+        !IsBusy
+        && SmuAvailable
+        && (IsDirty || (PlanHub.Tuning.Current is null && !PlanHub.SuppressWorkerInit));
 
     /// <summary>界面挂载期间冻结脏标记</summary>
     public bool FreezeDirty { get; set; }
@@ -577,6 +584,10 @@ public partial class TuningViewModel : ObservableObject
     {
         if (SuppressWorkerInit)
             return;
+
+        // 有/无方案直接决定顶栏按钮的文案与可点状态。
+        OnPropertyChanged(nameof(CanSave));
+        ApplyCommand.NotifyCanExecuteChanged();
 
         // 正忙着（回读 / 下发）时先记下，等忙完补做。直接丢弃会让
         // 页面一直显示旧方案的值，而顶栏已经切到新方案。

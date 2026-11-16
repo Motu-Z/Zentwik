@@ -374,7 +374,14 @@ public partial class PowerViewModel : ObservableObject
     [ObservableProperty]
     private string _unavailableText = "本机不支持";
 
-    public bool CanApply => IsDirty && !IsBusy && IsWorkerAvailable;
+    /// <summary>
+    /// 「保存并应用」是否可点。没有方案时不看改动：此时点下去是把当前参数存成一份新方案，
+    /// 系统本来就是这些值，语义成立。
+    /// </summary>
+    public bool CanApply =>
+        (IsDirty || (PlanHub.Power.Current is null && !PlanHub.SuppressWorkerInit))
+        && !IsBusy
+        && IsWorkerAvailable;
 
     public bool CanOperate => !IsBusy;
 
@@ -463,6 +470,9 @@ public partial class PowerViewModel : ObservableObject
     /// <summary>面板换选了一份电源方案：把它的五项参数摆到界面上。</summary>
     private void OnPlanSelectionChanged(object? sender, EventArgs e)
     {
+        // 有/无方案直接决定顶栏按钮的文案与可点状态。
+        OnPropertyChanged(nameof(CanApply));
+        ApplyCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveToPlan));
         PlanHub.Power.RefreshApplyState();
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
@@ -664,6 +674,15 @@ public partial class PowerViewModel : ObservableObject
         if (patch.IsEmpty)
         {
             IsDirty = false;
+
+            // 没有改动也能「新建并应用」：系统本来就是这些值，
+            // 只需把当前状态存成一份方案，不必再写一遍。
+            if (newPlanName is not null
+                && await SaveToPlanBeforeApplyAsync(newPlanName).ConfigureAwait(true))
+            {
+                ToastService.Instance.Show($"已新建「{newPlanName}」");
+            }
+
             return;
         }
 
