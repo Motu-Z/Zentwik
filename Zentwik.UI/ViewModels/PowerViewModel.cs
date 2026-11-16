@@ -936,29 +936,12 @@ public partial class PowerViewModel : ObservableObject
             bool hasScheme = ActiveSchemeGuid != Guid.Empty;
             string? schemeGuid = hasScheme ? ActiveSchemeGuid.ToString("D") : null;
 
-            IpcOutcome<string> saved = await WorkerBridge.Instance
-                .SavePlanAsync(
-                    PlanKind.Power,
-                    current.Id,
-                    current.Name,
-                    powerSchemeGuid: schemeGuid,
-                    powerPolicy: snapshot,
-                    timeoutMs: ApplyTimeoutMs)
+            PlanItem? saved = await PlanHub.Power
+                .SaveAsync(name: current.Name, powerSchemeGuid: schemeGuid, powerPolicy: snapshot)
                 .ConfigureAwait(true);
 
-            if (saved.TransportFailed)
-            {
-                MarkWorkerUnreachable();
-                ToastService.Instance.ShowError("后台服务未连接，参数未存入方案");
+            if (saved is null)
                 return;
-            }
-
-            if (!saved.Success)
-            {
-                ToastService.Instance.ShowError(
-                    string.IsNullOrEmpty(saved.Message) ? "保存到方案失败" : saved.Message);
-                return;
-            }
 
             current.PowerPolicy = snapshot;
 
@@ -969,6 +952,9 @@ public partial class PowerViewModel : ObservableObject
             }
 
             PlanHub.Power.UpdateCurrentSummary();
+
+            // 值已经进方案了：方案条的「未保存」必须立刻消失，否则用户会一直点。
+            PlanHub.Power.SetUnsaved(false);
         }
         catch (Exception ex)
         {
@@ -1411,6 +1397,9 @@ public partial class PowerViewModel : ObservableObject
         }
 
         IsDirty = !PowerSet.Same(_ac, _appliedAc) || !PowerSet.Same(_dc, _appliedDc);
+
+        // 每次值变都同步方案条：保存到方案后它要能重新亮起「未保存」。
+        PlanHub.Power.SetUnsaved(IsDirty);
     }
 
     private void NotifyAllValues()

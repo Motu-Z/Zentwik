@@ -43,13 +43,7 @@ public sealed class PlanScope : ViewModelBase
         ConfirmDeleteCommand = new RelayCommand(p => { if (p is PlanItem item) Fire(() => DeleteAsync(item)); });
         CancelDeleteCommand = new RelayCommand(p => { if (p is PlanItem item) item.IsConfirmingDelete = false; });
         ApplyCommand = new RelayCommand(p => Fire(() => ApplyAsync(p as PlanItem ?? Current)));
-        ApplyOrSaveCommand = new RelayCommand(_ =>
-        {
-            if (HasUnsavedChanges && SavePending is not null)
-                SavePending();
-            else
-                ApplyCommand.Execute(null);
-        });
+        ApplyOrSaveCommand = new RelayCommand(_ => RunApplyOrSave());
     }
 
     public PlanKind Kind { get; }
@@ -144,6 +138,37 @@ public sealed class PlanScope : ViewModelBase
 
     public Action? SavePending { get; set; }
 
+    /// <summary>方案条底部那一个按钮：有改动只存方案，没改动才应用。</summary>
+    private void RunApplyOrSave()
+    {
+        if (!HasUnsavedChanges)
+        {
+            if (CanApplyCurrent)
+            {
+                ApplyCommand.Execute(null);
+                return;
+            }
+
+            ToastService.Instance.Show($"「{CurrentName}」正在生效");
+            return;
+        }
+
+        // 有改动时绝不落到「应用」：那会跳过保存、直接把当前值写进硬件。
+        if (SavePending is null)
+        {
+            ToastService.Instance.Show($"{Label}页还没准备好，暂时无法保存");
+            return;
+        }
+
+        if (CanSavePending?.Invoke() == false)
+        {
+            ToastService.Instance.Show("正在通信，稍后再保存");
+            return;
+        }
+
+        SavePending();
+    }
+
     public void RefreshApplyState()
     {
         OnPropertyChanged(nameof(ApplyLabel));
@@ -153,9 +178,9 @@ public sealed class PlanScope : ViewModelBase
     /// <summary>页面同步脏标记。</summary>
     public void SetUnsaved(bool value) => HasUnsavedChanges = value;
 
-    /// <summary>面板底部按钮文案：没改动时「应用」，改过时「保存至」，都带方案名。</summary>
+    /// <summary>面板底部按钮文案：改过就存，没改就应用；都带上方案名。</summary>
     public string ApplyLabel => Current is null
-        ? "应用"
+        ? HasUnsavedChanges ? "保存为新方案" : "应用"
         : HasUnsavedChanges ? $"保存至「{Current.Name}」" : $"应用「{Current.Name}」";
 
     /// <summary>当前方案正在生效时，应用按钮没有意义。</summary>
@@ -827,23 +852,25 @@ public sealed class PlanScope : ViewModelBase
         }
     }
 
-    /// <summary>把界面上正在编辑的值存进当前方案（没有当前方案时新建一份）</summary>
+    /// <summary>把界面上正在编辑的值存进当前方案；没有选中方案时新建一份</summary>
     public async Task<PlanItem?> SaveAsync(
         int[]? coreMargins = null,
         uint? fMaxMHz = null,
         string? powerSchemeGuid = null,
-        string? name = null)
+        string? name = null,
+        ApplyPowerPolicyPayload? powerPolicy = null)
     {
         if (PlanHub.SuppressWorkerInit)
             return Current;
 
         PlanItem? target = Current;
+        bool creating = target is null;
         string planName = string.IsNullOrWhiteSpace(name) ? target?.Name ?? NextDefaultName() : name.Trim();
 
         try
         {
             IpcOutcome<string> outcome = await WorkerBridge.Instance
-                .SavePlanAsync(Kind, target?.Id, planName, coreMargins, fMaxMHz, powerSchemeGuid)
+                .SavePlanAsync(Kind, target?.Id, planName, coreMargins, fMaxMHz, powerSchemeGuid, powerPolicy)
                 .ConfigureAwait(true);
 
             if (!outcome.Success)
@@ -855,6 +882,8 @@ public sealed class PlanScope : ViewModelBase
             }
 
             await RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
+
+            ToastService.Instance.Show(creating ? $"已新建「{planName}」并保存" : $"已保存到「{planName}」");
 
             return Items.FirstOrDefault(p => p.Id == outcome.Value) ?? Current;
         }

@@ -197,7 +197,7 @@ public partial class TuningViewModel : ObservableObject
     private async Task ReadbackAsync()
         => await RefreshFromWorkerAsync(notifyOnFailure: true, reloadPlan: false).ConfigureAwait(true);
 
-    /// <summary>应用参数：写进当前方案并立即下发</summary>
+    /// <summary>应用参数：先存进当前方案，再下发硬件</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task ApplyAsync()
     {
@@ -207,26 +207,17 @@ public partial class TuningViewModel : ObservableObject
         {
             int[] margins = Snapshot();
             uint fMax = (uint)Math.Max(0, FMaxMHz);
-            PlanItem? target = PlanHub.Tuning.Current;
 
-            // 先写进方案，再应用：应用读的是 store，而 store 由「应用」这一步写入。
-            // 两步分开之后，保存失败不会被当成下发失败，回执能说清是哪一步出的问题。
-            IpcOutcome<string> saved = await WorkerBridge.Instance
-                .SavePlanAsync(PlanKind.Tuning, target?.Id, target?.Name ?? "当前调校", margins, fMax)
+            // 先存进方案再下发：应用读的是方案，保存失败要说清是哪一步出的问题。
+            PlanItem? saved = await PlanHub.Tuning
+                .SaveAsync(margins, fMax, name: PlanHub.Tuning.Current?.Name)
                 .ConfigureAwait(true);
 
-            if (!saved.Success)
-            {
-                if (saved.TransportFailed)
-                    MarkWorkerUnreachable("保存调校方案时与后台服务的连接中断。");
-
-                ToastService.Instance.Show(
-                    string.IsNullOrEmpty(saved.Message) ? "调校未保存" : saved.Message);
+            if (saved is null)
                 return;
-            }
 
             IpcOutcome<string> outcome = await WorkerBridge.Instance
-                .ApplyPlanAsync(PlanKind.Tuning, saved.Value ?? target?.Id ?? string.Empty, ApplyTimeoutMs)
+                .ApplyPlanAsync(PlanKind.Tuning, saved.Id, ApplyTimeoutMs)
                 .ConfigureAwait(true);
 
             if (outcome.TransportFailed)
@@ -245,6 +236,7 @@ public partial class TuningViewModel : ObservableObject
 
             PlanHub.Tuning.RememberTuning(margins, fMax);
             AcceptCurrentAsBaseline();
+            ToastService.Instance.Show($"已应用到「{saved.Name}」");
         }
         catch (Exception ex)
         {
@@ -259,30 +251,33 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>只把界面上的值写进当前方案，不下发硬件</summary>
     private async Task SaveToPlanAsync()
     {
-        int[] margins = Snapshot();
-        uint fMax = (uint)Math.Max(0, FMaxMHz);
-        PlanItem? target = PlanHub.Tuning.Current;
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
 
         try
         {
-            IpcOutcome<string> saved = await WorkerBridge.Instance
-                .SavePlanAsync(PlanKind.Tuning, target?.Id, target?.Name ?? "当前调校", margins, fMax)
+            int[] margins = Snapshot();
+            uint fMax = (uint)Math.Max(0, FMaxMHz);
+
+            PlanItem? saved = await PlanHub.Tuning
+                .SaveAsync(margins, fMax, name: PlanHub.Tuning.Current?.Name)
                 .ConfigureAwait(true);
 
-            if (!saved.Success)
-            {
-                ToastService.Instance.Show(
-                    string.IsNullOrEmpty(saved.Message) ? "方案未保存" : saved.Message);
+            if (saved is null)
                 return;
-            }
 
             PlanHub.Tuning.RememberTuning(margins, fMax);
-            await PlanHub.Tuning.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
             AcceptCurrentAsBaseline();
         }
         catch (Exception ex)
         {
             ToastService.Instance.ShowError($"保存方案失败：{ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -703,6 +698,9 @@ public partial class TuningViewModel : ObservableObject
             _recheckProfileOnIdle = false;
             OnCurrentProfileChanged(this, EventArgs.Empty);
         }
+
+        // 方案条按钮的可点状态跟着通信状态走，否则会停在旧的禁用态。
+        PlanHub.Tuning.RefreshApplyState();
     }
 
     partial void OnIsDirtyChanged(bool value)

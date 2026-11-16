@@ -987,6 +987,19 @@ public static class IntegrationTest
         Check("调校：脏值时「保存至」可点（不要求 SMU 可写）",
               PlanHub.Tuning.CanSavePending?.Invoke() == true);
 
+        // 方案条只有一个按钮：有改动时必须走「只存方案」。落到「应用」就等于
+        // 跳过保存直接写硬件 —— 用户看到「保存至」，拿到的却是下发。
+        int saveCalls = 0;
+        Action? realSave = PlanHub.Tuning.SavePending;
+        PlanHub.Tuning.SavePending = () => saveCalls++;
+        PlanHub.Tuning.RefreshApplyState();
+        PlanHub.Tuning.ApplyOrSaveCommand.Execute(null);
+        PlanHub.Tuning.SavePending = realSave;
+
+        Check("方案条：脏值时按钮只存方案，不下发",
+              saveCalls == 1,
+              $"保存被调用 {saveCalls} 次");
+
         tuning.DiscardCommand.Execute(null);
         Check("调校：放弃后 IsDirty = false", !tuning.IsDirty);
         Check("调校：放弃后数值还原", tuning.CoreMargins[0].Margin == before,
