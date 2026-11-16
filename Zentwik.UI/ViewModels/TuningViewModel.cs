@@ -729,22 +729,16 @@ public partial class TuningViewModel : ObservableObject
     {
         PlanItem? item = PlanHub.Tuning.Current;
 
-        bool differs;
+        bool differs = false;
 
-        if (item is null)
-        {
-            // 没有当前方案：界面这套值无处可存，同样算未保存。
-            differs = true;
-        }
-        else
+        if (item is not null)
         {
             int[] now = Snapshot();
 
             bool fMaxDiffers = item.FMaxMHz > 0 && item.FMaxMHz != (uint)Math.Max(0, FMaxMHz);
 
-            // 长度不等也算差异：方案里没存核值（空）时必须允许保存。
-            bool coresDiffer = item.CoreMargins.Length != now.Length
-                               || !now.SequenceEqual(item.CoreMargins);
+            bool coresDiffer = item.CoreMargins.Length > 0
+                               && !now.SequenceEqual(item.CoreMargins);
 
             differs = fMaxDiffers || coresDiffer;
         }

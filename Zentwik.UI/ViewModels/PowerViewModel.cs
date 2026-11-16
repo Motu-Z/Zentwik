@@ -340,7 +340,7 @@ public partial class PowerViewModel : ObservableObject
         ApplyCommand.NotifyCanExecuteChanged();
 
         // 电源页的改动同样是「改了没下发」，方案面板据此贴未保存并拦住切换。
-        PlanHub.Power.SetUnsaved(value);
+        PlanHub.Power.SetUnsaved(value || DiffersFromPlan());
     }
 
     [ObservableProperty]
@@ -1310,6 +1310,10 @@ public partial class PowerViewModel : ObservableObject
         SyncSelectedScheme();
         NotifyAllValues();
         IsDirty = false;
+
+        // 回读拿到系统真值，IsDirty 归零；方案条要按「与方案的差异」重新判定，
+        // 否则值明明与方案不同、按钮却落回不可点的「应用」。
+        PlanHub.Power.SetUnsaved(DiffersFromPlan());
     }
 
     // 降级
@@ -1330,6 +1334,7 @@ public partial class PowerViewModel : ObservableObject
 
         NotifyAllValues();
         IsDirty = false;
+        PlanHub.Power.SetUnsaved(DiffersFromPlan());
     }
 
     private static void MarkSetUnsupported(PowerSet set, string reason)
@@ -1389,6 +1394,37 @@ public partial class PowerViewModel : ObservableObject
         RefreshDirty();
     }
 
+    /// <summary>界面值与当前方案里存的对不上；方案缺该字段视为「不关心」。</summary>
+    private bool DiffersFromPlan()
+    {
+        ApplyPowerPolicyPayload? plan = PlanHub.Power.Current?.PowerPolicy;
+
+        if (plan is null)
+            return true;
+
+        return Differs(_ac, plan, ac: true) || Differs(_dc, plan, ac: false);
+    }
+
+    private static bool Differs(PowerSet set, ApplyPowerPolicyPayload plan, bool ac)
+    {
+        if (ac)
+        {
+            return (plan.Epp is int epp && epp != set.Epp)
+                   || (plan.BoostMode is int boost && boost != set.BoostMode)
+                   || (plan.MaxProcessorState is int max && max != set.MaxProcessorState)
+                   || (plan.CoreParkingMin is int park && park != set.CoreParkingMin)
+                   || (plan.Aspm is int aspm && aspm != set.Aspm)
+                   || (plan.IdleDisable is bool idle && idle != set.IdleDisable);
+        }
+
+        return (plan.DcEpp is int dcEpp && dcEpp != set.Epp)
+               || (plan.DcBoostMode is int dcBoost && dcBoost != set.BoostMode)
+               || (plan.DcMaxProcessorState is int dcMax && dcMax != set.MaxProcessorState)
+               || (plan.DcCoreParkingMin is int dcPark && dcPark != set.CoreParkingMin)
+               || (plan.DcAspm is int dcAspm && dcAspm != set.Aspm)
+               || (plan.DcIdleDisable is bool dcIdle && dcIdle != set.IdleDisable);
+    }
+
     private void RefreshDirty()
     {
         if (_suppressDirty)
@@ -1399,7 +1435,8 @@ public partial class PowerViewModel : ObservableObject
         IsDirty = !PowerSet.Same(_ac, _appliedAc) || !PowerSet.Same(_dc, _appliedDc);
 
         // 每次值变都同步方案条：保存到方案后它要能重新亮起「未保存」。
-        PlanHub.Power.SetUnsaved(IsDirty);
+        // 回读会把 IsDirty 归零，但界面值可能仍与方案不同，方案条要给「保存至」。
+        PlanHub.Power.SetUnsaved(IsDirty || DiffersFromPlan());
     }
 
     private void NotifyAllValues()
