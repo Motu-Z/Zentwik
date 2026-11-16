@@ -304,7 +304,7 @@ namespace Zentwik.Core.Services
                 // WARN 而不是 ERROR：单轮采样失败（某个进程刚退出、句柄失效）
                 // 下一秒就会自愈，它不构成「操作失败」，只是「这一轮没采全」。
                 // 记 ERROR 会让日志页红一片，把真正的失败埋掉。
-                _log.Warn($"进程快照失败（{reason}，本轮已跳过）: {ex.Message}");
+                _log.Warn($"进程快照失败（{reason}，本轮已跳过）：{ex.Message}");
             }
             finally
             {
@@ -365,7 +365,7 @@ namespace Zentwik.Core.Services
             }
             catch (Exception ex)
             {
-                _log.Warn($"进程快照失败（本次请求已跳过）: {ex.Message}");
+                _log.Warn($"进程快照失败（本次请求已跳过）：{ex.Message}");
                 return;
             }
 

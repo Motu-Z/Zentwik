@@ -153,7 +153,7 @@ namespace Zentwik.Core.Helpers
             }
             catch (Exception ex)
             {
-                _log.Error($"读取自定义掩码失败: {ex.Message}");
+                _log.Error($"读取自定义掩码失败：{ex.Message}");
             }
         }
 
@@ -166,7 +166,7 @@ namespace Zentwik.Core.Helpers
             }
             catch (Exception ex)
             {
-                _log.Error($"保存自定义掩码失败: {ex.Message}");
+                _log.Error($"保存自定义掩码失败：{ex.Message}");
                 throw;
             }
         }
@@ -353,7 +353,7 @@ namespace Zentwik.Core.Helpers
             }
             catch (Exception ex)
             {
-                _log.Error($"记录预置掩码失败: {ex.Message}");
+                _log.Error($"记录预置掩码失败：{ex.Message}");
             }
         }
 
@@ -367,7 +367,7 @@ namespace Zentwik.Core.Helpers
             }
             catch (Exception ex)
             {
-                _log.Error($"清除预置记录失败: {ex.Message}");
+                _log.Error($"清除预置记录失败：{ex.Message}");
             }
         }
 

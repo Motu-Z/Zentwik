@@ -217,7 +217,7 @@ namespace Zentwik.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"读取方案列表失败: {ex.Message}");
+                    _log.Error($"读取方案列表失败：{ex.Message}");
                 }
 
                 if (file is null)
@@ -243,7 +243,7 @@ namespace Zentwik.Core.Services
                     catch (Exception ex)
                     {
                         // 自愈失败不该拖垮启动：内存里已经清干净，下次启动会再试。
-                        _log.Warn($"清理悬空生效方案失败: {ex.Message}");
+                        _log.Warn($"清理悬空生效方案失败：{ex.Message}");
                     }
                 }
 
@@ -277,7 +277,7 @@ namespace Zentwik.Core.Services
             }
             catch (Exception ex)
             {
-                _log.Error($"读取旧方案文件失败: {ex.Message}");
+                _log.Error($"读取旧方案文件失败：{ex.Message}");
             }
 
             if (legacy is not null)
@@ -364,7 +364,7 @@ namespace Zentwik.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.Warn($"迁移方案时读取当前电源方案失败: {ex.Message}");
+                    _log.Warn($"迁移方案时读取当前电源方案失败：{ex.Message}");
                 }
 
                 result.Plans.Add(new PlanEntry
@@ -392,7 +392,7 @@ namespace Zentwik.Core.Services
             catch (Exception ex)
             {
                 // 迁移失败不影响本次运行（内存里有数据），但下次启动会再迁一次。
-                _log.Error($"写入方案文件失败: {ex.Message}");
+                _log.Error($"写入方案文件失败：{ex.Message}");
             }
 
             return result;
@@ -498,9 +498,18 @@ namespace Zentwik.Core.Services
                 Persist();
             }
 
-            _log.Info($"方案已保存: [{entry.Kind}] {entry.Name}");
+            _log.Info($"方案已保存：[{KindLabel(entry.Kind)}] {entry.Name}");
             Changed?.Invoke();
         }
+
+        /// <summary>方案类型的中文名，日志里不出现枚举名。</summary>
+        private static string KindLabel(PlanKind kind) => kind switch
+        {
+            PlanKind.Tuning => "调校",
+            PlanKind.Scheduling => "调度",
+            PlanKind.Power => "电源",
+            _ => kind.ToString()
+        };
 
         /// <summary>删除一份方案。删的正好是生效中方案时只清标记，不回滚硬件。</summary>
         public bool Delete(PlanKind kind, string id)
@@ -644,7 +653,7 @@ namespace Zentwik.Core.Services
                 Persist();
             }
 
-            _log.Info($"已应用方案: [{kind}] {entry.Name}");
+            _log.Info($"已应用方案：[{KindLabel(kind)}] {entry.Name}");
             Changed?.Invoke();
             return new PlanApplyResult(true, $"已应用「{entry.Name}」", status);
         }
@@ -711,7 +720,7 @@ namespace Zentwik.Core.Services
             catch (Exception ex)
             {
                 // 不吞：写盘失败必须让调用方知道，否则界面会显示「已保存」而盘上没有。
-                throw new InvalidOperationException($"保存方案列表失败: {ex.Message}", ex);
+                throw new InvalidOperationException($"保存方案列表失败：{ex.Message}", ex);
             }
         }
 

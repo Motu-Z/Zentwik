@@ -121,7 +121,7 @@ namespace Zentwik.Core.Services
             {
                 IsAvailable = false;
                 LastError = ex.Message;
-                _log.Error($"SMU 初始化失败: {ex}");
+                _log.Error($"SMU 初始化失败：{ex}");
             }
         }
 
@@ -153,7 +153,7 @@ namespace Zentwik.Core.Services
                     return false;
             }
 
-            _log.Error($"PawnIO 未加载（{maxSeconds}s 内未就绪）");
+            _log.Error($"PawnIO 未加载（{maxSeconds} 秒内未就绪）");
             return false;
         }
 
@@ -231,7 +231,7 @@ namespace Zentwik.Core.Services
                 _log.Info(
                     $"CPU: {snapshot.CpuName} | {snapshot.CodeName} | {snapshot.Family} | " +
                     $"SMU {snapshot.SmuVersion} ({snapshot.SmuType}) | " +
-                    $"{snapshot.Ccds} CCD / {snapshot.Cores} 核 / {snapshot.ThreadsPerCore} 线程每核");
+                    $"{snapshot.Ccds} CCD / {snapshot.PhysicalCores} 物理核 / {snapshot.Cores} 逻辑处理器");
 
                 uint coresPerCcd = (uint)info.CoresPerCcd;
                 if (coresPerCcd == 0)
@@ -271,7 +271,7 @@ namespace Zentwik.Core.Services
             {
                 snapshot.Success = false;
                 snapshot.Error = ex.Message;
-                _log.Error($"SMU 只读探测失败: {ex}");
+                _log.Error($"SMU 只读探测失败：{ex}");
             }
 
             return snapshot;
@@ -355,7 +355,7 @@ namespace Zentwik.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"SetMargin 核心 {i} 异常: {ex}");
+                    _log.Error($"SetMargin 核心 {i} 异常：{ex}");
                 }
 
                 _log.Info(
@@ -379,7 +379,7 @@ namespace Zentwik.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.Warn($"GetMargin 回读 核心 {i} 异常: {ex.Message}");
+                    _log.Warn($"GetMargin 回读核心 {i} 异常：{ex.Message}");
                 }
 
                 if (readBack != value)
@@ -447,7 +447,7 @@ namespace Zentwik.Core.Services
             catch (Exception ex)
             {
                 result.Fatal = ex.Message;
-                _log.Error($"SetFMax 异常: {ex}");
+                _log.Error($"SetFMax 异常：{ex}");
             }
 
             return result;

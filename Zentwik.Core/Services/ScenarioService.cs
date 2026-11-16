@@ -277,7 +277,7 @@ namespace Zentwik.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.Error($"读取场景规则失败: {ex.Message}");
+                    _log.Error($"读取场景规则失败：{ex.Message}");
                 }
 
                 Enabled = file?.Enabled ?? false;
@@ -785,7 +785,7 @@ namespace Zentwik.Core.Services
             }
             catch (Exception ex)
             {
-                _log.Error($"保存场景规则失败: {ex.Message}");
+                _log.Error($"保存场景规则失败：{ex.Message}");
             }
         }
     }

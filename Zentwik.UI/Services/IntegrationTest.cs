@@ -2680,7 +2680,7 @@ public static class IntegrationTest
               hit?.VisualHit is null
                   ? "null"
                   : $"{hit.VisualHit.GetType().Name}{(hit.VisualHit is FrameworkElement hfe ? $"「{SafeText(hfe)}」" : "")}"
-                    + " | 链: " + HitChain(hit?.VisualHit));
+                    + " | 链：" + HitChain(hit?.VisualHit));
     }
 
     /// <summary>把命中链打印出来（诊断用）。</summary>

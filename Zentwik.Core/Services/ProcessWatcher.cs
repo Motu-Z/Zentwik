@@ -129,7 +129,7 @@ namespace Zentwik.Core.Services
                 _loop = Task.Run(() => LoopAsync(token), token);
                 _running = true;
 
-                _log.Info("进程调度监听已启动（快照差集，1 秒一轮）");
+                _log.Info("进程调度监听已启动（按快照差集，轮询间隔 1 秒）");
             }
         }
 
@@ -374,7 +374,7 @@ namespace Zentwik.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    _log.Warn($"按新规则重扫进程失败：{ex.Message}");
+                    _log.Warn($"按新规则重新扫描进程失败：{ex.Message}");
                 }
                 finally
                 {
@@ -430,7 +430,7 @@ namespace Zentwik.Core.Services
                 }
                 else if (!string.IsNullOrEmpty(error))
                 {
-                    _log.Info($"解绑 PID {pid} 跳过：{error}");
+                    _log.Info($"跳过解绑 PID {pid}：{error}");
                 }
 
                 _boundPids.Remove(pid);
@@ -445,7 +445,7 @@ namespace Zentwik.Core.Services
             bool ok = Unbind(pid, out string? error);
 
             if (!ok && !string.IsNullOrEmpty(error))
-                _log.Info($"解绑 PID {pid} 跳过：{error}");
+                _log.Info($"跳过解绑 PID {pid}：{error}");
 
             _boundPids.Remove(pid);
             return ok;
@@ -483,7 +483,7 @@ namespace Zentwik.Core.Services
                 _affinityPids.Remove(pid);
 
                 if (!_cpuSets.ClearAffinityMask(pid, out string? error) && !string.IsNullOrEmpty(error))
-                    _log.Info($"改用 CPU 集前清除关联掩码失败（PID {pid}）：{error}");
+                    _log.Info($"改用 CPU Sets 前清除关联掩码失败（PID {pid}）：{error}");
             }
 
             return _cpuSets.ScheduleToMask(pid, mask);
@@ -502,12 +502,12 @@ namespace Zentwik.Core.Services
                     Success = false,
                     ErrorCode = -1,
                     CcdIndex = -1,
-                    Error = "本机有多个处理器组，关联掩码只能覆盖处理器组 0，请改用 CPU 集掩码"
+                    Error = "本机有多个处理器组，关联掩码只能覆盖处理器组 0，请改用 CPU Sets 掩码"
                 };
             }
 
             if (!_cpuSets.ClearDefaultCpuSets(pid, out string? error) && !string.IsNullOrEmpty(error))
-                _log.Info($"按关联掩码绑定前清除默认 CPU 集失败（PID {pid}）：{error}");
+                _log.Info($"按关联掩码绑定前清除默认 CPU Sets 失败（PID {pid}）：{error}");
 
             CpuSetScheduleResult result = _cpuSets.ScheduleToAffinityMask(pid, mask);
 
@@ -568,7 +568,10 @@ namespace Zentwik.Core.Services
 
                 // 关联掩码是硬约束，停泊不会缩范围，不追加警告。
                 string parkingSuffix = byAffinityMask ? string.Empty : ParkingSuffix();
-                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{result.AppliedCount} 个 CPU Set{parkingSuffix}");
+                string scope = byAffinityMask
+                    ? $"{result.AppliedCount} 个逻辑处理器"
+                    : $"{result.AppliedCount} 个 CPU Sets";
+                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{scope}{parkingSuffix}");
             }
             else if (_throttle.TryAcquire(throttleKey, out int suppressed))
             {
@@ -638,7 +641,7 @@ namespace Zentwik.Core.Services
             // 开机补扫必然撞上一堆已退出 / 受保护进程，记 Info 就够。
             if (ProcessPriority.IsTransient(result))
             {
-                _log.Debug($"跳过优先级 PID {pid}：进程已退出");
+                _log.Debug($"跳过优先级设置：PID {pid} 已退出");
                 return;
             }
 

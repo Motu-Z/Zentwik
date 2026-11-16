@@ -224,7 +224,7 @@ namespace Zentwik.Core.Services
                 {
                     // 采不到名单就不评估：带着一份残缺的名单去判定，
                     // 结果可能是「唯一命中的那条规则恰好没被采到」→ 误切成别的方案。
-                    _log.Warn($"场景评估：进程名单采集失败，本次跳过：{ex.Message}");
+                    _log.Warn($"场景评估：进程列表采集失败，本次跳过：{ex.Message}");
                     return;
                 }
 

@@ -314,7 +314,7 @@ namespace Zentwik.Core.Services
                 return Fail("无法读取系统 CPU Set 拓扑", -1);
 
             if (mask == 0)
-                return Fail("掩码为 0，没有可绑定的逻辑核", -1);
+                return Fail("掩码为 0，没有可绑定的逻辑处理器", -1);
 
             List<uint> ids = new();
 
@@ -328,7 +328,7 @@ namespace Zentwik.Core.Services
             }
 
             if (ids.Count == 0)
-                return Fail($"掩码 0x{mask:X} 未命中任何逻辑核（本机仅 {table.Length} 个）", -1);
+                return Fail($"掩码 0x{mask:X} 未命中任何逻辑处理器（本机仅 {table.Length} 个）", -1);
 
             return ApplyCpuSets(processId, ids.ToArray(), -1);
         }
@@ -362,13 +362,13 @@ namespace Zentwik.Core.Services
                 return Fail($"本机有 {groups} 个处理器组，关联掩码只能覆盖处理器组 0", -1);
 
             if (mask == 0)
-                return Fail("掩码为 0，没有可绑定的逻辑核", -1);
+                return Fail("掩码为 0，没有可绑定的逻辑处理器", -1);
 
             int logical = LogicalProcessorCount;
             ulong effective = mask & MaskWidth(logical);
 
             if (effective == 0)
-                return Fail($"掩码 0x{mask:X} 未命中任何逻辑核（本机仅 {logical} 个）", -1);
+                return Fail($"掩码 0x{mask:X} 未命中任何逻辑处理器（本机仅 {logical} 个）", -1);
 
             // SetProcessAffinityMask 只认 PROCESS_SET_INFORMATION，没有「有限」版本。
             IntPtr handle = OpenProcess(PROCESS_SET_INFORMATION, false, processId);

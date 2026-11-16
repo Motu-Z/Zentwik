@@ -165,7 +165,7 @@ namespace Zentwik.Core.Helpers
 
             if (core < 0 || core > 63)
             {
-                error = $"逻辑核 {core} 超出 0-63 范围";
+                error = $"逻辑处理器 {core} 超出 0-63 范围";
                 return false;
             }
 
@@ -179,7 +179,7 @@ namespace Zentwik.Core.Helpers
             error = null;
             if (mask == 0)
             {
-                error = "掩码不能为 0（至少选择一个逻辑核）";
+                error = "掩码不能为 0（至少选择一个逻辑处理器）";
                 return false;
             }
 

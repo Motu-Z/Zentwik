@@ -591,7 +591,7 @@ namespace Zentwik.Worker
                 else
                     _watcher.Stop();
 
-                _log.Info($"进程监听已{(settings.WatchProcessBinding ? "启动" : "停止")}");
+                _log.Info($"进程调度监听已{(settings.WatchProcessBinding ? "启动" : "停止")}");
             }
 
             if (hibernateChanged)
@@ -1365,7 +1365,7 @@ namespace Zentwik.Worker
                 },
                 token).ConfigureAwait(false);
 
-            _log.Info($"调度规则已保存：{processName} → {rule.Label}（优先级：{(priority.Length == 0 ? "不改" : priority)}，{(enabled ? "启用" : "已禁用")}）");
+            _log.Info($"调度规则已保存：{processName} → {rule.Label}（优先级：{(priority.Length == 0 ? "保持原样" : priority)}，{(enabled ? "已启用" : "已禁用")}）");
 
             return new PipeResponse
             {
@@ -1478,7 +1478,7 @@ namespace Zentwik.Worker
             if (migrated > 0)
             {
                 _scheduling.Save(rules);
-                _log.Info($"把 {migrated} 条旧版 CCD 规则改写成掩码");
+                _log.Info($"已将 {migrated} 条旧版 CCD 规则改写为掩码");
             }
 
             MigratePlanSnapshots(groups);
@@ -1669,7 +1669,7 @@ namespace Zentwik.Worker
                 return Fail("Payload 不是合法的 save-mask 请求");
 
             if (request.Mask == 0)
-                return Fail("至少要选一个逻辑核");
+                return Fail("至少要选一个逻辑处理器");
 
             string id = (request.Id ?? string.Empty).Trim();
 
@@ -1691,7 +1691,7 @@ namespace Zentwik.Worker
             if (!_masks.Upsert(mask, out MaskStore.UpsertError error))
                 return Fail(MaskStore.Describe(error));
 
-            _log.Info($"掩码已保存：{mask.Name}（{mask.CoreCount} 个逻辑核，掩码 {mask.Mask}）");
+            _log.Info($"掩码已保存：{mask.Name}（{mask.CoreCount} 个逻辑处理器，掩码 {mask.Mask}）");
 
             return MaskListResponse($"已保存掩码：{mask.Name}");
         }
@@ -2606,7 +2606,7 @@ namespace Zentwik.Worker
 
                 if (!ReferenceEquals(finished, loop))
                 {
-                    _log.Warn("acceptLoop 未在 5 秒内退出");
+                    _log.Warn("管道接受循环未在 5 秒内退出");
                     return;
                 }
 
@@ -2619,7 +2619,7 @@ namespace Zentwik.Worker
                 }
                 catch (Exception ex)
                 {
-                    _log.Warn($"acceptLoop 退出时异常：{ex.Message}");
+                    _log.Warn($"管道接受循环退出时异常：{ex.Message}");
                 }
             }
             finally

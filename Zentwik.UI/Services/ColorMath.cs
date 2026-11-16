@@ -160,15 +160,15 @@ public static class ColorMathSelfTest
         var brandDark = ColorMath.DeriveBrandColor(accent, isDark: true);
         var brandLight = ColorMath.DeriveBrandColor(accent, isDark: false);
 
-        Check("品牌色: 深色模式 = #97BCFF", ColorMath.ToHex(brandDark) == "#97BCFF",
+        Check("品牌色：深色模式 = #97BCFF", ColorMath.ToHex(brandDark) == "#97BCFF",
               ColorMath.ToHex(brandDark));
-        Check("品牌色: 浅色模式 = #0049CA", ColorMath.ToHex(brandLight) == "#0049CA",
+        Check("品牌色：浅色模式 = #0049CA", ColorMath.ToHex(brandLight) == "#0049CA",
               ColorMath.ToHex(brandLight));
 
         var (bh, bs, bl) = ColorMath.RgbToHsl(brandDark.R, brandDark.G, brandDark.B);
-        Check("品牌色: H ≈ 218.65 (原 H + 20)", Math.Abs(bh - 218.65) < 0.05, $"H={bh:F2}");
-        Check("品牌色: S = 100 (原 S + 15，已封顶)", Math.Abs(bs - 100) < 0.5, $"S={bs:F2}");
-        Check("品牌色: 深色 L ≈ 79.61 (原 L + 20)", Math.Abs(bl - 79.61) < 0.05, $"L={bl:F2}");
+        Check("品牌色：H ≈ 218.65 (原 H + 20)", Math.Abs(bh - 218.65) < 0.05, $"H={bh:F2}");
+        Check("品牌色：S = 100 (原 S + 15，已封顶)", Math.Abs(bs - 100) < 0.5, $"S={bs:F2}");
+        Check("品牌色：深色 L ≈ 79.61 (原 L + 20)", Math.Abs(bl - 79.61) < 0.05, $"L={bl:F2}");
 
         // HEX 解析
         Check("HEX: 解析 #38BDF8", TryParse("#38BDF8", out var c1) && c1 == accent);

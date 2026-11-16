@@ -180,7 +180,7 @@ namespace Zentwik.Core.Services
             string? exePath = ResolveExecutablePath();
             if (string.IsNullOrEmpty(exePath))
             {
-                _log.Error("创建计划任务失败：无法定位 Zentwik.exe 路径");
+                _log.Error("创建计划任务失败：无法定位 Zentwik 可执行文件路径");
                 return false;
             }
 
@@ -506,24 +506,48 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>定位当前可执行文件（含自包含发布与单文件两种情况）。</summary>
+        /// <summary>
+        /// 定位当前可执行文件（含自包含发布与单文件两种情况）。
+        /// </summary>
+        /// <remarks>
+        /// 不能只认 <see cref="Environment.ProcessPath"/> 加 <c>File.Exists</c>：
+        /// 提权进程可能因映射盘、目录被移动等原因看不到自己的文件，判定失败会让
+        /// 「开始自启」永远失败，而错误只说「定位不到」。这里按三层兜底，
+        /// 最后仍以进程自报的路径登记（存在与否交给 schtasks 判）。
+        /// </remarks>
         private string? ResolveExecutablePath()
         {
-            string? path = Environment.ProcessPath;
-            if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                return path;
+            string? processPath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(processPath) && File.Exists(processPath))
+                return processPath;
 
+            string? modulePath = null;
             try
             {
-                path = Process.GetCurrentProcess().MainModule?.FileName;
-                if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                    return path;
+                modulePath = Process.GetCurrentProcess().MainModule?.FileName;
             }
             catch
             {
-                // 忽略
+                // Native AOT 下可能取不到
             }
 
+            if (!string.IsNullOrEmpty(modulePath) && File.Exists(modulePath))
+                return modulePath;
+
+            foreach (string name in new[] { "Zentwik.Worker.exe", "Zentwik.UI.exe" })
+            {
+                string candidate = Path.Combine(AppContext.BaseDirectory, name);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+
+            if (!string.IsNullOrEmpty(processPath))
+            {
+                _log.Warn($"当前进程路径 {processPath} 不可访问，仍按该路径登记计划任务");
+                return processPath;
+            }
+
+            _log.Warn("取不到当前进程路径：Environment.ProcessPath 与 MainModule 均为空");
             return null;
         }
 

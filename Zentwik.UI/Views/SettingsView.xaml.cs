@@ -176,7 +176,7 @@ public partial class SettingsView : UserControl
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SettingsView] 打开链接失败: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[SettingsView] 打开链接失败：{ex.Message}");
         }
     }
 }
