@@ -387,7 +387,9 @@ public partial class TuningViewModel : ObservableObject
 
             if (status.TransportFailed)
             {
-                MarkWorkerUnreachable("无法读写硬件。后台服务未响应，点左下角状态灯可重新连接。");
+                MarkWorkerUnreachable(WorkerStatus.Instance.FailureDetail is { } reason
+                    ? $"无法读写硬件。{reason}"
+                    : "无法读写硬件。后台服务未响应，点左下角状态灯可重新连接。");
                 await FallbackToStoredValuesAsync().ConfigureAwait(true);
                 NotifyIf(notifyOnFailure, "后台服务未连接，未能读取硬件当前值");
                 return;

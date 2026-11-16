@@ -113,6 +113,7 @@ public sealed class WorkerBridge
         WorkerStatus status = WorkerStatus.Instance;
         status.IsConnected = false;
         status.IsElevated = false;
+        status.FailureDetail = null;
     }
 
     /// <summary>一次「连接 → 发送 → 断开」。失败返回 null，不抛。</summary>
@@ -162,11 +163,14 @@ public sealed class WorkerBridge
 
         if (pong is not { Success: true })
         {
+            // 对端回了原因（版本不一致）就照原文显示，别一律说成「未响应」。
+            status.FailureDetail = string.IsNullOrWhiteSpace(pong?.Message) ? null : pong!.Message;
             status.IsConnected = false;
             status.IsElevated = false;
             return;
         }
 
+        status.FailureDetail = null;
         status.IsConnected = true;
 
         IpcOutcome<SmuStatusPayload> smu = await QuerySmuStatusAsync().ConfigureAwait(true);
