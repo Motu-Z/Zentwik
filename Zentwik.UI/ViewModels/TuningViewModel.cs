@@ -114,6 +114,9 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>回读 / 取消是否可点：只受「正在通信」限制</summary>
     public bool CanOperate => !IsBusy;
 
+    /// <summary>顶栏按钮的文案与可点状态都取自这一类方案的会话。</summary>
+    public PlanScope Plans => PlanHub.Tuning;
+
     /// <summary>「保存并应用」是否可点：有改动、SMU 可写、且当前没有正在跑的通信。</summary>
     public bool CanSave => !IsBusy && SmuAvailable && IsDirty;
 
@@ -209,7 +212,7 @@ public partial class TuningViewModel : ObservableObject
 
             ConfirmService.Instance.Request(
                 "当前没有调校方案",
-                new[] { $"将新建「{name}」，把当前设置存进去", "随后立即写入硬件" },
+                new[] { $"是否新建「{name}」并应用当前参数" },
                 () => Fire(() => ApplyCoreAsync(name)),
                 "新建并应用");
 
@@ -274,7 +277,7 @@ public partial class TuningViewModel : ObservableObject
     {
         if (IsBusy)
         {
-            ToastService.Instance.Show("正在通信，稍后再保存");
+            ToastService.Instance.Show("正在通信，请稍后保存");
             return;
         }
 

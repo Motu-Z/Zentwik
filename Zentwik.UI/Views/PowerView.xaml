@@ -101,11 +101,11 @@
 
                     <Button Style="{StaticResource PrimaryButtonStyle}"
                             Margin="8,0,0,0"
-                            automation:AutomationProperties.Name="保存并应用"
+                            automation:AutomationProperties.Name="{Binding Plans.ApplyButtonText}"
                             ToolTip="把当前设置保存到当前方案，并立即写入系统"
                             Command="{Binding ApplyCommand}"
                             IsEnabled="{Binding CanApply}">
-                        <TextBlock Text="保存并应用" />
+                        <TextBlock Text="{Binding Plans.ApplyButtonText}" />
                     </Button>
                 </StackPanel>
             </Grid>

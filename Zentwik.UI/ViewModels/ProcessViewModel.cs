@@ -1345,7 +1345,7 @@ public class ProcessViewModel : ViewModelBase
 
             ConfirmService.Instance.Request(
                 "当前没有调度方案",
-                new[] { $"将新建「{name}」，存入当前 {SavedRules.Count} 条规则", "随后立即应用" },
+                new[] { $"是否新建「{name}」并应用当前 {SavedRules.Count} 条规则" },
                 () => Fire(() => ApplyRulesCoreAsync(name)),
                 "新建并应用");
 
@@ -1383,6 +1383,9 @@ public class ProcessViewModel : ViewModelBase
     /// 按钮可点条件：有没存进方案的规则改动，或者一份方案都没有（此时点下去先新建）。
     /// 与调校、电源两页同一条规则 —— 只按「有没有东西要提交」判，不按「有没有台账」判。
     /// </summary>
+    /// <summary>顶栏按钮的文案与可点状态都取自这一类方案的会话。</summary>
+    public PlanScope Plans => PlanHub.Scheduling;
+
     public bool CanApplyRules =>
         !UseWorker
         || PlanHub.Scheduling.Current is null

@@ -149,20 +149,20 @@ public sealed class PlanScope : ViewModelBase
                 return;
             }
 
-            ToastService.Instance.Show($"「{CurrentName}」正在生效");
+            ToastService.Instance.Show($"「{CurrentName}」已生效");
             return;
         }
 
         // 有改动时绝不落到「应用」：那会跳过保存、直接把当前值写进硬件。
         if (SavePending is null)
         {
-            ToastService.Instance.Show($"{Label}页还没准备好，暂时无法保存");
+            ToastService.Instance.Show($"{Label}页尚未就绪，无法保存");
             return;
         }
 
         if (CanSavePending?.Invoke() == false)
         {
-            ToastService.Instance.Show("正在通信，稍后再保存");
+            ToastService.Instance.Show("正在通信，请稍后保存");
             return;
         }
 
@@ -172,11 +172,18 @@ public sealed class PlanScope : ViewModelBase
     public void RefreshApplyState()
     {
         OnPropertyChanged(nameof(ApplyLabel));
+        OnPropertyChanged(nameof(ApplyButtonText));
         OnPropertyChanged(nameof(CanApplyOrSave));
     }
 
     /// <summary>页面同步脏标记。</summary>
     public void SetUnsaved(bool value) => HasUnsavedChanges = value;
+
+    /// <summary>
+    /// 顶栏按钮文案：有方案才谈得上「保存」，没有方案时点下去必然先新建。
+    /// 按钮自己把这件事写明，比事后再弹一层解释干净。
+    /// </summary>
+    public string ApplyButtonText => Current is null ? "新建并应用" : "保存并应用";
 
     /// <summary>面板底部按钮文案：改过就存，没改就应用；都带上方案名。</summary>
     public string ApplyLabel => Current is null
@@ -488,8 +495,8 @@ public sealed class PlanScope : ViewModelBase
                 $"「{previous?.Name}」有未保存的改动",
                 new[]
                 {
-                    $"切到「{item.Name}」会丢弃这些改动",
-                    "想保留就先点「保存并应用」，再回来切",
+                    $"切换到「{item.Name}」将丢弃这些改动",
+                    "如需保留，请先保存并应用",
                 },
                 () => Current = item,
                 "丢弃并切换");

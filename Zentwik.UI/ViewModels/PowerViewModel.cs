@@ -159,11 +159,11 @@ public partial class PowerViewModel : ObservableObject
             SyncSelectedScheme();
 
             ConfirmService.Instance.Request(
-                "当前参数还没应用",
+                "参数尚未应用",
                 new[]
                 {
-                    $"切到「{target.Name}」会丢弃页面上的改动",
-                    "想保留就先点「保存并应用」，再回来切",
+                    $"切换到「{target.Name}」将丢弃页面上的改动",
+                    "如需保留，请先保存并应用",
                 },
                 () => SwitchConfirmed(target),
                 "丢弃并切换");
@@ -377,6 +377,9 @@ public partial class PowerViewModel : ObservableObject
     public bool CanApply => IsDirty && !IsBusy && IsWorkerAvailable;
 
     public bool CanOperate => !IsBusy;
+
+    /// <summary>顶栏按钮的文案与可点状态都取自这一类方案的会话。</summary>
+    public PlanScope Plans => PlanHub.Power;
 
     // 初始化
 
@@ -643,7 +646,7 @@ public partial class PowerViewModel : ObservableObject
 
             ConfirmService.Instance.Request(
                 "当前没有电源方案",
-                new[] { $"将新建「{name}」，把当前参数存进去", "随后立即写入系统" },
+                new[] { $"是否新建「{name}」并应用当前参数" },
                 () => AsyncRunner.Fire(() => ApplyCoreAsync(name)),
                 "新建并应用");
 
