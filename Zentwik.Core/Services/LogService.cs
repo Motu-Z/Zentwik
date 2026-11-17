@@ -85,6 +85,11 @@ namespace Zentwik.Core.Services
         private long _countError;
         private long _countCritical;
 
+        private long _totalInfo;
+        private long _totalWarn;
+        private long _totalError;
+        private long _totalCritical;
+
         private int _paused;
         private int _verbose;
         private int _disposed;
@@ -141,6 +146,16 @@ namespace Zentwik.Core.Services
         public long CountError => Interlocked.Read(ref _countError);
 
         public long CountCritical => Interlocked.Read(ref _countCritical);
+
+        public long TotalCount => TotalInfo + TotalWarn + TotalError + TotalCritical;
+
+        public long TotalInfo => Interlocked.Read(ref _totalInfo);
+
+        public long TotalWarn => Interlocked.Read(ref _totalWarn);
+
+        public long TotalError => Interlocked.Read(ref _totalError);
+
+        public long TotalCritical => Interlocked.Read(ref _totalCritical);
 
         public string LogDirectory { get; }
 
@@ -246,6 +261,10 @@ namespace Zentwik.Core.Services
                 Interlocked.Exchange(ref _countWarn, 0);
                 Interlocked.Exchange(ref _countError, 0);
                 Interlocked.Exchange(ref _countCritical, 0);
+                Interlocked.Exchange(ref _totalInfo, 0);
+                Interlocked.Exchange(ref _totalWarn, 0);
+                Interlocked.Exchange(ref _totalError, 0);
+                Interlocked.Exchange(ref _totalCritical, 0);
             }
             finally
             {
@@ -441,6 +460,18 @@ namespace Zentwik.Core.Services
 
         private void BumpCount(LogLevel level, int delta)
         {
+            // 累计只在写入时加：挤出窗口是减 count，不该把总量也减回去。
+            if (delta > 0)
+            {
+                switch (level)
+                {
+                    case LogLevel.Info: Interlocked.Increment(ref _totalInfo); break;
+                    case LogLevel.Warn: Interlocked.Increment(ref _totalWarn); break;
+                    case LogLevel.Error: Interlocked.Increment(ref _totalError); break;
+                    case LogLevel.Critical: Interlocked.Increment(ref _totalCritical); break;
+                }
+            }
+
             switch (level)
             {
                 case LogLevel.Info: Interlocked.Add(ref _countInfo, delta); break;

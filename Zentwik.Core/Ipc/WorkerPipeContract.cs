@@ -25,10 +25,10 @@ namespace Zentwik.Core.Ipc
         /// 8 ProcessExited 触发源 ｜ 9 方案拆三类 ｜ 10 界面设置读写与 factory-reset ｜
         /// 11 query-active-plans ｜ 12 掩码下发方式（save-mask / query-masks 的 type）｜
         /// 13 最小处理器状态与系统散热方式（apply-power-policy / query-power-policy 新字段）｜
-        /// 14 query-smu-status 下发处理器厂商。
+        /// 14 query-smu-status 下发处理器厂商 ｜ 15 snapshot-logs 首行附累计条数。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 14;
+        public const int ProtocolVersion = 15;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -245,7 +245,9 @@ namespace Zentwik.Core.Ipc
         ///
         /// 参数：<c>Payload = null</c>。
         /// 返回：<c>Payload</c> 为一行一条的纯文本，字段以 <c>|</c> 分隔：
+        /// 首行是统计：<c>#stats|总数|信息|警告|错误|致命</c>，其余行是
         /// <c>yyyy-MM-ddTHH:mm:ss.fff|级别|消息</c>，级别取 DEBUG / INFO / WARN / ERROR / FATAL。
+        /// 统计是本次运行累计，界面拿它显示右侧栏的数字 —— 列表只给最近 50 条，不能用条数当总数。
         /// 用文本而不是嵌套 JSON：协议按行切分消息，嵌套数组一旦带换行就必须再套一层转义，
         /// 而这份数据只给人看。消息内的 <c>\r\n</c> 由 Worker 转义成字面量 <c>\n</c> 后回传，
         /// 消息正文可以含 <c>|</c>，客户端按前两个分隔符切分（Split('|', 3)）。

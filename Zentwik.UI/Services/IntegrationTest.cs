@@ -2049,6 +2049,17 @@ public static class IntegrationTest
             Check("日志：字面量 \\n 还原成换行",
                   parsed[2].Message.Contains('\n'), parsed[2].Message.Replace("\n", "<LF>"));
 
+            // 首行统计：列表只给最近 50 条，右侧栏的数字必须来自这一行。
+            var withStats = LogsViewModel.Parse(
+                "#stats|1200|1000|150|48|2\n"
+                + $"{today}T23:10:11.123|INFO|a",
+                out LogStats stats);
+
+            Check("日志：统计行不混进条目", withStats.Count == 1, $"{withStats.Count}");
+            Check("日志：统计行带出累计条数",
+                  stats.Total == 1200 && stats.Info == 1000 && stats.Error == 48,
+                  $"{stats.Total}/{stats.Info}/{stats.Error}");
+
             Check("日志：日志目录与 Worker 同源（Roaming\\Zentwik\\Logs）",
                   LogsViewModel.LogDirectory.EndsWith(
                       System.IO.Path.Combine("Zentwik", "Logs"), StringComparison.OrdinalIgnoreCase),

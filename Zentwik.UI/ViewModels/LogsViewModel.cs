@@ -129,12 +129,17 @@ public sealed class LogsViewModel : ViewModelBase
         set { if (SetProperty(ref _searchText, value)) ApplyFilter(); }
     }
 
-    // 统计
+    // 统计：来自 Worker 的本次运行累计，不是列表里的条数（列表只有最近 50 条）
 
-    public int TotalCount => Entries.Count;
-    public int InfoCount => Entries.Count(e => e.Level == "INFO");
-    public int WarnCount => Entries.Count(e => e.Level == "WARN");
-    public int ErrorCount => Entries.Count(e => e.Level is "ERROR" or "FATAL");
+    public int TotalCount => _totalCount;
+    public int InfoCount => _infoCount;
+    public int WarnCount => _warnCount;
+    public int ErrorCount => _errorCount;
+
+    private int _totalCount;
+    private int _infoCount;
+    private int _warnCount;
+    private int _errorCount;
 
     /// <summary>最近一条异常：优先 ERROR / FATAL，没有就退到 WARN。</summary>
     public LogEntryItem? LatestIssue =>
@@ -204,13 +209,17 @@ public sealed class LogsViewModel : ViewModelBase
             return;
         }
 
-        Replace(Parse(outcome.Value));
+        LogStats stats;
+        List<LogEntryItem> items = Parse(outcome.Value, out stats);
+
+        Replace(items, stats);
         UpdateFolderSize();
     }
 
     private async Task ClearAsync()
     {
         Entries.Clear();
+        ApplyStats(default);
         NotifyCounts();
         ApplyFilter();
         UpdateFolderSize();
@@ -225,22 +234,41 @@ public sealed class LogsViewModel : ViewModelBase
             ToastService.Instance.ShowError(outcome.Message.Length > 0 ? outcome.Message : "后台日志未能清空");
     }
 
-    /// <summary>整体替换（快照是「最近 50 条」，不是增量）。</summary>
-    private void Replace(IEnumerable<LogEntryItem> items)
+    /// <summary>整体替换（快照是「最近 50 条」+ 累计统计，不是增量）。</summary>
+    private void Replace(IEnumerable<LogEntryItem> items, LogStats stats)
     {
         Entries.Clear();
 
         foreach (LogEntryItem item in items)
             Entries.Add(item);
 
+        ApplyStats(stats);
         NotifyCounts();
         ApplyFilter();
     }
 
-    /// <summary>解析 的行文本：yyyy-MM-ddTHH:mm:ss.fff|级别|消息</summary>
-    internal static List<LogEntryItem> Parse(string? payload)
+    private void ApplyStats(LogStats stats)
+    {
+        _totalCount = Clamp(stats.Total);
+        _infoCount = Clamp(stats.Info);
+        _warnCount = Clamp(stats.Warn);
+        _errorCount = Clamp(stats.Error) + Clamp(stats.Critical);
+    }
+
+    /// <summary>界面按 int 显示，超出按上限截断；一天几十万条也撞不到 int 上限。</summary>
+    private static int Clamp(long value) => value <= 0 ? 0 : (int)Math.Min(value, int.MaxValue);
+
+    internal static List<LogEntryItem> Parse(string? payload) => Parse(payload, out _);
+
+    /// <summary>
+    /// 解析快照行文本：首行是 <c>#stats|总数|信息|警告|错误|致命</c>，
+    /// 其余是 <c>yyyy-MM-ddTHH:mm:ss.fff|级别|消息</c>。
+    /// 拿不到统计行时 <paramref name="stats"/> 为全 0。
+    /// </summary>
+    internal static List<LogEntryItem> Parse(string? payload, out LogStats stats)
     {
         List<LogEntryItem> items = new();
+        stats = default;
 
         if (string.IsNullOrWhiteSpace(payload))
             return items;
@@ -251,6 +279,12 @@ public sealed class LogsViewModel : ViewModelBase
 
             if (line.Length == 0)
                 continue;
+
+            if (line.StartsWith(LogStatsPrefix, StringComparison.Ordinal))
+            {
+                stats = ParseStats(line);
+                continue;
+            }
 
             string[] parts = line.Split('|', 3);
 
@@ -265,6 +299,26 @@ public sealed class LogsViewModel : ViewModelBase
 
         return items;
     }
+
+    private const string LogStatsPrefix = "#stats|";
+
+    private static LogStats ParseStats(string line)
+    {
+        string[] parts = line.Split('|');
+
+        if (parts.Length < 6)
+            return default;
+
+        return new LogStats(
+            ParseCount(parts[1]),
+            ParseCount(parts[2]),
+            ParseCount(parts[3]),
+            ParseCount(parts[4]),
+            ParseCount(parts[5]));
+    }
+
+    private static long ParseCount(string raw) =>
+        long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) && value > 0 ? value : 0;
 
     /// <summary>时间只显示时分秒（当天）或月日 + 时分（跨天）—— 列表宽度固定 110， 塞完整 ISO 时间会把正文挤掉</summary>
     private static string FormatTime(string raw)
@@ -314,7 +368,7 @@ public sealed class LogsViewModel : ViewModelBase
         builder.AppendLine($"运行时      {RuntimeInformation.FrameworkDescription}");
         builder.AppendLine($"后台服务    {WorkerStatus.Instance.StatusText}（{WorkerStatus.Instance.DetailText}）");
         builder.AppendLine($"日志目录    {LogDirectory}");
-        builder.AppendLine($"内存条目    {TotalCount}（信息 {InfoCount} / 警告 {WarnCount} / 错误 {ErrorCount}）");
+        builder.AppendLine($"本次运行    {TotalCount}（信息 {InfoCount} / 警告 {WarnCount} / 错误 {ErrorCount}）");
         builder.AppendLine();
         builder.AppendLine($"最近日志（{Entries.Count} 条）");
         builder.AppendLine("----------------------------------------");
@@ -457,9 +511,28 @@ public sealed class LogsViewModel : ViewModelBase
         Add("10:31:02.224", "DEBUG", "[perf] 界面渲染：日志列表 363ms");
     }
 
-    private void Add(string time, string level, string message) =>
+    private void Add(string time, string level, string message)
+    {
         Entries.Add(new LogEntryItem(time, level, message));
+        RecountFromEntries();
+    }
+
+    /// <summary>设计时示例数据没有统计行，按现有条目重新算一遍，右侧栏才不是 0。</summary>
+    private void RecountFromEntries()
+    {
+        ApplyStats(new LogStats(
+            Entries.Count,
+            Entries.Count(e => e.Level == "INFO"),
+            Entries.Count(e => e.Level == "WARN"),
+            Entries.Count(e => e.Level == "ERROR"),
+            Entries.Count(e => e.Level == "FATAL")));
+
+        NotifyCounts();
+    }
 }
+
+/// <summary>本次运行的累计条数。Worker 随日志快照首行下发。</summary>
+internal readonly record struct LogStats(long Total, long Info, long Warn, long Error, long Critical);
 
 public sealed class LogEntryItem
 {

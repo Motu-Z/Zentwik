@@ -367,6 +367,17 @@ namespace Zentwik.Core.Services
 
         // ---------------- 对外接口 ----------------
 
+        /// <summary>
+        /// OpenProcess 失败原因。错误 87 是 PID 无效（进程已经不在了），
+        /// 和权限不足（5）是两回事，混在一句提示里会把排查方向带偏。
+        /// </summary>
+        private static string DescribeOpenFailure(int error) => error switch
+        {
+            5 => "权限不足，目标进程可能受保护或需要管理员权限",
+            87 => "进程已退出",
+            _ => $"错误 {error}",
+        };
+
         private static CpuSetScheduleResult Fail(string error, int ccdIndex, int errorCode = 0) => new()
         {
             Success = false,
@@ -605,7 +616,7 @@ namespace Zentwik.Core.Services
             if (handle == IntPtr.Zero)
             {
                 int err = Marshal.GetLastWin32Error();
-                return Fail($"OpenProcess 失败（错误 {err}，通常是权限不足或进程已退出）", -1, err);
+                return Fail($"OpenProcess 失败：{DescribeOpenFailure(err)}", -1, err);
             }
 
             try
@@ -654,7 +665,7 @@ namespace Zentwik.Core.Services
 
             if (handle == IntPtr.Zero)
             {
-                error = $"OpenProcess 失败（错误 {Marshal.GetLastWin32Error()}）";
+                error = $"OpenProcess 失败：{DescribeOpenFailure(Marshal.GetLastWin32Error())}";
                 return false;
             }
 
@@ -747,7 +758,7 @@ namespace Zentwik.Core.Services
             if (handle == IntPtr.Zero)
             {
                 int err = Marshal.GetLastWin32Error();
-                return Fail($"OpenProcess 失败（错误 {err}，通常是权限不足或进程已退出）", ccdIndex, err);
+                return Fail($"OpenProcess 失败：{DescribeOpenFailure(err)}", ccdIndex, err);
             }
 
             try
@@ -944,7 +955,7 @@ namespace Zentwik.Core.Services
 
             if (handle == IntPtr.Zero)
             {
-                error = $"OpenProcess 失败（错误 {Marshal.GetLastWin32Error()}）";
+                error = $"OpenProcess 失败：{DescribeOpenFailure(Marshal.GetLastWin32Error())}";
                 return false;
             }
 

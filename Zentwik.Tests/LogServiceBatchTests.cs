@@ -43,6 +43,35 @@ namespace Zentwik.Tests
             Assert.Equal(1, log.CountWarn);
         }
 
+        /// <summary>累计条数不能跟着缓冲一起缩水：界面拿它显示「总共多少条」。</summary>
+        [Fact]
+        public void Total_counts_ignore_ring_buffer_trim()
+        {
+            using LogService log = NewLog();
+
+            for (int i = 0; i < 300; i++)
+                log.Info($"i-{i}");
+
+            Assert.Equal(300, log.TotalCount);
+            Assert.Equal(300, log.TotalInfo);
+            Assert.True(log.Count < 300, "缓冲应已挤出窗口，否则这条测试没有覆盖到裁剪路径");
+        }
+
+        [Fact]
+        public void Clear_resets_total_counts()
+        {
+            using LogService log = NewLog();
+            log.Info("a");
+            log.Warn("b");
+
+            Assert.Equal(2, log.TotalCount);
+
+            log.Clear();
+
+            Assert.Equal(0, log.TotalCount);
+            Assert.Equal(0, log.TotalWarn);
+        }
+
         /// <summary>等到文件凑够 expected 行：Flush 已提交内容，这里只吃掉「批次被取走但未落盘」的窗口。</summary>
         private static string[] ReadUntil(string file, int expected)
         {

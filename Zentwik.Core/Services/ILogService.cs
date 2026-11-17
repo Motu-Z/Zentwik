@@ -40,6 +40,20 @@ namespace Zentwik.Core.Services
 
         long CountCritical { get; }
 
+        /// <summary>
+        /// 本次运行累计写入内存缓冲的条数，含已被缓冲挤出窗口的；<see cref="Clear"/> 后归零。
+        /// 界面右侧栏靠它显示总量 —— 缓冲只有 200 条，拿缓冲条数当总数会永远停在窗口大小上。
+        /// </summary>
+        long TotalCount { get; }
+
+        long TotalInfo { get; }
+
+        long TotalWarn { get; }
+
+        long TotalError { get; }
+
+        long TotalCritical { get; }
+
         string LogDirectory { get; }
 
         /// <summary>详细日志，仅在 <see cref="Verbose"/> 为真时写入。只落盘，不进内存缓冲。</summary>

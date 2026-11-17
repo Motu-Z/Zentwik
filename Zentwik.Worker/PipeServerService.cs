@@ -214,12 +214,27 @@ namespace Zentwik.Worker
                     // 停机时正在读 / 写：正常收尾，不记异常。
                     break;
                 }
+                catch (IOException ex) when (IsPipeClosed(ex))
+                {
+                    // 界面关了或连接被重置：这条连接到此为止，不是错误。
+                    break;
+                }
                 catch (Exception ex)
                 {
                     // 单条命令的异常不能冲出循环：循环一停，Worker 活着却不再接受连接。
                     _log.Error($"管道命令处理异常：{ex.Message}");
                 }
             }
+        }
+
+        /// <summary>
+        /// 连接已被客户端关掉。错误 109 管道断开、232 无数据、233 未连接 ——
+        /// 三种都是对端走了，和命令本身出错不是一回事，混在一起会把日志刷成红色。
+        /// </summary>
+        private static bool IsPipeClosed(IOException ex)
+        {
+            int code = ex.HResult & 0xFFFF;
+            return code is 109 or 232 or 233;
         }
 
         /// <summary>管道 DACL：只给当前用户 SID 的 ReadWrite。显式 DACL 不带完整性标签，中完整性客户端才连得上。</summary>
@@ -1132,19 +1147,26 @@ namespace Zentwik.Worker
 
         internal const int SnapshotLogLimit = 50;
 
-        /// <summary>取最近 50 条日志；批量响应不设上限会撞 MaxMessageBytes。</summary>
+        /// <summary>取最近 50 条日志，首行附本次运行的累计条数；批量响应不设上限会撞 MaxMessageBytes。</summary>
         internal PipeResponse RunSnapshotLogs()
         {
             IReadOnlyList<LogEntry> entries = _log.Snapshot();
             int skip = Math.Max(0, entries.Count - SnapshotLogLimit);
 
             StringBuilder builder = new();
+
+            builder.Append(LogStatsPrefix)
+                   .Append(_log.TotalCount.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(_log.TotalInfo.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(_log.TotalWarn.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(_log.TotalError.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(_log.TotalCritical.ToString(CultureInfo.InvariantCulture));
+
             for (int i = skip; i < entries.Count; i++)
             {
                 LogEntry entry = entries[i];
 
-                if (builder.Length > 0)
-                    builder.Append('\n');
+                builder.Append('\n');
 
                 builder.Append(entry.Time.ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture))
                        .Append('|')
@@ -1157,10 +1179,13 @@ namespace Zentwik.Worker
             {
                 Version = WorkerPipeContract.ProtocolVersion,
                 Success = true,
-                Message = $"最近 {entries.Count - skip} 条日志",
+                Message = $"最近 {entries.Count - skip} 条日志，本次运行累计 {_log.TotalCount} 条",
                 Payload = builder.ToString()
             };
         }
+
+        /// <summary>日志快照首行的统计前缀，后接总数与四个级别数，用 <c>|</c> 分隔。</summary>
+        internal const string LogStatsPrefix = "#stats|";
 
         /// <summary>clear-logs：清空内存缓冲并删日志文件；删文件不等待。</summary>
         internal PipeResponse RunClearLogs()
@@ -1698,6 +1723,10 @@ namespace Zentwik.Worker
                 return Fail(MaskStore.Describe(error));
 
             _log.Info($"掩码已保存：{mask.Name}（{mask.CoreCount} 个逻辑处理器，掩码 {mask.Mask}）");
+
+            // 规则里存的是掩码 Id，改核不改 Id：不重发的话已绑进程还跑在旧核上。
+            if (id.Length > 0)
+                _watcher.ReapplyNow();
 
             return MaskListResponse($"已保存掩码：{mask.Name}");
         }
