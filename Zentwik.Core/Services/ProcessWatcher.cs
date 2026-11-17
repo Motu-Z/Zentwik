@@ -105,6 +105,9 @@ namespace Zentwik.Core.Services
         /// <summary>已处理 PID 的实例标识。全量轮比对，识别 PID 复用。</summary>
         private readonly ProcessInstanceLedger _instances = new();
 
+        /// <summary>上次成功下发的目标。重扫时目标没变的进程不重复写入。</summary>
+        private readonly AppliedTargetLedger _applied = new();
+
         /// <summary>读回比对的轮数计数器。约 5 秒一次：漂移是秒级现象，不必每轮都读。</summary>
         private int _driftRound;
 
@@ -145,6 +148,7 @@ namespace Zentwik.Core.Services
                 _retry.Clear();
                 _drift.Clear();
                 _instances.Clear();
+                _applied.Clear();
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
                 _driftRound = 0;
@@ -226,6 +230,7 @@ namespace Zentwik.Core.Services
                 _retry.Clear();
                 _drift.Clear();
                 _instances.Clear();
+                _applied.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -330,6 +335,7 @@ namespace Zentwik.Core.Services
                 _retry.PruneTo(alive);
                 _drift.PruneTo(alive);
                 _instances.PruneTo(alive);
+                _applied.PruneTo(alive);
 
                 _lastAlive = alive;
             }
@@ -374,6 +380,7 @@ namespace Zentwik.Core.Services
             _scenario.Remove(pid);
             _retry.Remove(pid);
             _drift.Forget(pid);
+            _applied.Forget(pid);
         }
 
         /// <summary>规则已删或已禁用，但进程还绑着的，放回系统默认。</summary>
@@ -615,7 +622,10 @@ namespace Zentwik.Core.Services
             _instances.Note(pid, _cpuSets.GetInstanceTicks(pid));
 
             if (mask != 0)
+            {
                 _drift.Note(pid, name, mask, byAffinityMask);
+                _applied.Note(pid, new AppliedTargetLedger.Target(mask, byAffinityMask, string.Empty));
+            }
 
             if (byAffinityMask)
             {
@@ -637,6 +647,7 @@ namespace Zentwik.Core.Services
                 return;
 
             _affinityPids.Remove(pid);
+            _applied.Forget(pid);
 
             if (!_cpuSets.ClearAffinityMask(pid, out string? error) && !string.IsNullOrEmpty(error))
                 _log.Info($"改用 CPU Sets 前清除 Affinity Mask 失败（PID {pid}）：{error}");
@@ -674,6 +685,7 @@ namespace Zentwik.Core.Services
         {
             error = null;
             _drift.Forget(pid);
+            _applied.Forget(pid);
 
             if (_affinityPids.Contains(pid))
             {
@@ -775,6 +787,12 @@ namespace Zentwik.Core.Services
             // 少了这份快照，删除掩码会让 Affinity Mask 规则静默改按 CPU Sets 下发。
             bool byAffinityMask = UseAffinityMask(rule, found);
 
+            AppliedTargetLedger.Target target = new(mask, byAffinityMask, rule.Priority);
+
+            // 目标与上次成功下发的一致：这次重扫不是为它来的，不必再写一遍。
+            if (_applied.Matches(pid, target))
+                return;
+
             // 旧版 CCD 规则只在迁移还没跑过时走到这里
             CpuSetScheduleResult result = rule.IsLegacyCcd
                 ? _cpuSets.ScheduleToCcd(pid, rule.LegacyCcdIndex)
@@ -795,6 +813,7 @@ namespace Zentwik.Core.Services
 
                 _boundPids.TryAdd(pid);
                 _instances.Note(pid, _cpuSets.GetInstanceTicks(pid));
+                _applied.Note(pid, target);
 
                 if (mask != 0)
                     _drift.Note(pid, name, mask, byAffinityMask);
@@ -810,6 +829,7 @@ namespace Zentwik.Core.Services
             {
                 // 失败不占位：交给重试账本排队，否则这个 PID 到退出都不会再试。
                 _handledPids.Remove(pid);
+                _applied.Forget(pid);
 
                 int attempts = _retry.Bump(pid, name);
 
