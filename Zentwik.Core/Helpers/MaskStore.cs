@@ -269,6 +269,7 @@ namespace Zentwik.Core.Helpers
             {
                 existing.Name = mask.Name;
                 existing.Mask = mask.Mask;
+                existing.Type = mask.Type;
             }
             else
             {

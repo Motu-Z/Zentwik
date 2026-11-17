@@ -761,7 +761,7 @@ public class ProcessViewModel : ViewModelBase
 
             if (exist.TryGetValue(next.Key, out MaskOption? current))
             {
-                current.Relabel(next.Label);
+                current.Refresh(next.Label, next.MaskBits);
                 continue;
             }
 
@@ -2171,7 +2171,7 @@ public sealed class MaskOption : ViewModelBase, IMaskEntry
     public string TargetValue { get; }
 
     /// <summary>自定义掩码的掩码位；0 表示这一项不是自定义掩码（CCD / 默认）。</summary>
-    public ulong MaskBits { get; }
+    public ulong MaskBits { get; private set; }
 
     /// <summary>
     /// 下拉项的唯一标识。自定义掩码用 Id，其余用值。
@@ -2204,9 +2204,11 @@ public sealed class MaskOption : ViewModelBase, IMaskEntry
         MaskBits = maskBits;
     }
 
-    /// <summary>掩码改名：原地换标签，别换实例（换了实例下拉会丢选中）</summary>
-    internal void Relabel(string label)
+    /// <summary>掩码改名或改核集合：原地更新，别换实例（换了实例下拉会丢选中）</summary>
+    internal void Refresh(string label, ulong maskBits)
     {
+        MaskBits = maskBits;
+
         if (string.Equals(_label, label, StringComparison.Ordinal))
         {
             return;
