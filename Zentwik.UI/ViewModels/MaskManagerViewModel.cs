@@ -279,19 +279,61 @@ public sealed class MaskManagerViewModel : ViewModelBase
         SelectedMask = SavedMasks.FirstOrDefault();
     }
 
-    /// <summary>按后台返回的列表重建左栏，尽量保持原选中项。</summary>
-    private void LoadMasks(MaskListPayload payload)
+    /// <summary>按 Id 合并进左栏，尽量保持原选中项与已有实例。</summary>
+    internal void LoadMasks(MaskListPayload payload)
     {
         string? selectedId = SelectedMask?.Id;
 
-        SavedMasks.Clear();
-
         AffinityMaskSupported = payload.AffinityMaskSupported;
+
+        Dictionary<string, SavedMaskItem> exist = new(StringComparer.Ordinal);
+
+        foreach (SavedMaskItem item in SavedMasks)
+        {
+            exist[item.Id] = item;
+        }
+
+        List<SavedMaskItem> wanted = new(payload.Masks.Count);
+        HashSet<string> wantedIds = new(StringComparer.Ordinal);
 
         foreach (MaskEntryPayload mask in payload.Masks)
         {
-            SavedMasks.Add(new SavedMaskItem(
-                mask.Id, mask.Name, mask.Mask, MaskTypeNames.Parse(mask.Type)));
+            if (!wantedIds.Add(mask.Id))
+            {
+                continue;
+            }
+
+            MaskType type = MaskTypeNames.Parse(mask.Type);
+
+            if (exist.TryGetValue(mask.Id, out SavedMaskItem? current))
+            {
+                current.Refresh(mask.Name, mask.Mask, type);
+                wanted.Add(current);
+                continue;
+            }
+
+            SavedMaskItem added = new(mask.Id, mask.Name, mask.Mask, type);
+            SavedMasks.Add(added);
+            exist[mask.Id] = added;
+            wanted.Add(added);
+        }
+
+        for (int i = SavedMasks.Count - 1; i >= 0; i--)
+        {
+            if (!wantedIds.Contains(SavedMasks[i].Id))
+            {
+                SavedMasks.RemoveAt(i);
+            }
+        }
+
+        for (int i = 0; i < wanted.Count; i++)
+        {
+            int at = IndexOfId(wanted[i].Id);
+
+            if (at >= 0 && at != i)
+            {
+                SavedMasks.Move(at, i);
+            }
         }
 
         if (selectedId is null)
@@ -313,6 +355,19 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
         // 选中的那套已被删掉：网格停在当前勾选会让人以为它还存着。
         SetAll(false);
+    }
+
+    private int IndexOfId(string id)
+    {
+        for (int i = 0; i < SavedMasks.Count; i++)
+        {
+            if (string.Equals(SavedMasks[i].Id, id, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private void SetEditing(bool editing)
@@ -675,11 +730,29 @@ public sealed class SavedMaskItem : ViewModelBase
 
     public string Id { get; }
 
-    public string Name { get; }
+    public string Name { get; private set; }
 
-    public ulong Mask { get; }
+    public ulong Mask { get; private set; }
 
-    public MaskType Type { get; }
+    public MaskType Type { get; private set; }
+
+    /// <summary>改名或改核集合走原地更新，换实例会让列表选中与下拉一起丢。</summary>
+    internal void Refresh(string name, ulong mask, MaskType type)
+    {
+        if (string.Equals(Name, name, StringComparison.Ordinal) && Mask == mask && Type == type)
+        {
+            return;
+        }
+
+        Name = name;
+        Mask = mask;
+        Type = type;
+
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(TypeLabel));
+        OnPropertyChanged(nameof(RangeText));
+        OnPropertyChanged(nameof(CountText));
+    }
 
     /// <summary>卡片右上角的绑定方式缩写：CS = CPU Sets，AM = Affinity Mask。两种都要标。</summary>
     public string TypeLabel => Type == MaskType.AffinityMask ? "AM" : "CS";

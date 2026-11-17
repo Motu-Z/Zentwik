@@ -2312,6 +2312,36 @@ public static class IntegrationTest
               mask.SavedMasks.All(m => !string.IsNullOrEmpty(m.Id)),
               string.Join(", ", mask.SavedMasks.Select(m => m.Id)));
 
+        // 改名 / 改核集合走原地更新：实例一换，卡片选中与规则下拉都跟着掉。
+        {
+            SavedMaskItem probe = mask.SavedMasks[0];
+            mask.SelectedMask = probe;
+
+            string renamed = probe.Name + "-改";
+            Zentwik.Core.Ipc.MaskListPayload renamedTable = new()
+            {
+                AffinityMaskSupported = mask.AffinityMaskSupported
+            };
+
+            foreach (SavedMaskItem item in mask.SavedMasks)
+            {
+                renamedTable.Masks.Add(new Zentwik.Core.Ipc.MaskEntryPayload
+                {
+                    Id = item.Id,
+                    Name = ReferenceEquals(item, probe) ? renamed : item.Name,
+                    Mask = item.Mask,
+                    Type = Zentwik.Core.Helpers.MaskTypeNames.ToName(item.Type)
+                });
+            }
+
+            mask.LoadMasks(renamedTable);
+
+            Check("掩码：改名后仍是同一实例",
+                  ReferenceEquals(mask.SavedMasks[0], probe) && ReferenceEquals(mask.SelectedMask, probe),
+                  $"{mask.SavedMasks.Count} 项");
+            Check("掩码：改名后卡片文案跟着更新", probe.Name == renamed, probe.Name);
+        }
+
         Check("掩码：核编号跨 CCD 连续（CCD1 从 Core 8 起）",
               mask.CcdGroups[1].Cores[0].DisplayName == "Core 8",
               mask.CcdGroups[1].Cores[0].DisplayName);
