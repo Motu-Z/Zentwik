@@ -371,28 +371,52 @@ public sealed class MaskManagerViewModel : ViewModelBase
             IpcOutcome<List<ScheduleRulePayload>> rules = await WorkerBridge.Instance
                 .QuerySchedulingRulesAsync().ConfigureAwait(true);
 
-            int inUse = rules.Success && rules.Value is not null
-                ? rules.Value.Count(
+            List<ScheduleRulePayload> inUse = rules.Success && rules.Value is not null
+                ? rules.Value.Where(
                     r => string.Equals(r.TargetType, "mask", StringComparison.Ordinal)
-                         && string.Equals(r.TargetValue, item.Id, StringComparison.Ordinal))
-                : 0;
+                         && string.Equals(r.TargetValue, item.Id, StringComparison.Ordinal)).ToList()
+                : new List<ScheduleRulePayload>();
 
-            if (inUse > 0)
+            if (inUse.Count > 0)
             {
                 ConfirmService.Instance.Request(
                     "删除掩码",
-                    new[] { $"有 {inUse} 条规则正在使用这个掩码，删除后规则按删除前的掩码继续绑定。" },
-                    () => Fire(() => RemoveMaskAsync(item)),
+                    new[] { $"有 {inUse.Count} 条规则正在使用这个掩码，删除后这些规则恢复默认。" },
+                    () => Fire(() => RemoveMaskAsync(item, inUse)),
                     "删除");
                 return;
             }
 
-            await RemoveMaskAsync(item).ConfigureAwait(true);
+            await RemoveMaskAsync(item, inUse).ConfigureAwait(true);
         });
     }
 
-    private async Task RemoveMaskAsync(SavedMaskItem item)
+    private async Task RemoveMaskAsync(SavedMaskItem item, List<ScheduleRulePayload> ruleReferences)
     {
+        // 先把引用规则的 target 清成 none：掩码删了以后规则留着没意义，
+        // 但它还带着优先级设置，所以只改目标、不删规则。
+        foreach (ScheduleRulePayload rule in ruleReferences)
+        {
+            SaveScheduleRulePayload payload = new()
+            {
+                Id = rule.Id,
+                ProcessName = rule.ProcessName,
+                TargetType = "none",
+                TargetValue = string.Empty,
+                Priority = rule.Priority,
+                Enabled = rule.Enabled
+            };
+
+            IpcOutcome<string> cleared = await WorkerBridge.Instance
+                .SaveScheduleRuleAsync(payload).ConfigureAwait(true);
+
+            if (!cleared.Success)
+            {
+                ToastError(cleared.Message);
+                return;
+            }
+        }
+
         IpcOutcome<MaskListPayload> outcome = await WorkerBridge.Instance
             .DeleteMaskAsync(item.Id).ConfigureAwait(true);
 

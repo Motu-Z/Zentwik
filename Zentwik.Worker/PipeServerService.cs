@@ -1341,9 +1341,17 @@ namespace Zentwik.Worker
                 rule.MaskName = mask.Name;
                 rule.BindType = mask.Type;
             }
+            else if (string.Equals(targetType, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                // 恢复默认：规则保留，不再绑定任何核。
+                rule.Target = SchedulingTarget.None;
+                rule.TargetMask = 0;
+                rule.MaskId = string.Empty;
+                rule.MaskName = string.Empty;
+            }
             else
             {
-                return Fail($"targetType 必须是 ccd 或 mask，收到：{request.TargetType}");
+                return Fail($"targetType 必须是 ccd、mask 或 none，收到：{request.TargetType}");
             }
 
             if (!TryNormalizePriority(request.Priority, out string priority))
