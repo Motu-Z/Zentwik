@@ -25,10 +25,11 @@ namespace Zentwik.Core.Ipc
         /// 8 ProcessExited 触发源 ｜ 9 方案拆三类 ｜ 10 界面设置读写与 factory-reset ｜
         /// 11 query-active-plans ｜ 12 掩码下发方式（save-mask / query-masks 的 type）｜
         /// 13 最小处理器状态与系统散热方式（apply-power-policy / query-power-policy 新字段）｜
-        /// 14 query-smu-status 下发处理器厂商 ｜ 15 snapshot-logs 首行附累计条数。
+        /// 14 query-smu-status 下发处理器厂商 ｜ 15 snapshot-logs 首行附累计条数 ｜
+        /// 16 query-mask-usage（掩码被规则与方案引用的数量）。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 15;
+        public const int ProtocolVersion = 16;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -361,6 +362,14 @@ namespace Zentwik.Core.Ipc
         /// 但该规则在界面上的掩码名会退回数字区间 —— 名字已经不存在了。
         /// </summary>
         public const string CommandDeleteMask = "delete-mask";
+
+        /// <summary>
+        /// 查询一个掩码被多少处引用（当前规则集与已保存的调度方案）。
+        ///
+        /// 参数：<c>{"maskId":"…"}</c>；返回 <see cref="MaskUsagePayload"/>。
+        /// 方案里的规则明细不经过 IPC，删掩码前只能靠这条命令知道会不会连带影响方案。
+        /// </summary>
+        public const string CommandQueryMaskUsage = "query-mask-usage";
 
         /// <summary>
         /// 查询本机 CPU 拓扑（掩码网格要按真实核数与 CCD 排布生成）。

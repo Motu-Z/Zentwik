@@ -42,6 +42,7 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(ProcessEntryPayload))]
     [JsonSerializable(typeof(List<ProcessEntryPayload>))]
     [JsonSerializable(typeof(MaskListPayload))]
+    [JsonSerializable(typeof(MaskUsagePayload))]
     [JsonSerializable(typeof(SaveMaskPayload))]
     [JsonSerializable(typeof(CpuTopologyPayload))]
     [JsonSerializable(typeof(ScenarioStatePayload))]

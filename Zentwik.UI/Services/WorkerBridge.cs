@@ -564,6 +564,25 @@ public sealed class WorkerBridge
         return ToOutcome(response, IpcJsonContext.Default.ListScheduleRulePayload);
     }
 
+    /// <summary><c>query-mask-usage</c>：这个掩码被当前规则与已保存方案引用的数量。</summary>
+    public async Task<IpcOutcome<MaskUsagePayload>> QueryMaskUsageAsync(
+        string maskId,
+        int timeoutMs = 5_000,
+        CancellationToken cancellationToken = default)
+    {
+        string json = JsonSerializer.Serialize(
+            new MaskUsagePayload { MaskId = maskId },
+            IpcJsonContext.Default.MaskUsagePayload);
+
+        PipeResponse? response = await SendAsync(
+            WorkerPipeContract.CommandQueryMaskUsage,
+            json,
+            timeoutMs,
+            cancellationToken).ConfigureAwait(false);
+
+        return ToOutcome(response, IpcJsonContext.Default.MaskUsagePayload);
+    }
+
     /// <summary><c>query-masks</c>：自定义掩码列表 + 套数上限。</summary>
     public async Task<IpcOutcome<MaskListPayload>> QueryMasksAsync(
         int timeoutMs = 5_000,

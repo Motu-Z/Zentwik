@@ -377,11 +377,16 @@ public sealed class MaskManagerViewModel : ViewModelBase
                          && string.Equals(r.TargetValue, item.Id, StringComparison.Ordinal)).ToList()
                 : new List<ScheduleRulePayload>();
 
-            if (inUse.Count > 0)
+            IpcOutcome<MaskUsagePayload> usage = await WorkerBridge.Instance
+                .QueryMaskUsageAsync(item.Id).ConfigureAwait(true);
+
+            int plans = usage.Success && usage.Value is not null ? usage.Value.Plans : 0;
+
+            if (inUse.Count > 0 || plans > 0)
             {
                 ConfirmService.Instance.Request(
                     "删除掩码",
-                    new[] { $"有 {inUse.Count} 条规则正在使用这个掩码，删除后这些规则恢复默认。" },
+                    new[] { UsageText(inUse.Count, plans) },
                     () => Fire(() => RemoveMaskAsync(item, inUse)),
                     "删除");
                 return;
@@ -389,6 +394,18 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
             await RemoveMaskAsync(item, inUse).ConfigureAwait(true);
         });
+    }
+
+    /// <summary>删除确认里的一行说明：方案里的引用由后台一并恢复默认。</summary>
+    private static string UsageText(int rules, int plans)
+    {
+        if (rules > 0 && plans > 0)
+            return $"有 {rules} 条规则和 {plans} 个方案正在使用此掩码，删除后将恢复默认。";
+
+        if (rules > 0)
+            return $"有 {rules} 条规则正在使用此掩码，删除后将恢复默认。";
+
+        return $"有 {plans} 个方案正在使用此掩码，删除后将恢复默认。";
     }
 
     private async Task RemoveMaskAsync(SavedMaskItem item, List<ScheduleRulePayload> ruleReferences)

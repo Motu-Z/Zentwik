@@ -11,9 +11,10 @@ namespace Zentwik.Tests
         public void Constants_match_contract()
         {
             // 12：save-mask / query-masks 增加掩码下发方式（type）。
+            // 16：新增 query-mask-usage（掩码被规则与方案引用的数量）。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
             // 否则「顺手把版本号往上加」这种改动没人会注意到。
-            Assert.Equal(15, WorkerPipeContract.ProtocolVersion);
+            Assert.Equal(16, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }

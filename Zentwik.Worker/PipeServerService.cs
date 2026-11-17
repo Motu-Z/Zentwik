@@ -352,6 +352,9 @@ namespace Zentwik.Worker
                 case WorkerPipeContract.CommandDeleteMask:
                     return RunDeleteMask(request.Payload);
 
+                case WorkerPipeContract.CommandQueryMaskUsage:
+                    return RunQueryMaskUsage(request.Payload);
+
                 case WorkerPipeContract.CommandQueryCpuTopology:
                     return RunQueryCpuTopology();
 
@@ -1754,10 +1757,91 @@ namespace Zentwik.Worker
                 return Fail($"掩码不存在：{id}");
 
             _masks.Remove(id);
-            _log.Info($"掩码已删除：{mask.Name}");
 
-            // 调度规则按掩码值快照生效，这里不连带删除。
+            // 方案里的快照同样指向这个掩码，一并恢复默认，
+            // 否则应用那份方案时失效引用会被重新带回当前规则。
+            int plans = ClearMaskFromPlans(id);
+
+            _log.Info($"掩码已删除：{mask.Name}" + (plans > 0 ? $"，{plans} 个调度方案里的引用已恢复默认" : string.Empty));
+
             return MaskListResponse($"已删除掩码：{mask.Name}");
+        }
+
+        /// <summary>query-mask-usage：当前规则集与已保存方案各有多少处引用这个掩码。</summary>
+        internal PipeResponse RunQueryMaskUsage(string? payload)
+        {
+            if (string.IsNullOrEmpty(payload))
+                return Fail("缺少 Payload（需要 {\"maskId\":\"…\"}）");
+
+            MaskUsagePayload? request;
+
+            try
+            {
+                request = JsonSerializer.Deserialize(payload, IpcJsonContext.Default.MaskUsagePayload);
+            }
+            catch (JsonException ex)
+            {
+                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+            }
+
+            string id = (request?.MaskId ?? string.Empty).Trim();
+
+            if (id.Length == 0)
+                return Fail("缺少掩码 Id");
+
+            MaskUsagePayload usage = new()
+            {
+                MaskId = id,
+                Rules = _scheduling.Profile.Rules.Count(
+                    r => r.Target == SchedulingTarget.TargetMask
+                         && string.Equals(r.MaskId, id, StringComparison.Ordinal)),
+                Plans = _plans.Items(PlanKind.Scheduling).Count(
+                    p => p.ScheduleRules.Any(
+                        r => r.Target == SchedulingTarget.TargetMask
+                             && string.Equals(r.MaskId, id, StringComparison.Ordinal)))
+            };
+
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = true,
+                Message = "ok",
+                Payload = JsonSerializer.Serialize(usage, IpcJsonContext.Default.MaskUsagePayload)
+            };
+        }
+
+        /// <summary>把调度方案里引用该掩码的规则改成默认，返回被改的方案数。</summary>
+        private int ClearMaskFromPlans(string maskId)
+        {
+            int touched = 0;
+
+            foreach (PlanEntry plan in _plans.Items(PlanKind.Scheduling))
+            {
+                bool changed = false;
+
+                foreach (ScheduleRule rule in plan.ScheduleRules)
+                {
+                    if (rule.Target != SchedulingTarget.TargetMask
+                        || !string.Equals(rule.MaskId, maskId, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    rule.Target = SchedulingTarget.None;
+                    rule.MaskId = string.Empty;
+                    rule.TargetMask = 0;
+                    rule.MaskName = string.Empty;
+                    changed = true;
+                }
+
+                if (!changed)
+                    continue;
+
+                _plans.Save(plan);
+                touched++;
+            }
+
+            return touched;
         }
 
         private PipeResponse MaskListResponse(string message) => new()
