@@ -27,6 +27,9 @@ namespace Zentwik.Core.Services
         /// </summary>
         BindingProbe ProbeBinding(int processId, ulong mask, bool byAffinityMask);
 
+        /// <summary>进程创建时间，用于识别 PID 复用；读不到返回 0。</summary>
+        long GetInstanceTicks(int processId);
+
         /// <summary>丢弃已缓存的拓扑，下次访问重新探测。</summary>
         void ResetTopology();
 

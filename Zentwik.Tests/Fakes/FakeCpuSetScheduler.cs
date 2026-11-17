@@ -119,5 +119,11 @@ namespace Zentwik.Tests.Fakes
             Probed.Add(processId);
             return Probe?.Invoke(processId, mask, byAffinityMask) ?? new BindingProbe(true, true, mask, mask);
         }
+
+        /// <summary>实例创建时间替身：默认读不到（0），要测 PID 复用就按 PID 赋值。</summary>
+        public Dictionary<int, long> Instances { get; } = new();
+
+        public long GetInstanceTicks(int processId) =>
+            Instances.TryGetValue(processId, out long ticks) ? ticks : 0;
     }
 }

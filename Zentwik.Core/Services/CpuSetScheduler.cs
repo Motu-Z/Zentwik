@@ -214,6 +214,37 @@ namespace Zentwik.Core.Services
         private static bool IsAlive(IntPtr handle) =>
             GetExitCodeProcess(handle, out uint code) && code == StillActive;
 
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool GetProcessTimes(
+            IntPtr hProcess, out long creation, out long exit, out long kernel, out long user);
+
+        /// <summary>
+        /// 进程创建时间（FILETIME ticks）。同一个 PID 换了进程时这个值必然不同，
+        /// 是判断「PID 复用」唯一可靠的标记：进程名、路径都可能重复。
+        /// 读不到返回 0，调用方一律当「不知道」，不做判断。
+        /// </summary>
+        public long GetInstanceTicks(int processId)
+        {
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+                return 0;
+
+            try
+            {
+                return GetProcessTimes(handle, out long creation, out _, out _, out _) ? creation : 0;
+            }
+            catch
+            {
+                return 0;
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
         /// <summary>系统活动处理器组数量。> 1 时关联掩码无法表达全部逻辑处理器。</summary>
         [LibraryImport("kernel32.dll")]
         private static partial ushort GetActiveProcessorGroupCount();

@@ -102,6 +102,9 @@ namespace Zentwik.Core.Services
         /// <summary>已下发的绑定原值，读回比对时当期望值用。</summary>
         private readonly ScheduleDriftTracker _drift = new();
 
+        /// <summary>已处理 PID 的实例标识。全量轮比对，识别 PID 复用。</summary>
+        private readonly ProcessInstanceLedger _instances = new();
+
         /// <summary>读回比对的轮数计数器。约 5 秒一次：漂移是秒级现象，不必每轮都读。</summary>
         private int _driftRound;
 
@@ -141,6 +144,7 @@ namespace Zentwik.Core.Services
                 _scenario.Clear();
                 _retry.Clear();
                 _drift.Clear();
+                _instances.Clear();
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
                 _driftRound = 0;
@@ -221,6 +225,7 @@ namespace Zentwik.Core.Services
                 _scenario.Clear();
                 _retry.Clear();
                 _drift.Clear();
+                _instances.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -284,6 +289,12 @@ namespace Zentwik.Core.Services
                 }
 
                 HashSet<int>? previous = _lastAlive;
+
+                // 全量轮先校验 PID 是否还指向同一个进程。被复用的必须清掉旧账本，
+                // 否则下面这轮会被「已处理」挡住，新进程一直不绑。
+                if (previous is null)
+                    PurgeReusedInstances();
+
                 changed = previous is null || !previous.SetEquals(alive);
 
                 if (changed)
@@ -318,6 +329,7 @@ namespace Zentwik.Core.Services
                 _scenario.PruneTo(alive);
                 _retry.PruneTo(alive);
                 _drift.PruneTo(alive);
+                _instances.PruneTo(alive);
 
                 _lastAlive = alive;
             }
@@ -335,6 +347,33 @@ namespace Zentwik.Core.Services
         {
             foreach ((int pid, string name) in _retry.Due(alive))
                 TryHandle(pid, name);
+        }
+
+        /// <summary>
+        /// 全量轮清理 PID 复用：同一个 PID 换了进程，旧账本必须作废，
+        /// 否则新进程被「已处理」挡住永远不会绑，漂移日志也会拿旧期望值对着它报。
+        ///
+        /// 只查已记账的 PID（规则命中的那几个），每分钟一次，不在每轮扫描里做。
+        /// </summary>
+        private void PurgeReusedInstances()
+        {
+            foreach (int pid in _instances.TakeReused(_cpuSets.GetInstanceTicks))
+            {
+                ForgetInstance(pid);
+                _log.Info($"PID {pid} 已换成新进程，重新判定绑定");
+            }
+        }
+
+        /// <summary>把一个 PID 从全部账本里清掉，下一轮全量扫描按新进程处理。</summary>
+        private void ForgetInstance(int pid)
+        {
+            _instances.Forget(pid);
+            _handledPids.Remove(pid);
+            _boundPids.Remove(pid);
+            _affinityPids.Remove(pid);
+            _scenario.Remove(pid);
+            _retry.Remove(pid);
+            _drift.Forget(pid);
         }
 
         /// <summary>规则已删或已禁用，但进程还绑着的，放回系统默认。</summary>
@@ -573,6 +612,7 @@ namespace Zentwik.Core.Services
         public void NoteBinding(int pid, string name, ulong mask, bool byAffinityMask, string owner)
         {
             _scenario.Note(pid, owner);
+            _instances.Note(pid, _cpuSets.GetInstanceTicks(pid));
 
             if (mask != 0)
                 _drift.Note(pid, name, mask, byAffinityMask);
@@ -745,6 +785,7 @@ namespace Zentwik.Core.Services
                 _retry.Remove(pid);
 
                 _boundPids.TryAdd(pid);
+                _instances.Note(pid, _cpuSets.GetInstanceTicks(pid));
 
                 if (mask != 0)
                     _drift.Note(pid, name, mask, byAffinityMask);
