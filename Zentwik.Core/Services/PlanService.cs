@@ -727,10 +727,13 @@ namespace Zentwik.Core.Services
         /// <summary>规则浅拷贝：方案里的规则必须与当前规则集是两批对象。</summary>
         private static ScheduleRule Clone(ScheduleRule rule) => new()
         {
+            Id = rule.Id,
             Name = rule.Name,
             Target = rule.Target,
             MaskId = rule.MaskId,
             TargetMask = rule.TargetMask,
+            MaskName = rule.MaskName,
+            BindType = rule.BindType,
             Path = rule.Path,
             Priority = rule.Priority,
             Enabled = rule.Enabled
