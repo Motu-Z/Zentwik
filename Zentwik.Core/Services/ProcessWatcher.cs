@@ -736,6 +736,13 @@ namespace Zentwik.Core.Services
             return result;
         }
 
+        /// <summary>
+        /// 这条规则该按关联掩码下发还是按 CPU Sets 下发。
+        /// 掩码还在就以它的当前方式为准；掩码被删了才退回规则里的快照。
+        /// </summary>
+        internal static bool UseAffinityMask(ScheduleRule rule, CustomMask? found) =>
+            !rule.IsLegacyCcd && (found?.Type ?? rule.BindType) == MaskType.AffinityMask;
+
         /// <summary>处理一个进程：查规则 → 命中且未处理则下发 CPU Set。</summary>
         private void HandleProcess(int pid, string name)
         {
@@ -764,7 +771,9 @@ namespace Zentwik.Core.Services
                 ? (found?.Mask ?? rule.TargetMask)
                 : 0;
 
-            bool byAffinityMask = !rule.IsLegacyCcd && found?.Type == MaskType.AffinityMask;
+            // 掩码还在就用它的当前方式，掩码被删了才退回规则里的快照 ——
+            // 少了这份快照，删除掩码会让 Affinity Mask 规则静默改按 CPU Sets 下发。
+            bool byAffinityMask = UseAffinityMask(rule, found);
 
             // 旧版 CCD 规则只在迁移还没跑过时走到这里
             CpuSetScheduleResult result = rule.IsLegacyCcd

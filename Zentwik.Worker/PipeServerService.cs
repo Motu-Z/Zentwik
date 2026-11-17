@@ -1300,6 +1300,7 @@ namespace Zentwik.Worker
                 rule.TargetMask = groupMask;
                 rule.MaskId = preset?.Id ?? string.Empty;
                 rule.MaskName = preset?.Name ?? MaskFormatter.ToRangeText(groupMask);
+                rule.BindType = preset?.Type ?? MaskType.CpuSets;
             }
             else if (string.Equals(targetType, "mask", StringComparison.OrdinalIgnoreCase))
             {
@@ -1338,6 +1339,7 @@ namespace Zentwik.Worker
                 rule.MaskId = mask.Id;
                 rule.TargetMask = mask.Mask;
                 rule.MaskName = mask.Name;
+                rule.BindType = mask.Type;
             }
             else
             {

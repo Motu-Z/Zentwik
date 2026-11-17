@@ -488,6 +488,9 @@ namespace Zentwik.Core.Services
         /// <summary>上一条因方案被删而跳过的规则 Id，用来抑制重复告警。</summary>
         private string? _lastMissingProfileId;
 
+        /// <summary>上一条因目标方案或掩码被删而跳过的引用 Id，用来抑制重复告警。</summary>
+        private string? _lastMissingSchedulingId;
+
         /// <summary>
         /// 调度动作：把掩码套到触发进程上。
         ///
@@ -530,9 +533,18 @@ namespace Zentwik.Core.Services
 
             if (mask is null)
             {
-                _log.Warn($"场景调度：掩码 {outcome.MaskId} 已不存在，已跳过");
+                // 每次进程变化都会重新评估，这里不去重的话同一失效引用会一直刷日志。
+                // 文案不写「掩码」：这条规则的引用可能指向被删掉的调度方案。
+                if (!string.Equals(_lastMissingSchedulingId, outcome.MaskId, StringComparison.Ordinal))
+                {
+                    _lastMissingSchedulingId = outcome.MaskId;
+                    _log.Warn("场景调度：目标方案或掩码不存在，已跳过（可能已被删除）");
+                }
+
                 return;
             }
+
+            _lastMissingSchedulingId = null;
 
             List<int> pids = FindProcessIds(outcome.TriggerArgument);
 

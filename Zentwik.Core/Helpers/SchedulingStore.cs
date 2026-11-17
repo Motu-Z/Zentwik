@@ -90,6 +90,13 @@ namespace Zentwik.Core.Helpers
         public string Priority { get; set; } = string.Empty;
 
         /// <summary>
+        /// 绑定方式的快照。掩码被删除后规则仍按 <see cref="TargetMask"/> 下发，
+        /// 没有这份快照就只能退回 CPU Sets，原本用 Affinity Mask 的规则会静默换方式。
+        /// 旧配置文件没有此字段，反序列化后为 CPU Sets，与升级前一致。
+        /// </summary>
+        public MaskType BindType { get; set; } = MaskType.CpuSets;
+
+        /// <summary>
         /// 该规则是否启用。关闭后记录仍然保留，但后台监听不会自动调度，
         /// 适合「先存着、暂时不想生效」的场景。默认启用（旧配置文件缺此字段时也为启用）。
         /// </summary>
