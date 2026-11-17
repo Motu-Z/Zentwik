@@ -22,6 +22,11 @@ namespace Zentwik.Core.Services
         /// <summary>混合架构下 P-Core 的掩码；同构机器为 0。</summary>
         ulong PerformanceMask { get; }
 
+        /// <summary>
+        /// 读回进程当前绑定并与期望值比对；只读，不改进程。
+        /// </summary>
+        BindingProbe ProbeBinding(int processId, ulong mask, bool byAffinityMask);
+
         /// <summary>丢弃已缓存的拓扑，下次访问重新探测。</summary>
         void ResetTopology();
 

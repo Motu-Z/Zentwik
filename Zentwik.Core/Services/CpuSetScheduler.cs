@@ -29,6 +29,12 @@ namespace Zentwik.Core.Services
     }
 
     /// <summary>
+    /// 一次读回的结果。读不到（进程已退出、权限不足）时 <see cref="Readable"/> 为 false，
+    /// 与「读到了但不一致」分开：前者不该记成漂移。
+    /// </summary>
+    public readonly record struct BindingProbe(bool Readable, bool Matches, ulong ExpectedMask, ulong ActualMask);
+
+    /// <summary>
     /// 一个核心组（L3 缓存域）：连续的逻辑核集合。
     ///
     /// 命名交给 <see cref="CpuVendorProbe"/>，本类只管「哪几个核是一组」。
@@ -358,10 +364,20 @@ namespace Zentwik.Core.Services
             if (mask == 0)
                 return Fail("掩码为 0，没有可绑定的逻辑处理器", -1);
 
-            List<uint> ids = new();
+            List<uint> ids = CollectIds(table, mask);
 
-            // 只走掩码里实际置位的那些位：上限仍是 64（ulong 宽度）与可用核数取小。
+            if (ids.Count == 0)
+                return Fail($"掩码 0x{mask:X} 未命中任何逻辑处理器（本机仅 {table.Length} 个）", -1);
+
+            return ApplyCpuSets(processId, ids.ToArray(), -1);
+        }
+
+        /// <summary>掩码位 → CpuSetId。上限取 ulong 宽度与可用核数中的小者。</summary>
+        private static List<uint> CollectIds(uint[] table, ulong mask)
+        {
+            List<uint> ids = new();
             ulong pending = mask & MaskWidth(table.Length);
+
             while (pending != 0)
             {
                 int i = System.Numerics.BitOperations.TrailingZeroCount(pending);
@@ -369,10 +385,111 @@ namespace Zentwik.Core.Services
                 pending &= pending - 1;
             }
 
-            if (ids.Count == 0)
-                return Fail($"掩码 0x{mask:X} 未命中任何逻辑处理器（本机仅 {table.Length} 个）", -1);
+            return ids;
+        }
 
-            return ApplyCpuSets(processId, ids.ToArray(), -1);
+        /// <summary>
+        /// 读回进程当前绑定，与期望值比对。只读，不动进程。
+        ///
+        /// 关联掩码按「写入时实际生效的值」比：写下去的是掩码与系统掩码的交集，
+        /// 拿原始掩码去比会在大核数机器上误报。
+        /// </summary>
+        public BindingProbe ProbeBinding(int processId, ulong mask, bool byAffinityMask)
+        {
+            if (mask == 0)
+                return new BindingProbe(false, false, 0, 0);
+
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+                return new BindingProbe(false, false, 0, 0);
+
+            try
+            {
+                return byAffinityMask ? ProbeAffinity(handle, mask) : ProbeCpuSets(handle, mask);
+            }
+            catch
+            {
+                return new BindingProbe(false, false, 0, 0);
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        private BindingProbe ProbeAffinity(IntPtr handle, ulong mask)
+        {
+            if (!GetProcessAffinityMask(handle, out nuint actual, out nuint system))
+                return new BindingProbe(false, false, 0, 0);
+
+            ulong expected = mask & (ulong)system;
+            return new BindingProbe(true, (ulong)actual == expected, expected, (ulong)actual);
+        }
+
+        private BindingProbe ProbeCpuSets(IntPtr handle, ulong mask)
+        {
+            uint[]? table;
+            lock (_topologyLock)
+            {
+                EnsureTopology();
+                table = _lpToCpuSetId;
+            }
+
+            if (table is not { Length: > 0 })
+                return new BindingProbe(false, false, 0, 0);
+
+            ulong wanted = mask & MaskWidth(table.Length);
+            List<uint> expected = CollectIds(table, mask);
+
+            if (expected.Count == 0)
+                return new BindingProbe(false, false, 0, 0);
+
+            if (!GetProcessDefaultCpuSets(handle, IntPtr.Zero, 0, out uint required) &&
+                Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
+            {
+                return new BindingProbe(false, false, 0, 0);
+            }
+
+            // 没有默认集合 = 这条限制已被解除，属于漂移，不是读不到。
+            if (required == 0)
+                return new BindingProbe(true, false, wanted, 0);
+
+            IntPtr buffer = Marshal.AllocHGlobal((int)required * sizeof(uint));
+
+            try
+            {
+                if (!GetProcessDefaultCpuSets(handle, buffer, required, out uint written))
+                    return new BindingProbe(false, false, 0, 0);
+
+                int[] raw = new int[written];
+                Marshal.Copy(buffer, raw, 0, (int)written);
+
+                return new BindingProbe(
+                    true,
+                    CpuSetsMatch(expected.ToArray(), raw),
+                    wanted,
+                    MaskFromIds(table, raw));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        /// <summary>CPU Set 列表折回掩码位，只为日志里能直接对读期望值。</summary>
+        private static ulong MaskFromIds(uint[] table, int[] actual)
+        {
+            HashSet<int> set = new(actual);
+            ulong mask = 0;
+
+            for (int i = 0; i < table.Length && i < 64; i++)
+            {
+                if (set.Contains((int)table[i]))
+                    mask |= 1UL << i;
+            }
+
+            return mask;
         }
 
         /// <summary>

@@ -60,7 +60,7 @@ namespace Zentwik.Tests.Fakes
         /// <summary>场景下发的绑定：pid → 规则 Id。</summary>
         private readonly Dictionary<int, string> _scenario = new();
 
-        public void NoteBinding(int pid, bool byAffinityMask, string owner)
+        public void NoteBinding(int pid, string name, ulong mask, bool byAffinityMask, string owner)
         {
             lock (_bound)
             {

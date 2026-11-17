@@ -99,6 +99,14 @@ namespace Zentwik.Core.Services
         /// <summary>绑定失败的重试计划。失败的 PID 不占「已处理」位，由这里排期。</summary>
         private readonly ScheduleRetryLedger _retry = new();
 
+        /// <summary>已下发的绑定原值，读回比对时当期望值用。</summary>
+        private readonly ScheduleDriftTracker _drift = new();
+
+        /// <summary>读回比对的轮数计数器。约 5 秒一次：漂移是秒级现象，不必每轮都读。</summary>
+        private int _driftRound;
+
+        private const int DriftProbeEveryRounds = 5;
+
         /// <summary>串行化下发：启动补扫、按新规则重扫、每秒扫描共用，避免同一 PID 交叉清另一侧。</summary>
         private readonly object _applyGate = new();
 
@@ -132,8 +140,10 @@ namespace Zentwik.Core.Services
                 _affinityPids.Clear();
                 _scenario.Clear();
                 _retry.Clear();
+                _drift.Clear();
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
+                _driftRound = 0;
 
                 _cts = new CancellationTokenSource();
                 CancellationToken token = _cts.Token;
@@ -210,6 +220,7 @@ namespace Zentwik.Core.Services
                 _affinityPids.Clear();
                 _scenario.Clear();
                 _retry.Clear();
+                _drift.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -293,12 +304,19 @@ namespace Zentwik.Core.Services
                 if (previous is null)
                     UnbindStaleRules(alive);
 
+                if (++_driftRound >= DriftProbeEveryRounds)
+                {
+                    _driftRound = 0;
+                    ProbeDrift(alive);
+                }
+
                 // 按存活名单裁剪，防止 PID 复用后被误判为已处理。
                 _handledPids.PruneTo(alive);
                 _boundPids.PruneTo(alive);
                 _affinityPids.PruneTo(alive);
                 _scenario.PruneTo(alive);
                 _retry.PruneTo(alive);
+                _drift.PruneTo(alive);
 
                 _lastAlive = alive;
             }
@@ -326,6 +344,33 @@ namespace Zentwik.Core.Services
                     _log.Info($"跳过解绑 PID {pid}：{error}");
 
                 _boundPids.Remove(pid);
+            }
+        }
+
+        /// <summary>
+        /// 读回已绑定进程的实际状态，与下发值比对，不一致只记日志。
+        ///
+        /// 先看清漂移从哪来、量级多大，再决定要不要重写：现在这一步不动任何进程。
+        /// </summary>
+        private void ProbeDrift(HashSet<int> alive)
+        {
+            foreach (ScheduleDriftTracker.Entry entry in _drift.Snapshot())
+            {
+                if (!alive.Contains(entry.Pid))
+                    continue;
+
+                BindingProbe probe = _cpuSets.ProbeBinding(entry.Pid, entry.Mask, entry.ByAffinityMask);
+
+                // 读不到（进程正在退出、权限不足）不是漂移。
+                if (!probe.Readable || probe.Matches)
+                    continue;
+
+                if (_throttle.TryAcquire($"drift|{entry.Name}", out int suppressed))
+                {
+                    _log.Info(
+                        $"绑定漂移：{entry.Name}（PID {entry.Pid}）期望 0x{probe.ExpectedMask:X}，" +
+                        $"实际 0x{probe.ActualMask:X}{LogThrottle.SuppressedSuffix(suppressed)}");
+                }
             }
         }
 
@@ -515,9 +560,12 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 记一次场景下发的绑定。场景不经过规则表，不记进来就没人解得掉它。
         /// </summary>
-        public void NoteBinding(int pid, bool byAffinityMask, string owner)
+        public void NoteBinding(int pid, string name, ulong mask, bool byAffinityMask, string owner)
         {
             _scenario.Note(pid, owner);
+
+            if (mask != 0)
+                _drift.Note(pid, name, mask, byAffinityMask);
 
             if (byAffinityMask)
             {
@@ -575,6 +623,7 @@ namespace Zentwik.Core.Services
         private bool Unbind(int pid, out string? error)
         {
             error = null;
+            _drift.Forget(pid);
 
             if (_affinityPids.Contains(pid))
             {
@@ -686,6 +735,9 @@ namespace Zentwik.Core.Services
                 _retry.Remove(pid);
 
                 _boundPids.TryAdd(pid);
+
+                if (mask != 0)
+                    _drift.Note(pid, name, mask, byAffinityMask);
 
                 // 关联掩码是硬约束，停泊不会缩范围，不追加警告。
                 string parkingSuffix = byAffinityMask ? string.Empty : ParkingSuffix();

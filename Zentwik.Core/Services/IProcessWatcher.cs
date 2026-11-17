@@ -44,7 +44,7 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 记一次场景下发的绑定。<paramref name="owner"/> 是规则 Id，用于按规则回收。
         /// </summary>
-        void NoteBinding(int pid, bool byAffinityMask, string owner);
+        void NoteBinding(int pid, string name, ulong mask, bool byAffinityMask, string owner);
 
         /// <summary>换成 CPU Sets 之前，清掉本工具用关联掩码留下的限制。</summary>
         void ClearOwnAffinity(int pid);

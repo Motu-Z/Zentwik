@@ -564,7 +564,7 @@ namespace Zentwik.Core.Services
                 if (result.Success)
                 {
                     applied++;
-                    _watcher?.NoteBinding(pid, byAffinityMask, outcome.RuleId);
+                    _watcher?.NoteBinding(pid, outcome.TriggerArgument, mask.Mask, byAffinityMask, outcome.RuleId);
                 }
                 else
                 {

@@ -108,5 +108,16 @@ namespace Zentwik.Tests.Fakes
         }
 
         public bool IsCcdAvailable(int ccdIndex) => ccdIndex >= 0 && ccdIndex < CcdCount;
+
+        /// <summary>读回替身：默认与下发一致。要模拟漂移就换成返回不一致的委托。</summary>
+        public Func<int, ulong, bool, BindingProbe>? Probe { get; set; }
+
+        public List<int> Probed { get; } = new();
+
+        public BindingProbe ProbeBinding(int processId, ulong mask, bool byAffinityMask)
+        {
+            Probed.Add(processId);
+            return Probe?.Invoke(processId, mask, byAffinityMask) ?? new BindingProbe(true, true, mask, mask);
+        }
     }
 }
