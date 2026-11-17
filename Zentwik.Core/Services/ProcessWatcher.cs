@@ -212,20 +212,32 @@ namespace Zentwik.Core.Services
 
         public void Stop()
         {
+            CancellationTokenSource? cts;
+            Task? loop;
+
             lock (_lock)
             {
                 if (!_running)
                     return;
 
-                if (_cts != null)
-                {
-                    try { _cts.Cancel(); } catch { /* 忽略 */ }
-                    _cts.Dispose();
-                    _cts = null;
-                }
-
-                _loop = null;
                 _running = false;
+                cts = _cts;
+                loop = _loop;
+                _cts = null;
+                _loop = null;
+            }
+
+            if (cts != null)
+            {
+                try { cts.Cancel(); } catch { /* 忽略 */ }
+                cts.Dispose();
+            }
+
+            // 等扫描退出再清账本：否则最后一轮会把 PID 回填进刚清空的表。
+            try { loop?.Wait(TimeSpan.FromSeconds(2)); } catch { /* 忽略 */ }
+
+            lock (_lock)
+            {
                 _handledPids.Clear();
                 _boundPids.Clear();
                 _affinityPids.Clear();
@@ -234,6 +246,7 @@ namespace Zentwik.Core.Services
                 _drift.Clear();
                 _instances.Clear();
                 _applied.Clear();
+                _missingMaskIds.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -274,6 +287,9 @@ namespace Zentwik.Core.Services
         /// </summary>
         private void ScanOnce()
         {
+            if (!_running)
+                return;
+
             List<ProcessIdentity> frame = NativeProcessList.Capture(_frame);
 
             // 快照失败时不能修剪：那会把全部 PID 当成已退出。
@@ -448,6 +464,9 @@ namespace Zentwik.Core.Services
         /// <summary>启动补扫：把已经在跑的程序过一遍，事件式监听盖不到它们。</summary>
         private void InitialScan()
         {
+            if (!_running)
+                return;
+
             long started = Environment.TickCount64;
 
             try
@@ -515,6 +534,10 @@ namespace Zentwik.Core.Services
                     while (true)
                     {
                         await Task.Delay(ReapplyDebounceMs).ConfigureAwait(false);
+
+                        // 防抖窗口内用户可能已经关掉监听，这一轮不能再扫。
+                        if (!_running)
+                            return;
 
                         // 先清旗标再扫，扫描期间进来的请求才不会被本轮吞掉。
                         Interlocked.Exchange(ref _reapplyDirty, 0);
