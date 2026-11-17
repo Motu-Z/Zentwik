@@ -234,7 +234,8 @@ namespace Zentwik.Core.Services
             }
 
             // 等扫描退出再清账本：否则最后一轮会把 PID 回填进刚清空的表。
-            try { loop?.Wait(TimeSpan.FromSeconds(2)); } catch { /* 忽略 */ }
+            // 循环每轮都会检查 token，正常情况百毫秒内就退，这里只是兜底上限。
+            try { loop?.Wait(TimeSpan.FromSeconds(1)); } catch { /* 忽略 */ }
 
             lock (_lock)
             {
