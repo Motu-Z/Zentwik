@@ -54,5 +54,19 @@ namespace Zentwik.Tests
 
             Assert.Equal(0, tracker.Count);
         }
+
+        [Fact]
+        public void TryGet_matches_the_snapshot_and_drops_after_forget()
+        {
+            ScheduleDriftTracker tracker = new();
+            tracker.Note(10, "a.exe", 0x0FUL, byAffinityMask: false);
+
+            Assert.True(tracker.TryGet(10, out ScheduleDriftTracker.Entry entry));
+            Assert.Equal(entry, Assert.Single(tracker.Snapshot()));
+
+            tracker.Forget(10);
+
+            Assert.False(tracker.TryGet(10, out _));
+        }
     }
 }

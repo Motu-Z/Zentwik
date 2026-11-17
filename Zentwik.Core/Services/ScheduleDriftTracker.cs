@@ -47,6 +47,13 @@ namespace Zentwik.Core.Services
                 return _entries.Values.ToArray();
         }
 
+        /// <summary>读单个 PID 的当前记录，用于探测前确认账本没有被改过。</summary>
+        public bool TryGet(int pid, out Entry entry)
+        {
+            lock (_gate)
+                return _entries.TryGetValue(pid, out entry);
+        }
+
         public void PruneTo(IReadOnlySet<int> alive)
         {
             lock (_gate)

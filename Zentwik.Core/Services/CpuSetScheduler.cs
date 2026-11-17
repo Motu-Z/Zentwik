@@ -197,6 +197,23 @@ namespace Zentwik.Core.Services
         private static partial bool GetProcessDefaultCpuSets(
             IntPtr process, IntPtr cpuSetIds, uint cpuSetIdCount, out uint requiredIdCount);
 
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+        /// <summary><c>STILL_ACTIVE</c>：进程仍在运行时的退出码。</summary>
+        private const uint StillActive = 259;
+
+        /// <summary>
+        /// 进程是否仍在运行。
+        ///
+        /// 进程退出后，只要还有别的句柄持有，OpenProcess 依然会成功，读到的亲和性与
+        /// 默认 CPU 集是退出前那一刻的值。不先问这一句，就会把「进程已退出」当成
+        /// 「绑定被改掉」或「被别的程序限制」。
+        /// </summary>
+        private static bool IsAlive(IntPtr handle) =>
+            GetExitCodeProcess(handle, out uint code) && code == StillActive;
+
         /// <summary>系统活动处理器组数量。> 1 时关联掩码无法表达全部逻辑处理器。</summary>
         [LibraryImport("kernel32.dll")]
         private static partial ushort GetActiveProcessorGroupCount();
@@ -406,6 +423,9 @@ namespace Zentwik.Core.Services
 
             try
             {
+                if (!IsAlive(handle))
+                    return new BindingProbe(false, false, 0, 0);
+
                 return byAffinityMask ? ProbeAffinity(handle, mask) : ProbeCpuSets(handle, mask);
             }
             catch
@@ -423,7 +443,9 @@ namespace Zentwik.Core.Services
             if (!GetProcessAffinityMask(handle, out nuint actual, out nuint system))
                 return new BindingProbe(false, false, 0, 0);
 
-            ulong expected = mask & (ulong)system;
+            // 期望值按写入时的截断规则算（先按本机逻辑处理器数截断，再与系统掩码求交），
+            // 与 ScheduleToAffinityMask 完全对齐：两边算法不同会在改截断规则后集体误报。
+            ulong expected = mask & MaskWidth(LogicalProcessorCount) & (ulong)system;
             return new BindingProbe(true, (ulong)actual == expected, expected, (ulong)actual);
         }
 
@@ -445,36 +467,47 @@ namespace Zentwik.Core.Services
             if (expected.Count == 0)
                 return new BindingProbe(false, false, 0, 0);
 
-            if (!GetProcessDefaultCpuSets(handle, IntPtr.Zero, 0, out uint required) &&
-                Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
+            // 两段式读取。容量可能落在两次调用之间被改大（进程同时被别的程序调整），
+            // 那时第二次调用会以 ERROR_INSUFFICIENT_BUFFER 失败，按新容量再试一次，
+            // 仍失败才算读不到 —— 否则这类漂移会静默漏掉。
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                return new BindingProbe(false, false, 0, 0);
-            }
-
-            // 没有默认集合 = 这条限制已被解除，属于漂移，不是读不到。
-            if (required == 0)
-                return new BindingProbe(true, false, wanted, 0);
-
-            IntPtr buffer = Marshal.AllocHGlobal((int)required * sizeof(uint));
-
-            try
-            {
-                if (!GetProcessDefaultCpuSets(handle, buffer, required, out uint written))
+                if (!GetProcessDefaultCpuSets(handle, IntPtr.Zero, 0, out uint required) &&
+                    Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
+                {
                     return new BindingProbe(false, false, 0, 0);
+                }
 
-                int[] raw = new int[written];
-                Marshal.Copy(buffer, raw, 0, (int)written);
+                // 没有默认集合 = 这条限制已被解除，属于漂移，不是读不到。
+                if (required == 0)
+                    return new BindingProbe(true, false, wanted, 0);
 
-                return new BindingProbe(
-                    true,
-                    CpuSetsMatch(expected.ToArray(), raw),
-                    wanted,
-                    MaskFromIds(table, raw));
+                IntPtr buffer = Marshal.AllocHGlobal((int)required * sizeof(uint));
+
+                try
+                {
+                    if (GetProcessDefaultCpuSets(handle, buffer, required, out uint written))
+                    {
+                        int[] raw = new int[written];
+                        Marshal.Copy(buffer, raw, 0, (int)written);
+
+                        return new BindingProbe(
+                            true,
+                            CpuSetsMatch(expected.ToArray(), raw),
+                            wanted,
+                            MaskFromIds(table, raw));
+                    }
+
+                    if (Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
+                        return new BindingProbe(false, false, 0, 0);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
             }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
+
+            return new BindingProbe(false, false, 0, 0);
         }
 
         /// <summary>CPU Set 列表折回掩码位，只为日志里能直接对读期望值。</summary>
@@ -529,6 +562,12 @@ namespace Zentwik.Core.Services
             if (effective == 0)
                 return Fail($"掩码 0x{mask:X} 未命中任何逻辑处理器（本机仅 {logical} 个）", -1);
 
+            // 已退出的进程写不进去，先挡下来：否则错误码 5 会被读成「权限不足」。
+            var state = ReadAffinity(processId);
+
+            if (state.Opened && !state.Alive)
+                return Fail("进程已退出", -1);
+
             // SetProcessAffinityMask 只认 PROCESS_SET_INFORMATION，没有「有限」版本。
             IntPtr handle = OpenProcess(PROCESS_SET_INFORMATION, false, processId);
 
@@ -576,7 +615,11 @@ namespace Zentwik.Core.Services
         {
             error = null;
 
-            IntPtr handle = OpenProcess(PROCESS_SET_INFORMATION, false, processId);
+            // 这个句柄既要用 GetProcessAffinityMask 读系统掩码，又要用它写回。
+            // 只申请 PROCESS_SET_INFORMATION 时读会以「拒绝访问」失败，
+            // 结果就是解绑永远返回 false、进程仍被旧掩码限制。
+            IntPtr handle = OpenProcess(
+                PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
 
             if (handle == IntPtr.Zero)
             {
@@ -646,9 +689,15 @@ namespace Zentwik.Core.Services
         /// </summary>
         private CpuSetScheduleResult ApplyCpuSets(int processId, uint[] ids, int ccdIndex)
         {
+            (bool opened, bool alive, ulong current, bool foreign) = ReadAffinity(processId);
+
+            // 已退出的进程照样能拿句柄，写下去还会返回成功，但什么也没设上。
+            if (opened && !alive)
+                return Fail("进程已退出", ccdIndex, -1);
+
             // 进程被别人设过硬亲和性时，CPU 集只是软约束，写进去实际范围仍是两者交集，
             // 界面上就成了「绑了没变化」。与其写下一条看不见的限制，不如直接说清原因。
-            if (HasForeignAffinity(processId, out ulong current))
+            if (foreign)
             {
                 return Fail(
                     $"进程已由其他程序限制在 Affinity Mask 0x{current:X}，CPU Sets 无法覆盖，已跳过",
@@ -656,10 +705,8 @@ namespace Zentwik.Core.Services
                     ErrorForeignAffinity);
             }
 
-            // 【最小必要权限】SetProcessDefaultCpuSets 只要求 PROCESS_SET_LIMITED_INFORMATION
-            // （Win10 1709+ 的「有限」写权限），这里就只要这一位。
-            // 以前顺手带上的 PROCESS_QUERY_LIMITED_INFORMATION 用不上 —— 申请的权限越多，
-            // 越容易在受保护进程上被直接拒绝，而拒绝的原因看起来和权限不足一模一样。
+            // SetProcessDefaultCpuSets 只需要 PROCESS_SET_LIMITED_INFORMATION。
+            // 写这一侧就只要这一位：权限申请得越多，越容易在受保护进程上被整体拒绝。
             IntPtr handle = OpenProcess(PROCESS_SET_LIMITED_INFORMATION, false, processId);
 
             // 1709 之前的内核没有 SET_LIMITED 这个位，回退到老的 SET_INFORMATION。
@@ -696,29 +743,33 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
-        /// 进程的关联掩码是否被限制在系统掩码之下（即有人显式设过）。
-        /// 读不到就不判：权限不足与「没设过」在这里分不开，报错只会制造噪音。
+        /// 一次读清进程的关联掩码与存活状态。
+        ///
+        /// <paramref name="Opened"/> 为 false 表示句柄没打开（不存在或权限不足），
+        /// 这种情况不在这里下结论，交给写入路径报真实错误；
+        /// <paramref name="Alive"/> 为 false 则是「打开成功但进程已经退出」，
+        /// 此时 SetProcessDefaultCpuSets 仍会返回成功，必须先挡下来，否则会记一条假的「已绑定」。
         /// </summary>
-        private static bool HasForeignAffinity(int processId, out ulong current)
+        private static (bool Opened, bool Alive, ulong ProcessMask, bool Foreign) ReadAffinity(int processId)
         {
-            current = 0;
-
             IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
 
             if (handle == IntPtr.Zero)
-                return false;
+                return (false, false, 0, false);
 
             try
             {
-                if (!GetProcessAffinityMask(handle, out nuint processMask, out nuint systemMask))
-                    return false;
+                if (!IsAlive(handle))
+                    return (true, false, 0, false);
 
-                current = (ulong)processMask;
-                return processMask != systemMask;
+                if (!GetProcessAffinityMask(handle, out nuint processMask, out nuint systemMask))
+                    return (true, true, 0, false);
+
+                return (true, true, (ulong)processMask, processMask != systemMask);
             }
             catch
             {
-                return false;
+                return (true, true, 0, false);
             }
             finally
             {
@@ -740,6 +791,10 @@ namespace Zentwik.Core.Services
 
             try
             {
+                // 进程已退出时读到的是退出前的旧值，不能拿来判写入失败。
+                if (!IsAlive(handle))
+                    return true;
+
                 if (!GetProcessDefaultCpuSets(handle, IntPtr.Zero, 0, out uint required) &&
                     Marshal.GetLastWin32Error() != ErrorInsufficientBuffer)
                 {
@@ -812,6 +867,10 @@ namespace Zentwik.Core.Services
 
             try
             {
+                // 进程已退出时读到的是退出前的旧值，不能拿来判写入失败。
+                if (!IsAlive(handle))
+                    return true;
+
                 if (!GetProcessAffinityMask(handle, out nuint actual, out _))
                     return true;
 

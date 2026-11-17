@@ -272,6 +272,7 @@ namespace Zentwik.Core.Services
                 alive.Add(item.Pid);
 
             bool changed;
+            bool probeDrift = false;
 
             lock (_applyGate)
             {
@@ -307,7 +308,7 @@ namespace Zentwik.Core.Services
                 if (++_driftRound >= DriftProbeEveryRounds)
                 {
                     _driftRound = 0;
-                    ProbeDrift(alive);
+                    probeDrift = true;
                 }
 
                 // 按存活名单裁剪，防止 PID 复用后被误判为已处理。
@@ -320,6 +321,10 @@ namespace Zentwik.Core.Services
 
                 _lastAlive = alive;
             }
+
+            // 读回是跨进程调用，放到锁外做：它不该占住补扫与解绑都要等的这把锁。
+            if (probeDrift)
+                ProbeDrift(alive);
 
             if (changed)
                 RaiseProcessSetChanged();
@@ -363,6 +368,11 @@ namespace Zentwik.Core.Services
 
                 // 读不到（进程正在退出、权限不足）不是漂移。
                 if (!probe.Readable || probe.Matches)
+                    continue;
+
+                // 探测期间账本可能已被改掉（用户解绑、规则改绑、场景回收）。读到的是旧
+                // 期望值，拿它报漂移就是纯误报 —— 账本已经变了就把这次结果丢掉。
+                if (!_drift.TryGet(entry.Pid, out ScheduleDriftTracker.Entry current) || current != entry)
                     continue;
 
                 if (_throttle.TryAcquire($"drift|{entry.Name}", out int suppressed))
