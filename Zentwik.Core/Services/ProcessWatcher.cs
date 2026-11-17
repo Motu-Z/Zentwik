@@ -108,6 +108,9 @@ namespace Zentwik.Core.Services
         /// <summary>上次成功下发的目标。重扫时目标没变的进程不重复写入。</summary>
         private readonly AppliedTargetLedger _applied = new();
 
+        /// <summary>已告警过的失效掩码 Id，掩码恢复后移除。</summary>
+        private readonly HashSet<string> _missingMaskIds = new(StringComparer.Ordinal);
+
         /// <summary>读回比对的轮数计数器。约 5 秒一次：漂移是秒级现象，不必每轮都读。</summary>
         private int _driftRound;
 
@@ -778,6 +781,20 @@ namespace Zentwik.Core.Services
             CustomMask? found = rule.Target == SchedulingTarget.TargetMask
                 ? _masks.FindById(rule.MaskId)
                 : null;
+
+            if (rule.Target == SchedulingTarget.TargetMask)
+            {
+                if (found is null)
+                {
+                    // 每条规则只提一次：掩码删除后每秒扫描都会走到这里。
+                    if (!string.IsNullOrEmpty(rule.MaskId) && _missingMaskIds.Add(rule.MaskId))
+                        _log.Warn($"{name} 的规则指向的掩码已被删除，按删除前的设置绑定");
+                }
+                else
+                {
+                    _missingMaskIds.Remove(rule.MaskId);
+                }
+            }
 
             ulong mask = rule.Target == SchedulingTarget.TargetMask
                 ? (found?.Mask ?? rule.TargetMask)

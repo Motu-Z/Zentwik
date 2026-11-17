@@ -995,7 +995,7 @@ public class ProcessViewModel : ViewModelBase
                     }
                 }
 
-                return string.IsNullOrWhiteSpace(targetValue) ? "默认" : targetValue;
+                return string.IsNullOrWhiteSpace(targetValue) ? "默认" : "掩码已删除";
 
             default:
                 return "默认";
