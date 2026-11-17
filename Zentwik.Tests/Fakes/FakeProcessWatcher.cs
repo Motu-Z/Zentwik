@@ -56,5 +56,42 @@ namespace Zentwik.Tests.Fakes
                 return true;
             }
         }
+
+        /// <summary>场景下发的绑定：pid → 规则 Id。</summary>
+        private readonly Dictionary<int, string> _scenario = new();
+
+        public void NoteBinding(int pid, bool byAffinityMask, string owner)
+        {
+            lock (_bound)
+            {
+                _bound.Add(pid);
+                _scenario[pid] = owner;
+            }
+        }
+
+        public void ClearOwnAffinity(int pid) { }
+
+        public int ReleaseScenarioBindings(string? owner)
+        {
+            lock (_bound)
+            {
+                List<int> taken = new();
+
+                foreach ((int pid, string id) in _scenario)
+                {
+                    if (owner is null || string.Equals(id, owner, StringComparison.Ordinal))
+                        taken.Add(pid);
+                }
+
+                foreach (int pid in taken)
+                {
+                    _scenario.Remove(pid);
+                    _bound.Remove(pid);
+                    UnboundPids.Add(pid);
+                }
+
+                return taken.Count;
+            }
+        }
     }
 }

@@ -196,6 +196,9 @@ namespace Zentwik.Core.Services
         /// <summary>写入成功但回读不一致。与 Win32 错误码分开，日志节流按它分桶。</summary>
         private const int ErrorReadbackMismatch = -2;
 
+        /// <summary>进程已被别的程序限制在特定核上，CPU Sets 会被它压住。</summary>
+        private const int ErrorForeignAffinity = -3;
+
         // ---------------- 拓扑缓存 ----------------
 
         /// <summary>逻辑处理器序号 → CpuSetId（按 CCD 分组）。</summary>
@@ -501,6 +504,16 @@ namespace Zentwik.Core.Services
         /// </summary>
         private CpuSetScheduleResult ApplyCpuSets(int processId, uint[] ids, int ccdIndex)
         {
+            // 进程被别人设过硬亲和性时，CPU 集只是软约束，写进去实际范围仍是两者交集，
+            // 界面上就成了「绑了没变化」。与其写下一条看不见的限制，不如直接说清原因。
+            if (HasForeignAffinity(processId, out ulong current))
+            {
+                return Fail(
+                    $"进程已由其他程序限制在 Affinity Mask 0x{current:X}，CPU Sets 无法覆盖，已跳过",
+                    ccdIndex,
+                    ErrorForeignAffinity);
+            }
+
             // 【最小必要权限】SetProcessDefaultCpuSets 只要求 PROCESS_SET_LIMITED_INFORMATION
             // （Win10 1709+ 的「有限」写权限），这里就只要这一位。
             // 以前顺手带上的 PROCESS_QUERY_LIMITED_INFORMATION 用不上 —— 申请的权限越多，
@@ -533,6 +546,37 @@ namespace Zentwik.Core.Services
             catch (Exception ex)
             {
                 return Fail(ex.Message, ccdIndex);
+            }
+            finally
+            {
+                CloseHandle(handle);
+            }
+        }
+
+        /// <summary>
+        /// 进程的关联掩码是否被限制在系统掩码之下（即有人显式设过）。
+        /// 读不到就不判：权限不足与「没设过」在这里分不开，报错只会制造噪音。
+        /// </summary>
+        private static bool HasForeignAffinity(int processId, out ulong current)
+        {
+            current = 0;
+
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+
+            if (handle == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                if (!GetProcessAffinityMask(handle, out nuint processMask, out nuint systemMask))
+                    return false;
+
+                current = (ulong)processMask;
+                return processMask != systemMask;
+            }
+            catch
+            {
+                return false;
             }
             finally
             {
@@ -653,8 +697,8 @@ namespace Zentwik.Core.Services
         /// 语义容易搞混，所以在 API 名上写明白。
         ///
         /// 用于恢复出厂：只解绑我们自己设过的那些限制，不去动用户
-        /// 用任务管理器 / 其他工具设的亲和性 —— 本程序从不使用
-        /// SetProcessAffinityMask，所以「清默认 CPU Set」恰好只会影响我们。
+        /// 用任务管理器 / 其他工具设的亲和性 —— 这里清的是 CPU Set，
+        /// 别处设的 Affinity Mask 不在这一条上，各清各的。
         /// </summary>
         public bool ClearDefaultCpuSets(int processId, out string? error)
         {

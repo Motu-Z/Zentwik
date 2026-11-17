@@ -93,6 +93,9 @@ namespace Zentwik.Core.Services
         /// </summary>
         private readonly PidSet _affinityPids = new();
 
+        /// <summary>场景下发的绑定。与规则路径分开记，解绑时才分得清谁该放掉。</summary>
+        private readonly ScenarioBindingLedger _scenario = new();
+
         /// <summary>绑定失败的重试计划。失败的 PID 不占「已处理」位，由这里排期。</summary>
         private readonly ScheduleRetryLedger _retry = new();
 
@@ -127,6 +130,7 @@ namespace Zentwik.Core.Services
                 _handledPids.Clear();
                 _boundPids.Clear();
                 _affinityPids.Clear();
+                _scenario.Clear();
                 _retry.Clear();
                 _lastAlive = null;
                 _roundsSinceFullScan = 0;
@@ -204,6 +208,7 @@ namespace Zentwik.Core.Services
                 _handledPids.Clear();
                 _boundPids.Clear();
                 _affinityPids.Clear();
+                _scenario.Clear();
                 _retry.Clear();
                 _lastAlive = null;
 
@@ -283,10 +288,16 @@ namespace Zentwik.Core.Services
 
                 RetryDue(alive);
 
+                // 全量轮（切换方案、改删规则后都会走这里）顺手把「规则已不覆盖」的绑定放掉：
+                // 光靠重扫只会重绑命中的进程，规则删掉的那批会一直留在旧核上。
+                if (previous is null)
+                    UnbindStaleRules(alive);
+
                 // 按存活名单裁剪，防止 PID 复用后被误判为已处理。
                 _handledPids.PruneTo(alive);
                 _boundPids.PruneTo(alive);
                 _affinityPids.PruneTo(alive);
+                _scenario.PruneTo(alive);
                 _retry.PruneTo(alive);
 
                 _lastAlive = alive;
@@ -301,6 +312,21 @@ namespace Zentwik.Core.Services
         {
             foreach ((int pid, string name) in _retry.Due(alive))
                 TryHandle(pid, name);
+        }
+
+        /// <summary>规则已删或已禁用，但进程还绑着的，放回系统默认。</summary>
+        private void UnbindStaleRules(HashSet<int> alive)
+        {
+            foreach (int pid in _boundPids.ToArray())
+            {
+                if (!alive.Contains(pid) || _handledPids.Contains(pid) || _scenario.Contains(pid))
+                    continue;
+
+                if (!Unbind(pid, out string? error) && !string.IsNullOrEmpty(error))
+                    _log.Info($"跳过解绑 PID {pid}：{error}");
+
+                _boundPids.Remove(pid);
+            }
         }
 
         private void TryHandle(int pid, string name)
@@ -437,8 +463,13 @@ namespace Zentwik.Core.Services
             InvalidateRuleCache();
         }
 
-        /// <summary>本工具成功绑过、且尚未解绑的 PID 快照。</summary>
-        public int[] GetBoundProcessIds() => _boundPids.ToArray();
+        /// <summary>本工具成功绑过、且尚未解绑的 PID 快照（规则与场景两条路径合计）。</summary>
+        public int[] GetBoundProcessIds()
+        {
+            HashSet<int> all = new(_boundPids.ToArray());
+            all.UnionWith(_scenario.ToArray());
+            return all.ToArray();
+        }
 
         /// <summary>
         /// 解绑全部「本工具绑过」的进程，返回真正清掉 CPU Set 的数量。
@@ -446,10 +477,12 @@ namespace Zentwik.Core.Services
         /// </summary>
         public int ClearAllSchedules()
         {
-            int[] pids = _boundPids.ToArray();
+            HashSet<int> all = new(_boundPids.ToArray());
+            all.UnionWith(_scenario.Take(owner: null));
+
             int unbound = 0;
 
-            foreach (int pid in pids)
+            foreach (int pid in all)
             {
                 if (Unbind(pid, out string? error))
                 {
@@ -475,7 +508,67 @@ namespace Zentwik.Core.Services
                 _log.Info($"跳过解绑 PID {pid}：{error}");
 
             _boundPids.Remove(pid);
+            _scenario.Remove(pid);
             return ok;
+        }
+
+        /// <summary>
+        /// 记一次场景下发的绑定。场景不经过规则表，不记进来就没人解得掉它。
+        /// </summary>
+        public void NoteBinding(int pid, bool byAffinityMask, string owner)
+        {
+            _scenario.Note(pid, owner);
+
+            if (byAffinityMask)
+            {
+                _affinityPids.TryAdd(pid);
+            }
+            else
+            {
+                _affinityPids.Remove(pid);
+            }
+        }
+
+        /// <summary>
+        /// 切换绑定方式前清掉本工具用另一种方式留下的限制。
+        /// 只清自己设过的：别处设的亲和性不归我们管。
+        /// </summary>
+        public void ClearOwnAffinity(int pid)
+        {
+            if (!_affinityPids.Contains(pid))
+                return;
+
+            _affinityPids.Remove(pid);
+
+            if (!_cpuSets.ClearAffinityMask(pid, out string? error) && !string.IsNullOrEmpty(error))
+                _log.Info($"改用 CPU Sets 前清除 Affinity Mask 失败（PID {pid}）：{error}");
+        }
+
+        /// <summary>
+        /// 解绑场景下发的绑定。<paramref name="owner"/> 为空表示全部。
+        /// 返回真正清掉的数量。
+        /// </summary>
+        public int ReleaseScenarioBindings(string? owner)
+        {
+            int unbound = 0;
+
+            foreach (int pid in _scenario.Take(owner))
+            {
+                // 规则还管着它的话，场景退出不该把它从规则手里一起解掉。
+                if (_boundPids.Contains(pid))
+                    continue;
+
+                if (Unbind(pid, out string? error))
+                {
+                    unbound++;
+                }
+                else if (!string.IsNullOrEmpty(error))
+                {
+                    _log.Info($"跳过解绑 PID {pid}：{error}");
+                }
+            }
+
+            return unbound;
         }
 
         /// <summary>按当初的绑定方式解绑，两类互不牵连。</summary>

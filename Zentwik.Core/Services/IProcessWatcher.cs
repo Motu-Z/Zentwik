@@ -40,5 +40,18 @@ namespace Zentwik.Core.Services
 
         /// <summary>解绑单个 PID。返回是否真的清掉了 CPU Set。</summary>
         bool ClearSchedule(int pid);
+
+        /// <summary>
+        /// 记一次场景下发的绑定。<paramref name="owner"/> 是规则 Id，用于按规则回收。
+        /// </summary>
+        void NoteBinding(int pid, bool byAffinityMask, string owner);
+
+        /// <summary>换成 CPU Sets 之前，清掉本工具用关联掩码留下的限制。</summary>
+        void ClearOwnAffinity(int pid);
+
+        /// <summary>
+        /// 解绑场景下发的绑定，<paramref name="owner"/> 为空表示全部。返回真正清掉的数量。
+        /// </summary>
+        int ReleaseScenarioBindings(string? owner);
     }
 }

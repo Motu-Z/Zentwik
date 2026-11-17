@@ -65,5 +65,43 @@ namespace Zentwik.Tests
             Assert.Equal(first, same);
             Assert.NotEqual(first, restarted);
         }
+
+        [Fact]
+        public void Scenario_ledger_takes_only_the_given_rule()
+        {
+            ScenarioBindingLedger ledger = new();
+            ledger.Note(11, "rule-a");
+            ledger.Note(12, "rule-b");
+            ledger.Note(13, "rule-a");
+
+            int[] taken = ledger.Take("rule-a");
+
+            Assert.Equal(new[] { 11, 13 }, taken.OrderBy(v => v).ToArray());
+            Assert.Equal(1, ledger.Count);
+            Assert.True(ledger.Contains(12));
+        }
+
+        [Fact]
+        public void Scenario_ledger_takes_everything_when_owner_is_null()
+        {
+            ScenarioBindingLedger ledger = new();
+            ledger.Note(11, "rule-a");
+            ledger.Note(12, "rule-b");
+
+            Assert.Equal(2, ledger.Take(null).Length);
+            Assert.Equal(0, ledger.Count);
+        }
+
+        [Fact]
+        public void Scenario_ledger_drops_pid_that_is_gone()
+        {
+            ScenarioBindingLedger ledger = new();
+            ledger.Note(11, "rule-a");
+            ledger.Note(12, "rule-b");
+
+            ledger.PruneTo(new HashSet<int> { 12 });
+
+            Assert.Equal(new[] { 12 }, ledger.ToArray());
+        }
     }
 }

@@ -139,6 +139,7 @@ namespace Zentwik.Core.Services
         private readonly IMaskStore? _masks;
         private readonly ICpuSetScheduler? _scheduler;
         private readonly PowerPolicyService? _power;
+        private readonly IProcessWatcher? _watcher;
 
         public ScenarioService(
             ILogService log,
@@ -146,7 +147,8 @@ namespace Zentwik.Core.Services
             IAppPaths paths,
             IMaskStore? masks = null,
             ICpuSetScheduler? scheduler = null,
-            PowerPolicyService? power = null)
+            PowerPolicyService? power = null,
+            IProcessWatcher? watcher = null)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
@@ -157,6 +159,7 @@ namespace Zentwik.Core.Services
             _masks = masks;
             _scheduler = scheduler;
             _power = power;
+            _watcher = watcher;
         }
 
         /// <summary>
@@ -304,6 +307,15 @@ namespace Zentwik.Core.Services
                 Persist();
             }
 
+            // 关掉总闸就不再有人替这些绑定时段负责，留着等于规则没了还占着核。
+            if (!enabled && _watcher is not null)
+            {
+                int released = _watcher.ReleaseScenarioBindings(owner: null);
+
+                if (released > 0)
+                    _log.Info($"场景自动切换：已解绑 {released} 个进程");
+            }
+
             _log.Info(enabled ? "场景自动切换：已开启" : "场景自动切换：已关闭");
             Changed?.Invoke();
         }
@@ -336,6 +348,10 @@ namespace Zentwik.Core.Services
                 _rules.RemoveAt(index);
                 Persist();
             }
+
+            // 规则没了，它绑过的进程要放掉；不归这条规则的绑定不动。
+            if (_watcher is not null && _watcher.ReleaseScenarioBindings(id) > 0)
+                _log.Info("场景规则已删除，相关进程已解绑");
 
             Changed?.Invoke();
             return true;
@@ -535,13 +551,20 @@ namespace Zentwik.Core.Services
 
             foreach (int pid in pids)
             {
-                CpuSetScheduleResult result = mask.Type == MaskType.AffinityMask
+                bool byAffinityMask = mask.Type == MaskType.AffinityMask;
+
+                // 换成 CPU Sets 前清掉本工具用关联掩码留下的那条限制，否则两者求交集。
+                if (!byAffinityMask)
+                    _watcher?.ClearOwnAffinity(pid);
+
+                CpuSetScheduleResult result = byAffinityMask
                     ? ScheduleWithAffinity(pid, mask)
                     : _scheduler.ScheduleToMask(pid, mask.Mask);
 
                 if (result.Success)
                 {
                     applied++;
+                    _watcher?.NoteBinding(pid, byAffinityMask, outcome.RuleId);
                 }
                 else
                 {
