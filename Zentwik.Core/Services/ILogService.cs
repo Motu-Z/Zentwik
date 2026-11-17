@@ -54,6 +54,12 @@ namespace Zentwik.Core.Services
 
         long TotalCritical { get; }
 
+        /// <summary>
+        /// 最近一条异常（错误优先，没有就退到警告），不受缓冲裁剪影响；<see cref="Clear"/> 后为 null。
+        /// 界面「最新异常」靠它 —— 只看缓冲会在早期异常被挤出后变成「计数有、卡片空」。
+        /// </summary>
+        LogEntry? LastIssue { get; }
+
         string LogDirectory { get; }
 
         /// <summary>详细日志，仅在 <see cref="Verbose"/> 为真时写入。只落盘，不进内存缓冲。</summary>

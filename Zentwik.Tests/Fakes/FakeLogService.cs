@@ -18,6 +18,7 @@ namespace Zentwik.Tests.Fakes
         public long TotalWarn => 0;
         public long TotalError => 0;
         public long TotalCritical => 0;
+        public LogEntry? LastIssue => null;
         public string LogDirectory => string.Empty;
         public void Debug(string message) { }
         public void Info(string message) { }

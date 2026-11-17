@@ -90,6 +90,10 @@ namespace Zentwik.Core.Services
         private long _totalError;
         private long _totalCritical;
 
+        /// <summary>最近一条错误与警告。只在写入时覆盖，不受环形缓冲裁剪影响。</summary>
+        private LogEntry? _lastError;
+        private LogEntry? _lastWarn;
+
         private int _paused;
         private int _verbose;
         private int _disposed;
@@ -156,6 +160,13 @@ namespace Zentwik.Core.Services
         public long TotalError => Interlocked.Read(ref _totalError);
 
         public long TotalCritical => Interlocked.Read(ref _totalCritical);
+
+        /// <summary>
+        /// 最近一条异常：错误优先，没有就退到警告。
+        /// 界面上的「最新异常」要用它 —— 缓冲只留最近若干条，早发生的异常会先被裁掉，
+        /// 只看缓冲就会出现「计数说有错误、卡片却是空的」。
+        /// </summary>
+        public LogEntry? LastIssue => Volatile.Read(ref _lastError) ?? Volatile.Read(ref _lastWarn);
 
         public string LogDirectory { get; }
 
@@ -257,6 +268,8 @@ namespace Zentwik.Core.Services
                 }
 
                 _entries.Clear();
+                Volatile.Write(ref _lastError, null);
+                Volatile.Write(ref _lastWarn, null);
                 Interlocked.Exchange(ref _countInfo, 0);
                 Interlocked.Exchange(ref _countWarn, 0);
                 Interlocked.Exchange(ref _countError, 0);
@@ -432,6 +445,11 @@ namespace Zentwik.Core.Services
             {
                 _entries.Enqueue(entry);
                 BumpCount(entry.Level, +1);
+
+                if (entry.Level is LogLevel.Error or LogLevel.Critical)
+                    Volatile.Write(ref _lastError, entry);
+                else if (entry.Level == LogLevel.Warn)
+                    Volatile.Write(ref _lastWarn, entry);
 
                 // 攒够一批再丢头部，别每条日志都整体搬一次
                 if (_entries.Count > _options.MaxEntries + _options.TrimBatch)

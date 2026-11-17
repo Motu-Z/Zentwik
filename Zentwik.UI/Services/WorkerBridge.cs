@@ -697,7 +697,7 @@ public sealed class WorkerBridge
 
     // 日志页的两条命令
 
-    /// <summary>最近 50 条日志，一行一条纯文本 （yyyy-MM-ddTHH:mm:ss.fff|级别|消息）</summary>
+    /// <summary>最近 200 条日志，一行一条纯文本 （yyyy-MM-ddTHH:mm:ss.fff|级别|消息）</summary>
     public async Task<IpcOutcome<string>> SnapshotLogsAsync(
         int timeoutMs = 5_000,
         CancellationToken cancellationToken = default)

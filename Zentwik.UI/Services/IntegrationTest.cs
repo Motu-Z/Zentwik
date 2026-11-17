@@ -930,7 +930,7 @@ public static class IntegrationTest
             ("进程", () => new Views.ProcessView(), new[] { "清空所有规则", "全部解绑" }),
             ("电源", () => new Views.PowerView(), new[] { "回读", "保存并应用" }),
             ("场景", () => new Views.ScenariosView(), new[] { "启用自动切换", "新建规则" }),
-            ("日志", () => new Views.LogsView(), new[] { "控制中心", "打开日志目录", "清空日志" }),
+            ("日志", () => new Views.LogsView(), new[] { "控制中心", "打开日志目录", "清空所有日志" }),
             ("通用", () => new Views.SettingsView(), new[] { "打开项目源码", "检查更新" }),
             ("行为", () => new Views.BehaviorView(), new[] { "不启动", "启动后台服务与界面" }),
             ("高级", () => new Views.AdvancedView(), new[] { "启动异常自动拦截", "运行自检并导出" }),
@@ -2067,6 +2067,16 @@ public static class IntegrationTest
               $"{logs.FilteredEntries.Count}");
         logs.SearchText = string.Empty;
 
+        // 窗口只有最近若干条，计数却是全程累计：空结果必须说明为什么空。
+        logs.FilterMode = LogFilterMode.Warn;
+        logs.SearchText = "查不到的东西";
+        Check("日志：筛不到时说明只搜了最近若干条",
+              logs.FilteredEntries.Count == 0 && logs.EmptyText.Contains("没有匹配", StringComparison.Ordinal),
+              logs.EmptyText);
+        logs.SearchText = string.Empty;
+
+        logs.FilterMode = LogFilterMode.All;
+
         Check("日志：最近异常取最后一条 ERROR",
               logs.LatestIssue is not null && logs.LatestIssue.Level == "ERROR",
               logs.LatestIssueLevel);
@@ -2087,7 +2097,7 @@ public static class IntegrationTest
             Check("日志：字面量 \\n 还原成换行",
                   parsed[2].Message.Contains('\n'), parsed[2].Message.Replace("\n", "<LF>"));
 
-            // 首行统计：列表只给最近 50 条，右侧栏的数字必须来自这一行。
+            // 首行统计：列表只给最近 200 条，右侧栏的数字必须来自这一行。
             var withStats = LogsViewModel.Parse(
                 "#stats|1200|1000|150|48|2\n"
                 + $"{today}T23:10:11.123|INFO|a",
@@ -2097,6 +2107,18 @@ public static class IntegrationTest
             Check("日志：统计行带出累计条数",
                   stats.Total == 1200 && stats.Info == 1000 && stats.Error == 48,
                   $"{stats.Total}/{stats.Info}/{stats.Error}");
+
+            // 首行末尾三格是最近一条异常：缓冲裁掉的早期异常只能从这里拿到。
+            _ = LogsViewModel.Parse(
+                "#stats|1200|1000|150|48|2|" + today + "T09:40:22.880|ERROR|反作弊|拒绝访问\n"
+                + $"{today}T23:10:11.123|INFO|a",
+                out LogStats issueStats);
+
+            Check("日志：统计行带出最近一条异常（消息里的竖线不被切断）",
+                  issueStats.IssueTime.Length > 0
+                  && issueStats.IssueLevel == "ERROR"
+                  && issueStats.IssueMessage == "反作弊|拒绝访问",
+                  $"{issueStats.IssueLevel}/{issueStats.IssueMessage}");
 
             Check("日志：日志目录与 Worker 同源（Roaming\\Zentwik\\Logs）",
                   LogsViewModel.LogDirectory.EndsWith(
@@ -2126,6 +2148,24 @@ public static class IntegrationTest
         logs.IsStatsOpen = false;
         Check("日志：收起控制中心会通知视图", statsNotified && !statsOpenAfter);
         logs.IsStatsOpen = true;
+
+        // 清空会连磁盘上的历史日志一起删：必须走叠层确认，取消不能有副作用。
+        if (logs.FilteredEntries.Count > 0)
+        {
+            LogsViewModel.SuppressWorkerInit = false;
+            logs.ClearCommand.Execute(null);
+
+            Check("日志：清空先弹确认并列出后果",
+                  ConfirmService.Instance.IsOpen && ConfirmService.Instance.Consequences.Count > 0,
+                  ConfirmService.Instance.Title);
+
+            ConfirmService.Instance.CancelCommand.Execute(null);
+            Check("日志：取消后日志还在",
+                  logs.FilteredEntries.Count > 0,
+                  $"{logs.FilteredEntries.Count} 条");
+
+            LogsViewModel.SuppressWorkerInit = true;
+        }
 
         logs.ClearCommand.Execute(null);
         Check("日志：清空后无条目、异常卡收起",

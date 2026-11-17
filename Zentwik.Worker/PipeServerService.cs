@@ -1148,24 +1148,92 @@ namespace Zentwik.Worker
             return items;
         }
 
-        internal const int SnapshotLogLimit = 50;
+        internal const int SnapshotLogLimit = 200;
 
-        /// <summary>取最近 50 条日志，首行附本次运行的累计条数；批量响应不设上限会撞 MaxMessageBytes。</summary>
+        /// <summary>快照正文的字节预算。单条消息上限 512 KB，留一半给统计行与转义峰值。</summary>
+        internal const int SnapshotLogBudgetBytes = 224 * 1024;
+
+        /// <summary>
+        /// 取最近 200 条日志（受 <see cref="SnapshotLogBudgetBytes"/> 约束），
+        /// 首行附本次运行的累计条数与最近一条异常。
+        /// </summary>
         internal PipeResponse RunSnapshotLogs()
         {
             IReadOnlyList<LogEntry> entries = _log.Snapshot();
-            int skip = Math.Max(0, entries.Count - SnapshotLogLimit);
+            int start = SelectSnapshotStart(entries, SnapshotLogLimit, SnapshotLogBudgetBytes);
 
+            string payload = BuildSnapshotPayload(
+                entries, start,
+                _log.TotalCount, _log.TotalInfo, _log.TotalWarn, _log.TotalError, _log.TotalCritical,
+                _log.LastIssue);
+
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = true,
+                Message = $"最近 {entries.Count - start} 条日志，本次运行累计 {_log.TotalCount} 条",
+                Payload = payload
+            };
+        }
+
+        /// <summary>
+        /// 从最新往回取，撞条数上限或字节预算就停：一场长消息风暴不该把整条响应顶过 MaxMessageBytes。
+        /// 返回起始下标。
+        /// </summary>
+        internal static int SelectSnapshotStart(IReadOnlyList<LogEntry> entries, int limit, int budgetBytes)
+        {
+            int start = entries.Count;
+            int bytes = 0;
+
+            while (start > 0 && entries.Count - start < limit)
+            {
+                int lineBytes = EstimateLineBytes(entries[start - 1]);
+
+                if (bytes + lineBytes > budgetBytes)
+                    break;
+
+                bytes += lineBytes;
+                start--;
+            }
+
+            return start;
+        }
+
+        /// <summary>首行统计 + 从 <paramref name="start"/> 起的日志行，一行一条。</summary>
+        internal static string BuildSnapshotPayload(
+            IReadOnlyList<LogEntry> entries,
+            int start,
+            long total,
+            long info,
+            long warn,
+            long error,
+            long critical,
+            LogEntry? issue)
+        {
             StringBuilder builder = new();
 
             builder.Append(LogStatsPrefix)
-                   .Append(_log.TotalCount.ToString(CultureInfo.InvariantCulture)).Append('|')
-                   .Append(_log.TotalInfo.ToString(CultureInfo.InvariantCulture)).Append('|')
-                   .Append(_log.TotalWarn.ToString(CultureInfo.InvariantCulture)).Append('|')
-                   .Append(_log.TotalError.ToString(CultureInfo.InvariantCulture)).Append('|')
-                   .Append(_log.TotalCritical.ToString(CultureInfo.InvariantCulture));
+                   .Append(total.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(info.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(warn.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(error.ToString(CultureInfo.InvariantCulture)).Append('|')
+                   .Append(critical.ToString(CultureInfo.InvariantCulture));
 
-            for (int i = skip; i < entries.Count; i++)
+            if (issue is null)
+            {
+                builder.Append("|||");
+            }
+            else
+            {
+                builder.Append('|')
+                       .Append(issue.Time.ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture))
+                       .Append('|')
+                       .Append(issue.LevelText)
+                       .Append('|')
+                       .Append(EscapeLogMessage(ClipIssue(issue.Message)));
+            }
+
+            for (int i = Math.Max(0, start); i < entries.Count; i++)
             {
                 LogEntry entry = entries[i];
 
@@ -1178,16 +1246,17 @@ namespace Zentwik.Worker
                        .Append(EscapeLogMessage(entry.Message));
             }
 
-            return new PipeResponse
-            {
-                Version = WorkerPipeContract.ProtocolVersion,
-                Success = true,
-                Message = $"最近 {entries.Count - skip} 条日志，本次运行累计 {_log.TotalCount} 条",
-                Payload = builder.ToString()
-            };
+            return builder.ToString();
         }
 
-        /// <summary>日志快照首行的统计前缀，后接总数与四个级别数，用 <c>|</c> 分隔。</summary>
+        /// <summary>单行日志的字节数上限估计：时间 24 + 级别 6 + 消息按 UTF-8 三字节 + 分隔符。</summary>
+        private static int EstimateLineBytes(LogEntry entry) => 33 + (entry.Message.Length * 3);
+
+        /// <summary>异常消息进统计行只留摘要，整段照抄会把首行撑成一条长消息。</summary>
+        private static string ClipIssue(string message) =>
+            message.Length <= 300 ? message : string.Concat(message.AsSpan(0, 300), "…");
+
+        /// <summary>日志快照首行的统计前缀，后接总数、四个级别数与最近一条异常，用 <c>|</c> 分隔。</summary>
         internal const string LogStatsPrefix = "#stats|";
 
         /// <summary>clear-logs：清空内存缓冲并删日志文件；删文件不等待。</summary>

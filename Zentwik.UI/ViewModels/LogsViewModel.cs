@@ -18,7 +18,7 @@ public enum LogFilterMode
     Error,
 }
 
-/// <summary>日志页。数据源是 Worker 的 snapshot-logs（最近 50 条），不做本地落盘。</summary>
+/// <summary>日志页。数据源是 Worker 的 snapshot-logs（最近 200 条），不做本地落盘。</summary>
 public sealed class LogsViewModel : ViewModelBase
 {
     /// <summary>诊断 / 截图模式下不连后台，构造时直接铺种子。</summary>
@@ -129,7 +129,7 @@ public sealed class LogsViewModel : ViewModelBase
         set { if (SetProperty(ref _searchText, value)) ApplyFilter(); }
     }
 
-    // 统计：来自 Worker 的本次运行累计，不是列表里的条数（列表只有最近 50 条）
+    // 统计：来自 Worker 的本次运行累计，不是列表里的条数（列表只有最近 200 条）
 
     public int TotalCount => _totalCount;
     public int InfoCount => _infoCount;
@@ -141,10 +141,16 @@ public sealed class LogsViewModel : ViewModelBase
     private int _warnCount;
     private int _errorCount;
 
-    /// <summary>最近一条异常：优先 ERROR / FATAL，没有就退到 WARN。</summary>
+    /// <summary>
+    /// 最近一条异常：优先 ERROR / FATAL，没有就退到 WARN。
+    /// 取自统计行（Worker 在缓冲外另记一份），缓冲裁掉的早期异常照样能显示；
+    /// 统计行没带时才退回扫列表。
+    /// </summary>
     public LogEntryItem? LatestIssue =>
-        Entries.LastOrDefault(e => e.Level is "ERROR" or "FATAL")
+        _latestIssue ?? Entries.LastOrDefault(e => e.Level is "ERROR" or "FATAL")
         ?? Entries.LastOrDefault(e => e.Level == "WARN");
+
+    private LogEntryItem? _latestIssue;
 
     public bool HasIssue => LatestIssue is not null;
 
@@ -170,7 +176,7 @@ public sealed class LogsViewModel : ViewModelBase
             Seed();
 
         RefreshCommand = new RelayCommand(_ => Fire(RefreshAsync));
-        ClearCommand = new RelayCommand(_ => Fire(ClearAsync));
+        ClearCommand = new RelayCommand(_ => RequestClear());
         OpenLogFolderCommand = new RelayCommand(_ => OpenLogFolder());
         CopyDiagnosticsCommand = new RelayCommand(_ => CopyDiagnostics());
         ToggleStatsCommand = new RelayCommand(_ => IsStatsOpen = !IsStatsOpen);
@@ -216,6 +222,22 @@ public sealed class LogsViewModel : ViewModelBase
         UpdateFolderSize();
     }
 
+    /// <summary>清空会连磁盘上的历史日志一起删，先要一次确认；诊断模式没有后台，直接清界面。</summary>
+    private void RequestClear()
+    {
+        if (SuppressWorkerInit)
+        {
+            Fire(ClearAsync);
+            return;
+        }
+
+        ConfirmService.Instance.Request(
+            "清空所有日志",
+            new[] { "本次运行的日志与历史日志文件一起删除，无法恢复。" },
+            () => Fire(ClearAsync),
+            "清空");
+    }
+
     private async Task ClearAsync()
     {
         Entries.Clear();
@@ -234,7 +256,7 @@ public sealed class LogsViewModel : ViewModelBase
             ToastService.Instance.ShowError(outcome.Message.Length > 0 ? outcome.Message : "后台日志未能清空");
     }
 
-    /// <summary>整体替换（快照是「最近 50 条」+ 累计统计，不是增量）。</summary>
+    /// <summary>整体替换（快照是「最近 200 条」+ 累计统计，不是增量）。</summary>
     private void Replace(IEnumerable<LogEntryItem> items, LogStats stats)
     {
         Entries.Clear();
@@ -253,6 +275,10 @@ public sealed class LogsViewModel : ViewModelBase
         _infoCount = Clamp(stats.Info);
         _warnCount = Clamp(stats.Warn);
         _errorCount = Clamp(stats.Error) + Clamp(stats.Critical);
+
+        _latestIssue = string.IsNullOrEmpty(stats.IssueTime)
+            ? null
+            : new LogEntryItem(FormatTime(stats.IssueTime), stats.IssueLevel, stats.IssueMessage);
     }
 
     /// <summary>界面按 int 显示，超出按上限截断；一天几十万条也撞不到 int 上限。</summary>
@@ -304,17 +330,25 @@ public sealed class LogsViewModel : ViewModelBase
 
     private static LogStats ParseStats(string line)
     {
-        string[] parts = line.Split('|');
+        // 最后一段是异常消息，正文可以含 '|'，所以只切前八格。
+        string[] parts = line.Split('|', 9);
 
         if (parts.Length < 6)
             return default;
+
+        string issueTime = parts.Length > 6 ? parts[6] : string.Empty;
+        string issueLevel = parts.Length > 7 ? parts[7] : string.Empty;
+        string issueMessage = parts.Length > 8 ? parts[8].Replace("\\n", "\n", StringComparison.Ordinal) : string.Empty;
 
         return new LogStats(
             ParseCount(parts[1]),
             ParseCount(parts[2]),
             ParseCount(parts[3]),
             ParseCount(parts[4]),
-            ParseCount(parts[5]));
+            ParseCount(parts[5]),
+            issueTime,
+            issueLevel,
+            issueMessage);
     }
 
     private static long ParseCount(string raw) =>
@@ -473,6 +507,41 @@ public sealed class LogsViewModel : ViewModelBase
 
         foreach (LogEntryItem entry in visible)
             FilteredEntries.Add(entry);
+
+        EmptyText = BuildEmptyText();
+    }
+
+    private string _emptyText = "暂无日志";
+
+    /// <summary>列表空着时的说明。窗口只有最近若干条，计数却是全程累计，得把这件事讲清楚。</summary>
+    public string EmptyText
+    {
+        get => _emptyText;
+        private set => SetProperty(ref _emptyText, value);
+    }
+
+    private string BuildEmptyText()
+    {
+        if (Entries.Count == 0)
+            return "暂无日志";
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+            return $"最近 {Entries.Count} 条内没有匹配的日志";
+
+        (string name, int total) = _filterMode switch
+        {
+            LogFilterMode.Info => ("信息", InfoCount),
+            LogFilterMode.Warn => ("警告", WarnCount),
+            LogFilterMode.Error => ("错误", ErrorCount),
+            _ => (string.Empty, 0),
+        };
+
+        if (name.Length == 0)
+            return "暂无日志";
+
+        return total > 0
+            ? $"最近 {Entries.Count} 条内没有{name}，本次运行共 {total} 条{name}"
+            : $"最近 {Entries.Count} 条内没有{name}";
     }
 
     private bool Matches(LogEntryItem entry)
@@ -531,8 +600,16 @@ public sealed class LogsViewModel : ViewModelBase
     }
 }
 
-/// <summary>本次运行的累计条数。Worker 随日志快照首行下发。</summary>
-internal readonly record struct LogStats(long Total, long Info, long Warn, long Error, long Critical);
+/// <summary>本次运行的累计条数。Worker 随日志快照首行下发，末尾三格是最近一条异常。</summary>
+internal readonly record struct LogStats(
+    long Total,
+    long Info,
+    long Warn,
+    long Error,
+    long Critical,
+    string IssueTime = "",
+    string IssueLevel = "",
+    string IssueMessage = "");
 
 public sealed class LogEntryItem
 {

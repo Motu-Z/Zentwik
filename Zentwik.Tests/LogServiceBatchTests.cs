@@ -72,6 +72,28 @@ namespace Zentwik.Tests
             Assert.Equal(0, log.TotalWarn);
         }
 
+        /// <summary>最近异常在缓冲之外另记一份：挤掉窗口以后，界面的「最新异常」还得有东西可显示。</summary>
+        [Fact]
+        public void Last_issue_survives_ring_buffer_trim()
+        {
+            using LogService log = NewLog();
+
+            log.Warn("warn-0");
+            Assert.Equal("WARN", log.LastIssue?.LevelText);
+
+            log.Error("error-0");
+
+            for (int i = 0; i < 400; i++)
+                log.Info($"i-{i}");
+
+            Assert.DoesNotContain(log.Snapshot(), e => e.Level == LogLevel.Error);
+            Assert.Equal("ERROR", log.LastIssue?.LevelText);
+            Assert.Equal("error-0", log.LastIssue?.Message);
+
+            log.Clear();
+            Assert.Null(log.LastIssue);
+        }
+
         /// <summary>等到文件凑够 expected 行：Flush 已提交内容，这里只吃掉「批次被取走但未落盘」的窗口。</summary>
         private static string[] ReadUntil(string file, int expected)
         {
