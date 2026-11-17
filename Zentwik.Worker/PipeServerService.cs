@@ -1450,10 +1450,10 @@ namespace Zentwik.Worker
             }
 
             if (_cpuSets.PerformanceMask != 0)
-                presets.Add(($"pool:perf:0x{_cpuSets.PerformanceMask:X}", "性能核", _cpuSets.PerformanceMask));
+                presets.Add(($"pool:perf:0x{_cpuSets.PerformanceMask:X}", "P-Core", _cpuSets.PerformanceMask));
 
             if (_cpuSets.EfficiencyMask != 0)
-                presets.Add(($"pool:eff:0x{_cpuSets.EfficiencyMask:X}", "能效核", _cpuSets.EfficiencyMask));
+                presets.Add(($"pool:eff:0x{_cpuSets.EfficiencyMask:X}", "E-Core", _cpuSets.EfficiencyMask));
 
             int added = _masks.SeedPresets(presets);
             if (added > 0)

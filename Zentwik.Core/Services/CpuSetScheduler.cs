@@ -856,20 +856,20 @@ namespace Zentwik.Core.Services
             if (EfficiencyMask != 0)
             {
                 _log.Info(
-                    $"混合架构：性能核 {System.Numerics.BitOperations.PopCount(PerformanceMask)} 个逻辑处理器，" +
-                    $"能效核 {System.Numerics.BitOperations.PopCount(EfficiencyMask)} 个逻辑处理器");
+                    $"混合架构：P-Core {System.Numerics.BitOperations.PopCount(PerformanceMask)} 个逻辑处理器，" +
+                    $"E-Core {System.Numerics.BitOperations.PopCount(EfficiencyMask)} 个逻辑处理器");
             }
         }
 
-        /// <summary>混合架构下能效核的掩码；同构机器为 0。</summary>
+        /// <summary>混合架构下 E-Core 的掩码；同构机器为 0。</summary>
         public ulong EfficiencyMask { get; private set; }
 
-        /// <summary>混合架构下性能核的掩码；同构机器为 0。</summary>
+        /// <summary>混合架构下 P-Core 的掩码；同构机器为 0。</summary>
         public ulong PerformanceMask { get; private set; }
 
         /// <summary>
-        /// 按 EfficiencyClass 分档：最大的一档是性能核，其余归能效核。
-        /// 档次再多的机器（P / E / LP-E）也不会留出既不属于性能核也不属于能效核的空档。
+        /// 按 EfficiencyClass 分档：最高的一档是 P-Core，其余归 E-Core。
+        /// 档次再多的机器（P / E / LP-E）也不会留出两边都不属于的空档。
         /// </summary>
         internal static (ulong Efficient, ulong Performance) SplitByEfficiency(
             IReadOnlyList<CpuSetEntry> processors, uint[] table)
