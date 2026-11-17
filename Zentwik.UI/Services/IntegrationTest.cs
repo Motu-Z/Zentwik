@@ -1349,6 +1349,44 @@ public static class IntegrationTest
             }
         }
 
+        // 掩码被删除后，规则卡与运行行都不该退成空白或原始 Id。
+        {
+            ScheduleRuleItem orphan = new("r-orphan", "ghost-mask.exe", "ghost", "旧掩码", "正常", enabled: true);
+            orphan.ApplyMask("旧掩码", "mask", "deleted-mask-id");
+            proc.SavedRules.Add(orphan);
+
+            RunningProcessItem orphanRow = new(65003, "ghost-mask.exe", "ghost", 0, "正常");
+            orphanRow.ApplyMask("旧掩码", "mask", "deleted-mask-id");
+            proc.RunningProcesses.Add(orphanRow);
+
+            Zentwik.Core.Ipc.MaskListPayload same = new();
+
+            foreach (MaskOption option in proc.MaskOptions)
+            {
+                if (option.TargetType != "mask" || option.MaskBits == 0)
+                {
+                    continue;
+                }
+
+                same.Masks.Add(new Zentwik.Core.Ipc.MaskEntryPayload
+                {
+                    Id = option.MaskId ?? option.TargetValue,
+                    Name = option.Label,
+                    Mask = option.MaskBits
+                });
+            }
+
+            proc.ApplyMasks(same);
+            proc.SyncFromRules();
+
+            Check("进程：掩码被删除后规则与运行行显示「掩码已删除」",
+                  orphan.MaskLabel == "掩码已删除" && orphanRow.MaskLabel == "掩码已删除",
+                  $"{orphan.MaskLabel} / {orphanRow.MaskLabel}");
+
+            proc.SavedRules.Remove(orphan);
+            proc.RunningProcesses.Remove(orphanRow);
+        }
+
         // 场景：一条列表，每条形如 IF → 三个动作
         var scenes = new ScenariosViewModel();
         ScenariosViewModel.SuppressWorkerInit = true;

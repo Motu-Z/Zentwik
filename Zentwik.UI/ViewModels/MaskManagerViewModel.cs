@@ -1,5 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Numerics;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
@@ -367,24 +368,48 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
         Fire(async () =>
         {
-            IpcOutcome<MaskListPayload> outcome = await WorkerBridge.Instance
-                .DeleteMaskAsync(item.Id).ConfigureAwait(true);
+            IpcOutcome<List<ScheduleRulePayload>> rules = await WorkerBridge.Instance
+                .QuerySchedulingRulesAsync().ConfigureAwait(true);
 
-            if (!outcome.Success || outcome.Value is null)
+            int inUse = rules.Success && rules.Value is not null
+                ? rules.Value.Count(
+                    r => string.Equals(r.TargetType, "mask", StringComparison.Ordinal)
+                         && string.Equals(r.TargetValue, item.Id, StringComparison.Ordinal))
+                : 0;
+
+            if (inUse > 0)
             {
-                ToastError(outcome.Message);
+                ConfirmService.Instance.Request(
+                    "删除掩码",
+                    new[] { $"有 {inUse} 条规则正在使用这个掩码，删除后规则按删除前的掩码继续绑定。" },
+                    () => Fire(() => RemoveMaskAsync(item)),
+                    "删除");
                 return;
             }
 
-            SelectedMask = null;
-            LoadMasks(outcome.Value);
-            _owner.ApplyMasks(outcome.Value);
-
-            // 规则里存的是掩码名快照：改名 / 删掉之后规则卡上的标签会停在旧样子。
-            await _owner.RefreshRulesAsync().ConfigureAwait(true);
-
-            ReturnToList();
+            await RemoveMaskAsync(item).ConfigureAwait(true);
         });
+    }
+
+    private async Task RemoveMaskAsync(SavedMaskItem item)
+    {
+        IpcOutcome<MaskListPayload> outcome = await WorkerBridge.Instance
+            .DeleteMaskAsync(item.Id).ConfigureAwait(true);
+
+        if (!outcome.Success || outcome.Value is null)
+        {
+            ToastError(outcome.Message);
+            return;
+        }
+
+        SelectedMask = null;
+        LoadMasks(outcome.Value);
+        _owner.ApplyMasks(outcome.Value);
+
+        // 规则里存的是掩码名快照：改名 / 删掉之后规则卡上的标签会停在旧样子。
+        await _owner.RefreshRulesAsync().ConfigureAwait(true);
+
+        ReturnToList();
     }
 
     private void Save()
