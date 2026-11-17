@@ -16,6 +16,12 @@ namespace Zentwik.Core.Services
         /// <summary>核心组（L3 缓存域）列表，拓扑不可用时为空。</summary>
         IReadOnlyList<CpuCoreGroup> CoreGroups { get; }
 
+        /// <summary>混合架构下能效核的掩码；同构机器为 0。</summary>
+        ulong EfficiencyMask { get; }
+
+        /// <summary>混合架构下性能核的掩码；同构机器为 0。</summary>
+        ulong PerformanceMask { get; }
+
         /// <summary>丢弃已缓存的拓扑，下次访问重新探测。</summary>
         void ResetTopology();
 

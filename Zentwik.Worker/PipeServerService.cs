@@ -1449,9 +1449,15 @@ namespace Zentwik.Worker
                     group.Mask));
             }
 
+            if (_cpuSets.PerformanceMask != 0)
+                presets.Add(($"pool:perf:0x{_cpuSets.PerformanceMask:X}", "性能核", _cpuSets.PerformanceMask));
+
+            if (_cpuSets.EfficiencyMask != 0)
+                presets.Add(($"pool:eff:0x{_cpuSets.EfficiencyMask:X}", "能效核", _cpuSets.EfficiencyMask));
+
             int added = _masks.SeedPresets(presets);
             if (added > 0)
-                _log.Info($"生成 {added} 个核心组预置掩码（{vendor}，共 {groups.Count} 组）");
+                _log.Info($"生成 {added} 个预置掩码（{vendor}，{groups.Count} 个核心组）");
         }
 
         /// <summary>

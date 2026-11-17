@@ -128,6 +128,29 @@ namespace Zentwik.Core.Services
             public ulong Reserved;
         }
 
+        /// <summary>一条 CPU Set 记录的可用字段。EfficiencyClass 数值越大越偏性能、越不省电。</summary>
+        internal readonly struct CpuSetEntry
+        {
+            public CpuSetEntry(uint id, byte lpIndex, ushort group, byte llcIndex, byte efficiencyClass)
+            {
+                Id = id;
+                LpIndex = lpIndex;
+                Group = group;
+                LlcIndex = llcIndex;
+                EfficiencyClass = efficiencyClass;
+            }
+
+            public uint Id { get; }
+
+            public byte LpIndex { get; }
+
+            public ushort Group { get; }
+
+            public byte LlcIndex { get; }
+
+            public byte EfficiencyClass { get; }
+        }
+
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static partial bool GetSystemCpuSetInformation(
@@ -234,6 +257,8 @@ namespace Zentwik.Core.Services
             _lpToCpuSetId = null;
             _ccdCount = 0;
             _coreGroups = null;
+            EfficiencyMask = 0;
+            PerformanceMask = 0;
         }
 
         /// <summary>
@@ -765,7 +790,7 @@ namespace Zentwik.Core.Services
 
                 try
                 {
-                    List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors = QueryProcessorCpuSets();
+                    List<CpuSetEntry> processors = QueryProcessorCpuSets();
                     if (processors.Count == 0)
                     {
                         LastTopologyError ??= "CPU Sets 枚举返回 0 条（未解析到任何逻辑处理器）";
@@ -789,7 +814,7 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>把处理器列表按核心组切分，并落成扁平索引表。</summary>
-        private void GroupProcessors(List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors)
+        private void GroupProcessors(List<CpuSetEntry> processors)
         {
             processors.Sort((a, b) =>
             {
@@ -822,15 +847,72 @@ namespace Zentwik.Core.Services
             // 扁平数组：索引 = 排序后的逻辑处理器序号（0 起），值 = CpuSetId
             _lpToCpuSetId = processors.Select(p => p.Id).ToArray();
             _coreGroups = BuildCoreGroups(byCache, _lpToCpuSetId);
+            (EfficiencyMask, PerformanceMask) = SplitByEfficiency(processors, _lpToCpuSetId);
             LastTopologyError = null;
 
             _log.Info(
                 $"CPU Sets 拓扑：{processors.Count} 个逻辑处理器，{groups} 个核心组，分组依据 = {basis}");
+
+            if (EfficiencyMask != 0)
+            {
+                _log.Info(
+                    $"混合架构：性能核 {System.Numerics.BitOperations.PopCount(PerformanceMask)} 个逻辑处理器，" +
+                    $"能效核 {System.Numerics.BitOperations.PopCount(EfficiencyMask)} 个逻辑处理器");
+            }
+        }
+
+        /// <summary>混合架构下能效核的掩码；同构机器为 0。</summary>
+        public ulong EfficiencyMask { get; private set; }
+
+        /// <summary>混合架构下性能核的掩码；同构机器为 0。</summary>
+        public ulong PerformanceMask { get; private set; }
+
+        /// <summary>
+        /// 按 EfficiencyClass 分档：最大的一档是性能核，其余归能效核。
+        /// 档次再多的机器（P / E / LP-E）也不会留出既不属于性能核也不属于能效核的空档。
+        /// </summary>
+        internal static (ulong Efficient, ulong Performance) SplitByEfficiency(
+            IReadOnlyList<CpuSetEntry> processors, uint[] table)
+        {
+            if (processors.Count == 0 || table.Length == 0)
+                return (0, 0);
+
+            byte low = byte.MaxValue;
+            byte high = byte.MinValue;
+
+            foreach (CpuSetEntry entry in processors)
+            {
+                low = Math.Min(low, entry.EfficiencyClass);
+                high = Math.Max(high, entry.EfficiencyClass);
+            }
+
+            if (low == high)
+                return (0, 0);
+
+            Dictionary<uint, byte> classes = new(processors.Count);
+            foreach (CpuSetEntry entry in processors)
+                classes[entry.Id] = entry.EfficiencyClass;
+
+            ulong efficientMask = 0;
+            ulong performanceMask = 0;
+
+            for (int i = 0; i < table.Length && i < 64; i++)
+            {
+                if (!classes.TryGetValue(table[i], out byte cls))
+                    continue;
+
+                if (cls == high)
+                    performanceMask |= 1UL << i;
+                else
+                    efficientMask |= 1UL << i;
+            }
+
+            return (efficientMask, performanceMask);
         }
 
         /// <summary>回退分组：第 i 个处理器落入第 i / ceil(n / groups) 组。</summary>
         private List<uint>[] SplitEvenly(
-            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors, int groups, int perGroup)
+            List<CpuSetEntry> processors, int groups, int perGroup)
         {
             List<uint>[] result = new List<uint>[groups];
             for (int i = 0; i < groups; i++)
@@ -848,8 +930,7 @@ namespace Zentwik.Core.Services
         /// 只拒绝「每核一个索引」——那是把核心编号错塞进了缓存字段，按它分等于每核一组。
         /// 组大小不齐、只有一个组都合法（单 L3 域、混合架构），照收。
         /// </summary>
-        private static List<uint>[]? TryGroupByLastLevelCache(
-            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> processors)
+        private static List<uint>[]? TryGroupByLastLevelCache(List<CpuSetEntry> processors)
         {
             int total = processors.Count;
             if (total <= 1)
@@ -859,12 +940,12 @@ namespace Zentwik.Core.Services
                 return null;
 
             Dictionary<byte, List<uint>> buckets = new();
-            foreach ((uint id, byte _, ushort _, byte llc) in processors)
+            foreach (CpuSetEntry entry in processors)
             {
-                if (!buckets.TryGetValue(llc, out List<uint>? list))
-                    buckets[llc] = list = new List<uint>();
+                if (!buckets.TryGetValue(entry.LlcIndex, out List<uint>? list))
+                    buckets[entry.LlcIndex] = list = new List<uint>();
 
-                list.Add(id);
+                list.Add(entry.Id);
             }
 
             // 按组内最小逻辑处理器序号排序，组 0 落在最靠前的核上
@@ -918,7 +999,7 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>调用 GetSystemCpuSetInformation 枚举全部 CPU Set 条目。</summary>
-        private List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> QueryProcessorCpuSets()
+        private List<CpuSetEntry> QueryProcessorCpuSets()
         {
             // 先传 IntPtr.Zero 探测所需缓冲区大小：按官方用法此时返回 FALSE 且
             // lastError = ERROR_INSUFFICIENT_BUFFER(122)，ReturnedLength 回填真实字节数。
@@ -930,7 +1011,7 @@ namespace Zentwik.Core.Services
             {
                 return TryReadCpuSets(ref buffer, required, out uint returned)
                     ? ParseEntries(buffer, (int)returned)
-                    : new List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)>();
+                    : new List<CpuSetEntry>();
             }
             finally
             {
@@ -978,10 +1059,10 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>逐条解析回填的记录，推进步长一律用 Windows 回填的 Size（真实长度）。</summary>
-        private List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> ParseEntries(
+        private List<CpuSetEntry> ParseEntries(
             IntPtr buffer, int total)
         {
-            List<(uint Id, byte LpIndex, ushort Group, byte LlcIndex)> result = new();
+            List<CpuSetEntry> result = new();
 
             for (int offset = 0; offset + 8 <= total;)
             {
@@ -1000,7 +1081,12 @@ namespace Zentwik.Core.Services
                 {
                     SYSTEM_CPU_SET_INFORMATION info =
                         Marshal.PtrToStructure<SYSTEM_CPU_SET_INFORMATION>(entryPtr);
-                    result.Add((info.Id, info.LogicalProcessorIndex, info.Group, info.LastLevelCacheIndex));
+                    result.Add(new CpuSetEntry(
+                        info.Id,
+                        info.LogicalProcessorIndex,
+                        info.Group,
+                        info.LastLevelCacheIndex,
+                        info.EfficiencyClass));
                 }
 
                 offset += (int)size;

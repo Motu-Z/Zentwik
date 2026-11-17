@@ -49,6 +49,11 @@ namespace Zentwik.Tests.Fakes
 
         public string? LastTopologyError => null;
 
+        /// <summary>混合架构替身：默认同构（0），要测预置项时手工赋值。</summary>
+        public ulong EfficiencyMask { get; set; }
+
+        public ulong PerformanceMask { get; set; }
+
         /// <summary>成功绑定的掩码，按调用顺序记录。</summary>
         public List<ulong> Masks { get; } = new();
 
