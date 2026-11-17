@@ -58,9 +58,9 @@ namespace Zentwik.Tests
         [Fact]
         public void Scheduling_key_distinguishes_process_instances()
         {
-            string first = ScenarioService.SchedulingKey("mask", "game.exe", new[] { 100, 200 });
-            string same = ScenarioService.SchedulingKey("mask", "game.exe", new[] { 200, 100 });
-            string restarted = ScenarioService.SchedulingKey("mask", "game.exe", new[] { 300 });
+            string first = ScenarioService.SchedulingKey("mask", "game.exe", new[] { 100, 200 }, _ => 0);
+            string same = ScenarioService.SchedulingKey("mask", "game.exe", new[] { 200, 100 }, _ => 0);
+            string restarted = ScenarioService.SchedulingKey("mask", "game.exe", new[] { 300 }, _ => 0);
 
             Assert.Equal(first, same);
             Assert.NotEqual(first, restarted);

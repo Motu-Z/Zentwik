@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -552,7 +553,7 @@ namespace Zentwik.Core.Services
             if (pids.Count == 0)
                 return;
 
-            string key = SchedulingKey(outcome.MaskId, outcome.TriggerArgument, pids);
+            string key = SchedulingKey(outcome.MaskId, outcome.TriggerArgument, pids, InstanceTicks);
 
             if (string.Equals(Volatile.Read(ref _lastMaskKey), key, StringComparison.Ordinal))
                 return;
@@ -589,17 +590,25 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
-        /// 场景调度的去重键：掩码 + 触发参数 + 当前进程集合。
-        /// 只比前两项会让同名进程重启后被跳过 —— 新实例的 PID 不在旧键里。
+        /// 场景调度的去重键：掩码 + 触发参数 + 当前进程集合（PID 与创建时间）。
+        /// 只比 PID 会让同名进程重启后、以及 PID 被复用后的新进程被旧键挡住。
         /// </summary>
-        internal static string SchedulingKey(string maskId, string argument, IReadOnlyList<int> pids)
+        internal static string SchedulingKey(
+            string maskId, string argument, IReadOnlyList<int> pids, Func<int, long> instanceTicks)
         {
             if (pids.Count == 0)
                 return $"{maskId}|{argument}";
 
             int[] sorted = pids.OrderBy(p => p).ToArray();
-            return $"{maskId}|{argument}|{string.Join(',', sorted)}";
+            IEnumerable<string> parts = sorted.Select(
+                p => p.ToString(CultureInfo.InvariantCulture) + "@" +
+                     instanceTicks(p).ToString(CultureInfo.InvariantCulture));
+
+            return $"{maskId}|{argument}|{string.Join(',', parts)}";
         }
+
+        /// <summary>进程创建时间，读不到返回 0（此时退化成只比 PID）。</summary>
+        private long InstanceTicks(int pid) => _scheduler?.GetInstanceTicks(pid) ?? 0;
 
         /// <summary>
         /// 按关联掩码下发。默认 CPU 集若还留着，进程实际可跑的核是两者交集，
