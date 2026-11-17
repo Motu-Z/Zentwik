@@ -618,7 +618,8 @@ public sealed class SavedMaskItem : ViewModelBase
     /// <summary>卡片右上角的绑定方式缩写：CS = CPU Sets，AM = Affinity Mask。两种都要标。</summary>
     public string TypeLabel => Type == MaskType.AffinityMask ? "AM" : "CS";
 
-    public string RangeText => MaskText.ToRangeText(Mask);
+    /// <summary>卡片上的核心范围。空掩码不显示，Core 那边空值文案是「无」。</summary>
+    public string RangeText => Mask == 0 ? string.Empty : MaskFormatter.ToRangeText(Mask);
 
     public string CountText =>
         BitOperations.PopCount(Mask).ToString(CultureInfo.InvariantCulture) + " 核";

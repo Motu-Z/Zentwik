@@ -220,6 +220,9 @@ public class ProcessViewModel : ViewModelBase
             PriorityOptions.Add(ProcessPriority.DisplayOf(option));
         }
 
+        // 掩码选项表由本页面唯一持有，选项实体不引用页面。
+        AffinityTarget.MaskLookup = key => MaskResolver.Find(MaskOptions, key);
+
         ResetMaskOptions();
 
         SortCommand = new RelayCommand(p =>
@@ -1228,7 +1231,6 @@ public class ProcessViewModel : ViewModelBase
     /// <summary>抽屉里的目标预览</summary>
     private void RebuildDrawerMasks()
     {
-        MaskOption.RebuildRegistry(MaskOptions);
         DrawerMasks.Clear();
 
         foreach (MaskOption option in MaskOptions)
@@ -1236,10 +1238,13 @@ public class ProcessViewModel : ViewModelBase
             if (option.TargetType != "mask")
                 continue;
 
-            string topology = MaskText.ToRangeText(
-                option.MaskBits != 0 ? option.MaskBits : ParseMask(option.TargetValue));
-            if (topology.Length > 0)
-                DrawerMasks.Add(new MaskPreviewItem(option.Label, topology));
+            ulong bits = option.MaskBits != 0 ? option.MaskBits : ParseMask(option.TargetValue);
+
+            // 空掩码不进抽屉：Core 的空值文案是「无」，这里要的是不显示。
+            if (bits == 0)
+                continue;
+
+            DrawerMasks.Add(new MaskPreviewItem(option.Label, MaskFormatter.ToRangeText(bits)));
         }
     }
 
@@ -1648,30 +1653,9 @@ public class ProcessViewModel : ViewModelBase
         => SavedRules.FirstOrDefault(
             r => string.Equals(r.ProcessName, processName, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>规则要绑的掩码 Id。先认界面选中的 key，再退到掩码值，最后认已经是 Id 的旧规则</summary>
+    /// <summary>规则要绑的掩码 Id</summary>
     private string? ResolveMaskId(AffinityTarget target)
-    {
-        if (MaskOption.Resolve(target.MaskKey)?.MaskId is { } byKey)
-        {
-            return byKey;
-        }
-
-        foreach (MaskOption option in MaskOptions)
-        {
-            if (option.TargetType != "mask" || option.MaskId is null)
-            {
-                continue;
-            }
-
-            if (string.Equals(option.TargetValue, target.TargetValue, StringComparison.Ordinal)
-                || string.Equals(option.MaskId, target.TargetValue, StringComparison.Ordinal))
-            {
-                return option.MaskId;
-            }
-        }
-
-        return null;
-    }
+        => MaskResolver.ResolveMaskId(MaskOptions, target.MaskKey, target.TargetValue);
 
     /// <summary>中文档位 → 后台常量。认不出的按「标准」处理，绝不返回空串去代表标准。</summary>
     private static string PriorityConstantOf(string label)
@@ -1955,13 +1939,16 @@ public class ProcessViewModel : ViewModelBase
 
 public abstract class AffinityTarget : ViewModelBase
 {
+    /// <summary>掩码选项查找。页面构造时注入，选项实体不持有页面引用。</summary>
+    internal static Func<string?, MaskOption?>? MaskLookup { get; set; }
+
     // 默认就是「默认」：它和下拉里的那一项是同一个状态（targetType=none、无掩码）。
     private string? _maskLabel = "默认";
     private string _targetType = "none";
     private string _targetValue = string.Empty;
     private string _priority = "正常";
     private bool _isDirty;
-    private string? _maskKey = MaskOption.MakeKey("none", string.Empty);
+    private string? _maskKey = MaskResolver.MakeKey("none", string.Empty);
 
     public abstract string ProcessName { get; }
     public abstract string Path { get; }
@@ -1996,7 +1983,7 @@ public abstract class AffinityTarget : ViewModelBase
         get => _maskKey;
         set
         {
-            if (MaskOption.Resolve(value) is { } option)
+            if (MaskLookup?.Invoke(value) is { } option)
             {
                 // key 相同也要比对值：旧版本留下的不一致状态靠这里自愈。
                 if (string.Equals(_maskKey, option.Key, StringComparison.Ordinal)
@@ -2043,7 +2030,7 @@ public abstract class AffinityTarget : ViewModelBase
         _maskLabel = label;
         _targetType = targetType;
         _targetValue = targetValue;
-        _maskKey = MaskOption.MakeKey(targetType, targetValue);
+        _maskKey = MaskResolver.MakeKey(targetType, targetValue);
     }
 
     private void NotifyMaskChanged()
@@ -2175,10 +2162,8 @@ public sealed class MaskPreviewItem
     }
 }
 
-public sealed class MaskOption : ViewModelBase
+public sealed class MaskOption : ViewModelBase, IMaskEntry
 {
-    private static readonly Dictionary<string, MaskOption> Registry = new();
-
     private string _label;
 
     public string Label => _label;
@@ -2192,7 +2177,7 @@ public sealed class MaskOption : ViewModelBase
     /// 下拉项的唯一标识。自定义掩码用 Id，其余用值。
     /// 两套掩码可以有相同的位（同一个核集合换个绑定方式），按值做键会让它们互相覆盖。
     /// </summary>
-    public string Key => MakeKey(TargetType, MaskId ?? TargetValue);
+    public string Key => MaskResolver.MakeKey(TargetType, MaskId ?? TargetValue);
 
     /// <summary>自定义掩码的 Id，只有 TargetType = mask 且来自后台时才有值</summary>
     public string? MaskId { get; }
@@ -2231,113 +2216,6 @@ public sealed class MaskOption : ViewModelBase
         OnPropertyChanged(nameof(Label));
     }
 
-    /// <summary>用当前选项集重建查找表</summary>
-    public static void RebuildRegistry(IEnumerable<MaskOption> options)
-    {
-        Registry.Clear();
-
-        foreach (MaskOption option in options)
-            Registry[option.Key] = option;
-    }
-
-    public static MaskOption? Resolve(string? key)
-    {
-        if (string.IsNullOrEmpty(key)) return null;
-        return Registry.TryGetValue(key, out var option) ? option : null;
-    }
-
-    public static string MakeKey(string targetType, string targetValue) => targetType + "|" + targetValue;
-
     public override string ToString() => Label;
 }
 
-public static class MaskText
-{
-    public static bool TryParse(string text, out ulong mask)
-    {
-        mask = 0;
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        foreach (string part in text.Split(',', StringSplitOptions.RemoveEmptyEntries))
-        {
-            string seg = part.Trim();
-
-            if (seg.Length == 0)
-            {
-                return false;
-            }
-
-            int dash = seg.IndexOf('-');
-
-            if (dash < 0)
-            {
-                if (!int.TryParse(seg, NumberStyles.Integer, CultureInfo.InvariantCulture, out int single))
-                {
-                    return false;
-                }
-
-                if (single is < 0 or > 63)
-                {
-                    return false;
-                }
-
-                mask |= 1UL << single;
-                continue;
-            }
-
-            string left = seg[..dash].Trim();
-            string right = seg[(dash + 1)..].Trim();
-
-            if (!int.TryParse(left, NumberStyles.Integer, CultureInfo.InvariantCulture, out int start) ||
-                !int.TryParse(right, NumberStyles.Integer, CultureInfo.InvariantCulture, out int end))
-            {
-                return false;
-            }
-
-            if (start is < 0 or > 63 || end is < 0 or > 63 || end < start)
-            {
-                return false;
-            }
-
-            for (int i = start; i <= end; i++)
-            {
-                mask |= 1UL << i;
-            }
-        }
-
-        return mask != 0;
-    }
-
-    public static string ToRangeText(ulong mask)
-    {
-        if (mask == 0)
-        {
-            return string.Empty;
-        }
-
-        var parts = new List<string>();
-        int start = -1;
-
-        for (int i = 0; i <= 64; i++)
-        {
-            bool on = i < 64 && (mask & (1UL << i)) != 0;
-
-            if (on && start < 0)
-            {
-                start = i;
-            }
-            else if (!on && start >= 0)
-            {
-                parts.Add(start == i - 1 ? start.ToString(CultureInfo.InvariantCulture)
-                                        : $"{start}-{i - 1}");
-                start = -1;
-            }
-        }
-
-        return string.Join(",", parts);
-    }
-}

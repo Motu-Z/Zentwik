@@ -387,7 +387,7 @@ namespace Zentwik.Core.Services
         };
 
         /// <summary>本机可用逻辑核数对应的掩码范围，超出的位一律忽略。</summary>
-        private static ulong MaskWidth(int logicalCount) =>
+        internal static ulong MaskWidth(int logicalCount) =>
             logicalCount >= 64 ? ulong.MaxValue : (1UL << logicalCount) - 1;
 
         private static CpuSetScheduleResult Ok(uint[] ids, int ccdIndex) => new()
@@ -1148,7 +1148,7 @@ namespace Zentwik.Core.Services
         /// 只拒绝「每核一个索引」——那是把核心编号错塞进了缓存字段，按它分等于每核一组。
         /// 组大小不齐、只有一个组都合法（单 L3 域、混合架构），照收。
         /// </summary>
-        private static List<uint>[]? TryGroupByLastLevelCache(List<CpuSetEntry> processors)
+        internal static List<uint>[]? TryGroupByLastLevelCache(List<CpuSetEntry> processors)
         {
             int total = processors.Count;
             if (total <= 1)

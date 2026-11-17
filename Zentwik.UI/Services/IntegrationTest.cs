@@ -1336,7 +1336,7 @@ public static class IntegrationTest
                       $"规则 {oldRule.TargetValue} / 进程 {oldRow.TargetValue} / 期望 {legacy.MaskId}");
 
                 Check("进程：换算后下拉键命中同一项",
-                      ReferenceEquals(MaskOption.Resolve(oldRule.MaskKey), legacy)
+                      ReferenceEquals(Zentwik.Core.Helpers.MaskResolver.Find(proc.MaskOptions, oldRule.MaskKey), legacy)
                       && oldRule.MaskLabel == legacy.Label,
                       $"{oldRule.MaskKey} / {oldRule.MaskLabel}");
 
