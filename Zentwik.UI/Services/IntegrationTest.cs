@@ -1111,6 +1111,31 @@ public static class IntegrationTest
         Check("电源：恢复默认把草稿改成默认值（AC 50 / DC 80）",
               power.Epp == defaultEpp, $"{power.Epp} / 期望 {defaultEpp}");
 
+        // 切系统计划会把整组参数换掉：弹窗要列清丢的是哪几项，而不是只说「改动」。
+        PowerScheme? otherScheme = power.Schemes
+            .FirstOrDefault(s => !s.IsCreateNew && s.Guid != power.ActiveSchemeGuid);
+
+        if (otherScheme is not null)
+        {
+            // 恢复默认可能正好等于已应用值，此时页面是干净的。先改一项再切，
+            // 才能验到「有未下发改动」这条路。
+            power.Epp = power.Epp >= 100 ? 90 : power.Epp + 5;
+
+            power.SelectedScheme = otherScheme;
+            Check("电源：改动未下发时切系统计划先确认",
+                  ConfirmService.Instance.IsOpen,
+                  $"{power.SelectedScheme?.Name}");
+
+            Check("电源：弹窗列出会丢的具体项",
+                  ConfirmService.Instance.Consequences.Any(c => c.Contains("EPP", StringComparison.Ordinal)),
+                  string.Join(" / ", ConfirmService.Instance.Consequences));
+
+            ConfirmService.Instance.CancelCommand.Execute(null);
+            Check("电源：取消后仍停在原计划",
+                  power.SelectedScheme?.Guid == power.ActiveSchemeGuid,
+                  $"{power.SelectedScheme?.Name}");
+        }
+
         power.DiscardCommand.Execute(null);
         Check("电源：放弃后 EPP 回到已应用值", power.Epp == epp, $"{power.Epp}");
         Check("电源：放弃后不脏", !power.IsDirty);

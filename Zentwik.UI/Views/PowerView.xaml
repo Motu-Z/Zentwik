@@ -144,6 +144,7 @@
                          Background="Transparent"
                          BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ToolTip="每份系统计划各存一套下面的参数，切换会整组换掉"
                          automation:AutomationProperties.Name="系统电源方案">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>

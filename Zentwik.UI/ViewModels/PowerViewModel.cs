@@ -186,13 +186,17 @@ public partial class PowerViewModel : ObservableObject
             PowerScheme target = value;
             SyncSelectedScheme();
 
+            List<string> consequences = new()
+            {
+                $"切换到「{target.Name}」将丢弃页面上的改动",
+            };
+
+            consequences.AddRange(DescribePendingChanges());
+            consequences.Add("如需保留，请先保存并应用");
+
             ConfirmService.Instance.Request(
                 "参数尚未应用",
-                new[]
-                {
-                    $"切换到「{target.Name}」将丢弃页面上的改动",
-                    "如需保留，请先保存并应用",
-                },
+                consequences,
                 () => SwitchConfirmed(target),
                 "丢弃并切换");
 
@@ -200,6 +204,48 @@ public partial class PowerViewModel : ObservableObject
         }
 
         _ = SwitchSchemeAsync(value);
+    }
+
+    /// <summary>页面上改过、还没下发的项。切系统计划会被整组覆盖，弹窗里要逐条列出来。</summary>
+    private IReadOnlyList<string> DescribePendingChanges()
+    {
+        const int shown = 4;
+
+        List<string> items = new();
+
+        CollectPending(items, "交流电", _ac, _appliedAc);
+        CollectPending(items, "电池", _dc, _appliedDc);
+
+        if (items.Count <= shown)
+            return items;
+
+        List<string> trimmed = items.GetRange(0, shown);
+        trimmed.Add($"等 {items.Count} 项改动");
+        return trimmed;
+    }
+
+    private static void CollectPending(List<string> items, string segment, PowerSet now, PowerSet applied)
+    {
+        AddPending(items, segment, "EPP", now.Epp, applied.Epp);
+        AddPending(items, segment, "性能提升模式", now.BoostMode, applied.BoostMode);
+        AddPending(items, segment, "最大处理器状态", now.MaxProcessorState, applied.MaxProcessorState);
+        AddPending(items, segment, "最小处理器状态", now.MinProcessorState, applied.MinProcessorState);
+        AddPending(items, segment, "系统散热方式", now.CoolingPolicy, applied.CoolingPolicy);
+        AddPending(items, segment, "核心放置数量", now.CoreParkingMin, applied.CoreParkingMin);
+        AddPending(items, segment, "链接电源管理", now.Aspm, applied.Aspm);
+        AddPending(items, segment, "闲置禁用", now.IdleDisable, applied.IdleDisable);
+    }
+
+    private static void AddPending(List<string> items, string segment, string label, int now, int applied)
+    {
+        if (now != applied)
+            items.Add($"{segment} · {label} {applied} → {now}");
+    }
+
+    private static void AddPending(List<string> items, string segment, string label, bool now, bool applied)
+    {
+        if (now != applied)
+            items.Add($"{segment} · {label} {(applied ? "开" : "关")} → {(now ? "开" : "关")}");
     }
 
     /// <summary>确认丢弃改动之后真正切过去。先抑制一次选中回调，避免再弹一遍确认。</summary>
