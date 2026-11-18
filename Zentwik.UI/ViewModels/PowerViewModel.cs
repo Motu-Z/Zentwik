@@ -187,11 +187,11 @@ public partial class PowerViewModel : ObservableObject
             SyncSelectedScheme();
 
             List<string> pending = new();
-            CollectPending(pending, "交流电", _ac, _appliedAc);
-            CollectPending(pending, "电池", _dc, _appliedDc);
+            CollectPending(pending, _ac, _appliedAc);
+            CollectPending(pending, _dc, _appliedDc);
 
             ConfirmService.Instance.Request(
-                $"切换到「{target.Name}」会丢弃 {pending.Count} 项未保存的改动",
+                $"切换到「{target.Name}」将丢弃未保存的改动",
                 Shorten(pending),
                 () => SwitchConfirmed(target),
                 "丢弃并切换");
@@ -215,23 +215,24 @@ public partial class PowerViewModel : ObservableObject
         return trimmed;
     }
 
-    // 项名必须逐字照抄界面标签，否则弹窗里说的项在页面上找不到。
-    private static void CollectPending(List<string> items, string segment, PowerSet now, PowerSet applied)
+    // 项名逐字照抄界面标签，否则弹窗里说的项在页面上找不到。
+    // 同一项在两段都改过只列一次：用户签的是「改过哪几项」，不是逐段对账。
+    private static void CollectPending(List<string> items, PowerSet now, PowerSet applied)
     {
-        AddPending(items, segment, "处理器能效偏好", now.Epp != applied.Epp);
-        AddPending(items, segment, "性能提升模式", now.BoostMode != applied.BoostMode);
-        AddPending(items, segment, "最大处理器状态", now.MaxProcessorState != applied.MaxProcessorState);
-        AddPending(items, segment, "最小处理器状态", now.MinProcessorState != applied.MinProcessorState);
-        AddPending(items, segment, "系统散热方式", now.CoolingPolicy != applied.CoolingPolicy);
-        AddPending(items, segment, "最少可用核心", now.CoreParkingMin != applied.CoreParkingMin);
-        AddPending(items, segment, "PCIe 电源管理", now.Aspm != applied.Aspm);
-        AddPending(items, segment, "空闲保持唤醒", now.IdleDisable != applied.IdleDisable);
+        AddPending(items, "处理器能效偏好", now.Epp != applied.Epp);
+        AddPending(items, "性能提升模式", now.BoostMode != applied.BoostMode);
+        AddPending(items, "最大处理器状态", now.MaxProcessorState != applied.MaxProcessorState);
+        AddPending(items, "最小处理器状态", now.MinProcessorState != applied.MinProcessorState);
+        AddPending(items, "系统散热方式", now.CoolingPolicy != applied.CoolingPolicy);
+        AddPending(items, "最少可用核心", now.CoreParkingMin != applied.CoreParkingMin);
+        AddPending(items, "PCIe 电源管理", now.Aspm != applied.Aspm);
+        AddPending(items, "空闲保持唤醒", now.IdleDisable != applied.IdleDisable);
     }
 
-    private static void AddPending(List<string> items, string segment, string label, bool changed)
+    private static void AddPending(List<string> items, string label, bool changed)
     {
-        if (changed)
-            items.Add($"{segment}的{label}");
+        if (changed && !items.Contains(label))
+            items.Add(label);
     }
 
     /// <summary>确认丢弃改动之后真正切过去。先抑制一次选中回调，避免再弹一遍确认。</summary>

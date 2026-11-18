@@ -571,11 +571,10 @@ public sealed class PlanScope : ViewModelBase
             IsOverlayOpen = false;
 
             ConfirmService.Instance.Request(
-                "切换将丢弃未保存的改动",
+                $"切换到「{item.Name}」将丢弃未保存的改动",
                 new[]
                 {
                     $"「{previous?.Name}」的改动尚未保存",
-                    $"切换后页面上是「{item.Name}」的参数",
                     "如需保留，请先保存并应用",
                 },
                 () => Current = item,
