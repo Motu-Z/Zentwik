@@ -1127,7 +1127,11 @@ public static class IntegrationTest
                   $"{power.SelectedScheme?.Name}");
 
             Check("电源：弹窗列出会丢的具体项",
-                  ConfirmService.Instance.Consequences.Any(c => c.Contains("EPP", StringComparison.Ordinal)),
+                  ConfirmService.Instance.Consequences.Any(c => c.Contains("能效偏好", StringComparison.Ordinal)),
+                  string.Join(" / ", ConfirmService.Instance.Consequences));
+
+            Check("电源：弹窗不以符号代替文字",
+                  ConfirmService.Instance.Consequences.All(c => !c.Contains('→') && !c.Contains('·')),
                   string.Join(" / ", ConfirmService.Instance.Consequences));
 
             ConfirmService.Instance.CancelCommand.Execute(null);

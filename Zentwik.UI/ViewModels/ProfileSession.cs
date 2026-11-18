@@ -190,10 +190,10 @@ public sealed class PlanScope : ViewModelBase
     public string MarkToolTip => !ShowMark
         ? string.Empty
         : HasUnsavedChanges
-            ? "改动还没保存到这份方案"
+            ? "改动尚未保存到这份方案"
             : NotApplied
-                ? "这份方案绑的 Windows 计划不是当前活动的那份：点「应用」切过去并写入方案里的值"
-                : "方案里的值与系统当前值不一致：点「应用」把方案写回系统，或点「保存至方案」用系统值更新方案";
+                ? "这份方案对应的 Windows 计划不是当前使用的那份。应用会切过去并写入方案参数"
+                : "方案参数与系统当前值不一致。应用会用方案覆盖系统；保存至方案则用系统值更新方案";
 
     /// <summary>脏值时底部按钮改走「只存方案」，由页面挂钩子接管。</summary>
     public Func<bool>? CanSavePending { get; set; }
@@ -571,10 +571,11 @@ public sealed class PlanScope : ViewModelBase
             IsOverlayOpen = false;
 
             ConfirmService.Instance.Request(
-                $"「{previous?.Name}」有未保存的改动",
+                "切换将丢弃未保存的改动",
                 new[]
                 {
-                    $"切换到「{item.Name}」将丢弃这些改动",
+                    $"「{previous?.Name}」的改动尚未保存",
+                    $"切换到「{item.Name}」会改用它的参数，改动不会随之转移",
                     "如需保留，请先保存并应用",
                 },
                 () => Current = item,

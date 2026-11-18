@@ -102,7 +102,7 @@
                     <Button Style="{StaticResource PrimaryButtonStyle}"
                             Margin="8,0,0,0"
                             automation:AutomationProperties.Name="{Binding Plans.ApplyButtonText}"
-                            ToolTip="把当前设置保存到当前方案，并立即写入系统"
+                            ToolTip="将当前参数保存到所选方案，并写入系统"
                             Command="{Binding ApplyCommand}"
                             IsEnabled="{Binding CanApply}">
                         <TextBlock Text="{Binding Plans.ApplyButtonText}" />
@@ -144,7 +144,7 @@
                          Background="Transparent"
                          BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ToolTip="每份系统计划各存一套下面的参数，切换会整组换掉"
+                         ToolTip="每份系统计划各自保存一组参数，切换时整体替换"
                          automation:AutomationProperties.Name="系统电源方案">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -383,8 +383,8 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="处理器能源性能首选项策略"
-                                           ToolTip="EPP：数值越高越省电；AMD 平台经 CPPC 实现"
+                                <TextBlock Text="能效偏好"
+                                           ToolTip="数值越高越倾向于节能，越低越倾向于性能"
                                            Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
@@ -567,8 +567,11 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="处理器性能核心放置最小核心数量" Style="{StaticResource RowTitleStyle}" />
-                                <TextBlock Text="低于 100% 会停泊空闲核，绑核可能越界"
+                                <TextBlock Text="最少可用核心"
+                                           ToolTip="Windows 官方名：处理器性能核心放置最小核心数量&#10;值越低，允许停泊的核心越多"
+                                           Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="低于 100% 时部分核心不参与调度"
+                                           ToolTip="进程被绑定到这些核心时，可用核心数会减少"
                                            Style="{StaticResource RowDescStyle}"
                                            Visibility="{Binding CoreParkingWarns, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
@@ -630,7 +633,9 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="处理器性能提升模式" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="性能提升模式"
+                                           ToolTip="Windows 官方名：处理器性能提升模式"
+                                           Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -678,7 +683,9 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="链接状态电源管理" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="PCIe 电源管理"
+                                           ToolTip="Windows 官方名：链接状态电源管理"
+                                           Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -709,7 +716,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- 空闲禁用 -->
+                    <!-- 空闲保持唤醒 -->
                     <Border Style="{StaticResource RowLastStyle}">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -718,7 +725,9 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="处理器闲置禁用" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="空闲保持唤醒"
+                                           ToolTip="Windows 官方名：处理器闲置禁用&#10;开启后功耗上升，响应更快"
+                                           Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -727,7 +736,7 @@
                                           IsChecked="{Binding IdleDisable, Mode=TwoWay}"
                                           IsEnabled="{Binding IdleDisableSupported}"
                                           Visibility="{Binding IdleDisableSupported, Converter={StaticResource BoolToVis}}"
-                                          automation:AutomationProperties.Name="空闲禁用" />
+                                          automation:AutomationProperties.Name="空闲保持唤醒" />
 
                             <TextBlock Grid.Column="1"
                                        Text="{Binding UnavailableText}"

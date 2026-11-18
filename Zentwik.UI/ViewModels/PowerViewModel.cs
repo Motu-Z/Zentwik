@@ -188,14 +188,14 @@ public partial class PowerViewModel : ObservableObject
 
             List<string> consequences = new()
             {
-                $"切换到「{target.Name}」将丢弃页面上的改动",
+                $"「{target.Name}」保存的是另一组参数，页面上的改动不会随之转移",
             };
 
             consequences.AddRange(DescribePendingChanges());
-            consequences.Add("如需保留，请先保存并应用");
+            consequences.Add("如需保留，请先「保存并应用」");
 
             ConfirmService.Instance.Request(
-                "参数尚未应用",
+                "切换将丢弃未保存的改动",
                 consequences,
                 () => SwitchConfirmed(target),
                 "丢弃并切换");
@@ -220,32 +220,27 @@ public partial class PowerViewModel : ObservableObject
             return items;
 
         List<string> trimmed = items.GetRange(0, shown);
-        trimmed.Add($"等 {items.Count} 项改动");
+        trimmed.Add($"另有 {items.Count - shown} 项未列出");
         return trimmed;
     }
 
+    // 项名必须逐字照抄界面标签，否则弹窗里说的项在页面上找不到。
     private static void CollectPending(List<string> items, string segment, PowerSet now, PowerSet applied)
     {
-        AddPending(items, segment, "EPP", now.Epp, applied.Epp);
-        AddPending(items, segment, "性能提升模式", now.BoostMode, applied.BoostMode);
-        AddPending(items, segment, "最大处理器状态", now.MaxProcessorState, applied.MaxProcessorState);
-        AddPending(items, segment, "最小处理器状态", now.MinProcessorState, applied.MinProcessorState);
-        AddPending(items, segment, "系统散热方式", now.CoolingPolicy, applied.CoolingPolicy);
-        AddPending(items, segment, "核心放置数量", now.CoreParkingMin, applied.CoreParkingMin);
-        AddPending(items, segment, "链接电源管理", now.Aspm, applied.Aspm);
-        AddPending(items, segment, "闲置禁用", now.IdleDisable, applied.IdleDisable);
+        AddPending(items, segment, "能效偏好", now.Epp != applied.Epp);
+        AddPending(items, segment, "性能提升模式", now.BoostMode != applied.BoostMode);
+        AddPending(items, segment, "最大处理器状态", now.MaxProcessorState != applied.MaxProcessorState);
+        AddPending(items, segment, "最小处理器状态", now.MinProcessorState != applied.MinProcessorState);
+        AddPending(items, segment, "系统散热方式", now.CoolingPolicy != applied.CoolingPolicy);
+        AddPending(items, segment, "最少可用核心", now.CoreParkingMin != applied.CoreParkingMin);
+        AddPending(items, segment, "PCIe 电源管理", now.Aspm != applied.Aspm);
+        AddPending(items, segment, "空闲保持唤醒", now.IdleDisable != applied.IdleDisable);
     }
 
-    private static void AddPending(List<string> items, string segment, string label, int now, int applied)
+    private static void AddPending(List<string> items, string segment, string label, bool changed)
     {
-        if (now != applied)
-            items.Add($"{segment} · {label} {applied} → {now}");
-    }
-
-    private static void AddPending(List<string> items, string segment, string label, bool now, bool applied)
-    {
-        if (now != applied)
-            items.Add($"{segment} · {label} {(applied ? "开" : "关")} → {(now ? "开" : "关")}");
+        if (changed)
+            items.Add($"{label}（{segment}）");
     }
 
     /// <summary>确认丢弃改动之后真正切过去。先抑制一次选中回调，避免再弹一遍确认。</summary>
@@ -854,7 +849,7 @@ public partial class PowerViewModel : ObservableObject
             {
                 // 清脏依赖 ApplySnapshot。成功却没带回快照时保留脏标记，
                 // 否则用户看到「点了没反应」，会反复点、反复下发同一份 patch。
-                ToastService.Instance.ShowError("已写入，但未能回读电源策略，请刷新确认");
+                ToastService.Instance.ShowError("已写入，但未能回读电源策略。请点「回读」确认");
             }
             else
             {
@@ -1260,7 +1255,7 @@ public partial class PowerViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ToastService.Instance.ShowError($"重命名失败：{ex.Message}");
+            ToastService.Instance.ShowError($"重命名电源方案失败：{ex.Message}");
         }
         finally
         {
