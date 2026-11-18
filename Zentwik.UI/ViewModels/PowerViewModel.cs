@@ -1039,7 +1039,7 @@ public partial class PowerViewModel : ObservableObject
         PlanHub.Power.UpdateCurrentSummary();
 
         // 值已经进方案：方案条上的「未保存」必须立刻消失，否则用户会一直点。
-        PlanHub.Power.SetUnsaved(false);
+        PlanHub.Power.MarkSynced();
         return true;
     }
 
@@ -1081,7 +1081,7 @@ public partial class PowerViewModel : ObservableObject
             PlanHub.Power.UpdateCurrentSummary();
 
             // 值已经进方案了：方案条的「未保存」必须立刻消失，否则用户会一直点。
-            PlanHub.Power.SetUnsaved(false);
+            PlanHub.Power.MarkSynced();
         }
         catch (Exception ex)
         {
@@ -1543,11 +1543,20 @@ public partial class PowerViewModel : ObservableObject
 
     /// <summary>把「与方案的差异」同步给方案条；整体换值后调用，不能只看 IsDirty 的跳变。</summary>
     /// <remarks>
-    /// 两个条件都要：<c>IsDirty</c> 抓「用户改过、但方案里恰好缺这个字段」（此时比对看不出差异），
-    /// <see cref="DiffersFromPlan"/> 抓「用户没动过、但界面值与方案不同」。
-    /// 只判后者会让「改了没存」在某些方案上漏提示。
+    /// 两个条件都要，但结论不同：<c>IsDirty</c> 是「用户改了没存」，<c>DiffersFromPlan</c> 是
+    /// 「用户没动过、界面值与方案不同」（多半是系统侧被改）。前者提示「未保存」，后者提示
+    /// 「与系统不一致」—— 混成一句话用户会以为是自己改坏的。
     /// </remarks>
-    private void SyncPlanDirty() => PlanHub.Power.SetUnsaved(IsDirty || DiffersFromPlan());
+    private void SyncPlanDirty()
+    {
+        bool edited = IsDirty;
+
+        PlanHub.Power.SetUnsaved(edited);
+
+        // 没有当前方案时谈不上「不一致」，那是还没选方案。
+        PlanHub.Power.SetDiffersFromSystem(
+            !edited && PlanHub.Power.Current is not null && DiffersFromPlan());
+    }
 
     /// <summary>界面值与当前方案里存的对不上；方案缺该字段视为「不关心」。</summary>
     private bool DiffersFromPlan()

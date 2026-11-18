@@ -45,7 +45,7 @@
                                 <DataTrigger Binding="{Binding Current.IsActive}" Value="True">
                                     <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
                                 </DataTrigger>
-                                <DataTrigger Binding="{Binding HasUnsavedChanges}" Value="True">
+                                <DataTrigger Binding="{Binding ShowMark}" Value="True">
                                     <Setter Property="Fill" Value="{DynamicResource WarningBrush}" />
                                 </DataTrigger>
                             </Style.Triggers>
@@ -59,12 +59,13 @@
                            Margin="8,0,0,0"
                            VerticalAlignment="Center" />
 
-                <TextBlock Text="· 未保存"
+                <TextBlock Text="{Binding MarkText}"
                            FontSize="12"
                            Foreground="{DynamicResource WarningBrush}"
                            Margin="6,0,0,0"
                            VerticalAlignment="Center"
-                           Visibility="{Binding HasUnsavedChanges, Converter={StaticResource BoolToVis}}" />
+                           ToolTip="{Binding MarkToolTip}"
+                           Visibility="{Binding ShowMark, Converter={StaticResource BoolToVis}}" />
 
                 <Path Data="M0 0 L4 4 L8 0"
                       Stroke="{DynamicResource TextSecondaryBrush}"

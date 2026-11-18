@@ -1624,6 +1624,20 @@ public static class IntegrationTest
             Check("方案：存完恢复成应用",
                   session.ApplyLabel == $"应用「{first.Name}」", session.ApplyLabel);
 
+            // 系统侧被改（电源模式滑块、厂商软件）：不能说自己「未保存」。
+            session.SetDiffersFromSystem(true);
+            Check("方案：系统侧改动时标记为与系统不一致",
+                  session.ShowMark
+                  && session.MarkText.Contains("不一致", StringComparison.Ordinal)
+                  && !session.HasUnsavedChanges,
+                  session.MarkText);
+            Check("方案：不一致时底部按钮改成重新应用",
+                  session.ApplyLabel == $"重新应用「{first.Name}」", session.ApplyLabel);
+            Check("方案：不一致时生效中的方案也能重新应用", session.CanApplyCurrent);
+
+            session.SetDiffersFromSystem(false);
+            Check("方案：对齐后标记消失", !session.ShowMark, session.MarkText);
+
             string oldName = first.Name;
             first.Name = oldName + "-改";
             Check("方案：改名后顶栏标题跟新名",
