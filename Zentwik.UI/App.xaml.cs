@@ -1642,6 +1642,9 @@ public partial class App : Application
 
         _tray = tray;
 
+        // 入口开关的权威在 UiEntrySettings：行为页改、清除全部数据重置，都从这一条通知过来。
+        UiEntrySettings.Changed += RefreshTrayMenu;
+
         tray.ShowRequested += (_, _) => BringToFront(window);
 
         // 托盘右键菜单由 TrayIconService 直接用 TrackPopupMenuEx 弹出（系统原生），
@@ -1672,6 +1675,7 @@ public partial class App : Application
                     TimeSpan.FromSeconds(1.5), evenIfNotOwned: true);
             }
 
+            UiEntrySettings.Changed -= RefreshTrayMenu;
             _tray?.Dispose();
         };
     }
@@ -1695,7 +1699,7 @@ public partial class App : Application
                       || a.Contains("probe", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>入口开关变了：托盘菜单按新设置重建，下次右键生效。</summary>
-    public void RefreshTrayMenu() => _tray?.SetMenu(TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu));
+    private void RefreshTrayMenu() => _tray?.SetMenu(TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu));
 
     /// <summary>托盘里的方案项：窗口多半藏在托盘里，结果只能靠气泡回执。</summary>
     private void ApplyTrayCommand(string key)

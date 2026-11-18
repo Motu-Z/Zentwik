@@ -11,6 +11,13 @@ public class BehaviorViewModel : ViewModelBase
     {
         // 后台那份设置是权威值：连上 Worker 后会被覆盖一次，界面要跟着刷。
         _settings.PropertyChanged += (_, e) => OnSettingChanged(e.PropertyName);
+
+        // 入口开关也会被别处改（清除全部数据会重置），两个开关跟着回读。
+        UiEntrySettings.Changed += () =>
+        {
+            OnPropertyChanged(nameof(DesktopMenu));
+            OnPropertyChanged(nameof(TrayPlanMenu));
+        };
     }
 
     private void OnSettingChanged(string? name)
@@ -203,8 +210,6 @@ public class BehaviorViewModel : ViewModelBase
 
             UiEntrySettings.DesktopMenu = value;
             DesktopContextMenuService.Sync(value);
-
-            OnPropertyChanged();
         }
     }
 
@@ -217,9 +222,6 @@ public class BehaviorViewModel : ViewModelBase
             if (UiEntrySettings.TrayPlanMenu == value) return;
 
             UiEntrySettings.TrayPlanMenu = value;
-            (System.Windows.Application.Current as App)?.RefreshTrayMenu();
-
-            OnPropertyChanged();
         }
     }
 

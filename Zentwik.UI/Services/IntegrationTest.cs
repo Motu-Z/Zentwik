@@ -2384,11 +2384,18 @@ public static class IntegrationTest
             Check("入口：桌面右键开关写回设置",
                   UiEntrySettings.DesktopMenu == !desktopBefore,
                   $"{UiEntrySettings.DesktopMenu}");
+
+            // 「清除全部数据」走的就是这条：重置回默认值，托盘的方案列表跟着回来。
+            UiEntrySettings.Reset();
+            Check("入口：重置后回默认值",
+                  !UiEntrySettings.DesktopMenu && UiEntrySettings.TrayPlanMenu,
+                  $"{UiEntrySettings.DesktopMenu}/{UiEntrySettings.TrayPlanMenu}");
         }
         finally
         {
             UiEntrySettings.DesktopMenu = desktopBefore;
             UiEntrySettings.TrayPlanMenu = trayBefore;
+            DesktopContextMenuService.Sync(desktopBefore);
         }
 
         var behaviorView = new Views.BehaviorView();

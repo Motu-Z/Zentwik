@@ -40,6 +40,7 @@ public static class UiEntrySettings
 
             _desktopMenu = value;
             Save();
+            Changed?.Invoke();
         }
     }
 
@@ -63,7 +64,23 @@ public static class UiEntrySettings
 
             _trayPlanMenu = value;
             Save();
+            Changed?.Invoke();
         }
+    }
+
+    /// <summary>任一开关变了就通知：托盘菜单要重建，行为页的开关要跟上。</summary>
+    public static event Action? Changed;
+
+    /// <summary>恢复默认：桌面右键关、托盘方案开。给「清除全部数据」用。</summary>
+    public static void Reset()
+    {
+        EnsureLoaded();
+
+        _desktopMenu = false;
+        _trayPlanMenu = true;
+
+        Save();
+        Changed?.Invoke();
     }
 
     private sealed class Snapshot

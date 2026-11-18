@@ -150,6 +150,7 @@ public class AdvancedViewModel : ViewModelBase
                     "删除全部配置方案",
                     "删除全部已保存的调度规则",
                     "恢复所有设置到默认值",
+                    "移除桌面右键菜单",
                 },
                 ClearAll,
                 "清除"));
@@ -177,6 +178,14 @@ public class AdvancedViewModel : ViewModelBase
         // 后台已重置：把设置与三类方案重新读回来，界面不能停在旧值上。
         await AppSettings.Instance.SyncFromWorkerAsync().ConfigureAwait(true);
         await PlanHub.InitializeAllAsync().ConfigureAwait(true);
+
+        // 入口开关与注册表项不归后台管，得在这边一起清；否则会留一项指向当前 exe 的桌面右键。
+        UiEntrySettings.Reset();
+
+        if (Services.WorkerBridge.AllowAutoStart)
+        {
+            DesktopContextMenuService.Sync(UiEntrySettings.DesktopMenu);
+        }
     }
 
     private void DisableAll()
