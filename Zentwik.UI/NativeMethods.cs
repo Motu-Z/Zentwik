@@ -56,6 +56,9 @@ internal static class NativeMethods
     /// <summary>结构体包含提示文本。</summary>
     public const uint NIF_TIP = 0x00000004;
 
+    /// <summary>结构体包含气泡正文与标题。</summary>
+    public const uint NIF_INFO = 0x00000010;
+
     /// <summary>GetSystemMetrics 的索引：SM_CXSMICON —— 小图标（16×16 逻辑）的宽度</summary>
     public const int SM_CXSMICON = 49;
 
@@ -98,6 +101,14 @@ internal static class NativeMethods
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool Shell_NotifyIcon(uint dwMessage, ref NOTIFYICONDATA lpData);
+
+    /// <summary>SHCNE_ASSOCCHANGED：告诉外壳「文件关联 / 右键菜单变了」，让它重读注册表。</summary>
+    public const int SHCNE_ASSOCCHANGED = 0x08000000;
+
+    public const uint SHCNF_IDLIST = 0x0000;
+
+    [DllImport("shell32.dll")]
+    public static extern void SHChangeNotify(int wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -184,6 +195,12 @@ internal static class NativeMethods
 
     /// <summary>普通文字菜单项。</summary>
     public const uint MF_STRING = 0x00000000;
+
+    /// <summary>这一项是子菜单，uIDNewItem 传子菜单句柄。</summary>
+    public const uint MF_POPUP = 0x00000010;
+
+    /// <summary>给这一项画勾。</summary>
+    public const uint MF_CHECKED = 0x00000008;
 
     /// <summary>分隔线。uIDNewItem 与文字都要给 0 / null。</summary>
     public const uint MF_SEPARATOR = 0x00000800;

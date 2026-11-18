@@ -90,9 +90,15 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
+    { 桌面右键项写在 HKCU，与安装目录无关；不单独清就会留一项指向已删的 exe。 }
+    Exec(ExpandConstant('{sys}\reg.exe'),
+         'delete "HKCU\Software\Classes\DesktopBackground\Shell\Zentwik" /f /reg:64',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
     DataDir := ExpandConstant('{userappdata}\{#MyAppName}');
     if DirExists(DataDir) then
     begin

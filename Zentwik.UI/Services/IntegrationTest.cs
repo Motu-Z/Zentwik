@@ -55,6 +55,7 @@ public static class IntegrationTest
         SectionHitTest();
         SectionProcessDrawer();
         SectionCommands();
+        SectionEntryPoints();
         SectionOverlays();
         SectionVirtualization();
         SectionPerformance();
@@ -2014,7 +2015,7 @@ public static class IntegrationTest
                      ("调校", () => new Views.TuningView(), 2),
                      ("电源", () => new Views.PowerView(), 2),
                      ("通用", () => new Views.SettingsView(), 1),
-                     ("行为", () => new Views.BehaviorView(), 3),
+                     ("行为", () => new Views.BehaviorView(), 4),
                      ("高级", () => new Views.AdvancedView(), 4),
                  })
         {
@@ -2314,6 +2315,90 @@ public static class IntegrationTest
               misc.HexInput == "#FF0000", misc.HexInput);
 
         AppThemeService.Instance.SetAccentColor(DefaultAccent);
+    }
+
+    // 入口：桌面右键与托盘方案菜单
+
+    private static void SectionEntryPoints()
+    {
+        Say("\n=== 入口：桌面右键与托盘菜单 ===");
+
+        // 菜单是 Win32 弹窗，点不了自动化；能断言的是喂给它的那份模型。
+        IReadOnlyList<TrayMenuItem> bare = TrayMenuBuilder.Build(includePlans: false);
+
+        Check("托盘：关掉方案后只剩显示与退出",
+              bare.Count == 3
+              && bare[0].Key == TrayMenuBuilder.KeyShow
+              && bare[2].Key == TrayMenuBuilder.KeyExit,
+              $"{bare.Count} 项");
+
+        Check("托盘：分隔线不是可点项", bare[1].IsSeparator && bare[1].Label.Length == 0);
+
+        IReadOnlyList<TrayMenuItem> full = TrayMenuBuilder.Build(includePlans: true);
+        List<TrayMenuItem> groups = full.Where(i => i.Children is { Count: > 0 }).ToList();
+
+        Check("托盘：列出方案分组", groups.Count > 0, $"{groups.Count} 组");
+
+        Check("托盘：分组下每项都能还原成 kind 与 id",
+              groups.All(g => g.Children!.All(c => TrayMenuBuilder.TryParsePlanKey(c.Key, out _, out _))),
+              string.Join("/", groups.Select(g => g.Label)));
+
+        Check("托盘：当前生效的方案带勾选",
+              groups.SelectMany(g => g.Children!).Any(c => c.IsChecked),
+              $"{groups.SelectMany(g => g.Children!).Count(c => c.IsChecked)} 项");
+
+        string powerKey = TrayMenuBuilder.PlanKey(Zentwik.Core.Services.PlanKind.Power, "plan-42");
+
+        Check("托盘：方案 Key 往返一致",
+              TrayMenuBuilder.TryParsePlanKey(powerKey, out var parsedKind, out string parsedId)
+              && parsedKind == Zentwik.Core.Services.PlanKind.Power
+              && parsedId == "plan-42",
+              powerKey);
+
+        Check("托盘：非方案 Key 不误判",
+              !TrayMenuBuilder.TryParsePlanKey(TrayMenuBuilder.KeyShow, out _, out _));
+
+        string command = DesktopContextMenuService.CommandText;
+
+        Check("桌面右键：命令指向当前程序并带 --show",
+              command.EndsWith("--show", StringComparison.Ordinal)
+              && command.Contains(DesktopContextMenuService.ExecutablePath, StringComparison.OrdinalIgnoreCase),
+              command);
+
+        // 入口开关：默认值与写回。测试改完必须还原，否则会污染用户的 ui-entry.json。
+        bool desktopBefore = UiEntrySettings.DesktopMenu;
+        bool trayBefore = UiEntrySettings.TrayPlanMenu;
+        var behavior = new BehaviorViewModel();
+
+        try
+        {
+            Check("入口：托盘方案菜单默认开启", trayBefore);
+
+            behavior.TrayPlanMenu = false;
+            Check("入口：关掉托盘方案菜单写回设置", !UiEntrySettings.TrayPlanMenu);
+
+            behavior.TrayPlanMenu = true;
+            Check("入口：重新开启写回设置", UiEntrySettings.TrayPlanMenu);
+
+            behavior.DesktopMenu = !desktopBefore;
+            Check("入口：桌面右键开关写回设置",
+                  UiEntrySettings.DesktopMenu == !desktopBefore,
+                  $"{UiEntrySettings.DesktopMenu}");
+        }
+        finally
+        {
+            UiEntrySettings.DesktopMenu = desktopBefore;
+            UiEntrySettings.TrayPlanMenu = trayBefore;
+        }
+
+        var behaviorView = new Views.BehaviorView();
+        Render(behaviorView, 1168, 820);
+
+        Check("入口：行为页铺出桌面右键开关",
+              FindByAutomationName(behaviorView, "桌面右键菜单") is not null);
+
+        Check("入口：行为页铺出托盘方案开关",
+              FindByAutomationName(behaviorView, "托盘方案切换") is not null);
     }
 
     // 11. 浮层

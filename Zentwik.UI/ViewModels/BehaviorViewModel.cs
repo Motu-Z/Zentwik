@@ -191,6 +191,38 @@ public class BehaviorViewModel : ViewModelBase
         }
     }
 
+    // 入口
+
+    /// <summary>桌面空白右键菜单。写 HKCU，不需要提权。</summary>
+    public bool DesktopMenu
+    {
+        get => UiEntrySettings.DesktopMenu;
+        set
+        {
+            if (UiEntrySettings.DesktopMenu == value) return;
+
+            UiEntrySettings.DesktopMenu = value;
+            DesktopContextMenuService.Sync(value);
+
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>托盘右键菜单里是否列出三类方案。</summary>
+    public bool TrayPlanMenu
+    {
+        get => UiEntrySettings.TrayPlanMenu;
+        set
+        {
+            if (UiEntrySettings.TrayPlanMenu == value) return;
+
+            UiEntrySettings.TrayPlanMenu = value;
+            (System.Windows.Application.Current as App)?.RefreshTrayMenu();
+
+            OnPropertyChanged();
+        }
+    }
+
     private void SetStartup(StartupBehavior mode)
     {
         if (_settings.Startup == mode) return;

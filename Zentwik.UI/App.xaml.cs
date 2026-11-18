@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Linq;
 using System.Text;
@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Zentwik.UI.Services;
+using Zentwik.UI.ViewModels;
 
 namespace Zentwik.UI;
 
@@ -21,6 +22,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // 桌面右键与快捷方式都可能被连点：第二个进程只负责把已有窗口叫到前面。
+        bool diagnosticMode = IsDiagnosticMode(e.Args);
+
+        if (!diagnosticMode && !Services.SingleInstanceGate.TryTakeOwnership())
+        {
+            Shutdown(0);
+            return;
+        }
 
         // 全局禁用原生虚线焦点框。
         FocusVisualKiller.Initialize();
@@ -64,6 +74,9 @@ public partial class App : Application
             // 外观偏好（主题模式 / 强调色）也跟着一起落盘；
             // 诊断模式的取色与切主题不该覆盖用户的选择。
             AppThemeService.Instance.PersistenceEnabled = true;
+
+            // 入口开关：换过目录后注册表里的命令会失效，正常启动对齐一次。
+            DesktopContextMenuService.Sync(UiEntrySettings.DesktopMenu);
         }
 
         // 依赖组的关闭态（诊断用）。
@@ -294,6 +307,12 @@ public partial class App : Application
         var window = new MainWindow();
         MainWindow = window;
         window.Show();
+
+        // 第二个实例发来的「显示窗口」由主实例接住。
+        if (!diagnosticMode)
+        {
+            Services.SingleInstanceGate.Listen(() => BringToFront(window));
+        }
 
         // 性能探针（诊断用）。
         if (e.Args.Contains("--perf"))
@@ -1623,20 +1642,13 @@ public partial class App : Application
 
         _tray = tray;
 
-        void ShowMainWindow()
-        {
-            window.Show();
-            if (window.WindowState == WindowState.Minimized)
-            {
-                System.Windows.SystemCommands.RestoreWindow(window);
-            }
-            window.Activate();
-        }
-
-        tray.ShowRequested += (_, _) => ShowMainWindow();
+        tray.ShowRequested += (_, _) => BringToFront(window);
 
         // 托盘右键菜单由 TrayIconService 直接用 TrackPopupMenuEx 弹出（系统原生），
         // 不再需要 WPF 自绘菜单与它的 0x1 宿主窗口。
+        tray.SetMenu(TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu));
+        tray.ItemInvoked += (_, key) => ApplyTrayCommand(key);
+
         tray.ExitRequested += (_, _) => window.ExitApplication();
 
         // 托盘已就绪；关闭按钮的具体行为由设置里的「关闭主窗口」决定。
@@ -1662,5 +1674,63 @@ public partial class App : Application
 
             _tray?.Dispose();
         };
+    }
+
+    /// <summary>把主窗口叫到前台；最小化时先还原，否则 Activate 不生效。</summary>
+    private static void BringToFront(MainWindow window)
+    {
+        window.Show();
+
+        if (window.WindowState == WindowState.Minimized)
+        {
+            System.Windows.SystemCommands.RestoreWindow(window);
+        }
+
+        window.Activate();
+    }
+
+    /// <summary>诊断参数下不参与单实例：自检与截图要能同时跑多个进程。</summary>
+    private static bool IsDiagnosticMode(string[] args) =>
+        args.Any(a => a is "--screenshot" or "--selftest" or "--itest" or "--perf" or "--perf-empty" or "--powerclean"
+                      || a.Contains("probe", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>入口开关变了：托盘菜单按新设置重建，下次右键生效。</summary>
+    public void RefreshTrayMenu() => _tray?.SetMenu(TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu));
+
+    /// <summary>托盘里的方案项：窗口多半藏在托盘里，结果只能靠气泡回执。</summary>
+    private void ApplyTrayCommand(string key)
+    {
+        if (!TrayMenuBuilder.TryParsePlanKey(key, out var kind, out string id))
+        {
+            return;
+        }
+
+        PlanScope scope = PlanHub.Of(kind);
+        PlanItem? target = scope.Items.FirstOrDefault(p => p.Id == id);
+
+        if (target is not null)
+        {
+            _ = ApplyPlanFromTrayAsync(scope, target);
+        }
+    }
+
+    private async Task ApplyPlanFromTrayAsync(PlanScope scope, PlanItem target)
+    {
+        IpcOutcome<string> outcome = await WorkerBridge.Instance
+            .ApplyPlanAsync(scope.Kind, target.Id).ConfigureAwait(true);
+
+        if (!outcome.Success)
+        {
+            _tray?.ShowBalloon("切换失败", outcome.Message.Length > 0 ? outcome.Message : "后台服务未响应");
+            return;
+        }
+
+        // 勾选态跟着后台走：只有确认成功才挪，失败保持原样。
+        foreach (PlanItem item in scope.Items)
+        {
+            item.IsActive = ReferenceEquals(item, target);
+        }
+
+        _tray?.ShowBalloon("已切换方案", $"已切换到 {target.Name}");
     }
 }

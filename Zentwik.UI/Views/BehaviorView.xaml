@@ -250,6 +250,56 @@
                         </Grid>
                     </Border>
                 </StackPanel>
+
+                <StackPanel Margin="0,48,0,0">
+                    <Border Style="{StaticResource SectionHeaderStyle}">
+                        <TextBlock Text="ENTRY / 入口" Style="{StaticResource SectionTitleStyle}" />
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="桌面右键菜单"
+                                           Style="{StaticResource RowTitleStyle}"
+                                           ToolTip="在桌面空白处右键时显示一项，点击打开主界面" />
+                            </StackPanel>
+
+                            <ToggleButton Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          automation:AutomationProperties.Name="桌面右键菜单"
+                                          IsChecked="{Binding DesktopMenu, Mode=TwoWay}" />
+
+                            <Border Style="{StaticResource DashRuleStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource FlatRowStyle}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                <TextBlock Text="托盘方案切换"
+                                           Style="{StaticResource RowTitleStyle}"
+                                           ToolTip="在托盘右键菜单里列出调校、调度、电源三类方案，点击即切换" />
+                            </StackPanel>
+
+                            <ToggleButton Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          automation:AutomationProperties.Name="托盘方案切换"
+                                          IsChecked="{Binding TrayPlanMenu, Mode=TwoWay}" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -45,11 +46,6 @@ public sealed class TrayIconService : IDisposable
     /// <summary>请求退出应用。</summary>
     public event EventHandler? ExitRequested;
 
-    /// <summary>菜单项 ID：显示主窗口。</summary>
-    private const int MenuShowWindow = 1;
-
-    /// <summary>菜单项 ID：退出。</summary>
-    private const int MenuExit = 2;
 
     /// <summary>托盘图标是否已成功创建。</summary>
     public bool IsAvailable => _added;
@@ -178,6 +174,45 @@ public sealed class TrayIconService : IDisposable
         _renderedPixelSize = pixelSize;
     }
 
+    /// <summary>菜单模型。只存数据，画成 Win32 菜单在 <see cref="ShowContextMenu"/>。</summary>
+    private IReadOnlyList<TrayMenuItem> _menu = new[]
+    {
+        new TrayMenuItem(TrayMenuBuilder.KeyShow, "显示主窗口"),
+        TrayMenuBuilder.Separator,
+        new TrayMenuItem(TrayMenuBuilder.KeyExit, "退出 Zentwik"),
+    };
+
+    /// <summary>替换菜单内容。下次右键生效。</summary>
+    public void SetMenu(IReadOnlyList<TrayMenuItem> items) => _menu = items;
+
+    /// <summary>点击了方案项一类的自定义项；参数是构建方给的 Key。</summary>
+    public event EventHandler<string>? ItemInvoked;
+
+    /// <summary>托盘气泡。主窗口收在托盘里时，这是唯一能被看见的结果回执。</summary>
+    public void ShowBalloon(string title, string text)
+    {
+        if (!_added || _source is null)
+        {
+            return;
+        }
+
+        var data = new NativeMethods.NOTIFYICONDATA
+        {
+            cbSize = Marshal.SizeOf<NativeMethods.NOTIFYICONDATA>(),
+            hWnd = _source.Handle,
+            uID = TrayIconId,
+            uFlags = (int)NativeMethods.NIF_INFO,
+            szInfo = Clip(text, 255),
+            szInfoTitle = Clip(title, 63),
+            uTimeoutOrVersion = 5000,
+        };
+
+        NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_MODIFY, ref data);
+    }
+
+    private static string Clip(string value, int max) =>
+        value.Length <= max ? value : value[..max];
+
     /// <summary>消息窗口的窗口过程</summary>
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -208,7 +243,10 @@ public sealed class TrayIconService : IDisposable
             return;
         }
 
-        IntPtr menu = NativeMethods.CreatePopupMenu();
+        Dictionary<int, string> commands = new();
+        int nextId = 1;
+        IntPtr menu = BuildMenu(_menu, commands, ref nextId);
+
         if (menu == IntPtr.Zero)
         {
             return;
@@ -216,22 +254,15 @@ public sealed class TrayIconService : IDisposable
 
         try
         {
-            NativeMethods.AppendMenu(
-                menu,
-                NativeMethods.MF_STRING,
-                new IntPtr(MenuShowWindow),
-                "显示主窗口");
-
-            NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
-
-            NativeMethods.AppendMenu(
-                menu,
-                NativeMethods.MF_STRING,
-                new IntPtr(MenuExit),
-                "退出 Zentwik");
-
             // 双击托盘图标等价于「显示主窗口」，所以它是默认项（系统画成粗体）
-            NativeMethods.SetMenuDefaultItem(menu, MenuShowWindow, 0);
+            foreach (KeyValuePair<int, string> pair in commands)
+            {
+                if (pair.Value == TrayMenuBuilder.KeyShow)
+                {
+                    NativeMethods.SetMenuDefaultItem(menu, (uint)pair.Key, 0);
+                    break;
+                }
+            }
 
             NativeMethods.GetCursorPos(out var pt);
             NativeMethods.SetForegroundWindow(_source.Handle);
@@ -252,21 +283,69 @@ public sealed class TrayIconService : IDisposable
 
             NativeMethods.PostMessage(_source.Handle, NativeMethods.WM_NULL, IntPtr.Zero, IntPtr.Zero);
 
-            switch (command)
+            // 点空白处返回 0，不是可执行项。
+            if (command > 0 && commands.TryGetValue(command, out string? key))
             {
-                case MenuShowWindow:
-                    ShowRequested?.Invoke(this, EventArgs.Empty);
-                    break;
+                switch (key)
+                {
+                    case TrayMenuBuilder.KeyShow:
+                        ShowRequested?.Invoke(this, EventArgs.Empty);
+                        break;
 
-                case MenuExit:
-                    ExitRequested?.Invoke(this, EventArgs.Empty);
-                    break;
+                    case TrayMenuBuilder.KeyExit:
+                        ExitRequested?.Invoke(this, EventArgs.Empty);
+                        break;
+
+                    default:
+                        ItemInvoked?.Invoke(this, key);
+                        break;
+                }
             }
         }
         finally
         {
+            // 子菜单句柄随父菜单一起释放，不用逐个 Destroy。
             NativeMethods.DestroyMenu(menu);
         }
+    }
+
+    /// <summary>按模型递归建菜单，同时把分配出去的 ID 记进 <paramref name="commands"/>。</summary>
+    private static IntPtr BuildMenu(
+        IReadOnlyList<TrayMenuItem> items,
+        Dictionary<int, string> commands,
+        ref int nextId)
+    {
+        IntPtr menu = NativeMethods.CreatePopupMenu();
+
+        if (menu == IntPtr.Zero)
+        {
+            return menu;
+        }
+
+        foreach (TrayMenuItem item in items)
+        {
+            if (item.IsSeparator)
+            {
+                NativeMethods.AppendMenu(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
+                continue;
+            }
+
+            if (item.Children is { Count: > 0 })
+            {
+                IntPtr submenu = BuildMenu(item.Children, commands, ref nextId);
+                NativeMethods.AppendMenu(
+                    menu, NativeMethods.MF_POPUP | NativeMethods.MF_STRING, submenu, item.Label);
+                continue;
+            }
+
+            int id = nextId++;
+            commands[id] = item.Key;
+
+            uint flags = NativeMethods.MF_STRING | (item.IsChecked ? NativeMethods.MF_CHECKED : 0u);
+            NativeMethods.AppendMenu(menu, flags, new IntPtr(id), item.Label);
+        }
+
+        return menu;
     }
 
     /// <summary>移除托盘图标并释放资源。</summary>
