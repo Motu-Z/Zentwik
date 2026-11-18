@@ -216,8 +216,9 @@ namespace Zentwik.Worker
                 }
                 catch (IOException ex) when (IsPipeClosed(ex))
                 {
-                    // 界面关了或连接被重置：这条连接到此为止，不是错误。
-                    break;
+                    // 界面关了或连接被重置：这条连接到此为止，接着收下一个。
+                    // 这里是 continue 不是 break —— break 会把整个接受循环收掉，Worker 活着却再也连不上。
+                    continue;
                 }
                 catch (Exception ex)
                 {
