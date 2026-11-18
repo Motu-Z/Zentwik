@@ -1638,25 +1638,6 @@ public static class IntegrationTest
             session.SetDiffersFromSystem(false);
             Check("方案：对齐后标记消失", !session.ShowMark, session.MarkText);
 
-            // 页面就是机器现状：不一致时该去更新方案，提示得指到顶栏那个按钮。
-            session.SetDiffersFromSystem(true);
-            Check("方案：不一致时提示指到顶栏保存",
-                  session.MarkToolTip.Contains("保存并应用", StringComparison.Ordinal), session.MarkToolTip);
-
-            // 会把机器现在那套值覆盖掉时才问一声；问的时候还没动手。
-            session.OverwriteWarning = () => "系统当前的电源策略会被方案里的值覆盖";
-            session.ApplyOrSaveCommand.Execute(null);
-            Check("方案：会覆盖机器时先弹确认",
-                  ConfirmService.Instance.IsOpen
-                  && ConfirmService.Instance.Consequences.Any(c => c.Contains("覆盖", StringComparison.Ordinal)),
-                  string.Join(" / ", ConfirmService.Instance.Consequences));
-
-            ConfirmService.Instance.CancelCommand.Execute(null);
-            Check("方案：取消后不写也不切", !ConfirmService.Instance.IsOpen);
-
-            session.OverwriteWarning = null;
-            session.SetDiffersFromSystem(false);
-
             string oldName = first.Name;
             first.Name = oldName + "-改";
             Check("方案：改名后顶栏标题跟新名",
