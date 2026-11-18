@@ -69,13 +69,13 @@
 
                                     <RadioButton GroupName="Startup"
                                                  Style="{StaticResource SegmentedAccentRadioButtonStyle}"
-                                                 Content="后台+托盘"
+                                                 Content="后台与托盘"
                                                  automation:AutomationProperties.Name="启动后台服务与托盘"
                                                  IsChecked="{Binding StartupServiceTray, Mode=TwoWay}" />
 
                                     <RadioButton GroupName="Startup"
                                                  Style="{StaticResource SegmentedAccentRadioButtonStyle}"
-                                                 Content="后台+界面"
+                                                 Content="后台与界面"
                                                  automation:AutomationProperties.Name="启动后台服务与界面"
                                                  IsChecked="{Binding StartupServiceWindow, Mode=TwoWay}" />
                                 </StackPanel>

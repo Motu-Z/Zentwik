@@ -335,7 +335,7 @@ public class ProcessViewModel : ViewModelBase
             int count = SavedRules.Count;
 
             ConfirmService.Instance.Request(
-                "清空所有规则",
+                "清空全部规则",
                 new[]
                 {
                     $"删除当前 {count} 条已保存的调度规则",
@@ -389,7 +389,7 @@ public class ProcessViewModel : ViewModelBase
             }
 
             ConfirmService.Instance.Request(
-                "解除全部绑核",
+                "解除全部绑定",
                 new[]
                 {
                     $"把 {bound} 个已被限制的进程恢复成系统默认调度",
@@ -587,7 +587,7 @@ public class ProcessViewModel : ViewModelBase
             if (!quiet)
             {
                 ToastService.Instance.ShowError(
-                    processes.Message.Length > 0 ? processes.Message : "取不到进程列表");
+                    processes.Message.Length > 0 ? processes.Message : "无法获取进程列表");
             }
 
             return;
@@ -635,7 +635,7 @@ public class ProcessViewModel : ViewModelBase
             return;
         }
 
-        ScheduleBlockText = $"电源方案把核心停泊设为 {parked}%，停泊的核不参与调度，绑核可能跑出目标范围";
+        ScheduleBlockText = $"电源方案把最少可用核心设为 {parked}%，停泊的核心不参与调度，绑定可能失效";
         IsScheduleBlocked = true;
     }
 
@@ -683,7 +683,7 @@ public class ProcessViewModel : ViewModelBase
         }
 
         IsScheduleBlocked = false;
-        ToastService.Instance.Show($"核心停泊已关闭，正在按规则重新绑核");
+        ToastService.Instance.Show($"停泊已关闭，正在按规则重新绑定");
     }
 
     /// <summary>定时心跳。只查进程表：PID 集合没变就完全不碰 UI， 有增减才走一次完整刷新，避免每轮重建几百行</summary>
@@ -702,7 +702,7 @@ public class ProcessViewModel : ViewModelBase
             if (!quiet)
             {
                 ToastService.Instance.ShowError(
-                    processes.Message.Length > 0 ? processes.Message : "取不到进程列表");
+                    processes.Message.Length > 0 ? processes.Message : "无法获取进程列表");
             }
 
             return;
@@ -1629,7 +1629,7 @@ public class ProcessViewModel : ViewModelBase
         {
             // 掩码确实没了。此时传上去的 Id 一定匹配不到，后台会回「掩码不存在」——
             // 提前拦下来，提示用户重选。
-            return (false, "选中的掩码已不存在，请重新选一次");
+            return (false, "选中的掩码已不存在，请重新选择");
         }
 
         SaveScheduleRulePayload payload = new()

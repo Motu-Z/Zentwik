@@ -211,7 +211,7 @@ public sealed class LogsViewModel : ViewModelBase
         {
             // 空串是「确实没有日志」，null 是「后台没给数据」。
             // 后者不能 Parse 成空列表，否则整页日志被静默清掉。
-            ToastService.Instance.Show("后台服务没有返回日志数据");
+            ToastService.Instance.Show("后台服务未返回日志数据");
             return;
         }
 
@@ -232,8 +232,8 @@ public sealed class LogsViewModel : ViewModelBase
         }
 
         ConfirmService.Instance.Request(
-            "清空所有日志",
-            new[] { "本次运行的日志与历史日志文件一起删除，无法恢复。" },
+            "清空全部日志",
+            new[] { "本次运行的日志与历史日志文件一起删除，无法恢复" },
             () => Fire(ClearAsync),
             "清空");
     }
@@ -573,7 +573,7 @@ public sealed class LogsViewModel : ViewModelBase
         Add("09:30:12.492", "INFO", "最高频率写入：请求 4750，SMU 接受 True，回读 4750");
         Add("09:30:15.102", "WARN", "绑定失败 cs2.exe（错误 5：权限不足），已节流，60 秒内不再重复");
         Add("09:35:00.001", "INFO", "检测到 cs2.exe 启动（PID: 10240），匹配场景规则「极限游戏」");
-        Add("09:35:00.015", "INFO", "已切换方案至：极限游戏；已应用进程绑核：CCD0，优先级：高");
+        Add("09:35:00.015", "INFO", "已切换方案至：极限游戏；已应用进程绑定：CCD0，优先级：高");
         Add("09:40:22.880", "ERROR", "设置进程优先级失败：拒绝访问，目标进程可能受到反作弊保护");
         Add("10:15:00.000", "INFO", "检测到 cs2.exe 退出，恢复默认方案：日常办公");
         Add("10:30:11.500", "WARN", "系统电源策略应用部分失败：链路电源管理超出允许范围，已跳过该项");

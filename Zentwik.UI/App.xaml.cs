@@ -453,7 +453,7 @@ public partial class App : Application
                 if (e.Args.Contains("--toast"))
                 {
                     ViewModels.ToastService.Instance.Show(
-                        "规则已保存，并对 2 个正在运行的进程立即生效（steam.exe → CCD1）。");
+                        "规则已保存，并对 2 个正在运行的进程立即生效（steam.exe 绑定到 CCD1）");
                     window.UpdateLayout();
                 }
 

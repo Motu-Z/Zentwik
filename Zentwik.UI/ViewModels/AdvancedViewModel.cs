@@ -137,7 +137,7 @@ public class AdvancedViewModel : ViewModelBase
                 {
                     "自动应用调校参数将被关闭",
                     "智能休眠感知将被关闭",
-                    "智能防砖保护将被关闭",
+                    "启动异常自动拦截将被关闭",
                 },
                 DisableAll,
                 "停用"));
@@ -149,7 +149,7 @@ public class AdvancedViewModel : ViewModelBase
                 {
                     "删除全部配置方案",
                     "删除全部已保存的调度规则",
-                    "恢复所有设置到默认值",
+                    "恢复全部设置到默认值",
                     "移除桌面右键菜单",
                 },
                 ClearAll,

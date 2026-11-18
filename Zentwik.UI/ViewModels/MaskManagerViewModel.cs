@@ -455,12 +455,12 @@ public sealed class MaskManagerViewModel : ViewModelBase
     private static string UsageText(int rules, int plans)
     {
         if (rules > 0 && plans > 0)
-            return $"有 {rules} 条规则和 {plans} 个方案正在使用此掩码，删除后将恢复默认。";
+            return $"有 {rules} 条规则和 {plans} 个方案正在使用此掩码，删除后恢复默认";
 
         if (rules > 0)
-            return $"有 {rules} 条规则正在使用此掩码，删除后将恢复默认。";
+            return $"有 {rules} 条规则正在使用此掩码，删除后恢复默认";
 
-        return $"有 {plans} 个方案正在使用此掩码，删除后将恢复默认。";
+        return $"有 {plans} 个方案正在使用此掩码，删除后恢复默认";
     }
 
     private async Task RemoveMaskAsync(SavedMaskItem item, List<ScheduleRulePayload> ruleReferences)
@@ -514,7 +514,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
         if (mask == 0)
         {
-            ToastError("至少选一个核心");
+            ToastError("至少选择一个核心");
             return;
         }
 
@@ -761,7 +761,7 @@ public sealed class SavedMaskItem : ViewModelBase
     public string RangeText => Mask == 0 ? string.Empty : MaskFormatter.ToRangeText(Mask);
 
     public string CountText =>
-        BitOperations.PopCount(Mask).ToString(CultureInfo.InvariantCulture) + " 核";
+        BitOperations.PopCount(Mask).ToString(CultureInfo.InvariantCulture) + " 个处理器";
 
     private bool _isSelected;
 

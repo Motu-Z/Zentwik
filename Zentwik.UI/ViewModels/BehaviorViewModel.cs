@@ -82,9 +82,9 @@ public class BehaviorViewModel : ViewModelBase
     /// <summary>当前启动方式的一句话说明。行右侧只有四个按钮，不解释就成了猜谜。</summary>
     public string StartupHint => _settings.Startup switch
     {
-        StartupBehavior.None => "开机不启动任何组件，只在你手动打开时运行",
-        StartupBehavior.ServiceOnly => "开机只起后台服务，不显示托盘与界面",
-        StartupBehavior.ServiceTray => "开机起后台服务与托盘图标，界面按需打开",
+        StartupBehavior.None => "开机不启动任何组件，仅在手动打开时运行",
+        StartupBehavior.ServiceOnly => "开机只启动后台服务，不显示托盘与界面",
+        StartupBehavior.ServiceTray => "开机启动后台服务与托盘图标，界面按需打开",
         _ => "开机直接打开界面，后台服务同时启动"
     };
 
@@ -113,7 +113,7 @@ public class BehaviorViewModel : ViewModelBase
     {
         MainWindowCloseBehavior.MinimizeToTray => "窗口收进托盘，后台服务继续运行",
         MainWindowCloseBehavior.ExitAll => "界面和后台服务一起退出",
-        _ => "只退界面，后台服务继续运行"
+        _ => "仅退出界面，后台服务继续运行"
     };
 
     // 后台效率
@@ -141,7 +141,7 @@ public class BehaviorViewModel : ViewModelBase
     {
         IdleTrimMode.Off => "窗口收进后台后不做处理",
         IdleTrimMode.Light => "降低优先级并把占用的内存交还系统，页面保留",
-        _ => "在上面基础上释放其他页面的控件树，切回时按需重建"
+        _ => "在前一项基础上释放其他页面的界面缓存，切回时重建"
     };
 
     private void SetIdleTrim(IdleTrimMode mode)

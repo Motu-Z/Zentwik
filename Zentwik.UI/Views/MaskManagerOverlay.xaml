@@ -249,7 +249,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <TextBlock Text="还没有保存的掩码"
+                    <TextBlock Text="暂无保存的掩码"
                                FontSize="12"
                                Foreground="{DynamicResource TextTertiaryBrush}"
                                Margin="0,4,0,0"
@@ -355,7 +355,7 @@
                                          Style="{StaticResource SegmentRadioButtonStyle}"
                                          Height="28"
                                          automation:AutomationProperties.Name="CPU 集"
-                                         ToolTip="SetProcessDefaultCpuSets：按 CPU Sets 下发，不受 64 个逻辑处理器与处理器组的限制"
+                                         ToolTip="SetProcessDefaultCpuSets：按 CPU Sets 写入，不受 64 个逻辑处理器与处理器组的限制"
                                          IsChecked="{Binding MaskManager.IsCpuSetsType, Mode=TwoWay}">
                                 <TextBlock Text="CPU Sets" />
                             </RadioButton>
@@ -364,7 +364,7 @@
                                          Style="{StaticResource SegmentRadioButtonStyle}"
                                          Height="28"
                                          automation:AutomationProperties.Name="关联掩码"
-                                         ToolTip="SetProcessAffinityMask：传统亲和性，仅覆盖处理器组 0，最多 64 个逻辑处理器"
+                                         ToolTip="SetProcessAffinityMask：传统 Affinity Mask，仅覆盖处理器组 0，最多 64 个逻辑处理器"
                                          IsEnabled="{Binding MaskManager.AffinityMaskSupported}"
                                          IsChecked="{Binding MaskManager.IsAffinityMaskType, Mode=TwoWay}">
                                 <TextBlock Text="Affinity Mask" />

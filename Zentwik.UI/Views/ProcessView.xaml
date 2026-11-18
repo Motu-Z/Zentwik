@@ -67,7 +67,7 @@
                         <Button Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="8,0,0,0"
                                 automation:AutomationProperties.Name="{Binding Plans.ApplyButtonText}"
-                                ToolTip="把当前规则保存到当前方案，并立即应用"
+                                ToolTip="将当前规则保存到所选方案，并应用"
                                 Command="{Binding ApplyPlanCommand}"
                                 IsEnabled="{Binding CanApplyRules}"
 >
@@ -77,7 +77,7 @@
                 </Grid>
             </Border>
 
-            <!-- 前置条件：核心停泊会让软亲和失效，绑核看起来成功但线程会跑出目标集合 -->
+            <!-- 前置条件：核心停泊会让软亲和失效，绑定看起来成功但线程会跑出目标集合 -->
             <Border Grid.Row="1"
                     Margin="32,0,32,8"
                     Padding="14,10"
@@ -111,7 +111,7 @@
                             Style="{StaticResource ActionButtonStyle}"
                             Command="{Binding FixScheduleBlockCommand}"
                             automation:AutomationProperties.Name="关闭核心停泊"
-                            Content="修复" />
+                            Content="关闭停泊" />
 
                     <Button Grid.Column="3"
                             Style="{StaticResource IconButtonStyle}"
@@ -582,7 +582,7 @@
                                 <Button Grid.Row="1"
                                         Style="{StaticResource ActionButtonStyle}"
                                         Margin="0,12,0,0"
-                                        automation:AutomationProperties.Name="清空所有规则"
+                                        automation:AutomationProperties.Name="清空全部规则"
                                         Command="{Binding ClearAllRulesCommand}"
 >
                                     <TextBlock Text="清空全部规则" />

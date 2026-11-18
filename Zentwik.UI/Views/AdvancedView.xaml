@@ -109,7 +109,7 @@
                                     VerticalAlignment="Center"
                                     automation:AutomationProperties.Name="一键恢复默认安全值"
                                     Command="{Binding RestoreSafeDefaultsCommand}">
-                                <TextBlock Text="一键恢复默认安全值" />
+                                <TextBlock Text="恢复默认安全参数" />
                             </Button>
                         </Grid>
                     </Border>
@@ -181,9 +181,9 @@
                             <Button Grid.Column="1"
                                     Style="{StaticResource ActionButtonStyle}"
                                     VerticalAlignment="Center"
-                                    automation:AutomationProperties.Name="导出所有日志"
+                                    automation:AutomationProperties.Name="导出全部日志"
                                     Command="{Binding ExportLogsCommand}">
-                                <TextBlock Text="导出所有日志" />
+                                <TextBlock Text="导出全部日志" />
                             </Button>
                         </Grid>
                     </Border>
@@ -203,7 +203,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                <TextBlock Text="Toast 显示时长" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="气泡显示时长" Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>
 
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -214,7 +214,7 @@
                                         TickFrequency="1"
                                         IsSnapToTickEnabled="True"
                                         VerticalAlignment="Center"
-                                        automation:AutomationProperties.Name="Toast 显示时长"
+                                        automation:AutomationProperties.Name="气泡显示时长"
                                         Value="{Binding ToastDuration, Mode=TwoWay}" />
 
                                 <TextBlock Text="{Binding ToastDurationText}"
@@ -246,7 +246,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                    <TextBlock Text="停用所有功能" Style="{StaticResource DangerZoneTitleStyle}" />
+                                    <TextBlock Text="停用全部功能" Style="{StaticResource DangerZoneTitleStyle}" />
                                 </StackPanel>
 
                                 <Button Grid.Column="1"
@@ -265,7 +265,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                    <TextBlock Text="清除所有用户数据（恢复出厂设置）" Style="{StaticResource DangerZoneTitleStyle}" />
+                                    <TextBlock Text="清除全部用户数据（恢复出厂设置）" Style="{StaticResource DangerZoneTitleStyle}" />
                                 </StackPanel>
 
                                 <Button Grid.Column="1"
@@ -273,7 +273,7 @@
                                         VerticalAlignment="Center"
                                         automation:AutomationProperties.Name="清除全部数据"
                                         Command="{Binding ClearAllCommand}">
-                                    <TextBlock Text="抹除所有数据" />
+                                    <TextBlock Text="抹除全部数据" />
                                 </Button>
                             </Grid>
                         </StackPanel>

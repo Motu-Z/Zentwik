@@ -928,10 +928,10 @@ public static class IntegrationTest
         var cases = new (string Page, Func<FrameworkElement> Factory, string[] Names)[]
         {
             ("调校", () => new Views.TuningView(), new[] { "回读", "保存并应用" }),
-            ("进程", () => new Views.ProcessView(), new[] { "清空所有规则", "全部解绑" }),
+            ("进程", () => new Views.ProcessView(), new[] { "清空全部规则", "全部解绑" }),
             ("电源", () => new Views.PowerView(), new[] { "回读", "保存并应用" }),
             ("场景", () => new Views.ScenariosView(), new[] { "启用自动切换", "新建规则" }),
-            ("日志", () => new Views.LogsView(), new[] { "控制中心", "打开日志目录", "清空所有日志" }),
+            ("日志", () => new Views.LogsView(), new[] { "控制中心", "打开日志目录", "清空全部日志" }),
             ("通用", () => new Views.SettingsView(), new[] { "打开项目源码", "检查更新" }),
             ("行为", () => new Views.BehaviorView(), new[] { "不启动", "启动后台服务与界面" }),
             ("高级", () => new Views.AdvancedView(), new[] { "启动异常自动拦截", "运行自检并导出" }),
@@ -1447,7 +1447,7 @@ public static class IntegrationTest
             Check("场景：段标题为「已保存的规则」", texts.Contains("已保存的规则"));
             Check("场景：规则卡有 IF 标签", texts.Any(t => t.StartsWith("IF ")));
             Check("场景：规则卡三个动作块齐全且文案统一",
-                  new[] { "调校方案", "调度方案", "电源方案" }.All(texts.Contains));
+                  new[] { "调校方案", "掩码", "电源方案" }.All(texts.Contains));
             Check("场景：空动作显示「保持原样」", texts.Any(t => t == "保持原样"));
 
             Check("场景：顶栏有新建规则主按钮",
@@ -1521,7 +1521,7 @@ public static class IntegrationTest
                       editorTexts.Contains("IF / 触发条件")
                       && editorTexts.Contains("THEN / 执行动作"));
                 Check("场景：三个动作块按模块命名",
-                      new[] { "调校方案", "调度方案", "电源方案" }.All(editorTexts.Contains));
+                      new[] { "调校方案", "掩码", "电源方案" }.All(editorTexts.Contains));
                 Check("场景：触发条上有两级下拉",
                       FindAll<ComboBox>(editor).Count(c => c.Tag is null) >= 2,
                       $"{FindAll<ComboBox>(editor).Count(c => c.Tag is null)}");

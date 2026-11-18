@@ -253,8 +253,8 @@ public partial class TuningViewModel : ObservableObject
 
             if (outcome.TransportFailed)
             {
-                MarkWorkerUnreachable("下发过程中与后台服务的连接中断，无法确认是否已生效。");
-                ToastService.Instance.ShowError("后台服务未连接，调校未下发");
+                MarkWorkerUnreachable("写入过程中与后台服务的连接中断，无法确认是否已生效");
+                ToastService.Instance.ShowError("后台服务未连接，调校未写入");
                 return;
             }
 
@@ -271,7 +271,7 @@ public partial class TuningViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ToastService.Instance.ShowError($"下发调校失败：{ex.Message}");
+            ToastService.Instance.ShowError($"应用调校失败：{ex.Message}");
         }
         finally
         {
@@ -284,7 +284,7 @@ public partial class TuningViewModel : ObservableObject
     {
         if (IsBusy)
         {
-            ToastService.Instance.Show("正在通信，请稍后保存");
+            ToastService.Instance.Show("正在通信，请稍后再保存");
             return;
         }
 
@@ -389,7 +389,7 @@ public partial class TuningViewModel : ObservableObject
             {
                 MarkWorkerUnreachable(WorkerStatus.Instance.FailureDetail is { } reason
                     ? $"无法读写硬件。{reason}"
-                    : "无法读写硬件。后台服务未响应，点左下角状态灯可重新连接。");
+                    : "无法读写硬件。后台服务未响应，点左下角状态灯可重新连接");
                 await FallbackToStoredValuesAsync().ConfigureAwait(true);
                 NotifyIf(notifyOnFailure, "后台服务未连接，未能读取硬件当前值");
                 return;
@@ -419,7 +419,7 @@ public partial class TuningViewModel : ObservableObject
 
             if (snapshot.TransportFailed)
             {
-                MarkWorkerUnreachable("读取硬件当前值时连接中断。请确认后台服务仍在运行后重试。");
+                MarkWorkerUnreachable("读取硬件当前值时连接中断，请确认后台服务仍在运行后重试");
                 await FallbackToStoredValuesAsync().ConfigureAwait(true);
                 NotifyIf(notifyOnFailure, "读取硬件当前值时连接中断");
                 return;

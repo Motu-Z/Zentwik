@@ -64,7 +64,7 @@
                     <Button Style="{StaticResource PrimaryButtonStyle}"
                             Margin="8,0,0,0"
                             automation:AutomationProperties.Name="{Binding Plans.ApplyButtonText}"
-                            ToolTip="把当前设置保存到当前方案，并立即写入硬件"
+                            ToolTip="将当前参数保存到所选方案，并写入硬件"
                             Command="{Binding ApplyCommand}"
                             IsEnabled="{Binding CanSave}">
                         <TextBlock Text="{Binding Plans.ApplyButtonText}" />

@@ -116,7 +116,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         set => SetProperty(ref _isEditorOpen, value);
     }
 
-    public string EditorTitle => _editingId is null ? "添加自动化联动" : "编辑自动化联动";
+    public string EditorTitle => _editingId is null ? "添加自动化规则" : "编辑自动化规则";
 
     // 触发源：两级下拉（大类 → 状态）。
 
@@ -394,7 +394,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         if (WorkerStatus.Instance.IsTuningSupported)
             EnsureStaleOption(EditorProfiles, EditorProfileId, "（调校方案已删除）");
 
-        EnsureStaleOption(EditorMasks, EditorMaskId, "（调度方案已删除）");
+        EnsureStaleOption(EditorMasks, EditorMaskId, "（掩码已删除）");
         EnsureStaleOption(EditorPowerSchemes, EditorPowerSchemeId, "（电源方案已删除）");
 
         RebindActionSelection();
@@ -642,7 +642,7 @@ public sealed class ScenariosViewModel : ViewModelBase
                o => string.Equals(o.Id, id, StringComparison.Ordinal))?.Name ?? missing;
 
     private string MaskNameOf(string maskId)
-        => string.IsNullOrEmpty(maskId) ? string.Empty : NameOf(EditorMasks, maskId, "（调度方案已删除）");
+        => string.IsNullOrEmpty(maskId) ? string.Empty : NameOf(EditorMasks, maskId, "（掩码已删除）");
 
     private string PowerNameOf(string powerSchemeId)
         => string.IsNullOrEmpty(powerSchemeId)
@@ -721,7 +721,7 @@ public sealed class ScenariosViewModel : ViewModelBase
 
         // 引用的方案已被删除：不替用户改成「保持原样」，让他自己重新选。
         string? stale = StaleActionLabel(EditorProfiles, EditorProfileId, "调校方案")
-            ?? StaleActionLabel(EditorMasks, EditorMaskId, "调度方案")
+            ?? StaleActionLabel(EditorMasks, EditorMaskId, "掩码")
             ?? StaleActionLabel(EditorPowerSchemes, EditorPowerSchemeId, "电源方案");
 
         if (stale is not null)
@@ -733,7 +733,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         // 三个动作全空的规则命中后什么也不会发生，后台同样会拒。
         if (EditorProfileId.Length == 0 && EditorMaskId.Length == 0 && EditorPowerSchemeId.Length == 0)
         {
-            Toast("至少要选一个执行动作");
+            Toast("至少选择一个执行动作");
             return;
         }
 
