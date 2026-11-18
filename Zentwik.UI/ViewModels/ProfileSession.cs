@@ -575,7 +575,7 @@ public sealed class PlanScope : ViewModelBase
                 new[]
                 {
                     $"「{previous?.Name}」的改动尚未保存",
-                    $"切换到「{item.Name}」会改用它的参数，改动不会随之转移",
+                    $"切换后页面上是「{item.Name}」的参数",
                     "如需保留，请先保存并应用",
                 },
                 () => Current = item,

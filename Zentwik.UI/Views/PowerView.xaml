@@ -374,7 +374,7 @@
                     </Grid>
                 </Border>
 
-                    <!-- 能效偏好 -->
+                    <!-- 处理器能效偏好 -->
                     <Border Style="{StaticResource RowStyle}">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -383,7 +383,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="能效偏好"
+                                <TextBlock Text="处理器能效偏好"
                                            ToolTip="数值越高越倾向于节能，越低越倾向于性能"
                                            Style="{StaticResource RowTitleStyle}" />
                             </StackPanel>

@@ -186,17 +186,13 @@ public partial class PowerViewModel : ObservableObject
             PowerScheme target = value;
             SyncSelectedScheme();
 
-            List<string> consequences = new()
-            {
-                $"「{target.Name}」保存的是另一组参数，页面上的改动不会随之转移",
-            };
-
-            consequences.AddRange(DescribePendingChanges());
-            consequences.Add("如需保留，请先「保存并应用」");
+            List<string> pending = new();
+            CollectPending(pending, "交流电", _ac, _appliedAc);
+            CollectPending(pending, "电池", _dc, _appliedDc);
 
             ConfirmService.Instance.Request(
-                "切换将丢弃未保存的改动",
-                consequences,
+                $"切换到「{target.Name}」会丢弃 {pending.Count} 项未保存的改动",
+                Shorten(pending),
                 () => SwitchConfirmed(target),
                 "丢弃并切换");
 
@@ -206,15 +202,10 @@ public partial class PowerViewModel : ObservableObject
         _ = SwitchSchemeAsync(value);
     }
 
-    /// <summary>页面上改过、还没下发的项。切系统计划会被整组覆盖，弹窗里要逐条列出来。</summary>
-    private IReadOnlyList<string> DescribePendingChanges()
+    /// <summary>弹窗最多列 4 项，其余收成一行。</summary>
+    private static IReadOnlyList<string> Shorten(List<string> items)
     {
         const int shown = 4;
-
-        List<string> items = new();
-
-        CollectPending(items, "交流电", _ac, _appliedAc);
-        CollectPending(items, "电池", _dc, _appliedDc);
 
         if (items.Count <= shown)
             return items;
@@ -227,7 +218,7 @@ public partial class PowerViewModel : ObservableObject
     // 项名必须逐字照抄界面标签，否则弹窗里说的项在页面上找不到。
     private static void CollectPending(List<string> items, string segment, PowerSet now, PowerSet applied)
     {
-        AddPending(items, segment, "能效偏好", now.Epp != applied.Epp);
+        AddPending(items, segment, "处理器能效偏好", now.Epp != applied.Epp);
         AddPending(items, segment, "性能提升模式", now.BoostMode != applied.BoostMode);
         AddPending(items, segment, "最大处理器状态", now.MaxProcessorState != applied.MaxProcessorState);
         AddPending(items, segment, "最小处理器状态", now.MinProcessorState != applied.MinProcessorState);
@@ -240,7 +231,7 @@ public partial class PowerViewModel : ObservableObject
     private static void AddPending(List<string> items, string segment, string label, bool changed)
     {
         if (changed)
-            items.Add($"{label}（{segment}）");
+            items.Add($"{segment}的{label}");
     }
 
     /// <summary>确认丢弃改动之后真正切过去。先抑制一次选中回调，避免再弹一遍确认。</summary>
