@@ -1638,6 +1638,19 @@ public static class IntegrationTest
             session.SetDiffersFromSystem(false);
             Check("方案：对齐后标记消失", !session.ShowMark, session.MarkText);
 
+            // 绑的 Windows 计划不是当前活动的那份：这是「没生效」，不是「值不一致」。
+            session.SetNotApplied(true);
+            Check("方案：没绑在当前计划上时标记未生效",
+                  session.ShowMark
+                  && session.MarkText.Contains("未生效", StringComparison.Ordinal)
+                  && !session.HasUnsavedChanges,
+                  session.MarkText);
+            Check("方案：未生效时提示说明会切走系统计划",
+                  session.MarkToolTip.Contains("Windows 计划", StringComparison.Ordinal), session.MarkToolTip);
+            Check("方案：未生效时底部应用按钮可点", session.CanApplyCurrent);
+            session.SetNotApplied(false);
+            Check("方案：生效后未生效标记消失", !session.ShowMark, session.MarkText);
+
             string oldName = first.Name;
             first.Name = oldName + "-改";
             Check("方案：改名后顶栏标题跟新名",

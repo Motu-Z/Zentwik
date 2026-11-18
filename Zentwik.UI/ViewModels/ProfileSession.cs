@@ -157,19 +157,43 @@ public sealed class PlanScope : ViewModelBase
 
     private bool _differsFromSystem;
 
+    /// <summary>
+    /// 方案绑的 Windows 计划不是当前活动的那份：这份方案根本没在跑。
+    /// 跟「值差了几项」不是一回事 —— 先说「没生效」，值对不对才谈得上。
+    /// </summary>
+    public bool NotApplied
+    {
+        get => _notApplied;
+        private set
+        {
+            if (!SetProperty(ref _notApplied, value))
+                return;
+
+            OnPropertyChanged(nameof(MarkText));
+            OnPropertyChanged(nameof(ShowMark));
+            OnPropertyChanged(nameof(MarkToolTip));
+            RefreshApplyState();
+        }
+    }
+
+    private bool _notApplied;
+
     /// <summary>方案条上跟在方案名后面的那截字。</summary>
     public string MarkText => HasUnsavedChanges
         ? "· 未保存"
+        : NotApplied ? "· 未生效"
         : DiffersFromSystem ? "· 与系统不一致" : string.Empty;
 
-    public bool ShowMark => HasUnsavedChanges || DiffersFromSystem;
+    public bool ShowMark => HasUnsavedChanges || NotApplied || DiffersFromSystem;
 
     /// <summary>标记的提示语：直接说该点哪个按钮，免得用户以为是自己改坏了。</summary>
     public string MarkToolTip => !ShowMark
         ? string.Empty
         : HasUnsavedChanges
             ? "改动还没保存到这份方案"
-            : "方案里的值与系统当前值不一致：点「应用」把方案写回系统，或点「保存至方案」用系统值更新方案";
+            : NotApplied
+                ? "这份方案绑的 Windows 计划不是当前活动的那份：点「应用」切过去并写入方案里的值"
+                : "方案里的值与系统当前值不一致：点「应用」把方案写回系统，或点「保存至方案」用系统值更新方案";
 
     /// <summary>脏值时底部按钮改走「只存方案」，由页面挂钩子接管。</summary>
     public Func<bool>? CanSavePending { get; set; }
@@ -220,11 +244,15 @@ public sealed class PlanScope : ViewModelBase
     /// <summary>页面同步「与系统不一致」标记。</summary>
     public void SetDiffersFromSystem(bool value) => DiffersFromSystem = value;
 
-    /// <summary>值刚写进方案或刚下发到系统：两个标记一起清。</summary>
+    /// <summary>页面同步「未生效」标记。</summary>
+    public void SetNotApplied(bool value) => NotApplied = value;
+
+    /// <summary>值刚写进方案或刚下发到系统：三个标记一起清。</summary>
     public void MarkSynced()
     {
         SetUnsaved(false);
         SetDiffersFromSystem(false);
+        SetNotApplied(false);
     }
 
     /// <summary>
@@ -240,8 +268,9 @@ public sealed class PlanScope : ViewModelBase
             ? $"保存至「{Current.Name}」"
             : DiffersFromSystem ? $"重新应用「{Current.Name}」" : $"应用「{Current.Name}」";
 
-    /// <summary>当前方案正在生效时，应用按钮没有意义；但值跟系统对不上时还要能重新下发。</summary>
-    public bool CanApplyCurrent => Current is not null && (!Current.IsActive || DiffersFromSystem);
+    /// <summary>当前方案正在生效时，应用按钮没有意义；未生效或值与系统对不上时都还要能下发。</summary>
+    public bool CanApplyCurrent =>
+        Current is not null && (NotApplied || DiffersFromSystem || !Current.IsActive);
 
     public bool CanApplyOrSave => HasUnsavedChanges
         ? CanSavePending?.Invoke() ?? false

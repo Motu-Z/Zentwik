@@ -131,6 +131,12 @@ public partial class PowerViewModel : ObservableObject
     private readonly PowerSet _appliedAc = PowerSet.CreateDefault(ac: true);
     private readonly PowerSet _appliedDc = PowerSet.CreateDefault(ac: false);
 
+    // 上一次从系统读回来的值。页面会被方案值覆盖，靠它才知道机器真值是什么。
+    private readonly PowerSet _systemAc = PowerSet.CreateDefault(ac: true);
+    private readonly PowerSet _systemDc = PowerSet.CreateDefault(ac: false);
+
+    private bool _hasSystemSnapshot;
+
     private PowerSet Current => IsAcMode ? _ac : _dc;
 
     private bool _suppressDirty;
@@ -428,10 +434,17 @@ public partial class PowerViewModel : ObservableObject
     /// 「保存并应用」是否可点。没有方案时不看改动：此时点下去是把当前参数存成一份新方案，
     /// 系统本来就是这些值，语义成立。
     /// </summary>
+    /// <summary>
+    /// 「保存并应用」是否可点。没有方案时不看改动：此时点下去是把当前参数存成一份新方案。
+    /// 「与系统不一致」时也要能点 —— 那一按是用机器当前值更新方案，不去动机器。
+    /// </summary>
     public bool CanApply =>
-        (IsDirty || (PlanHub.Power.Current is null && !PlanHub.SuppressWorkerInit))
+        (IsDirty || DiffersFromSystem || (PlanHub.Power.Current is null && !PlanHub.SuppressWorkerInit))
         && !IsBusy
         && IsWorkerAvailable;
+
+    /// <summary>方案条那条标记；顶栏按钮的可点状态与它同源，不各算一套。</summary>
+    private bool DiffersFromSystem => PlanHub.Power.DiffersFromSystem;
 
     public bool CanOperate => !IsBusy;
 
@@ -731,6 +744,18 @@ public partial class PowerViewModel : ObservableObject
     /// <summary>真正执行：存进方案（必要时新建）再下发</summary>
     private async Task ApplyCoreAsync(string? newPlanName)
     {
+        // 没动过任何值、方案却与机器对不上：这一按是把机器当前值更新进方案，不动机器。
+        if (!IsDirty && PlanHub.Power.DiffersFromSystem)
+        {
+            if (await SaveToPlanBeforeApplyAsync(newPlanName, BuildFullSnapshot(_systemAc, _systemDc))
+                    .ConfigureAwait(true))
+            {
+                SyncPlanDirty();
+            }
+
+            return;
+        }
+
         ApplyPowerPolicyPayload patch = BuildPatch();
 
         if (patch.IsEmpty)
@@ -977,44 +1002,53 @@ public partial class PowerViewModel : ObservableObject
     }
 
     /// <summary>存进方案的是完整一套值，不像 BuildPatch 只挑改动项：方案要能独立还原。</summary>
-    private ApplyPowerPolicyPayload BuildFullSnapshot()
+    private ApplyPowerPolicyPayload BuildFullSnapshot() => BuildFullSnapshot(_ac, _dc);
+
+    /// <summary>按给定的一套值拼完整快照；「用机器值更新方案」时传系统那份。</summary>
+    private ApplyPowerPolicyPayload BuildFullSnapshot(PowerSet ac, PowerSet dc)
     {
         ApplyPowerPolicyPayload payload = new();
 
-        if (_ac.EppSupported) payload.Epp = _ac.Epp;
-        if (_ac.BoostModeSupported) payload.BoostMode = _ac.BoostMode;
-        if (_ac.MaxProcessorStateSupported) payload.MaxProcessorState = _ac.MaxProcessorState;
-        if (_ac.MinProcessorStateSupported) payload.MinProcessorState = _ac.MinProcessorState;
-        if (_ac.CoolingPolicySupported) payload.CoolingPolicy = _ac.CoolingPolicy;
-        if (_ac.CoreParkingMinSupported) payload.CoreParkingMin = _ac.CoreParkingMin;
-        if (_ac.IdleDisableSupported) payload.IdleDisable = _ac.IdleDisable;
-        if (_ac.AspmSupported) payload.Aspm = _ac.Aspm;
+        if (ac.EppSupported) payload.Epp = ac.Epp;
+        if (ac.BoostModeSupported) payload.BoostMode = ac.BoostMode;
+        if (ac.MaxProcessorStateSupported) payload.MaxProcessorState = ac.MaxProcessorState;
+        if (ac.MinProcessorStateSupported) payload.MinProcessorState = ac.MinProcessorState;
+        if (ac.CoolingPolicySupported) payload.CoolingPolicy = ac.CoolingPolicy;
+        if (ac.CoreParkingMinSupported) payload.CoreParkingMin = ac.CoreParkingMin;
+        if (ac.IdleDisableSupported) payload.IdleDisable = ac.IdleDisable;
+        if (ac.AspmSupported) payload.Aspm = ac.Aspm;
 
         if (!HasBattery)
             return payload;
 
-        if (_dc.EppSupported) payload.DcEpp = _dc.Epp;
-        if (_dc.BoostModeSupported) payload.DcBoostMode = _dc.BoostMode;
-        if (_dc.MaxProcessorStateSupported) payload.DcMaxProcessorState = _dc.MaxProcessorState;
-        if (_dc.MinProcessorStateSupported) payload.DcMinProcessorState = _dc.MinProcessorState;
-        if (_dc.CoolingPolicySupported) payload.DcCoolingPolicy = _dc.CoolingPolicy;
-        if (_dc.CoreParkingMinSupported) payload.DcCoreParkingMin = _dc.CoreParkingMin;
-        if (_dc.IdleDisableSupported) payload.DcIdleDisable = _dc.IdleDisable;
-        if (_dc.AspmSupported) payload.DcAspm = _dc.Aspm;
+        if (dc.EppSupported) payload.DcEpp = dc.Epp;
+        if (dc.BoostModeSupported) payload.DcBoostMode = dc.BoostMode;
+        if (dc.MaxProcessorStateSupported) payload.DcMaxProcessorState = dc.MaxProcessorState;
+        if (dc.MinProcessorStateSupported) payload.DcMinProcessorState = dc.MinProcessorState;
+        if (dc.CoolingPolicySupported) payload.DcCoolingPolicy = dc.CoolingPolicy;
+        if (dc.CoreParkingMinSupported) payload.DcCoreParkingMin = dc.CoreParkingMin;
+        if (dc.IdleDisableSupported) payload.DcIdleDisable = dc.IdleDisable;
+        if (dc.AspmSupported) payload.DcAspm = dc.Aspm;
 
         return payload;
     }
 
-    /// <summary>下发前先把界面这套值写进当前方案；返回 false 时调用方不得继续下发</summary>
-    private async Task<bool> SaveToPlanBeforeApplyAsync(string? newPlanName = null)
+    /// <summary>下发前先把这套值写进当前方案；返回 false 时调用方不得继续下发</summary>
+    private async Task<bool> SaveToPlanBeforeApplyAsync(
+        string? newPlanName = null,
+        ApplyPowerPolicyPayload? snapshot = null)
     {
         if (PlanHub.SuppressWorkerInit)
             return true;
 
         PlanItem? current = PlanHub.Power.Current;
-        ApplyPowerPolicyPayload snapshot = BuildFullSnapshot();
+        ApplyPowerPolicyPayload values = snapshot ?? BuildFullSnapshot();
         bool hasScheme = ActiveSchemeGuid != Guid.Empty;
-        string? schemeGuid = hasScheme ? ActiveSchemeGuid.ToString("D") : null;
+
+        // 绑定只在新建时定。已有方案保存的是值，不该因为当前活动计划换了就改绑 ——
+        // 那会让两份方案抢同一份 Windows 计划，「谁在生效」再也说不清。
+        bool creating = current is null;
+        string? schemeGuid = creating && hasScheme ? ActiveSchemeGuid.ToString("D") : null;
 
         // 没有选中方案时由 SaveAsync 新建一份：与调校页「保存并应用」同一条路径。
         // 新建的这份照旧认领当前活动的系统计划，否则之后「应用」就无从切回。
@@ -1022,15 +1056,15 @@ public partial class PowerViewModel : ObservableObject
             .SaveAsync(
                 name: newPlanName ?? current?.Name,
                 powerSchemeGuid: schemeGuid,
-                powerPolicy: snapshot)
+                powerPolicy: values)
             .ConfigureAwait(true);
 
         if (saved is null)
             return false;
 
-        saved.PowerPolicy = snapshot;
+        saved.PowerPolicy = values;
 
-        if (hasScheme)
+        if (creating && hasScheme)
         {
             saved.PowerSchemeGuid = schemeGuid!;
             saved.PowerSchemeName = ActiveSchemeName;
@@ -1060,11 +1094,9 @@ public partial class PowerViewModel : ObservableObject
         try
         {
             ApplyPowerPolicyPayload snapshot = BuildFullSnapshot();
-            bool hasScheme = ActiveSchemeGuid != Guid.Empty;
-            string? schemeGuid = hasScheme ? ActiveSchemeGuid.ToString("D") : null;
 
             PlanItem? saved = await PlanHub.Power
-                .SaveAsync(name: current.Name, powerSchemeGuid: schemeGuid, powerPolicy: snapshot)
+                .SaveAsync(name: current.Name, powerPolicy: snapshot)
                 .ConfigureAwait(true);
 
             if (saved is null)
@@ -1072,16 +1104,13 @@ public partial class PowerViewModel : ObservableObject
 
             current.PowerPolicy = snapshot;
 
-            if (hasScheme)
-            {
-                current.PowerSchemeGuid = schemeGuid!;
-                current.PowerSchemeName = ActiveSchemeName;
-            }
-
             PlanHub.Power.UpdateCurrentSummary();
 
             // 值已经进方案了：方案条的「未保存」必须立刻消失，否则用户会一直点。
             PlanHub.Power.MarkSynced();
+
+            // 方案里是新值了，是否与机器对得上要重算一次。
+            SyncPlanDirty();
         }
         catch (Exception ex)
         {
@@ -1436,6 +1465,10 @@ public partial class PowerViewModel : ObservableObject
             _appliedAc.CopyFrom(_ac);
             _appliedDc.CopyFrom(_dc);
 
+            _systemAc.CopyFrom(_ac);
+            _systemDc.CopyFrom(_dc);
+            _hasSystemSnapshot = true;
+
             ActiveSchemeGuid = snapshot.ActiveSchemeGuid;
             ActiveSchemeName = snapshot.ActiveSchemeName;
 
@@ -1541,46 +1574,59 @@ public partial class PowerViewModel : ObservableObject
         RefreshDirty();
     }
 
-    /// <summary>把「与方案的差异」同步给方案条；整体换值后调用，不能只看 IsDirty 的跳变。</summary>
+    /// <summary>把方案条的状态同步给面板；整体换值、换方案后都要调。</summary>
     /// <remarks>
-    /// 两个条件都要，但结论不同：<c>IsDirty</c> 是「用户改了没存」，<c>DiffersFromPlan</c> 是
-    /// 「用户没动过、界面值与方案不同」（多半是系统侧被改）。前者提示「未保存」，后者提示
-    /// 「与系统不一致」—— 混成一句话用户会以为是自己改坏的。
+    /// 三件事分开说，混成一句用户会以为自己改坏了：
+    /// <c>IsDirty</c> 是「改了没保存」，<c>NotApplied</c> 是「这份方案绑的 Windows 计划不是当前活动的」，
+    /// <c>DiffersFromSystem</c> 是「方案在生效，但机器上的值与方案不同」。
     /// </remarks>
     private void SyncPlanDirty()
     {
         bool edited = IsDirty;
+        PlanItem? current = PlanHub.Power.Current;
 
         PlanHub.Power.SetUnsaved(edited);
 
-        // 没有当前方案时谈不上「不一致」，那是还没选方案。
+        // 没有当前方案时后两条都谈不上，那是还没选方案。
+        bool notApplied = current is not null && IsBoundToOtherScheme(current);
+        bool wasDrift = PlanHub.Power.DiffersFromSystem;
+
+        PlanHub.Power.SetNotApplied(notApplied);
         PlanHub.Power.SetDiffersFromSystem(
-            !edited && PlanHub.Power.Current is not null && DiffersFromPlan());
+            !edited && !notApplied && current is not null && DiffersFromSnapshot(current));
+
+        // 顶栏按钮的可点状态跟着「与系统不一致」走：那一按是把机器值存回方案。
+        if (PlanHub.Power.DiffersFromSystem != wasDrift)
+        {
+            OnPropertyChanged(nameof(CanApply));
+            ApplyCommand.NotifyCanExecuteChanged();
+        }
     }
 
-    /// <summary>界面值与当前方案里存的对不上；方案缺该字段视为「不关心」。</summary>
-    private bool DiffersFromPlan()
+    /// <summary>方案绑的 Windows 计划不是当前活动的那份：应用它会切走系统计划。</summary>
+    private bool IsBoundToOtherScheme(PlanItem current)
     {
-        PlanItem? current = PlanHub.Power.Current;
-        ApplyPowerPolicyPayload? plan = current?.PowerPolicy;
+        string bound = current.PowerSchemeGuid ?? string.Empty;
 
-        if (plan is null)
-            return true;
-
-        // 方案绑的系统计划不是当前活动的那一个时，页面读回来的是另一套计划的值，
-        // 跟方案的快照本来就不会相等 —— 那不是「你有改动没保存」。
-        // 升级重启、或在 Windows 设置里手动切过计划都会落到这里，
-        // 之前一律判成未保存，用户看到的就是「什么都没动也提示未保存」。
-        string bound = current?.PowerSchemeGuid ?? string.Empty;
-
-        if (bound.Length > 0
-            && ActiveSchemeGuid != Guid.Empty
-            && !string.Equals(bound, ActiveSchemeGuid.ToString("D"), StringComparison.OrdinalIgnoreCase))
-        {
+        if (bound.Length == 0 || ActiveSchemeGuid == Guid.Empty)
             return false;
-        }
 
-        return Differs(_ac, plan, ac: true) || Differs(_dc, plan, ac: false);
+        return !string.Equals(bound, ActiveSchemeGuid.ToString("D"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>方案里存的值与机器上读回来的值对不上；方案缺该字段视为「不关心」。</summary>
+    /// <remarks>
+    /// 比的是上一次回读留下的系统值，不是页面上的值：页面随时会被方案值覆盖，
+    /// 拿它比方案永远相等，「与系统不一致」就再也不会亮。
+    /// </remarks>
+    private bool DiffersFromSnapshot(PlanItem current)
+    {
+        ApplyPowerPolicyPayload? plan = current.PowerPolicy;
+
+        if (plan is null || !_hasSystemSnapshot)
+            return false;
+
+        return Differs(_systemAc, plan, ac: true) || (HasBattery && Differs(_systemDc, plan, ac: false));
     }
 
     private static bool Differs(PowerSet set, ApplyPowerPolicyPayload plan, bool ac)
