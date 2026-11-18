@@ -1642,14 +1642,12 @@ public partial class App : Application
 
         _tray = tray;
 
-        // 入口开关的权威在 UiEntrySettings：行为页改、清除全部数据重置，都从这一条通知过来。
-        UiEntrySettings.Changed += RefreshTrayMenu;
-
         tray.ShowRequested += (_, _) => BringToFront(window);
 
         // 托盘右键菜单由 TrayIconService 直接用 TrackPopupMenuEx 弹出（系统原生），
         // 不再需要 WPF 自绘菜单与它的 0x1 宿主窗口。
-        tray.SetMenu(TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu));
+        // 内容现取：方案列表要在连上后台之后才有。
+        tray.SetMenuProvider(BuildTrayMenu);
         tray.ItemInvoked += (_, key) => ApplyTrayCommand(key);
 
         tray.ExitRequested += (_, _) => window.ExitApplication();
@@ -1675,7 +1673,6 @@ public partial class App : Application
                     TimeSpan.FromSeconds(1.5), evenIfNotOwned: true);
             }
 
-            UiEntrySettings.Changed -= RefreshTrayMenu;
             _tray?.Dispose();
         };
     }
@@ -1698,8 +1695,9 @@ public partial class App : Application
         args.Any(a => a is "--screenshot" or "--selftest" or "--itest" or "--perf" or "--perf-empty" or "--powerclean"
                       || a.Contains("probe", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>入口开关变了：托盘菜单按新设置重建，下次右键生效。</summary>
-    private void RefreshTrayMenu() => _tray?.SetMenu(TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu));
+    /// <summary>右键那一刻现算菜单：方案列表要等连上后台才有，建图标时取不到。</summary>
+    private static IReadOnlyList<TrayMenuItem> BuildTrayMenu() =>
+        TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu);
 
     /// <summary>托盘里的方案项：窗口多半藏在托盘里，结果只能靠气泡回执。</summary>
     private void ApplyTrayCommand(string key)

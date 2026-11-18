@@ -174,16 +174,17 @@ public sealed class TrayIconService : IDisposable
         _renderedPixelSize = pixelSize;
     }
 
-    /// <summary>菜单模型。只存数据，画成 Win32 菜单在 <see cref="ShowContextMenu"/>。</summary>
-    private IReadOnlyList<TrayMenuItem> _menu = new[]
-    {
-        new TrayMenuItem(TrayMenuBuilder.KeyShow, "显示主窗口"),
-        TrayMenuBuilder.Separator,
-        new TrayMenuItem(TrayMenuBuilder.KeyExit, "退出 Zentwik"),
-    };
+    /// <summary>
+    /// 菜单内容现取：方案列表是连上后台之后异步拉的，建图标那一刻还是空的。
+    /// 存一份列表就会一直是空菜单，只有右键时现算才跟得上新建、删除、切换。
+    /// </summary>
+    private Func<IReadOnlyList<TrayMenuItem>>? _menuProvider;
 
-    /// <summary>替换菜单内容。下次右键生效。</summary>
-    public void SetMenu(IReadOnlyList<TrayMenuItem> items) => _menu = items;
+    /// <summary>菜单内容提供方。每次右键都重新取一次。</summary>
+    public void SetMenuProvider(Func<IReadOnlyList<TrayMenuItem>> provider) => _menuProvider = provider;
+
+    private IReadOnlyList<TrayMenuItem> CurrentMenu() =>
+        _menuProvider?.Invoke() ?? TrayMenuBuilder.Build(includePlans: false);
 
     /// <summary>点击了方案项一类的自定义项；参数是构建方给的 Key。</summary>
     public event EventHandler<string>? ItemInvoked;
@@ -245,7 +246,7 @@ public sealed class TrayIconService : IDisposable
 
         Dictionary<int, string> commands = new();
         int nextId = 1;
-        IntPtr menu = BuildMenu(_menu, commands, ref nextId);
+        IntPtr menu = BuildMenu(CurrentMenu(), commands, ref nextId);
 
         if (menu == IntPtr.Zero)
         {
