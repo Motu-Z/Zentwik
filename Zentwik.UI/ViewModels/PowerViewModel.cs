@@ -135,11 +135,8 @@ public partial class PowerViewModel : ObservableObject
 
     private bool _suppressDirty;
 
-    /// <summary>程序性改动选中项时为 true，避免列表刷新触发一次方案切换。</summary>
+    /// <summary>刷新方案面板期间为 true，避免列表刷新触发一次方案切换。</summary>
     private bool _suppressSchemeSwitch;
-
-    /// <summary>刷新方案面板期间为 true，期间不按方案快照覆盖页面值</summary>
-    private bool _suppressPlanLoad;
 
     private Task? _refreshTask;
 
@@ -425,13 +422,16 @@ public partial class PowerViewModel : ObservableObject
     private string _unavailableText = "本机不支持";
 
     /// <summary>
-    /// 「保存并应用」是否可点。没有方案时不看改动：此时点下去是把当前参数存成一份新方案，
-    /// 系统本来就是这些值，语义成立。
+    /// 「保存并应用」是否可点。没有方案时不看改动：此时点下去是把当前参数存成一份新方案。
+    /// 方案与系统不一致时也要能点 —— 页面就是机器现状，那一按是把机器值存回方案。
     /// </summary>
     public bool CanApply =>
-        (IsDirty || (PlanHub.Power.Current is null && !PlanHub.SuppressWorkerInit))
+        (IsDirty || DiffersFromSystem || (PlanHub.Power.Current is null && !PlanHub.SuppressWorkerInit))
         && !IsBusy
         && IsWorkerAvailable;
+
+    /// <summary>方案条上那条「与系统不一致」；顶栏按钮的可点状态与它同源，不各算一套。</summary>
+    private bool DiffersFromSystem => PlanHub.Power.DiffersFromSystem;
 
     public bool CanOperate => !IsBusy;
 
@@ -454,6 +454,10 @@ public partial class PowerViewModel : ObservableObject
         // 面板底部按钮脏值时改成「保存至」：只写 plans.json，不碰系统。
         PlanHub.Power.CanSavePending = () => CanSaveToPlan;
         PlanHub.Power.SavePending = () => _ = SaveToCurrentPlanAsync();
+
+        // 按方案覆盖机器、还会切 Windows 计划：值对不上时先问一声，别闷声写下去。
+        PlanHub.Power.OverwriteWarning = () =>
+            PlanDiffersFromPage() ? "系统当前的电源策略会被方案里的值覆盖" : null;
 
         // 从方案面板应用电源方案，系统计划会被切走 —— 本页必须重读。
         System.Windows.WeakEventManager<PlanScope, EventArgs>.AddHandler(
@@ -492,11 +496,9 @@ public partial class PowerViewModel : ObservableObject
     {
         try
         {
+            // 页面恒等于机器现状。这五项 Windows 自己能改（电源模式滑块）、厂商软件也能改，
+            // 页面显示方案值等于骗人；方案与系统差在哪由方案条的标记说。
             await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
-
-            // 系统值只是兜底。方案列表若已就绪，界面显示选中方案存的那一套 ——
-            // 与调校页一致：进来看到的是「我正在编辑的方案」，不是「机器现在的值」。
-            LoadSelectedPlanValues();
         }
         finally
         {
@@ -517,107 +519,17 @@ public partial class PowerViewModel : ObservableObject
         _ = RefreshCoreAsync(notifyOnFailure: false);
     }
 
-    /// <summary>面板换选了一份电源方案：把它的五项参数摆到界面上。</summary>
+    /// <summary>面板换选了一份电源方案：页面一个值都不动，只重算差异与按钮。</summary>
     private void OnPlanSelectionChanged(object? sender, EventArgs e)
     {
-        // 有/无方案直接决定顶栏按钮的文案与可点状态。
+        // 换的是「当前方案」，页面代表的是机器现在这套值，两者不同才亮标记。
+        SyncPlanDirty();
+
         OnPropertyChanged(nameof(CanApply));
         ApplyCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSaveToPlan));
         PlanHub.Power.RefreshApplyState();
         SaveToCurrentPlanCommand.NotifyCanExecuteChanged();
-
-        if (_suppressPlanLoad)
-            return;
-
-        LoadSelectedPlanValues();
-    }
-
-    /// <summary>把选中的那份方案存的五项参数搬到界面上（不动系统、不切计划、不标脏）</summary>
-    private void LoadSelectedPlanValues()
-    {
-        if (SuppressWorkerInit)
-            return;
-
-        PlanItem? item = PlanHub.Power.Current;
-
-        if (item is null || item.IsLocal || item.PowerPolicy is null)
-            return;
-
-        _suppressDirty = true;
-
-        try
-        {
-            ApplyPolicyFields(item.PowerPolicy);
-
-            // 换过来的是「这份方案的值」，不是用户改出来的草稿，
-            // 基线一起搬过去 —— 界面不该一换方案就显示成「有未保存改动」。
-            _appliedAc.CopyFrom(_ac);
-            _appliedDc.CopyFrom(_dc);
-        }
-        finally
-        {
-            _suppressDirty = false;
-        }
-
-        NotifyAllValues();
-        IsDirty = false;
-        SyncPlanDirty();
-    }
-
-    /// <summary>按方案快照覆盖两项值；快照里为 null 的项保持现状（增量语义）。</summary>
-    private void ApplyPolicyFields(ApplyPowerPolicyPayload policy)
-    {
-        if (policy.Epp is not null)
-            _ac.Epp = policy.Epp.Value;
-
-        if (policy.BoostMode is not null)
-            _ac.BoostMode = policy.BoostMode.Value;
-
-        if (policy.MaxProcessorState is not null)
-            _ac.MaxProcessorState = policy.MaxProcessorState.Value;
-
-        if (policy.MinProcessorState is not null)
-            _ac.MinProcessorState = policy.MinProcessorState.Value;
-
-        if (policy.CoolingPolicy is not null)
-            _ac.CoolingPolicy = policy.CoolingPolicy.Value;
-
-        if (policy.CoreParkingMin is not null)
-            _ac.CoreParkingMin = policy.CoreParkingMin.Value;
-
-        if (policy.Aspm is not null)
-            _ac.Aspm = policy.Aspm.Value;
-
-        if (policy.IdleDisable is not null)
-            _ac.IdleDisable = policy.IdleDisable.Value;
-
-        if (!HasBattery)
-            return;
-
-        if (policy.DcEpp is not null)
-            _dc.Epp = policy.DcEpp.Value;
-
-        if (policy.DcBoostMode is not null)
-            _dc.BoostMode = policy.DcBoostMode.Value;
-
-        if (policy.DcMaxProcessorState is not null)
-            _dc.MaxProcessorState = policy.DcMaxProcessorState.Value;
-
-        if (policy.DcMinProcessorState is not null)
-            _dc.MinProcessorState = policy.DcMinProcessorState.Value;
-
-        if (policy.DcCoolingPolicy is not null)
-            _dc.CoolingPolicy = policy.DcCoolingPolicy.Value;
-
-        if (policy.DcCoreParkingMin is not null)
-            _dc.CoreParkingMin = policy.DcCoreParkingMin.Value;
-
-        if (policy.DcAspm is not null)
-            _dc.Aspm = policy.DcAspm.Value;
-
-        if (policy.DcIdleDisable is not null)
-            _dc.IdleDisable = policy.DcIdleDisable.Value;
     }
 
     /// <summary>首帧是否已经读过一次系统状态。</summary>
@@ -737,14 +649,19 @@ public partial class PowerViewModel : ObservableObject
         {
             IsDirty = false;
 
-            // 没有改动也能「新建并应用」：系统本来就是这些值，
-            // 只需把当前状态存成一份方案，不必再写一遍。
-            if (newPlanName is not null
-                && await SaveToPlanBeforeApplyAsync(newPlanName).ConfigureAwait(true))
+            // 机器已经是页面这套值，没什么可下发。按钮还点得动只有两种情况：
+            // 还没有方案（新建一份），或方案与机器对不上（用机器值更新方案）。
+            if (newPlanName is null && !PlanDiffersFromPage())
+                return;
+
+            if (await SaveToPlanBeforeApplyAsync(newPlanName).ConfigureAwait(true)
+                && newPlanName is not null)
             {
                 ToastService.Instance.Show($"已新建「{newPlanName}」");
             }
 
+            // 方案已经等于机器现状：标记该灭，顶栏按钮该回到禁用。
+            SyncPlanDirty();
             return;
         }
 
@@ -1082,6 +999,9 @@ public partial class PowerViewModel : ObservableObject
 
             // 值已经进方案了：方案条的「未保存」必须立刻消失，否则用户会一直点。
             PlanHub.Power.MarkSynced();
+
+            // 方案等于机器现状了，顶栏按钮的可点状态跟着收回。
+            SyncPlanDirty();
         }
         catch (Exception ex)
         {
@@ -1291,16 +1211,7 @@ public partial class PowerViewModel : ObservableObject
             await RefreshCoreAsync(notifyOnFailure: false).ConfigureAwait(true);
 
             // 方案层的「生效中」也跟着变：后台已按这份计划反查归属并记账。
-            _suppressPlanLoad = true;
-
-            try
-            {
-                await PlanHub.Power.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
-            }
-            finally
-            {
-                _suppressPlanLoad = false;
-            }
+            await PlanHub.Power.RefreshAsync(notifyOnFailure: false).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -1554,8 +1465,24 @@ public partial class PowerViewModel : ObservableObject
         PlanHub.Power.SetUnsaved(edited);
 
         // 没有当前方案时谈不上「不一致」，那是还没选方案。
-        PlanHub.Power.SetDiffersFromSystem(
-            !edited && PlanHub.Power.Current is not null && DiffersFromPlan());
+        bool drift = !edited && PlanHub.Power.Current is not null && DiffersFromPlan();
+
+        if (PlanHub.Power.DiffersFromSystem == drift)
+            return;
+
+        PlanHub.Power.SetDiffersFromSystem(drift);
+
+        // 顶栏按钮的可点状态跟着这条：不一致时它变成「把机器值存回方案」。
+        OnPropertyChanged(nameof(CanApply));
+        ApplyCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>方案存的五项与页面对不上（页面就是机器现状）：应用这份方案会改掉机器现在的值。</summary>
+    private bool PlanDiffersFromPage()
+    {
+        ApplyPowerPolicyPayload? plan = PlanHub.Power.Current?.PowerPolicy;
+
+        return plan is not null && (Differs(_ac, plan, ac: true) || Differs(_dc, plan, ac: false));
     }
 
     /// <summary>界面值与当前方案里存的对不上；方案缺该字段视为「不关心」。</summary>

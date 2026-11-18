@@ -169,12 +169,15 @@ public sealed class PlanScope : ViewModelBase
         ? string.Empty
         : HasUnsavedChanges
             ? "改动还没保存到这份方案"
-            : "方案里的值与系统当前值不一致：点「应用」把方案写回系统，或点「保存至方案」用系统值更新方案";
+            : "方案里的值与系统当前值不一致：点「应用」把方案写回系统，或点顶栏「保存并应用」用机器当前值更新方案";
 
     /// <summary>脏值时底部按钮改走「只存方案」，由页面挂钩子接管。</summary>
     public Func<bool>? CanSavePending { get; set; }
 
     public Action? SavePending { get; set; }
+
+    /// <summary>应用前要先问一声的场合，由页面判定：返回后果那行字，null 表示不用问。</summary>
+    public Func<string?>? OverwriteWarning { get; set; }
 
     /// <summary>方案条底部那一个按钮：有改动只存方案，没改动才应用。</summary>
     private void RunApplyOrSave()
@@ -183,7 +186,7 @@ public sealed class PlanScope : ViewModelBase
         {
             if (CanApplyCurrent)
             {
-                ApplyCommand.Execute(null);
+                ApplyWithConfirm();
                 return;
             }
 
@@ -205,6 +208,24 @@ public sealed class PlanScope : ViewModelBase
         }
 
         SavePending();
+    }
+
+    /// <summary>会把机器现在那套值覆盖掉时才问一次；本来就一样就别拦人。</summary>
+    private void ApplyWithConfirm()
+    {
+        string? warning = OverwriteWarning?.Invoke();
+
+        if (warning is null)
+        {
+            ApplyCommand.Execute(null);
+            return;
+        }
+
+        ConfirmService.Instance.Request(
+            $"应用「{CurrentName}」",
+            new[] { warning },
+            () => ApplyCommand.Execute(null),
+            "应用");
     }
 
     public void RefreshApplyState()
