@@ -43,12 +43,23 @@ namespace Zentwik.Worker
                 services.AddSingleton<IWorkerLifetime, WorkerLifetime>();
 
                 // FilePrefix 是双进程日志不冲突的关键：UI 用 zentwik-，Worker 用 worker-。
-                services.AddZentwikCore(cfg => cfg.FilePrefix = "worker-");
+                // Verbose 打开：逐进程绑定、逐核 CO 这些明细只在 Debug，界面只看汇总，明细落盘备查。
+                services.AddZentwikCore(cfg =>
+                {
+                    cfg.FilePrefix = "worker-";
+                    cfg.Verbose = true;
+                });
 
                 services.AddSingleton<BackendHostService>();
                 services.AddSingleton<PipeServerService>();
 
                 using ServiceProvider provider = services.BuildServiceProvider();
+
+                // 启动分界要抢在取 BackendHostService 之前：SMU 初始化在构造 ISmuReader 时就跑了。
+                ILogService bootLog = provider.GetRequiredService<ILogService>();
+                bootLog.Info(
+                    $"===== 后台服务启动 {AppVersion.Current} · PID {Environment.ProcessId} · " +
+                    $"{(IsElevated() ? "管理员权限" : "普通权限")} =====");
 
                 BackendHostService backend = provider.GetRequiredService<BackendHostService>();
                 PipeServerService pipe = provider.GetRequiredService<PipeServerService>();
@@ -190,6 +201,23 @@ namespace Zentwik.Worker
             catch
             {
                 // 兜底路径不允许再抛。
+            }
+        }
+
+        /// <summary>是否以管理员身份运行。没提权时 SMU 与部分调度功能是降级状态，日志里要能看出来。</summary>
+        private static bool IsElevated()
+        {
+            try
+            {
+                using System.Security.Principal.WindowsIdentity identity =
+                    System.Security.Principal.WindowsIdentity.GetCurrent();
+
+                return new System.Security.Principal.WindowsPrincipal(identity)
+                    .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 

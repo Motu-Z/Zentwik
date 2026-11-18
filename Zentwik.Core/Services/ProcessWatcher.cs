@@ -131,6 +131,11 @@ namespace Zentwik.Core.Services
         /// <summary>复用的快照缓冲，避免每轮新建几百项。</summary>
         private readonly List<ProcessIdentity> _frame = new(512);
 
+        /// <summary>本轮成功绑定 / 调整优先级的数量。逐条明细走 Debug，界面只看这一条汇总。</summary>
+        private int _roundBound;
+
+        private int _roundPriority;
+
         public void Start()
         {
             lock (_lock)
@@ -304,6 +309,9 @@ namespace Zentwik.Core.Services
             bool changed;
             bool probeDrift = false;
 
+            _roundBound = 0;
+            _roundPriority = 0;
+
             lock (_applyGate)
             {
                 // 兜底：每分钟全量重扫一次，覆盖 PID 复用（同 PID 换了进程）这类漏网情况。
@@ -363,6 +371,13 @@ namespace Zentwik.Core.Services
             // 读回是跨进程调用，放到锁外做：它不该占住补扫与解绑都要等的这把锁。
             if (probeDrift)
                 ProbeDrift(alive);
+
+            // 逐条明细在 Debug：界面上只留「这轮做了几件事」，否则一天的日志全是进程名。
+            if (_roundBound > 0 || _roundPriority > 0)
+            {
+                _log.Info(
+                    $"本轮扫描 {frame.Count} 个进程，绑定 {_roundBound} 个，调整优先级 {_roundPriority} 个");
+            }
 
             if (changed)
                 RaiseProcessSetChanged();
@@ -469,6 +484,8 @@ namespace Zentwik.Core.Services
                 return;
 
             long started = Environment.TickCount64;
+            _roundBound = 0;
+            _roundPriority = 0;
 
             try
             {
@@ -482,7 +499,9 @@ namespace Zentwik.Core.Services
 
                 // 不设 _lastAlive：让第一轮 ScanOnce 走全量路径并广播一次，
                 // 场景规则才知道启动时都有哪些进程在跑。
-                _log.Info($"进程调度启动补扫完成，共检查 {frame.Count} 个进程，耗时 {Environment.TickCount64 - started} ms");
+                _log.Info(
+                    $"进程调度启动补扫完成：检查 {frame.Count} 个进程，绑定 {_roundBound} 个，" +
+                    $"调整优先级 {_roundPriority} 个，耗时 {Environment.TickCount64 - started} ms");
             }
             catch (Exception ex)
             {
@@ -864,7 +883,8 @@ namespace Zentwik.Core.Services
                 string scope = byAffinityMask
                     ? $"{result.AppliedCount} 个逻辑处理器"
                     : $"{result.AppliedCount} 个 CPU Sets";
-                _log.Info($"已绑定 {name}（PID {pid}）→ {label}，{scope}{parkingSuffix}");
+                _log.Debug($"已绑定 {name}（PID {pid}）→ {label}，{scope}{parkingSuffix}");
+                _roundBound++;
             }
             else
             {
@@ -941,7 +961,8 @@ namespace Zentwik.Core.Services
 
             if (result.Ok > 0)
             {
-                _log.Info($"已设置优先级 PID {pid} → {ProcessPriority.DisplayOf(label)}");
+                _log.Debug($"已设置优先级 {name}（PID {pid}）→ {ProcessPriority.DisplayOf(label)}");
+                _roundPriority++;
                 return;
             }
 

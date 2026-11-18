@@ -434,9 +434,13 @@ namespace Zentwik.Core.Services
         }
 
         /// <summary>
-        /// 把计划任务的关键状态写进日志：下次运行时间、上次运行时间、上次结果、运行方式。
-        /// schtasks 输出是本地化的，因此同时匹配中英文标签。
+        /// 把计划任务的状态压成一行：模式、运行账户、上次运行时间与结果。
+        /// 排查「开机没起来」就看它 —— 上次运行时间没动是没触发，动了但结果非 0 是起来后退出。
         /// </summary>
+        /// <remarks>
+        /// 不取「下次运行时间」：任务只有登录触发，系统给的永远是 N/A。
+        /// 标签要按本地化写法匹配，中文版 schtasks 用的是「模式」「作为用户运行」。
+        /// </remarks>
         private void LogTaskState()
         {
             try
@@ -448,30 +452,55 @@ namespace Zentwik.Core.Services
                     return;
                 }
 
-                // 只看排障需要的几行，不把整份 30 行 dump 塞进日志页
-                string[] keys =
-                {
-                    "状态", "Status",
-                    "运行方式", "Run As User",
-                    "上次运行时间", "Last Run Time",
-                    "上次结果", "Last Result",
-                    "下次运行时间", "Next Run Time"
-                };
+                string mode = ReadField(output, "模式", "状态", "Status");
+                string user = ReadField(output, "作为用户运行", "运行方式", "Run As User");
+                string lastRun = ReadField(output, "上次运行时间", "Last Run Time");
+                string lastResult = ReadField(output, "上次结果", "Last Result");
 
-                foreach (string raw in output.Split('\n'))
-                {
-                    string line = raw.Trim();
-                    if (line.Length == 0)
-                        continue;
+                List<string> parts = new(4);
 
-                    if (keys.Any(k => line.StartsWith(k + ":", StringComparison.OrdinalIgnoreCase)))
-                        _log.Info($"[自启] {line}");
-                }
+                if (mode.Length > 0)
+                    parts.Add($"状态 {mode}");
+
+                if (user.Length > 0)
+                    parts.Add($"账户 {user}");
+
+                if (lastRun.Length > 0)
+                    parts.Add($"上次 {lastRun}");
+
+                if (lastResult.Length > 0)
+                    parts.Add($"结果 {lastResult}");
+
+                _log.Info(parts.Count == 0
+                    ? $"[自启] 读不到计划任务 {TaskName} 的状态"
+                    : $"[自启] {string.Join(" · ", parts)}");
             }
             catch (Exception ex)
             {
                 _log.Warn($"读取计划任务状态异常：{ex.Message}");
             }
+        }
+
+        /// <summary>从 <c>/FO LIST</c> 输出里取某个标签的值；标签按本地化写法给多个备选。</summary>
+        private static string ReadField(string output, params string[] labels)
+        {
+            foreach (string raw in output.Split('\n'))
+            {
+                string line = raw.Trim();
+                int colon = line.IndexOf(':');
+
+                if (colon <= 0)
+                    continue;
+
+                string label = line[..colon].Trim();
+
+                if (!labels.Any(l => string.Equals(l, label, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                return line[(colon + 1)..].Trim();
+            }
+
+            return string.Empty;
         }
 
         /// <summary>

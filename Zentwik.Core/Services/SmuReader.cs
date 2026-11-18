@@ -233,11 +233,8 @@ namespace Zentwik.Core.Services
                     coresPerCcd = 8;
 
                 _log.Info(
-                    $"CPU：{snapshot.CpuName}，{snapshot.CodeName}，Family {snapshot.Family}，" +
-                    $"SMU {snapshot.SmuVersion}（{snapshot.SmuType}）");
-                _log.Info(
-                    $"核心拓扑：{snapshot.Ccds} 个 CCD、{snapshot.PhysicalCores} 个物理核心、" +
-                    $"{snapshot.Cores} 个逻辑处理器");
+                    $"CPU：{snapshot.CpuName}（{snapshot.CodeName} · {snapshot.SmuType} · SMU {snapshot.SmuVersion}）· " +
+                    $"{snapshot.PhysicalCores} 个物理核心 · {snapshot.Cores} 个逻辑处理器 · {snapshot.Ccds} 个 CCD");
 
                 int coreCount = info.PhysicalCores;
                 snapshot.CoreMargins = new int[coreCount];
@@ -261,10 +258,9 @@ namespace Zentwik.Core.Services
                 _coresPerCcd = coresPerCcd;
                 _coreCount = coreCount;
                 snapshot.CoresPerCcd = coresPerCcd;
-                _log.Info($"Curve Optimizer 读取完成：{okCount}/{coreCount} 个核心返回有效值");
 
                 snapshot.FMaxMHz = session.GetFMax();
-                _log.Info($"FMax 当前上限：{snapshot.FMaxMHz} MHz");
+                _log.Info($"调校现状：CO {okCount}/{coreCount} 核有效 · FMax 上限 {snapshot.FMaxMHz} MHz");
 
                 snapshot.Success = true;
             }
@@ -325,9 +321,6 @@ namespace Zentwik.Core.Services
             SmuSession session = _session!;
             int count = _coreCount > 0 ? Math.Min(margins.Count, _coreCount) : margins.Count;
 
-            _log.Info(
-                $"CO 写入开始：{count} 核，每 CCD {CoresPerCcd} 核，" +
-                $"平台 {session.Cpu.Family}，SMU 版本 {SmuVersionString()}");
             for (int i = 0; i < count; i++)
             {
                 int value = margins[i];
@@ -359,7 +352,7 @@ namespace Zentwik.Core.Services
                     _log.Error($"SetMargin 核心 {i} 异常：{ex}");
                 }
 
-                _log.Info(
+                _log.Debug(
                     $"  核 {i,2} → core={core} ccd={ccd} ccx={ccx} mask=0x{coreMask:X8} " +
                     $"值={value} 接受={accepted}");
 
@@ -428,7 +421,6 @@ namespace Zentwik.Core.Services
                     // FMax 读取通道不可用（部分移动平台 SMU 不实现该消息），
                     // 那么「写入后回读 0」不能当作写入失败 —— 要能区分这两件事。
                     uint before = session.GetFMax();
-                    _log.Info($"FMax 写入前基线：{before} MHz");
 
                     result.SmuAccepted = session.SetFMax(mhz);
                     result.ReadBack = session.GetFMax();
