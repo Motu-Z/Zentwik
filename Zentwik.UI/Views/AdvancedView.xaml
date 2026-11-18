@@ -181,9 +181,9 @@
                             <Button Grid.Column="1"
                                     Style="{StaticResource ActionButtonStyle}"
                                     VerticalAlignment="Center"
-                                    automation:AutomationProperties.Name="导出全部日志"
+                                    automation:AutomationProperties.Name="导出运行日志"
                                     Command="{Binding ExportLogsCommand}">
-                                <TextBlock Text="导出全部日志" />
+                                <TextBlock Text="导出运行日志" />
                             </Button>
                         </Grid>
                     </Border>

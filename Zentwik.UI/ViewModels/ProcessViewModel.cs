@@ -1589,7 +1589,7 @@ public class ProcessViewModel : ViewModelBase
 
         if (!rules.Success || rules.Value is null)
         {
-            ToastService.Instance.ShowError(rules.Message.Length > 0 ? rules.Message : "取不到调度规则");
+            ToastService.Instance.ShowError(rules.Message.Length > 0 ? rules.Message : "无法获取调度规则");
             return;
         }
 

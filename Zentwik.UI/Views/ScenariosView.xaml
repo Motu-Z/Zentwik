@@ -388,7 +388,7 @@
                                 BorderThickness="2,0,0,0"
                                 BorderBrush="{DynamicResource LineBrush}">
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="掩码" Style="{StaticResource MonoLabelStyle}" />
+                                <TextBlock Text="调度方案" Style="{StaticResource MonoLabelStyle}" />
 
                                 <TextBlock x:Name="MaskValue"
                                            Text="{Binding MaskText}"
@@ -785,24 +785,24 @@
                                         Padding="14,12"
                                         Margin="8,0,8,0">
                                     <StackPanel>
-                                        <TextBlock Text="掩码" Style="{StaticResource MonoLabelStyle}" />
+                                        <TextBlock Text="调度方案" Style="{StaticResource MonoLabelStyle}" />
 
                                         <Grid Margin="0,8,0,0">
                                             <Rectangle Style="{StaticResource FilledSelectBorderStyle}"
-                                                       Visibility="{Binding HasEditorMask, Converter={StaticResource BoolToVis}}" />
+                                                       Visibility="{Binding HasEditorSchedule, Converter={StaticResource BoolToVis}}" />
 
                                             <Rectangle Style="{StaticResource EmptySelectBorderStyle}"
-                                                       Visibility="{Binding HasEditorMask, Converter={StaticResource InverseBoolToVis}}" />
+                                                       Visibility="{Binding HasEditorSchedule, Converter={StaticResource InverseBoolToVis}}" />
 
-                                            <ComboBox automation:AutomationProperties.Name="选择掩码"
-                                                      ItemsSource="{Binding EditorMasks}"
+                                            <ComboBox automation:AutomationProperties.Name="选择调度方案"
+                                                      ItemsSource="{Binding EditorSchedules}"
                                                       SelectedValuePath="Id"
-                                                      SelectedValue="{Binding EditorMaskId, Mode=TwoWay}"
+                                                      SelectedValue="{Binding EditorScheduleId, Mode=TwoWay}"
 >
                                                 <ComboBox.Style>
                                                     <Style TargetType="ComboBox" BasedOn="{StaticResource BareSelectStyle}">
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HasEditorMask}" Value="False">
+                                                            <DataTrigger Binding="{Binding HasEditorSchedule}" Value="False">
                                                                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>

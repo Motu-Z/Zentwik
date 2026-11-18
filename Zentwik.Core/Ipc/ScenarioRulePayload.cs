@@ -40,7 +40,10 @@ namespace Zentwik.Core.Ipc
         [JsonPropertyName("profileId")]
         public string ProfileId { get; set; } = string.Empty;
 
-        /// <summary>命中后套到触发进程上的自定义掩码 Id；空串表示不动调度。</summary>
+        /// <summary>
+        /// 命中后切换到的调度方案 Id，空串表示不动调度。
+        /// 字段名沿用历史名：早期存的是自定义掩码 Id，后台仍保留该兜底路径（见 ScenarioService.ApplyScheduling）。
+        /// </summary>
         [JsonPropertyName("maskId")]
         public string MaskId { get; set; } = string.Empty;
 

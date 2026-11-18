@@ -1019,7 +1019,7 @@ public partial class App : Application
                 await sceneVm.RefreshActionOptionsAsync().ConfigureAwait(false);
 
                 sb.AppendLine($"actionOptions: profiles={sceneVm.EditorProfiles.Count} " +
-                              $"masks={sceneVm.EditorMasks.Count} schemes={sceneVm.EditorPowerSchemes.Count}");
+                              $"masks={sceneVm.EditorSchedules.Count} schemes={sceneVm.EditorPowerSchemes.Count}");
 
                 foreach (ViewModels.ScenarioActionOption option in sceneVm.EditorProfiles)
                     sb.AppendLine($"  profile: {option.Id} / {option.Name}");

@@ -264,7 +264,7 @@ public sealed class ScenariosViewModel : ViewModelBase
     /// <summary>三个动作的候选：调校 / 调度 / 电源各自的方案列表，首项 Id 为空串。</summary>
     public ObservableCollection<ScenarioActionOption> EditorProfiles { get; } = new();
 
-    public ObservableCollection<ScenarioActionOption> EditorMasks { get; } = new();
+    public ObservableCollection<ScenarioActionOption> EditorSchedules { get; } = new();
 
     public ObservableCollection<ScenarioActionOption> EditorPowerSchemes { get; } = new();
 
@@ -283,13 +283,13 @@ public sealed class ScenariosViewModel : ViewModelBase
 
     private string _editorMaskId = string.Empty;
 
-    public string EditorMaskId
+    public string EditorScheduleId
     {
         get => _editorMaskId;
         set
         {
             if (SetProperty(ref _editorMaskId, value ?? string.Empty))
-                OnPropertyChanged(nameof(HasEditorMask));
+                OnPropertyChanged(nameof(HasEditorSchedule));
         }
     }
 
@@ -308,7 +308,7 @@ public sealed class ScenariosViewModel : ViewModelBase
     /// <summary>动作下拉是否是空值 —— 空值时下拉画虚线框，表示「这一块不动」。</summary>
     public bool HasEditorProfile => !string.IsNullOrEmpty(_editorProfileId);
 
-    public bool HasEditorMask => !string.IsNullOrEmpty(_editorMaskId);
+    public bool HasEditorSchedule => !string.IsNullOrEmpty(_editorMaskId);
 
     public bool HasEditorPowerScheme => !string.IsNullOrEmpty(_editorPowerSchemeId);
 
@@ -386,7 +386,7 @@ public sealed class ScenariosViewModel : ViewModelBase
             EditorProfiles.Add(new ScenarioActionOption(string.Empty, KeepActionLabel));
         }
 
-        await FillActionOptionsAsync(bridge, PlanKind.Scheduling, EditorMasks).ConfigureAwait(true);
+        await FillActionOptionsAsync(bridge, PlanKind.Scheduling, EditorSchedules).ConfigureAwait(true);
         await FillActionOptionsAsync(bridge, PlanKind.Power, EditorPowerSchemes).ConfigureAwait(true);
 
         // 方案被删后不能悄悄把动作改成「保持原样」：保留引用并在下拉里标出来，
@@ -394,7 +394,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         if (WorkerStatus.Instance.IsTuningSupported)
             EnsureStaleOption(EditorProfiles, EditorProfileId, "（调校方案已删除）");
 
-        EnsureStaleOption(EditorMasks, EditorMaskId, "（掩码已删除）");
+        EnsureStaleOption(EditorSchedules, EditorScheduleId, "（调度方案已删除）");
         EnsureStaleOption(EditorPowerSchemes, EditorPowerSchemeId, "（电源方案已删除）");
 
         RebindActionSelection();
@@ -405,7 +405,7 @@ public sealed class ScenariosViewModel : ViewModelBase
     internal void RebindActionSelection()
     {
         OnPropertyChanged(nameof(EditorProfileId));
-        OnPropertyChanged(nameof(EditorMaskId));
+        OnPropertyChanged(nameof(EditorScheduleId));
         OnPropertyChanged(nameof(EditorPowerSchemeId));
     }
 
@@ -561,10 +561,10 @@ public sealed class ScenariosViewModel : ViewModelBase
         EditorProfiles.Add(new ScenarioActionOption("local-placeholder", "极限游戏"));
         EditorProfiles.Add(new ScenarioActionOption("local-daily", "日常办公"));
 
-        EditorMasks.Clear();
-        EditorMasks.Add(new ScenarioActionOption(string.Empty, KeepActionLabel));
-        EditorMasks.Add(new ScenarioActionOption("mask-demo", "游戏调度"));
-        EditorMasks.Add(new ScenarioActionOption("mask-office", "日常调度"));
+        EditorSchedules.Clear();
+        EditorSchedules.Add(new ScenarioActionOption(string.Empty, KeepActionLabel));
+        EditorSchedules.Add(new ScenarioActionOption("mask-demo", "游戏调度"));
+        EditorSchedules.Add(new ScenarioActionOption("mask-office", "日常调度"));
 
         EditorPowerSchemes.Clear();
         EditorPowerSchemes.Add(new ScenarioActionOption(string.Empty, KeepActionLabel));
@@ -642,7 +642,7 @@ public sealed class ScenariosViewModel : ViewModelBase
                o => string.Equals(o.Id, id, StringComparison.Ordinal))?.Name ?? missing;
 
     private string MaskNameOf(string maskId)
-        => string.IsNullOrEmpty(maskId) ? string.Empty : NameOf(EditorMasks, maskId, "（掩码已删除）");
+        => string.IsNullOrEmpty(maskId) ? string.Empty : NameOf(EditorSchedules, maskId, "（调度方案已删除）");
 
     private string PowerNameOf(string powerSchemeId)
         => string.IsNullOrEmpty(powerSchemeId)
@@ -671,7 +671,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         EditorProcessName = existing?.Argument ?? string.Empty;
 
         EditorProfileId = existing?.ProfileId ?? string.Empty;
-        EditorMaskId = existing?.MaskId ?? string.Empty;
+        EditorScheduleId = existing?.MaskId ?? string.Empty;
         EditorPowerSchemeId = existing?.PowerSchemeId ?? string.Empty;
 
         if (existing is null)
@@ -721,7 +721,7 @@ public sealed class ScenariosViewModel : ViewModelBase
 
         // 引用的方案已被删除：不替用户改成「保持原样」，让他自己重新选。
         string? stale = StaleActionLabel(EditorProfiles, EditorProfileId, "调校方案")
-            ?? StaleActionLabel(EditorMasks, EditorMaskId, "掩码")
+            ?? StaleActionLabel(EditorSchedules, EditorScheduleId, "调度方案")
             ?? StaleActionLabel(EditorPowerSchemes, EditorPowerSchemeId, "电源方案");
 
         if (stale is not null)
@@ -731,7 +731,7 @@ public sealed class ScenariosViewModel : ViewModelBase
         }
 
         // 三个动作全空的规则命中后什么也不会发生，后台同样会拒。
-        if (EditorProfileId.Length == 0 && EditorMaskId.Length == 0 && EditorPowerSchemeId.Length == 0)
+        if (EditorProfileId.Length == 0 && EditorScheduleId.Length == 0 && EditorPowerSchemeId.Length == 0)
         {
             Toast("至少选择一个执行动作");
             return;
@@ -743,7 +743,7 @@ public sealed class ScenariosViewModel : ViewModelBase
             Trigger = EditorTrigger,
             Argument = processName,
             ProfileId = EditorProfileId,
-            MaskId = EditorMaskId,
+            MaskId = EditorScheduleId,
             PowerSchemeId = EditorPowerSchemeId,
             Priority = _editingPriority,
             Enabled = _editingEnabled

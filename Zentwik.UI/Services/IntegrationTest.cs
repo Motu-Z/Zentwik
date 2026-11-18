@@ -1447,7 +1447,7 @@ public static class IntegrationTest
             Check("场景：段标题为「已保存的规则」", texts.Contains("已保存的规则"));
             Check("场景：规则卡有 IF 标签", texts.Any(t => t.StartsWith("IF ")));
             Check("场景：规则卡三个动作块齐全且文案统一",
-                  new[] { "调校方案", "掩码", "电源方案" }.All(texts.Contains));
+                  new[] { "调校方案", "调度方案", "电源方案" }.All(texts.Contains));
             Check("场景：空动作显示「保持原样」", texts.Any(t => t == "保持原样"));
 
             Check("场景：顶栏有新建规则主按钮",
@@ -1472,7 +1472,7 @@ public static class IntegrationTest
                       live.IsEditorOpen
                       && live.EditorProcessName == first.Argument
                       && live.EditorProfileId == first.ProfileId
-                      && live.EditorMaskId == first.MaskId
+                      && live.EditorScheduleId == first.MaskId
                       && live.EditorPowerSchemeId == first.PowerSchemeId);
 
                 live.IsEditorOpen = false;
@@ -1521,7 +1521,7 @@ public static class IntegrationTest
                       editorTexts.Contains("IF / 触发条件")
                       && editorTexts.Contains("THEN / 执行动作"));
                 Check("场景：三个动作块按模块命名",
-                      new[] { "调校方案", "掩码", "电源方案" }.All(editorTexts.Contains));
+                      new[] { "调校方案", "调度方案", "电源方案" }.All(editorTexts.Contains));
                 Check("场景：触发条上有两级下拉",
                       FindAll<ComboBox>(editor).Count(c => c.Tag is null) >= 2,
                       $"{FindAll<ComboBox>(editor).Count(c => c.Tag is null)}");
@@ -1831,7 +1831,7 @@ public static class IntegrationTest
 
             Check("场景：动作候选首项是「保持原样」",
                   vm.EditorProfiles.FirstOrDefault()?.Id == string.Empty
-                  && vm.EditorMasks.FirstOrDefault()?.Id == string.Empty);
+                  && vm.EditorSchedules.FirstOrDefault()?.Id == string.Empty);
 
             int beforeRules = vm.Rules.Count;
             vm.NewRuleCommand.Execute(null);
@@ -1876,7 +1876,7 @@ public static class IntegrationTest
             // 调度方案是「整套用户规则」，与进程是否还活着无关，退出时同样可切。
             int beforeExitSchedule = vm.Rules.Count;
             vm.EditorProcessName = "exit-schedule.exe";
-            vm.EditorMaskId = vm.EditorMasks.First(m => m.Id.Length > 0).Id;
+            vm.EditorScheduleId = vm.EditorSchedules.First(m => m.Id.Length > 0).Id;
             vm.SaveEditorCommand.Execute(null);
 
             Check("场景：进程退出时也能保存调度方案",
@@ -1895,7 +1895,7 @@ public static class IntegrationTest
             vm.NewRuleCommand.Execute(null);
             vm.SelectedKind = vm.TriggerKinds[0];
             vm.SelectedState = vm.TriggerStates[0];
-            vm.EditorMaskId = string.Empty;
+            vm.EditorScheduleId = string.Empty;
 
             // 进程名为空时必须拦下：存一条没有参数的「进程运行」规则，
             // 它永远匹配不到任何进程，用户看不出是配置问题。
@@ -1910,7 +1910,7 @@ public static class IntegrationTest
             Check("场景：三动作全空时拒绝保存",
                   vm.IsEditorOpen && vm.Rules.Count == beforeRules);
 
-            vm.EditorMaskId = vm.EditorMasks.First(m => m.Id.Length > 0).Id;
+            vm.EditorScheduleId = vm.EditorSchedules.First(m => m.Id.Length > 0).Id;
             vm.SaveEditorCommand.Execute(null);
             Check("场景：保存后新增一条规则",
                   vm.Rules.Count == beforeRules + 1 && !vm.IsEditorOpen,
@@ -1965,7 +1965,7 @@ public static class IntegrationTest
 
             // 三个动作下拉用 SelectedValue 做 TwoWay 绑定：候选集合 Clear 再重建时。
             vm.EditorProfileId = null!;
-            vm.EditorMaskId = null!;
+            vm.EditorScheduleId = null!;
             vm.EditorPowerSchemeId = null!;
             vm.EditorProcessName = null!;
 
@@ -1973,11 +1973,11 @@ public static class IntegrationTest
             try
             {
                 nullSafe = vm.EditorProfileId.Length == 0
-                           && vm.EditorMaskId.Length == 0
+                           && vm.EditorScheduleId.Length == 0
                            && vm.EditorPowerSchemeId.Length == 0
                            && vm.EditorProcessName.Length == 0
                            && !vm.HasEditorProfile
-                           && !vm.HasEditorMask
+                           && !vm.HasEditorSchedule
                            && !vm.HasEditorPowerScheme
                            && vm.ShowProcessPlaceholder;
             }
@@ -1996,7 +1996,7 @@ public static class IntegrationTest
 
             Check("场景：重绑会通知三个动作 Id",
                   notified.Contains(nameof(vm.EditorProfileId))
-                  && notified.Contains(nameof(vm.EditorMaskId))
+                  && notified.Contains(nameof(vm.EditorScheduleId))
                   && notified.Contains(nameof(vm.EditorPowerSchemeId)),
                   string.Join("/", notified));
         }
