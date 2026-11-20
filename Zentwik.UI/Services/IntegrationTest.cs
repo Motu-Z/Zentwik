@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Automation;
@@ -2067,10 +2067,10 @@ public static class IntegrationTest
         }
 
         // 全站段头口径：主内容区一律「带底线 + 等宽灰标题」
-        // 调校页按厂商分两套表单，各自 2 处段头，两套都在可视树里（另一套折叠）。
+        // 调校页按厂商分两套表单：AMD 2 处段头，Intel 3 处，两套都在可视树里（另一套折叠）。
         foreach (var (name, factory, expected) in new (string, Func<FrameworkElement>, int)[]
                  {
-                     ("调校", () => new Views.TuningView(), 4),
+                     ("调校", () => new Views.TuningView(), 5),
                      ("电源", () => new Views.PowerView(), 2),
                      ("通用", () => new Views.SettingsView(), 3),
                      ("行为", () => new Views.BehaviorView(), 3),

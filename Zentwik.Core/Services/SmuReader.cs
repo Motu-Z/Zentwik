@@ -233,6 +233,19 @@ namespace Zentwik.Core.Services
                 result.Failures.AddRange(ratios.Failures);
             }
 
+            if (request.PowerLimit1Watts.HasValue && request.PowerLimit2Watts.HasValue)
+            {
+                IntelTuningResult power = _intel.ApplyPowerLimits(
+                    request.PowerLimit1Watts.Value,
+                    request.PowerLimit2Watts.Value,
+                    request.TauSeconds ?? 0);
+                if (!string.IsNullOrEmpty(power.Fatal))
+                    result.Failures.Add(power.Fatal);
+                result.Failures.AddRange(power.Failures);
+                foreach (KeyValuePair<string, int> pair in power.Applied)
+                    result.Applied[pair.Key] = pair.Value;
+            }
+
             result.AllSucceeded = result.Failures.Count == 0;
             LogIntelWrite("写入", result);
             return result;

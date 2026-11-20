@@ -2773,7 +2773,10 @@ namespace Zentwik.Worker
                 CoreMilliVolts = snapshot.CoreMilliVolts,
                 GpuMilliVolts = snapshot.GpuMilliVolts,
                 CacheMilliVolts = snapshot.CacheMilliVolts,
-                Ratios = snapshot.Ratios.Length > 0 ? snapshot.Ratios : null
+                Ratios = snapshot.Ratios.Length > 0 ? snapshot.Ratios : null,
+                PowerLimit1Watts = snapshot.PowerLimit1Watts,
+                PowerLimit2Watts = snapshot.PowerLimit2Watts,
+                TauSeconds = snapshot.TauSeconds
             };
 
             return new PipeResponse
@@ -2813,6 +2816,9 @@ namespace Zentwik.Worker
                         GpuMilliVolts = request.GpuMilliVolts,
                         CacheMilliVolts = request.CacheMilliVolts,
                         Ratios = request.Ratios,
+                        PowerLimit1Watts = request.PowerLimit1Watts,
+                        PowerLimit2Watts = request.PowerLimit2Watts,
+                        TauSeconds = request.TauSeconds,
                         RestoreBaseline = request.Restore
                     }),
                     token).ConfigureAwait(false);

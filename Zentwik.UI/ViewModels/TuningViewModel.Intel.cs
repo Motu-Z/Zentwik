@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
@@ -10,43 +10,50 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>Intel 调校字段：一个电压平面或一档倍频。</summary>
-public sealed partial class IntelVoltageField : ObservableObject
+/// <summary>Intel 调校的数值字段：电压平面、功耗上限或时长。</summary>
+public sealed partial class IntelNumericField : ObservableObject
 {
-    public IntelVoltageField(string label, string hint, int milliVolts, int minimum, int maximum, int step)
+    public IntelNumericField(
+        string label,
+        string hint,
+        string unit,
+        int value,
+        int minimum,
+        int maximum,
+        int step)
     {
         Label = label;
         Hint = hint;
+        Unit = unit;
         Minimum = minimum;
         Maximum = maximum;
         Step = step;
-        MilliVolts = milliVolts;
-        Text = Format(milliVolts);
+        Value = value;
+        Text = Format(value);
     }
 
     public string Label { get; }
 
     public string Hint { get; }
+    public string Unit { get; }
     public int Minimum { get; }
     public int Maximum { get; }
     public int Step { get; }
 
     [ObservableProperty]
-    private int _milliVolts;
+    private int _value;
 
     [ObservableProperty]
     private string _text;
 
-    /// <summary>读不到该平面时置为真，输入框与滑块一并停用。</summary>
+    /// <summary>读不到该项时置为真，输入框与滑块一并停用。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAvailable))]
     private bool _isUnavailable;
 
     public bool IsAvailable => !IsUnavailable;
 
-    public string Unit => "mV";
-
-    public string AutomationName => $"{Label}偏移值";
+    public string AutomationName => Label;
 
     partial void OnTextChanged(string value)
     {
@@ -55,19 +62,19 @@ public sealed partial class IntelVoltageField : ObservableObject
 
         if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
         {
-            Text = Format(MilliVolts);
+            Text = Format(Value);
             return;
         }
 
         int clamped = Math.Clamp(parsed, Minimum, Maximum);
-        MilliVolts = clamped;
+        Value = clamped;
 
         string expected = Format(clamped);
         if (value != expected)
             Text = expected;
     }
 
-    partial void OnMilliVoltsChanged(int value)
+    partial void OnValueChanged(int value)
     {
         string expected = Format(value);
         if (Text != expected)
@@ -75,10 +82,10 @@ public sealed partial class IntelVoltageField : ObservableObject
     }
 
     /// <summary>外部写入（回读）时直接换值，省掉一次往返纠偏。</summary>
-    public void SetSilently(int milliVolts)
+    public void SetSilently(int value)
     {
-        MilliVolts = milliVolts;
-        Text = Format(milliVolts);
+        Value = value;
+        Text = Format(value);
     }
 
     private static string Format(int value)
@@ -155,6 +162,13 @@ public partial class TuningViewModel
     public const int IntelRatioMinimum = 8;
     public const int IntelRatioMaximum = 60;
 
+    public const int IntelPowerMinimum = 5;
+    public const int IntelPowerMaximum = 300;
+    public const int IntelPowerStep = 1;
+    public const int IntelTauMinimum = 0;
+    public const int IntelTauMaximum = 128;
+    public const int IntelTauStep = 1;
+
     /// <summary>厂商由 Worker 下发，未知时按 AMD 处理。</summary>
     public bool IsIntel => WorkerStatus.Instance.IsIntel;
 
@@ -184,7 +198,10 @@ public partial class TuningViewModel
     }
 
     /// <summary>电压平面：核心、核显、缓存。</summary>
-    public ObservableCollection<IntelVoltageField> IntelVoltages { get; } = new();
+    public ObservableCollection<IntelNumericField> IntelVoltages { get; } = new();
+
+    /// <summary>功耗限制：持续功耗、短时功耗、短时功耗时长。</summary>
+    public ObservableCollection<IntelNumericField> IntelPowers { get; } = new();
 
     /// <summary>倍频上限八档。</summary>
     public ObservableCollection<IntelRatioItem> IntelRatios { get; } = new();
@@ -196,9 +213,13 @@ public partial class TuningViewModel
         if (_intelFieldsReady)
             return;
 
-        IntelVoltages.Add(new IntelVoltageField("核心电压", "处理器核心供电", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
-        IntelVoltages.Add(new IntelVoltageField("核显电压", "集成显卡供电", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
-        IntelVoltages.Add(new IntelVoltageField("缓存电压", "末级缓存供电", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+        IntelVoltages.Add(new IntelNumericField("核心电压", "处理器核心供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+        IntelVoltages.Add(new IntelNumericField("核显电压", "集成显卡供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+        IntelVoltages.Add(new IntelNumericField("缓存电压", "末级缓存供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+
+        IntelPowers.Add(new IntelNumericField("持续功耗", "长时间维持的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
+        IntelPowers.Add(new IntelNumericField("短时功耗", "短时间可超过的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
+        IntelPowers.Add(new IntelNumericField("短时功耗时长", "短时功耗维持的秒数，0 表示不限", "秒", 0, IntelTauMinimum, IntelTauMaximum, IntelTauStep));
 
         for (int i = 0; i < IntelTuningCodec.RatioSlots; i++)
             IntelRatios.Add(new IntelRatioItem(i, IntelRatioMinimum));
@@ -219,13 +240,25 @@ public partial class TuningViewModel
 
         try
         {
-            ApplyIntelTuningPayload request = new()
+            // 读不到的项不发送：发出去会把「未知」写成 0。
+            ApplyIntelTuningPayload request = new();
+
+            if (IntelVoltages[0].IsAvailable)
+                request.CoreMilliVolts = IntelVoltages[0].Value;
+            if (IntelVoltages[1].IsAvailable)
+                request.GpuMilliVolts = IntelVoltages[1].Value;
+            if (IntelVoltages[2].IsAvailable)
+                request.CacheMilliVolts = IntelVoltages[2].Value;
+
+            if (IntelRatios.All(item => item.IsAvailable))
+                request.Ratios = IntelRatios.Select(item => item.Ratio).ToArray();
+
+            if (IntelPowers[0].IsAvailable && IntelPowers[1].IsAvailable)
             {
-                CoreMilliVolts = IntelVoltages[0].MilliVolts,
-                GpuMilliVolts = IntelVoltages[1].MilliVolts,
-                CacheMilliVolts = IntelVoltages[2].MilliVolts,
-                Ratios = IntelRatios.Select(item => item.Ratio).ToArray()
-            };
+                request.PowerLimit1Watts = IntelPowers[0].Value;
+                request.PowerLimit2Watts = IntelPowers[1].Value;
+                request.TauSeconds = IntelPowers[2].IsAvailable ? IntelPowers[2].Value : 0;
+            }
 
             IpcOutcome<IntelTuningPayload> outcome = await WorkerBridge.Instance
                 .ApplyIntelTuningAsync(request, ApplyTimeoutMs)
@@ -315,9 +348,13 @@ public partial class TuningViewModel
         _suppressDirty = true;
         try
         {
-            ApplyVoltageField(IntelVoltages[0], payload.CoreMilliVolts);
-            ApplyVoltageField(IntelVoltages[1], payload.GpuMilliVolts);
-            ApplyVoltageField(IntelVoltages[2], payload.CacheMilliVolts);
+            ApplyNumericField(IntelVoltages[0], payload.CoreMilliVolts, IntelVoltageMinimum, IntelVoltageMaximum);
+            ApplyNumericField(IntelVoltages[1], payload.GpuMilliVolts, IntelVoltageMinimum, IntelVoltageMaximum);
+            ApplyNumericField(IntelVoltages[2], payload.CacheMilliVolts, IntelVoltageMinimum, IntelVoltageMaximum);
+
+            ApplyNumericField(IntelPowers[0], payload.PowerLimit1Watts, IntelPowerMinimum, IntelPowerMaximum);
+            ApplyNumericField(IntelPowers[1], payload.PowerLimit2Watts, IntelPowerMinimum, IntelPowerMaximum);
+            ApplyNumericField(IntelPowers[2], payload.TauSeconds, IntelTauMinimum, IntelTauMaximum);
 
             int[] ratios = payload.Ratios ?? Array.Empty<int>();
             for (int i = 0; i < IntelRatios.Count; i++)
@@ -340,15 +377,12 @@ public partial class TuningViewModel
         }
     }
 
-    private static void ApplyVoltageField(IntelVoltageField field, int? milliVolts)
+    private static void ApplyNumericField(IntelNumericField field, int? value, int minimum, int maximum)
     {
-        if (milliVolts.HasValue)
+        if (value.HasValue)
         {
             field.IsUnavailable = false;
-            field.SetSilently(Math.Clamp(
-                milliVolts.Value,
-                TuningViewModel.IntelVoltageMinimum,
-                TuningViewModel.IntelVoltageMaximum));
+            field.SetSilently(Math.Clamp(value.Value, minimum, maximum));
         }
         else
         {

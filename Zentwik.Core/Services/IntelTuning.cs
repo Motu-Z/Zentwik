@@ -19,6 +19,20 @@ namespace Zentwik.Core.Services
     {
         public const uint MsrOcMailbox = 0x150;
         public const uint MsrTurboRatioLimit = 0x1AD;
+        public const uint MsrPkgPowerLimit = 0x610;
+        public const uint MsrPkgPowerInfo = 0x614;
+
+        /// <summary>PL1/PL2 各占 15 位，单位由 MSR 0x614 的 power unit 决定。</summary>
+        public const int PowerLimitMask = 0x7FFF;
+        public const int PowerLimit1Shift = 0;
+        public const int PowerLimit2Shift = 32;
+        public const int PowerEnable1Bit = 15;
+        public const int PowerEnable2Bit = 47;
+
+        /// <summary>时间窗 7 位：高 2 位尾数、低 5 位指数，秒数 = 2^Z × (1 + Y/4)；0 表示不限。</summary>
+        public const int TimeWindow1Shift = 17;
+        public const int TimeWindow2Shift = 49;
+        public const int TimeWindowMask = 0x7F;
 
         /// <summary>bit21..31 为有符号 11 位偏移量，负值为降压。</summary>
         public const int VoltageMask = 0x7FF;
@@ -76,6 +90,86 @@ namespace Zentwik.Core.Services
                 value |= (ulong)(uint)Math.Clamp(ratios[i], 0, 255) << (i * 8);
             return value;
         }
+
+        /// <summary>每格瓦数 = 2^-unit，unit 取自 MSR 0x614 bits 3:0；读不到按 1/8 W。</summary>
+        public static double WattsPerUnit(ulong powerInfo)
+        {
+            int unit = (int)(powerInfo & 0xF);
+            return unit is > 0 and <= 7 ? 1.0 / (1 << unit) : 0.125;
+        }
+
+        public static int DecodePowerLimit(ulong value, int shift)
+            => (int)((value >> shift) & PowerLimitMask);
+
+        public static uint EncodePowerLimit(int watts, double wattsPerUnit)
+            => (uint)Math.Clamp(
+                (int)Math.Round(watts / wattsPerUnit, MidpointRounding.AwayFromZero),
+                0,
+                PowerLimitMask);
+
+        /// <summary>时间窗解码为秒；0 表示不限。</summary>
+        public static int DecodeTimeWindow(ulong value, int shift)
+        {
+            int raw = (int)((value >> shift) & TimeWindowMask);
+            if (raw == 0)
+                return 0;
+
+            int mantissa = (raw >> 5) & 0x3;
+            int exponent = raw & 0x1F;
+            return (int)Math.Round((1 + (mantissa / 4.0)) * (1 << exponent));
+        }
+
+        /// <summary>秒编码为时间窗最接近的一档；0 或负数写 0，表示不限。</summary>
+        public static uint EncodeTimeWindow(int seconds)
+        {
+            if (seconds <= 0)
+                return 0;
+
+            uint best = 0;
+            double bestGap = double.MaxValue;
+            for (int exponent = 0; exponent < 32; exponent++)
+            {
+                for (int mantissa = 0; mantissa < 4; mantissa++)
+                {
+                    // raw 0 表示不限，不能用来表达 1 秒。
+                    if (exponent == 0 && mantissa == 0)
+                        continue;
+
+                    double candidate = (1 + (mantissa / 4.0)) * (1u << exponent);
+                    double gap = Math.Abs(candidate - seconds);
+                    if (gap >= bestGap)
+                        continue;
+
+                    bestGap = gap;
+                    best = (uint)((mantissa << 5) | exponent);
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>把 PL1/PL2 与时间窗写进既有寄存器值，其余位（含 clamp）保持原样。</summary>
+        public static ulong ComposePowerLimit(
+            ulong current,
+            uint powerLimit1,
+            uint powerLimit2,
+            uint timeWindow2)
+        {
+            ulong value = current;
+
+            value &= ~((ulong)PowerLimitMask << PowerLimit1Shift);
+            value |= (ulong)powerLimit1 << PowerLimit1Shift;
+            value |= 1UL << PowerEnable1Bit;
+            value &= ~((ulong)TimeWindowMask << TimeWindow1Shift);
+
+            value &= ~((ulong)PowerLimitMask << PowerLimit2Shift);
+            value |= (ulong)powerLimit2 << PowerLimit2Shift;
+            value |= 1UL << PowerEnable2Bit;
+            value &= ~((ulong)TimeWindowMask << TimeWindow2Shift);
+            value |= (ulong)(timeWindow2 & TimeWindowMask) << TimeWindow2Shift;
+
+            return value;
+        }
     }
 
     /// <summary>一次 Intel 调校读数。<c>null</c> 表示该平面读不到。</summary>
@@ -90,6 +184,15 @@ namespace Zentwik.Core.Services
 
         /// <summary>八档倍频；空表示读不到。</summary>
         public int[] Ratios { get; set; } = Array.Empty<int>();
+
+        /// <summary>PL1 持续功耗（W）；null 表示读不到。</summary>
+        public int? PowerLimit1Watts { get; set; }
+
+        /// <summary>PL2 短时功耗（W）；null 表示读不到。</summary>
+        public int? PowerLimit2Watts { get; set; }
+
+        /// <summary>PL2 持续时间（秒）；0 表示不限，null 表示读不到。</summary>
+        public int? TauSeconds { get; set; }
     }
 
     /// <summary>写入结果。失败项按名称记录，供日志与界面提示。</summary>
@@ -110,6 +213,12 @@ namespace Zentwik.Core.Services
         public int? GpuMilliVolts { get; set; }
         public int? CacheMilliVolts { get; set; }
         public int[]? Ratios { get; set; }
+
+        public int? PowerLimit1Watts { get; set; }
+        public int? PowerLimit2Watts { get; set; }
+
+        /// <summary>PL2 持续时间（秒）；0 表示不限。</summary>
+        public int? TauSeconds { get; set; }
 
         /// <summary>回到首次读到的值，忽略上面的字段。</summary>
         public bool RestoreBaseline { get; set; }
@@ -150,9 +259,26 @@ namespace Zentwik.Core.Services
                 if (_device.TryRead(IntelTuningCodec.MsrTurboRatioLimit, out ulong ratios))
                     snapshot.Ratios = IntelTuningCodec.DecodeRatios(ratios);
 
-                snapshot.Success = snapshot.CoreMilliVolts.HasValue || snapshot.Ratios.Length > 0;
+                if (_device.TryRead(IntelTuningCodec.MsrPkgPowerLimit, out ulong limits))
+                {
+                    int raw1 = IntelTuningCodec.DecodePowerLimit(limits, IntelTuningCodec.PowerLimit1Shift);
+                    int raw2 = IntelTuningCodec.DecodePowerLimit(limits, IntelTuningCodec.PowerLimit2Shift);
+                    if (raw1 != 0 || raw2 != 0)
+                    {
+                        double wattsPerUnit = ReadWattsPerUnit();
+                        snapshot.PowerLimit1Watts = (int)Math.Round(raw1 * wattsPerUnit);
+                        snapshot.PowerLimit2Watts = (int)Math.Round(raw2 * wattsPerUnit);
+                        snapshot.TauSeconds = IntelTuningCodec.DecodeTimeWindow(
+                            limits,
+                            IntelTuningCodec.TimeWindow2Shift);
+                    }
+                }
+
+                snapshot.Success = snapshot.CoreMilliVolts.HasValue
+                    || snapshot.Ratios.Length > 0
+                    || snapshot.PowerLimit1Watts.HasValue;
                 if (!snapshot.Success)
-                    snapshot.Error = "无法读取 MSR 0x150 与 0x1AD";
+                    snapshot.Error = "无法读取 MSR 0x150、0x1AD 与 0x610";
 
                 return snapshot;
             }
@@ -237,6 +363,87 @@ namespace Zentwik.Core.Services
             return result;
         }
 
+        public IntelTuningResult ApplyPowerLimits(int powerLimit1Watts, int powerLimit2Watts, int tauSeconds)
+        {
+            IntelTuningResult result = new();
+            if (powerLimit1Watts <= 0 || powerLimit2Watts <= 0)
+            {
+                result.Fatal = "功耗上限必须大于 0 W";
+                return result;
+            }
+
+            lock (_gate)
+            {
+                double wattsPerUnit = ReadWattsPerUnit();
+                uint raw1 = IntelTuningCodec.EncodePowerLimit(powerLimit1Watts, wattsPerUnit);
+                uint raw2 = IntelTuningCodec.EncodePowerLimit(powerLimit2Watts, wattsPerUnit);
+                uint rawTau = IntelTuningCodec.EncodeTimeWindow(tauSeconds);
+
+                if (!_device.TryRead(IntelTuningCodec.MsrPkgPowerLimit, out ulong current))
+                {
+                    result.Failures.Add("功耗限制：无法读取当前值");
+                    result.AllSucceeded = false;
+                    return result;
+                }
+
+                ulong target = IntelTuningCodec.ComposePowerLimit(current, raw1, raw2, rawTau);
+                if (!_device.TryWrite(IntelTuningCodec.MsrPkgPowerLimit, target))
+                {
+                    result.Failures.Add("功耗限制：写入被拒绝");
+                    result.AllSucceeded = false;
+                    return result;
+                }
+
+                if (!_device.TryRead(IntelTuningCodec.MsrPkgPowerLimit, out ulong readBack))
+                {
+                    result.Failures.Add("功耗限制：无法回读");
+                    result.AllSucceeded = false;
+                    return result;
+                }
+
+                VerifyPower(result, "持续功耗", raw1,
+                    IntelTuningCodec.DecodePowerLimit(readBack, IntelTuningCodec.PowerLimit1Shift), wattsPerUnit);
+                VerifyPower(result, "短时功耗", raw2,
+                    IntelTuningCodec.DecodePowerLimit(readBack, IntelTuningCodec.PowerLimit2Shift), wattsPerUnit);
+
+                uint actualTau = (uint)((readBack >> IntelTuningCodec.TimeWindow2Shift)
+                    & IntelTuningCodec.TimeWindowMask);
+                if (actualTau != rawTau)
+                {
+                    result.Failures.Add(
+                        $"短时功耗时长：回读 {IntelTuningCodec.DecodeTimeWindow(readBack, IntelTuningCodec.TimeWindow2Shift)} 秒，"
+                        + $"与写入 {tauSeconds} 秒不一致");
+                }
+
+                result.AllSucceeded = result.Failures.Count == 0;
+            }
+
+            return result;
+        }
+
+        private static void VerifyPower(
+            IntelTuningResult result,
+            string label,
+            uint expectedRaw,
+            int actualRaw,
+            double wattsPerUnit)
+        {
+            if ((uint)actualRaw != expectedRaw)
+            {
+                result.Failures.Add(
+                    $"{label}：回读 {Math.Round(actualRaw * wattsPerUnit)} W，"
+                    + $"与写入 {Math.Round(expectedRaw * wattsPerUnit)} W 不一致");
+                return;
+            }
+
+            result.Applied[label] = (int)Math.Round(expectedRaw * wattsPerUnit);
+        }
+
+        private double ReadWattsPerUnit()
+            => _device.TryRead(IntelTuningCodec.MsrPkgPowerInfo, out ulong info)
+                ? IntelTuningCodec.WattsPerUnit(info)
+                : 0.125;
+
         public IntelTuningResult Restore(IntelTuningSnapshot baseline)
         {
             IntelTuningResult result = new();
@@ -261,6 +468,17 @@ namespace Zentwik.Core.Services
             {
                 IntelTuningResult ratios = ApplyRatios(baseline.Ratios);
                 result.Failures.AddRange(ratios.Failures);
+            }
+
+            if (baseline.PowerLimit1Watts.HasValue && baseline.PowerLimit2Watts.HasValue)
+            {
+                IntelTuningResult power = ApplyPowerLimits(
+                    baseline.PowerLimit1Watts.Value,
+                    baseline.PowerLimit2Watts.Value,
+                    baseline.TauSeconds ?? 0);
+                result.Failures.AddRange(power.Failures);
+                foreach ((string key, int value) in power.Applied)
+                    result.Applied[key] = value;
             }
 
             result.AllSucceeded = result.Failures.Count == 0;

@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Zentwik.Core.Ipc
 {
@@ -26,6 +26,18 @@ namespace Zentwik.Core.Ipc
         /// <summary>八档倍频上限，下标 0 对应单核激活。空表示读不到。</summary>
         [JsonPropertyName("ratios")]
         public int[]? Ratios { get; set; }
+
+        /// <summary>PL1 持续功耗（W）；null 表示读不到。</summary>
+        [JsonPropertyName("pl1")]
+        public int? PowerLimit1Watts { get; set; }
+
+        /// <summary>PL2 短时功耗（W）；null 表示读不到。</summary>
+        [JsonPropertyName("pl2")]
+        public int? PowerLimit2Watts { get; set; }
+
+        /// <summary>PL2 持续时间（秒）；0 表示不限。</summary>
+        [JsonPropertyName("tau")]
+        public int? TauSeconds { get; set; }
     }
 
     /// <summary>
@@ -45,6 +57,15 @@ namespace Zentwik.Core.Ipc
 
         [JsonPropertyName("ratios")]
         public int[]? Ratios { get; set; }
+
+        [JsonPropertyName("pl1")]
+        public int? PowerLimit1Watts { get; set; }
+
+        [JsonPropertyName("pl2")]
+        public int? PowerLimit2Watts { get; set; }
+
+        [JsonPropertyName("tau")]
+        public int? TauSeconds { get; set; }
 
         [JsonPropertyName("restore")]
         public bool Restore { get; set; }
