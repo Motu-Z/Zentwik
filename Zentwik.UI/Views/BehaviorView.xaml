@@ -121,15 +121,15 @@
 
                                     <RadioButton GroupName="Close"
                                                  Style="{StaticResource SegmentedAccentRadioButtonStyle}"
-                                                 Content="完全退出"
-                                                 automation:AutomationProperties.Name="完全退出"
-                                                 IsChecked="{Binding CloseExitAll, Mode=TwoWay}" />
-
-                                    <RadioButton GroupName="Close"
-                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
                                                  Content="仅留服务"
                                                  automation:AutomationProperties.Name="退出界面，后台服务继续运行"
                                                  IsChecked="{Binding CloseWindowOnly, Mode=TwoWay}" />
+
+                                    <RadioButton GroupName="Close"
+                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                 Content="完全退出"
+                                                 automation:AutomationProperties.Name="完全退出"
+                                                 IsChecked="{Binding CloseExitAll, Mode=TwoWay}" />
                                 </StackPanel>
                             </Border>
 
@@ -189,7 +189,8 @@
                         </Grid>
                     </Border>
 
-                    <Border Style="{StaticResource FlatRowStyle}">
+                    <Border Style="{StaticResource FlatRowStyle}"
+                            Visibility="{Binding TuningSupported, Converter={StaticResource BoolToVis}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -198,6 +199,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="启动时自动应用调校" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="打开界面时自动将当前方案写入硬件"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -219,6 +226,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="监听进程并自动调度" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="匹配到规则时自动调整核心与优先级"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -228,75 +241,6 @@
                                           IsChecked="{Binding WatchProcesses, Mode=TwoWay}" />
 
                             <Border Style="{StaticResource DashRuleStyle}" />
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource FlatRowStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                <TextBlock Text="发生错误时弹出气泡" Style="{StaticResource RowTitleStyle}" />
-                            </StackPanel>
-
-                            <ToggleButton Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitchStyle}"
-                                          VerticalAlignment="Center"
-                                          automation:AutomationProperties.Name="发生错误时弹出气泡"
-                                          IsChecked="{Binding ErrorBubble, Mode=TwoWay}" />
-                        </Grid>
-                    </Border>
-                </StackPanel>
-
-                <StackPanel Margin="0,48,0,0">
-                    <Border Style="{StaticResource SectionHeaderStyle}">
-                        <TextBlock Text="ENTRY / 入口" Style="{StaticResource SectionTitleStyle}" />
-                    </Border>
-
-                    <Border Style="{StaticResource FlatRowStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                <TextBlock Text="桌面右键菜单"
-                                           Style="{StaticResource RowTitleStyle}"
-                                           ToolTip="在桌面空白处右键时显示一项，点击打开主界面" />
-                            </StackPanel>
-
-                            <ToggleButton Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitchStyle}"
-                                          VerticalAlignment="Center"
-                                          automation:AutomationProperties.Name="桌面右键菜单"
-                                          IsChecked="{Binding DesktopMenu, Mode=TwoWay}" />
-
-                            <Border Style="{StaticResource DashRuleStyle}" />
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource FlatRowStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                <TextBlock Text="托盘方案切换"
-                                           Style="{StaticResource RowTitleStyle}"
-                                           ToolTip="在托盘右键菜单里列出调校、调度、电源三类方案，点击即切换" />
-                            </StackPanel>
-
-                            <ToggleButton Grid.Column="1"
-                                          Style="{StaticResource ToggleSwitchStyle}"
-                                          VerticalAlignment="Center"
-                                          automation:AutomationProperties.Name="托盘方案切换"
-                                          IsChecked="{Binding TrayPlanMenu, Mode=TwoWay}" />
                         </Grid>
                     </Border>
                 </StackPanel>

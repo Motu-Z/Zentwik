@@ -7,6 +7,7 @@ namespace Zentwik.UI.ViewModels;
 public sealed class SettingsViewModel : ViewModelBase
 {
     private readonly AppThemeService _theme = AppThemeService.Instance;
+    private readonly AppSettings _settings = AppSettings.Instance;
 
     // 彩虹滑块
     private double _hueValue = 198.44;
@@ -25,6 +26,7 @@ public sealed class SettingsViewModel : ViewModelBase
             OnPropertyChanged(nameof(IsLightSelected));
             OnPropertyChanged(nameof(IsDarkSelected));
             OnPropertyChanged(nameof(IsSystemSelected));
+            OnPropertyChanged(nameof(ThemeModeHint));
         };
 
         _theme.AccentModeChanged += (_, _) =>
@@ -32,6 +34,7 @@ public sealed class SettingsViewModel : ViewModelBase
             OnPropertyChanged(nameof(IsSystemAccentSelected));
             OnPropertyChanged(nameof(IsCustomAccentSelected));
             OnPropertyChanged(nameof(IsColorPanelVisible));
+            OnPropertyChanged(nameof(AccentHint));
 
             // 模式一变，滑块 / HEX 应对齐当前生效的强调色，
             // 否则切回「个性」时显示的还是上一个模式的残留值。
@@ -39,6 +42,32 @@ public sealed class SettingsViewModel : ViewModelBase
         };
 
         _theme.ThemeChanged += (_, _) => OnPropertyChanged(nameof(BrandAccentColor));
+
+        _settings.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(AppSettings.ErrorBubble):
+                    OnPropertyChanged(nameof(NotifyOnError));
+                    break;
+
+                case nameof(AppSettings.NotifyOnTraySuccess):
+                    OnPropertyChanged(nameof(NotifyOnTraySuccess));
+                    break;
+
+                case nameof(AppSettings.ToastDurationSeconds):
+                    OnPropertyChanged(nameof(ToastDuration));
+                    OnPropertyChanged(nameof(ToastDurationText));
+                    break;
+            }
+        };
+
+        // 入口开关会被「清除全部数据」重置，界面要跟着回读。
+        UiEntrySettings.Changed += () =>
+        {
+            OnPropertyChanged(nameof(DesktopMenu));
+            OnPropertyChanged(nameof(TrayPlanMenu));
+        };
 
         _theme.AccentChanged += (_, color) =>
         {
@@ -85,6 +114,14 @@ public sealed class SettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>当前主题模式的一句话说明。</summary>
+    public string ThemeModeHint => _theme.Mode switch
+    {
+        AppTheme.Light => "界面保持明亮主题",
+        AppTheme.Dark => "界面保持漆黑主题",
+        _ => "随 Windows 自动切换"
+    };
+
     // 色彩模式（投影自服务）
 
     public bool IsSystemAccentSelected
@@ -106,6 +143,11 @@ public sealed class SettingsViewModel : ViewModelBase
     }
 
     public bool IsColorPanelVisible => _theme.AccentMode == AccentSource.Custom;
+
+    /// <summary>当前色彩来源的一句话说明。</summary>
+    public string AccentHint => _theme.AccentMode == AccentSource.System
+        ? "使用 Windows 强调色"
+        : "自定义界面主题色";
 
     // 彩虹滑块
 
@@ -203,4 +245,76 @@ public sealed class SettingsViewModel : ViewModelBase
     public string RepositoryUrl => "https://github.com/Motu-Z/Zentwik";
 
     public string ReleasesUrl => "https://github.com/Motu-Z/Zentwik/releases";
+
+    // 入口
+
+    /// <summary>桌面空白右键菜单。写 HKCU，不需要提权。</summary>
+    public bool DesktopMenu
+    {
+        get => UiEntrySettings.DesktopMenu;
+        set
+        {
+            if (UiEntrySettings.DesktopMenu == value) return;
+
+            UiEntrySettings.DesktopMenu = value;
+            DesktopContextMenuService.Sync(value);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>托盘右键菜单里是否列出三类方案。</summary>
+    public bool TrayPlanMenu
+    {
+        get => UiEntrySettings.TrayPlanMenu;
+        set
+        {
+            if (UiEntrySettings.TrayPlanMenu == value) return;
+
+            UiEntrySettings.TrayPlanMenu = value;
+            OnPropertyChanged();
+        }
+    }
+
+    // 通知
+
+    public bool NotifyOnError
+    {
+        get => _settings.ErrorBubble;
+        set
+        {
+            if (_settings.ErrorBubble == value) return;
+
+            _settings.ErrorBubble = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool NotifyOnTraySuccess
+    {
+        get => _settings.NotifyOnTraySuccess;
+        set
+        {
+            if (_settings.NotifyOnTraySuccess == value) return;
+
+            _settings.NotifyOnTraySuccess = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public int ToastDuration
+    {
+        get => _settings.ToastDurationSeconds;
+        set
+        {
+            int clamped = Math.Clamp(value, 1, 30);
+
+            if (_settings.ToastDurationSeconds == clamped) return;
+
+            _settings.ToastDurationSeconds = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ToastDurationText));
+        }
+    }
+
+    public string ToastDurationText => $"{ToastDuration} 秒";
 }

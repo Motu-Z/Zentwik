@@ -63,6 +63,7 @@ public sealed class AppSettings : ViewModelBase
                     _autoApplyTuning = saved.AutoApplyTuning;
                     _watchProcesses = saved.WatchProcesses;
                     _errorBubble = saved.ErrorBubble;
+                    _notifyOnTraySuccess = saved.NotifyOnTraySuccess;
 
                     OnPropertyChanged(nameof(SmartAntiBrick));
                     OnPropertyChanged(nameof(SmartHibernateAware));
@@ -72,6 +73,7 @@ public sealed class AppSettings : ViewModelBase
                     OnPropertyChanged(nameof(AutoApplyTuning));
                     OnPropertyChanged(nameof(WatchProcesses));
                     OnPropertyChanged(nameof(ErrorBubble));
+                    OnPropertyChanged(nameof(NotifyOnTraySuccess));
                 }
             }
         }
@@ -229,6 +231,7 @@ public sealed class AppSettings : ViewModelBase
                 AutoApplyTuning = _autoApplyTuning,
                 WatchProcesses = _watchProcesses,
                 ErrorBubble = _errorBubble,
+                NotifyOnTraySuccess = _notifyOnTraySuccess,
             };
 
             File.WriteAllText(
@@ -258,6 +261,8 @@ public sealed class AppSettings : ViewModelBase
         public bool WatchProcesses { get; set; }
 
         public bool ErrorBubble { get; set; }
+
+        public bool NotifyOnTraySuccess { get; set; }
     }
 
     private bool _smartAntiBrick = true;
@@ -318,9 +323,19 @@ public sealed class AppSettings : ViewModelBase
 
     private bool _errorBubble = true;
 
+    /// <summary>异常时通知。走系统通知，托盘不可用时退回界面内提示。</summary>
     public bool ErrorBubble
     {
         get => _errorBubble;
         set => SetProperty(ref _errorBubble, value);
+    }
+
+    private bool _notifyOnTraySuccess;
+
+    /// <summary>托盘切换方案成功时也发系统通知。默认只在失败时通知。</summary>
+    public bool NotifyOnTraySuccess
+    {
+        get => _notifyOnTraySuccess;
+        set => SetProperty(ref _notifyOnTraySuccess, value);
     }
 }

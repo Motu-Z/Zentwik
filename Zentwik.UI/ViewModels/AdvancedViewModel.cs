@@ -11,6 +11,9 @@ public class AdvancedViewModel : ViewModelBase
 {
     private readonly AppSettings _settings = AppSettings.Instance;
 
+    /// <summary>平台不支持调校时，安全区整组隐藏。</summary>
+    public bool TuningSupported => WorkerStatus.Instance.IsTuningSupported;
+
     // 安全
 
     public bool SmartAntiBrick
@@ -73,26 +76,6 @@ public class AdvancedViewModel : ViewModelBase
         }
     }
 
-    // 显示
-
-    public int ToastDuration
-    {
-        get => _settings.ToastDurationSeconds;
-        set
-        {
-            int clamped = Math.Clamp(value, 1, 30);
-
-            if (_settings.ToastDurationSeconds == clamped) return;
-
-            _settings.ToastDurationSeconds = clamped;
-
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(ToastDurationText));
-        }
-    }
-
-    public string ToastDurationText => $"{ToastDuration} 秒";
-
     // 诊断 / 恢复
 
     public RelayCommand RestoreSafeDefaultsCommand { get; }
@@ -114,12 +97,7 @@ public class AdvancedViewModel : ViewModelBase
         // 远程设置覆盖本地后，界面要跟着刷。
         _settings.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(AppSettings.ToastDurationSeconds))
-            {
-                OnPropertyChanged(nameof(ToastDuration));
-                OnPropertyChanged(nameof(ToastDurationText));
-            }
-            else if (e.PropertyName == nameof(AppSettings.SmartAntiBrick))
+            if (e.PropertyName == nameof(AppSettings.SmartAntiBrick))
             {
                 OnPropertyChanged(nameof(SmartAntiBrick));
             }
@@ -127,6 +105,13 @@ public class AdvancedViewModel : ViewModelBase
             {
                 OnPropertyChanged(nameof(SmartHibernateAware));
             }
+        };
+
+        // 与侧栏「调校」共用同一判定：非 AMD 平台整组隐藏，厂商未知时照常显示。
+        WorkerStatus.Instance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkerStatus.IsTuningSupported))
+                OnPropertyChanged(nameof(TuningSupported));
         };
 
         // 【高危确认】用户 2026-11-04。

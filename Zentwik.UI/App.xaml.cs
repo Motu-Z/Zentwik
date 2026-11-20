@@ -835,7 +835,8 @@ public partial class App : Application
                 sb.AppendLine(
                     $"topology: success={topology.Success} msg={topology.Message} " +
                     $"cores={topology.Value?.Cores} perCcd={topology.Value?.CoresPerCcd} " +
-                    $"threads={topology.Value?.ThreadsPerCore}");
+                    $"threads={topology.Value?.ThreadsPerCore} vendor={topology.Value?.Vendor} " +
+                    $"relations={topology.Value?.CoreMasks?.Length ?? 0}");
 
                 IpcOutcome<Zentwik.Core.Ipc.MaskListPayload> before =
                     await bridge.QueryMasksAsync().ConfigureAwait(false);
@@ -1642,6 +1643,9 @@ public partial class App : Application
 
         _tray = tray;
 
+        // 系统通知的落点就是托盘图标；托盘建不起来时 ToastService 退回界面内提示。
+        ViewModels.ToastService.SystemNotify = tray.ShowBalloon;
+
         tray.ShowRequested += (_, _) => BringToFront(window);
 
         // 托盘右键菜单由 TrayIconService 直接用 TrackPopupMenuEx 弹出（系统原生），
@@ -1723,7 +1727,8 @@ public partial class App : Application
 
         if (!outcome.Success)
         {
-            _tray?.ShowBalloon("切换失败", outcome.Message.Length > 0 ? outcome.Message : "后台服务未响应");
+            ViewModels.ToastService.Instance.NotifySystem(
+                "切换失败", outcome.Message.Length > 0 ? outcome.Message : "后台服务未响应");
             return;
         }
 
@@ -1733,6 +1738,9 @@ public partial class App : Application
             item.IsActive = ReferenceEquals(item, target);
         }
 
-        _tray?.ShowBalloon("已切换方案", $"已切换到 {target.Name}");
+        if (ViewModels.AppSettings.Instance.NotifyOnTraySuccess)
+        {
+            ViewModels.ToastService.Instance.NotifySystem("已切换方案", $"已切换到 {target.Name}");
+        }
     }
 }

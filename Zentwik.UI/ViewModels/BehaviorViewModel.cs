@@ -12,13 +12,16 @@ public class BehaviorViewModel : ViewModelBase
         // 后台那份设置是权威值：连上 Worker 后会被覆盖一次，界面要跟着刷。
         _settings.PropertyChanged += (_, e) => OnSettingChanged(e.PropertyName);
 
-        // 入口开关也会被别处改（清除全部数据会重置），两个开关跟着回读。
-        UiEntrySettings.Changed += () =>
+        // 与侧栏「调校」共用同一判定：非 AMD 平台整行隐藏，厂商未知时照常显示。
+        WorkerStatus.Instance.PropertyChanged += (_, e) =>
         {
-            OnPropertyChanged(nameof(DesktopMenu));
-            OnPropertyChanged(nameof(TrayPlanMenu));
+            if (e.PropertyName == nameof(WorkerStatus.IsTuningSupported))
+                OnPropertyChanged(nameof(TuningSupported));
         };
     }
+
+    /// <summary>平台不支持调校时，依赖 SMU 的设置整行隐藏。</summary>
+    public bool TuningSupported => WorkerStatus.Instance.IsTuningSupported;
 
     private void OnSettingChanged(string? name)
     {
@@ -45,10 +48,6 @@ public class BehaviorViewModel : ViewModelBase
 
             case nameof(AppSettings.WatchProcesses):
                 OnPropertyChanged(nameof(WatchProcesses));
-                break;
-
-            case nameof(AppSettings.ErrorBubble):
-                OnPropertyChanged(nameof(ErrorBubble));
                 break;
         }
     }
@@ -82,10 +81,10 @@ public class BehaviorViewModel : ViewModelBase
     /// <summary>当前启动方式的一句话说明。行右侧只有四个按钮，不解释就成了猜谜。</summary>
     public string StartupHint => _settings.Startup switch
     {
-        StartupBehavior.None => "开机不启动任何组件，仅在手动打开时运行",
-        StartupBehavior.ServiceOnly => "开机只启动后台服务，不显示托盘与界面",
-        StartupBehavior.ServiceTray => "开机启动后台服务与托盘图标，界面按需打开",
-        _ => "开机直接打开界面，后台服务同时启动"
+        StartupBehavior.None => "开机时不启动任何组件",
+        StartupBehavior.ServiceOnly => "仅启动后台服务，不启动托盘与界面",
+        StartupBehavior.ServiceTray => "启动后台服务并显示托盘",
+        _ => "启动后台服务并打开界面"
     };
 
     // 关闭主窗口
@@ -111,9 +110,9 @@ public class BehaviorViewModel : ViewModelBase
     /// <summary>当前关闭行为的一句话说明。</summary>
     public string CloseHint => _settings.CloseBehavior switch
     {
-        MainWindowCloseBehavior.MinimizeToTray => "窗口收进托盘，后台服务继续运行",
-        MainWindowCloseBehavior.ExitAll => "界面和后台服务一起退出",
-        _ => "仅退出界面，后台服务继续运行"
+        MainWindowCloseBehavior.MinimizeToTray => "隐藏窗口，后台服务继续运行",
+        MainWindowCloseBehavior.ExitAll => "退出应用并停止后台服务",
+        _ => "关闭界面，后台服务继续运行"
     };
 
     // 后台效率
@@ -139,9 +138,9 @@ public class BehaviorViewModel : ViewModelBase
     /// <summary>当前档位的一句话说明。</summary>
     public string IdleTrimHint => IdleTrimSettings.Current switch
     {
-        IdleTrimMode.Off => "窗口收进后台后不做处理",
-        IdleTrimMode.Light => "降低优先级并把占用的内存交还系统，页面保留",
-        _ => "在前一项基础上释放其他页面的界面缓存，切回时重建"
+        IdleTrimMode.Off => "窗口进入后台后不做额外处理",
+        IdleTrimMode.Light => "降低进程优先级，内存交还系统，页面保留",
+        _ => "降低进程优先级，丢弃未打开页面的视图，切回时重建"
     };
 
     private void SetIdleTrim(IdleTrimMode mode)
@@ -182,46 +181,6 @@ public class BehaviorViewModel : ViewModelBase
             _settings.WatchProcesses = value;
 
             OnPropertyChanged();
-        }
-    }
-
-    public bool ErrorBubble
-    {
-        get => _settings.ErrorBubble;
-        set
-        {
-            if (_settings.ErrorBubble == value) return;
-
-            _settings.ErrorBubble = value;
-
-            OnPropertyChanged();
-        }
-    }
-
-    // 入口
-
-    /// <summary>桌面空白右键菜单。写 HKCU，不需要提权。</summary>
-    public bool DesktopMenu
-    {
-        get => UiEntrySettings.DesktopMenu;
-        set
-        {
-            if (UiEntrySettings.DesktopMenu == value) return;
-
-            UiEntrySettings.DesktopMenu = value;
-            DesktopContextMenuService.Sync(value);
-        }
-    }
-
-    /// <summary>托盘右键菜单里是否列出三类方案。</summary>
-    public bool TrayPlanMenu
-    {
-        get => UiEntrySettings.TrayPlanMenu;
-        set
-        {
-            if (UiEntrySettings.TrayPlanMenu == value) return;
-
-            UiEntrySettings.TrayPlanMenu = value;
         }
     }
 

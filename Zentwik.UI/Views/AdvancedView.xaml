@@ -2,9 +2,14 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:automation="clr-namespace:System.Windows.Automation;assembly=PresentationCore"
+             xmlns:conv="clr-namespace:Zentwik.UI.Converters"
              xmlns:vm="clr-namespace:Zentwik.UI.ViewModels"
              FontFamily="{DynamicResource AppFontFamily}"
              FontSize="13">
+
+    <UserControl.Resources>
+        <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
 
     <UserControl.DataContext>
         <vm:AdvancedViewModel />
@@ -24,7 +29,7 @@
             <StackPanel Margin="32,32,32,32" MaxWidth="1160">
 
                 <!-- 安全防砖 -->
-                <StackPanel>
+                <StackPanel Visibility="{Binding TuningSupported, Converter={StaticResource BoolToVis}}">
                     <Border Style="{StaticResource SectionHeaderStyle}">
                         <TextBlock Text="SAFETY / 安全防砖保护" Style="{StaticResource SectionTitleStyle}" />
                     </Border>
@@ -38,6 +43,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="启动异常自动拦截" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="连续 3 次写入未完成时，本次启动不应用调校"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -59,6 +70,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="连续异常启动次数" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="正常退出后清零，满 3 次触发拦截"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -81,6 +98,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="智能休眠感知" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="从睡眠恢复后重新下发当前调校"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -102,6 +125,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="紧急恢复安全参数" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="核心曲线归零、频率上限回基线"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -109,33 +138,11 @@
                                     VerticalAlignment="Center"
                                     automation:AutomationProperties.Name="一键恢复默认安全值"
                                     Command="{Binding RestoreSafeDefaultsCommand}">
-                                <TextBlock Text="恢复默认安全参数" />
-                            </Button>
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource FlatRowStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Grid.Column="0"
-                                       Text="电源策略恢复默认"
-                                       Style="{StaticResource RowTitleStyle}"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,24,0" />
-
-                            <Button Grid.Column="1"
-                                    Style="{StaticResource ActionButtonStyle}"
-                                    VerticalAlignment="Center"
-                                    automation:AutomationProperties.Name="电源参数恢复默认"
-                                    Command="{Binding RestorePowerDefaultsCommand}">
                                 <TextBlock Text="恢复" />
                             </Button>
                         </Grid>
                     </Border>
+
                 </StackPanel>
 
                 <!-- 诊断与排障 -->
@@ -153,6 +160,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="SMU 硬件自检报告" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="生成诊断快照并保存到桌面"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -160,7 +173,7 @@
                                     VerticalAlignment="Center"
                                     automation:AutomationProperties.Name="运行自检并导出"
                                     Command="{Binding RunSelfTestCommand}">
-                                <TextBlock Text="运行自检并导出" />
+                                <TextBlock Text="导出" />
                             </Button>
 
                             <Border Style="{StaticResource DashRuleStyle}" />
@@ -176,6 +189,12 @@
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="导出运行日志" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="汇总后台日志保存到桌面"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -183,16 +202,9 @@
                                     VerticalAlignment="Center"
                                     automation:AutomationProperties.Name="导出运行日志"
                                     Command="{Binding ExportLogsCommand}">
-                                <TextBlock Text="导出运行日志" />
+                                <TextBlock Text="导出" />
                             </Button>
                         </Grid>
-                    </Border>
-                </StackPanel>
-
-                <!-- 显示 -->
-                <StackPanel Margin="0,48,0,0">
-                    <Border Style="{StaticResource SectionHeaderStyle}">
-                        <TextBlock Text="DISPLAY / 显示" Style="{StaticResource SectionTitleStyle}" />
                     </Border>
 
                     <Border Style="{StaticResource FlatRowStyle}">
@@ -203,30 +215,22 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                <TextBlock Text="气泡显示时长" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="恢复默认电源策略" Style="{StaticResource RowTitleStyle}" />
+
+                                <TextBlock Text="电源参数回出厂折中值"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Slider Style="{StaticResource ThinSliderStyle}"
-                                        Width="180"
-                                        Minimum="1"
-                                        Maximum="10"
-                                        TickFrequency="1"
-                                        IsSnapToTickEnabled="True"
-                                        VerticalAlignment="Center"
-                                        automation:AutomationProperties.Name="气泡显示时长"
-                                        Value="{Binding ToastDuration, Mode=TwoWay}" />
-
-                                <TextBlock Text="{Binding ToastDurationText}"
-                                           Width="46"
-                                           Margin="14,0,0,0"
-                                           TextAlignment="Right"
-                                           VerticalAlignment="Center"
-                                           FontFamily="{DynamicResource AppMonoFontFamily}"
-                                           FontSize="13"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource AccentBrush}" />
-                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    VerticalAlignment="Center"
+                                    automation:AutomationProperties.Name="恢复默认电源策略"
+                                    Command="{Binding RestorePowerDefaultsCommand}">
+                                <TextBlock Text="恢复" />
+                            </Button>
                         </Grid>
                     </Border>
                 </StackPanel>
@@ -247,6 +251,12 @@
 
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="停用全部功能" Style="{StaticResource DangerZoneTitleStyle}" />
+
+                                    <TextBlock Text="关闭自动应用、进程监听、休眠感知与启动拦截"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="0,4,0,0"
+                                               TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
 
                                 <Button Grid.Column="1"
@@ -254,7 +264,7 @@
                                         VerticalAlignment="Center"
                                         automation:AutomationProperties.Name="停用全部功能"
                                         Command="{Binding DisableAllCommand}">
-                                    <TextBlock Text="停用服务" />
+                                    <TextBlock Text="停用" />
                                 </Button>
                             </Grid>
 
@@ -266,6 +276,12 @@
 
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="清除全部用户数据（恢复出厂设置）" Style="{StaticResource DangerZoneTitleStyle}" />
+
+                                    <TextBlock Text="删除方案、规则与设置，并重置注册表入口"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="0,4,0,0"
+                                               TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
 
                                 <Button Grid.Column="1"
@@ -273,7 +289,7 @@
                                         VerticalAlignment="Center"
                                         automation:AutomationProperties.Name="清除全部数据"
                                         Command="{Binding ClearAllCommand}">
-                                    <TextBlock Text="抹除全部数据" />
+                                    <TextBlock Text="清除" />
                                 </Button>
                             </Grid>
                         </StackPanel>

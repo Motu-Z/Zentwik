@@ -1328,11 +1328,12 @@ public static class IntegrationTest
         // 否则下拉 SelectedValue 找不到选项，AFFINITY 列整列空白。
         {
             MaskOption? legacy = proc.MaskOptions.FirstOrDefault(
-                m => m.TargetType == "mask" && m.MaskId is not null && m.MaskBits != 0);
+                m => m.TargetType == "mask" && m.MaskId is not null && !m.MaskBits.IsZero);
 
             if (legacy is not null)
             {
-                string bits = legacy.MaskBits.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                // 旧规则存的是十进制掩码位，这条用例保的是那条兼容路径。
+                string bits = legacy.MaskBits.Low.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
                 ScheduleRuleItem oldRule = new("r-legacy", "legacy-mask.exe", "legacy", "旧掩码", "正常", enabled: true);
                 oldRule.ApplyMask("旧掩码", "mask", bits);
@@ -2070,9 +2071,9 @@ public static class IntegrationTest
                  {
                      ("调校", () => new Views.TuningView(), 2),
                      ("电源", () => new Views.PowerView(), 2),
-                     ("通用", () => new Views.SettingsView(), 1),
-                     ("行为", () => new Views.BehaviorView(), 4),
-                     ("高级", () => new Views.AdvancedView(), 4),
+                     ("通用", () => new Views.SettingsView(), 3),
+                     ("行为", () => new Views.BehaviorView(), 3),
+                     ("高级", () => new Views.AdvancedView(), 3),
                  })
         {
             var page = factory();
@@ -2310,6 +2311,7 @@ public static class IntegrationTest
         bool watchBefore = settings.WatchProcesses;
         bool bubbleBefore = settings.ErrorBubble;
         int toastBefore = settings.ToastDurationSeconds;
+        Action<string, string>? notifyBefore = ToastService.SystemNotify;
 
         try
         {
@@ -2329,17 +2331,22 @@ public static class IntegrationTest
             Check("设置：提示时长随远程值更新", settings.ToastDurationSeconds == 9);
 
             settings.ErrorBubble = true;
-            ToastService.Instance.ShowError("测试错误");
-            Check("提示：开着错误气泡时错误可见", ToastService.Instance.IsVisible);
-            Check("提示：错误走警示图标", ToastService.Instance.IsError);
 
-            settings.ErrorBubble = false;
+            // 系统通知通道换成计数器，避免自检真的往托盘弹气泡。
+            int notified = 0;
+            ToastService.SystemNotify = (_, _) => notified++;
+
             ToastService.Instance.Hide();
             ToastService.Instance.ShowError("测试错误");
-            Check("提示：关掉错误气泡后错误不弹", !ToastService.Instance.IsVisible);
+            Check("提示：异常走系统通知", notified == 1, $"{notified}");
+            Check("提示：异常不弹界面内浮层", !ToastService.Instance.IsVisible);
+
+            settings.ErrorBubble = false;
+            ToastService.Instance.ShowError("测试错误");
+            Check("提示：关掉运行异常通知后不发送", notified == 1, $"{notified}");
 
             ToastService.Instance.Show("结果反馈");
-            Check("提示：关掉错误气泡不影响普通提示", ToastService.Instance.IsVisible);
+            Check("提示：普通提示仍走界面内", ToastService.Instance.IsVisible);
             Check("提示：普通提示回到对勾图标", !ToastService.Instance.IsError);
         }
         finally
@@ -2348,6 +2355,7 @@ public static class IntegrationTest
             settings.WatchProcesses = watchBefore;
             settings.ErrorBubble = bubbleBefore;
             settings.ToastDurationSeconds = toastBefore;
+            ToastService.SystemNotify = notifyBefore;
             ToastService.Instance.Hide();
         }
 
@@ -2424,19 +2432,19 @@ public static class IntegrationTest
         // 入口开关：默认值与写回。测试改完必须还原，否则会污染用户的 ui-entry.json。
         bool desktopBefore = UiEntrySettings.DesktopMenu;
         bool trayBefore = UiEntrySettings.TrayPlanMenu;
-        var behavior = new BehaviorViewModel();
+        var entryVm = new SettingsViewModel();
 
         try
         {
             Check("入口：托盘方案菜单默认开启", trayBefore);
 
-            behavior.TrayPlanMenu = false;
+            entryVm.TrayPlanMenu = false;
             Check("入口：关掉托盘方案菜单写回设置", !UiEntrySettings.TrayPlanMenu);
 
-            behavior.TrayPlanMenu = true;
+            entryVm.TrayPlanMenu = true;
             Check("入口：重新开启写回设置", UiEntrySettings.TrayPlanMenu);
 
-            behavior.DesktopMenu = !desktopBefore;
+            entryVm.DesktopMenu = !desktopBefore;
             Check("入口：桌面右键开关写回设置",
                   UiEntrySettings.DesktopMenu == !desktopBefore,
                   $"{UiEntrySettings.DesktopMenu}");
@@ -2454,14 +2462,20 @@ public static class IntegrationTest
             DesktopContextMenuService.Sync(desktopBefore);
         }
 
-        var behaviorView = new Views.BehaviorView();
-        Render(behaviorView, 1168, 820);
+        var settingsView = new Views.SettingsView();
+        Render(settingsView, 1168, 820);
 
-        Check("入口：行为页铺出桌面右键开关",
-              FindByAutomationName(behaviorView, "桌面右键菜单") is not null);
+        Check("入口：通用页铺出桌面右键开关",
+              FindByAutomationName(settingsView, "桌面右键菜单") is not null);
 
-        Check("入口：行为页铺出托盘方案开关",
-              FindByAutomationName(behaviorView, "托盘方案切换") is not null);
+        Check("入口：通用页铺出托盘方案开关",
+              FindByAutomationName(settingsView, "托盘方案切换") is not null);
+
+        Check("通知：通用页铺出运行异常开关",
+              FindByAutomationName(settingsView, "运行异常时通知") is not null);
+
+        Check("通知：通用页铺出托盘切换开关",
+              FindByAutomationName(settingsView, "托盘切换时通知") is not null);
     }
 
     // 11. 浮层

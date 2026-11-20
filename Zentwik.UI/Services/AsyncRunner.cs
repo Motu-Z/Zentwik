@@ -6,7 +6,7 @@ public static class AsyncRunner
     /// <summary>发起一个异步动作，不等待结果；失败转一条 Toast。</summary>
     public static void Fire(Func<Task> action) => _ = Run(action, ViewModels.ToastService.Instance.Show);
 
-    /// <summary>发起一个异步动作，不等待结果；失败走错误气泡， 受「发生错误时弹出气泡」开关约束</summary>
+    /// <summary>发起一个异步动作，不等待结果；失败走系统通知，受「运行异常时通知」开关约束</summary>
     public static void FireError(Func<Task> action) => _ = Run(action, ViewModels.ToastService.Instance.ShowError);
 
     /// <summary>执行异步动作，失败转一条 Toast。</summary>
