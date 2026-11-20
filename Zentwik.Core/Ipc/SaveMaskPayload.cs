@@ -23,9 +23,9 @@ namespace Zentwik.Core.Ipc
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>逻辑核掩码，位 i = 1 表示包含逻辑处理器 i。</summary>
+        /// <summary>逻辑核掩码，位 i = 1 表示包含逻辑处理器 i（线格式为十六进制串）。</summary>
         [JsonPropertyName("mask")]
-        public ulong Mask { get; set; }
+        public CoreMask Mask { get; set; }
 
         /// <summary>下发方式：<c>cpuSets</c>（默认）或 <c>affinityMask</c>。</summary>
         [JsonPropertyName("type")]

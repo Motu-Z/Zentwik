@@ -11,13 +11,7 @@ namespace Zentwik.Core.Services
         Intel = 2
     }
 
-    /// <summary>
-    /// 读处理器厂商。
-    ///
-    /// 分区靠 L3 缓存域观测，跟厂商无关；厂商只决定预置项叫什么
-    /// —— AMD 用户说 CCD，Intel 用户说 Tile，其余说分组。
-    /// 判断错了最坏是一条预置项名字不好听，掩码位不会错。
-    /// </summary>
+    /// <summary>读处理器厂商。分区靠 L3 缓存域观测，厂商只决定预置项怎么叫。</summary>
     public static class CpuVendorProbe
     {
         private const string KeyPath = @"HARDWARE\DESCRIPTION\System\CentralProcessor\0";
@@ -46,15 +40,14 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>核心组的默认名。只有一个组时统一叫「全核心」，不分厂商。</summary>
+        /// <summary>
+        /// 核心组默认名。单组为 All Cores，AMD 为 CCD n，其余为 Group n。
+        /// </summary>
         public static string GroupName(CpuVendor vendor, int index, int total) => total <= 1
-            ? "全核心"
-            : vendor switch
-            {
-                CpuVendor.Amd => $"CCD{index}",
-                CpuVendor.Intel => $"Tile{index}",
-                _ => $"分组{index}"
-            };
+            ? "All Cores"
+            : vendor == CpuVendor.Amd
+                ? $"CCD {index}"
+                : $"Group {index}";
     }
 
     /// <summary>厂商在协议里的写法。线格式用小写字符串，两端共用一份换算。</summary>

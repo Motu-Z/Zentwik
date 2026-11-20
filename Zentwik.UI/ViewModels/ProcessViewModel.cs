@@ -424,7 +424,7 @@ public class ProcessViewModel : ViewModelBase
                                 }
 
                                 string? value = rule.TargetType == "ccd"
-                                    ? "CCD" + rule.TargetValue
+                                    ? "CCD " + rule.TargetValue
                                     : ResolveMaskId(rule);
 
                                 if (value is null)
@@ -983,7 +983,7 @@ public class ProcessViewModel : ViewModelBase
         switch (targetType)
         {
             case "ccd":
-                return "CCD" + targetValue;
+                return "CCD " + targetValue;
 
             case "mask":
                 foreach (MaskOption option in MaskOptions)
@@ -1033,11 +1033,10 @@ public class ProcessViewModel : ViewModelBase
         }
 
         // 旧值一律是掩码位：只有 CPU 集时代存的，按位反查即可。
-        if (!ulong.TryParse(targetValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong bits)
-            || bits == 0)
-        {
+        CoreMask bits = ParseMask(targetValue);
+
+        if (bits.IsZero)
             return targetValue;
-        }
 
         foreach (MaskOption option in MaskOptions)
         {
@@ -1238,18 +1237,32 @@ public class ProcessViewModel : ViewModelBase
             if (option.TargetType != "mask")
                 continue;
 
-            ulong bits = option.MaskBits != 0 ? option.MaskBits : ParseMask(option.TargetValue);
+            CoreMask bits = option.MaskBits.IsZero ? ParseMask(option.TargetValue) : option.MaskBits;
 
             // 空掩码不进抽屉：Core 的空值文案是「无」，这里要的是不显示。
-            if (bits == 0)
+            if (bits.IsZero)
                 continue;
 
             DrawerMasks.Add(new MaskPreviewItem(option.Label, MaskFormatter.ToRangeText(bits)));
         }
     }
 
-    private static ulong ParseMask(string value) =>
-        ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong bits) ? bits : 0UL;
+    /// <summary>
+    /// 解析规则里的掩码文本。新格式是十六进制串；老数据存的是十进制掩码位。
+    /// 纯数字按十进制理解 —— 十六进制一律带 0x，否则与老数据无法区分。
+    /// </summary>
+    private static CoreMask ParseMask(string value)
+    {
+        string text = value.Trim();
+
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return MaskFormatter.TryParseHexToken(text, out CoreMask hex) ? hex : CoreMask.Zero;
+
+        if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong bits))
+            return new CoreMask(bits);
+
+        return MaskFormatter.ParseOrZero(text);
+    }
 
     public bool AreAllSelected => FilteredProcesses.Count > 0 && FilteredProcesses.All(p => p.IsSelected);
 
@@ -1852,7 +1865,7 @@ public class ProcessViewModel : ViewModelBase
 
     private void SeedRunning()
     {
-        AddProcess(8124, "cs2.exe", @"D:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive\game\bin\win64\cs2.exe", 4.2, "高", "CCD0");
+        AddProcess(8124, "cs2.exe", @"D:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive\game\bin\win64\cs2.exe", 4.2, "高", "CCD 0");
         AddProcess(4210, "steam.exe", @"C:\Program Files (x86)\Steam\steam.exe", 0.8, "正常", null);
         AddProcess(4211, "steam.exe", @"C:\Program Files (x86)\Steam\steam.exe", 0.2, "正常", null);
         AddProcess(6332, "obs64.exe", @"C:\Program Files\obs-studio\bin\64bit\obs64.exe", 2.1, "高于标准", null);
@@ -1907,8 +1920,8 @@ public class ProcessViewModel : ViewModelBase
 
     private void SeedRules()
     {
-        var r1 = new ScheduleRuleItem("r-1", "cs2.exe", @"D:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive", "CCD0", "高", enabled: true);
-        r1.ApplyMask("CCD0", "ccd", "0");
+        var r1 = new ScheduleRuleItem("r-1", "cs2.exe", @"D:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive", "CCD 0", "高", enabled: true);
+        r1.ApplyMask("CCD 0", "ccd", "0");
 
         var r2 = new ScheduleRuleItem("r-2", "obs64.exe", @"C:\Program Files\obs-studio", "0-7,16-23", "高于标准", enabled: true);
         r2.ApplyMask("0-7,16-23", "mask", "16711935");
@@ -2170,8 +2183,8 @@ public sealed class MaskOption : ViewModelBase, IMaskEntry
     public string TargetType { get; }
     public string TargetValue { get; }
 
-    /// <summary>自定义掩码的掩码位；0 表示这一项不是自定义掩码（CCD / 默认）。</summary>
-    public ulong MaskBits { get; private set; }
+    /// <summary>自定义掩码的掩码位；全 0 表示这一项不是自定义掩码（默认）。</summary>
+    public CoreMask MaskBits { get; private set; }
 
     /// <summary>
     /// 下拉项的唯一标识。自定义掩码用 Id，其余用值。
@@ -2195,7 +2208,7 @@ public sealed class MaskOption : ViewModelBase, IMaskEntry
         string targetType,
         string targetValue,
         string? maskId = null,
-        ulong maskBits = 0)
+        CoreMask maskBits = default)
     {
         _label = label;
         TargetType = targetType;
@@ -2205,7 +2218,7 @@ public sealed class MaskOption : ViewModelBase, IMaskEntry
     }
 
     /// <summary>掩码改名或改核集合：原地更新，别换实例（换了实例下拉会丢选中）</summary>
-    internal void Refresh(string label, ulong maskBits)
+    internal void Refresh(string label, CoreMask maskBits)
     {
         MaskBits = maskBits;
 

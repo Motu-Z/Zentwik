@@ -30,7 +30,10 @@ namespace Zentwik.Core.Helpers
         void ResetToFactory();
 
         /// <summary>把核心组铺成预置掩码项，返回新增条数。</summary>
-        int SeedPresets(IEnumerable<(string Key, string Name, ulong Mask)> presets);
+        int SeedPresets(IEnumerable<(string Key, string Name, CoreMask Mask)> presets);
+
+        /// <summary>把旧命名的预置项改成现行命名，返回改名条数。</summary>
+        int RenamePresets(IEnumerable<(string Legacy, string Current)> pairs);
 
         /// <summary>新增或按 Id 覆盖一条掩码。</summary>
         bool Upsert(CustomMask mask, out MaskStore.UpsertError error);

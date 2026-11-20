@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Zentwik.Core.Helpers;
 
 namespace Zentwik.Core.Services
 {
@@ -23,6 +25,18 @@ namespace Zentwik.Core.Services
         /// <summary>单个 PROCESSOR_RELATIONSHIP 里第一组亲和性掩码的偏移（仅 64 位）。</summary>
         private const int FirstGroupMaskOffset = 32;
 
+        /// <summary>单个 PROCESSOR_RELATIONSHIP 里 EfficiencyClass 的偏移（Flags 之后一字节）。</summary>
+        private const int EfficiencyClassOffset = 9;
+
+        /// <summary>处理器组个数（WORD，Reserved[20] 之后）。</summary>
+        private const int GroupCountOffset = 30;
+
+        /// <summary>每个 GROUP_AFFINITY 的长度：Mask(8) + GroupNumber(2) + Reserved(6)。</summary>
+        private const int GroupAffinitySize = 16;
+
+        /// <summary>一个物理核：线程掩码 + 效率类。效率类越大越偏性能。</summary>
+        public readonly record struct CoreRelation(CoreMask Mask, byte EfficiencyClass);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetLogicalProcessorInformationEx(
@@ -37,6 +51,21 @@ namespace Zentwik.Core.Services
         {
             cores = 0;
             threadsPerCore = 0;
+
+            if (!TryReadCores(out CoreRelation[] relations))
+                return false;
+
+            cores = relations.Length;
+            threadsPerCore = Math.Max(1, relations[0].Mask.PopCount);
+            return true;
+        }
+
+        /// <summary>
+        /// 读每个物理核的线程掩码与效率类。混合架构靠效率类区分 P / E 核。
+        /// </summary>
+        public static bool TryReadCores(out CoreRelation[] cores)
+        {
+            cores = Array.Empty<CoreRelation>();
 
             int length = 0;
 
@@ -53,11 +82,11 @@ namespace Zentwik.Core.Services
                 if (!GetLogicalProcessorInformationEx(RelationProcessorCore, buffer, ref length))
                     return false;
 
-                int offset = 0;
-                int coreCount = 0;
-                int threads = 0;
+                List<CoreRelation> found = new();
 
                 // 变长记录：每条前面都是 Relationship(4) + Size(4)，按 Size 前进。
+                int offset = 0;
+
                 while (offset + 8 <= length)
                 {
                     int relationship = Marshal.ReadInt32(buffer, offset);
@@ -67,21 +96,15 @@ namespace Zentwik.Core.Services
                         break;
 
                     if (relationship == RelationProcessorCore)
-                    {
-                        coreCount++;
-
-                        if (threads == 0)
-                            threads = ReadThreadCount(buffer + offset);
-                    }
+                        AddCore(buffer, offset, found);
 
                     offset += size;
                 }
 
-                if (coreCount == 0)
+                if (found.Count == 0)
                     return false;
 
-                cores = coreCount;
-                threadsPerCore = threads > 0 ? threads : 1;
+                cores = found.ToArray();
                 return true;
             }
             finally
@@ -90,20 +113,33 @@ namespace Zentwik.Core.Services
             }
         }
 
-        /// <summary>
-        /// 单个物理核的线程数 = 第一组亲和性掩码里置位的处理器数。
-        ///
-        /// 布局：Relationship(4) + Size(4) + Flags(1) + EfficiencyClass(1) + Reserved(20) +
-        /// GroupCount(2)，随后 GroupMask 数组按指针宽度对齐（64 位下从 32 开始）。
-        /// 32 位进程的偏移不同，本工程只出 64 位产物；不满足时返回 0 由调用方按 1 处理。
-        /// </summary>
-        private static int ReadThreadCount(IntPtr entry)
+        private static void AddCore(IntPtr buffer, int offset, List<CoreRelation> sink)
         {
             if (IntPtr.Size != 8)
-                return 0;
+                return;
 
-            ulong mask = (ulong)Marshal.ReadInt64(entry, FirstGroupMaskOffset);
-            return BitOperations.PopCount(mask);
+            int groupCount = Marshal.ReadInt16(buffer, offset + GroupCountOffset);
+            CoreMask mask = CoreMask.Zero;
+
+            // 一个核的线程可能分在不同处理器组里（>64 逻辑处理器时最典型），
+            // 每组都从位 0 起，必须按组号换算到全局位，否则会相撞。
+            for (int i = 0; i < groupCount; i++)
+            {
+                int entry = offset + FirstGroupMaskOffset + (i * GroupAffinitySize);
+                ulong groupMask = (ulong)Marshal.ReadInt64(buffer, entry);
+
+                if (groupMask == 0)
+                    continue;
+
+                int groupNumber = Marshal.ReadInt16(buffer, entry + 8);
+                mask |= CoreMask.FromGroupMask(groupNumber, groupMask);
+            }
+
+            // 全部落在 128 位以外（第三组及以后）时无法表达，与表达上限一致地跳过。
+            if (mask.IsZero)
+                return;
+
+            sink.Add(new CoreRelation(mask, Marshal.ReadByte(buffer, offset + EfficiencyClassOffset)));
         }
     }
 }

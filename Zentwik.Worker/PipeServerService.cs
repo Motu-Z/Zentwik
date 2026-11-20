@@ -1548,7 +1548,7 @@ namespace Zentwik.Worker
 
             CpuVendor vendor = CpuVendorProbe.Detect();
 
-            List<(string Key, string Name, ulong Mask)> presets = new(groups.Count);
+            List<(string Key, string Name, CoreMask Mask)> presets = new(groups.Count);
             foreach (CpuCoreGroup group in groups)
             {
                 presets.Add((
@@ -1556,6 +1556,23 @@ namespace Zentwik.Worker
                     CpuVendorProbe.GroupName(vendor, group.Index, groups.Count),
                     group.Mask));
             }
+
+            // 老版本按 CCD0 / Tile0 / 分组0 / 全核心 命名，这里一次性对齐到现行叫法。
+            List<(string Legacy, string Current)> renames = new(groups.Count * 4 + 1);
+            foreach (CpuCoreGroup group in groups)
+            {
+                string current = CpuVendorProbe.GroupName(vendor, group.Index, groups.Count);
+                renames.Add(($"CCD{group.Index}", current));
+                renames.Add(($"Tile{group.Index}", current));
+                renames.Add(($"分组{group.Index}", current));
+                renames.Add(($"处理器组 {group.Index}", current));
+            }
+
+            renames.Add(("全核心", CpuVendorProbe.GroupName(vendor, 0, groups.Count)));
+
+            int renamed = _masks.RenamePresets(renames);
+            if (renamed > 0)
+                _log.Info($"预置掩码改名 {renamed} 条（按现行分组命名）");
 
             if (_cpuSets.PerformanceMask != 0)
                 presets.Add(($"pool:perf:0x{_cpuSets.PerformanceMask:X}", "P-Core", _cpuSets.PerformanceMask));
@@ -1713,7 +1730,7 @@ namespace Zentwik.Worker
             };
         }
 
-        /// <summary>query-cpu-topology：掩码网格格子数来源（逻辑核数 + CCD 数）。</summary>
+        /// <summary>query-cpu-topology：掩码网格格子数来源（逻辑核数 + 核关系）。</summary>
         internal PipeResponse RunQueryCpuTopology()
         {
             int logical = _cpuSets.LogicalProcessorCount;
@@ -1722,10 +1739,19 @@ namespace Zentwik.Worker
             if (logical <= 0)
                 return Fail("无法读取本机逻辑处理器数量");
 
+            // 真实核关系优先：混合架构的 P / E 边界只能从这里拿到。
+            CpuTopologyProbe.TryReadCores(out CpuTopologyProbe.CoreRelation[] relations);
+            bool hasRelations = relations.Length > 0;
+
             int cores;
             int threadsPerCore;
 
-            if (!CpuTopologyProbe.TryRead(out cores, out threadsPerCore) || cores <= 0)
+            if (hasRelations)
+            {
+                cores = relations.Length;
+                threadsPerCore = Math.Max(1, relations[0].Mask.PopCount);
+            }
+            else if (!CpuTopologyProbe.TryRead(out cores, out threadsPerCore) || cores <= 0)
             {
                 cores = logical;
                 threadsPerCore = 1;
@@ -1734,12 +1760,15 @@ namespace Zentwik.Worker
             if (cores > logical)
                 cores = logical;
 
-            int coresPerCcd = (int)_smu.PeekCoresPerCcdRaw();
+            CpuVendor vendor = CpuVendorProbe.Detect();
+
+            // CCD 宽度只有 AMD 的 SMU 能直给；其他厂商拿处理器组数冒充会得到一个假 CCD。
+            int coresPerCcd = vendor == CpuVendor.Amd ? (int)_smu.PeekCoresPerCcdRaw() : 0;
 
             if (coresPerCcd <= 0)
             {
                 int groupCount = _cpuSets.CoreGroups.Count;
-                coresPerCcd = groupCount > 0 ? cores / groupCount : 0;
+                coresPerCcd = groupCount > 0 ? Math.Max(1, cores / groupCount) : 0;
             }
 
             if (coresPerCcd <= 0 || coresPerCcd > cores)
@@ -1749,14 +1778,21 @@ namespace Zentwik.Worker
             {
                 Cores = cores,
                 CoresPerCcd = coresPerCcd,
-                ThreadsPerCore = threadsPerCore > 0 ? threadsPerCore : 1
+                ThreadsPerCore = threadsPerCore > 0 ? threadsPerCore : 1,
+                Vendor = CpuVendorNames.ToName(vendor),
+                CoreMasks = hasRelations ? Array.ConvertAll(relations, r => r.Mask) : Array.Empty<CoreMask>(),
+                CoreClasses = hasRelations ? Array.ConvertAll(relations, r => (int)r.EfficiencyClass) : Array.Empty<int>()
             };
+
+            string message = vendor == CpuVendor.Amd
+                ? $"{cores} 核 / 每 CCD {coresPerCcd} 核 / 每核 {payload.ThreadsPerCore} 线程"
+                : $"{cores} 核 / 每核 {payload.ThreadsPerCore} 线程";
 
             return new PipeResponse
             {
                 Version = WorkerPipeContract.ProtocolVersion,
                 Success = true,
-                Message = $"{cores} 核 / 每 CCD {coresPerCcd} 核 / 每核 {payload.ThreadsPerCore} 线程",
+                Message = message,
                 Payload = JsonSerializer.Serialize(payload, IpcJsonContext.Default.CpuTopologyPayload)
             };
         }
@@ -1828,11 +1864,20 @@ namespace Zentwik.Worker
 
             _masks.Remove(id);
 
-            // 方案里的快照同样指向这个掩码，一并恢复默认，
-            // 否则应用那份方案时失效引用会被重新带回当前规则。
+            // 规则与方案都留着失效引用，两条链都得当场断开：
+            // 规则不破，删除后仍按快照继续绑；方案不破，应用时会把引用带回来。
+            int rules = ClearMaskFromRules(id);
             int plans = ClearMaskFromPlans(id);
 
-            _log.Info($"掩码已删除：{mask.Name}" + (plans > 0 ? $"，{plans} 个调度方案里的引用已恢复默认" : string.Empty));
+            string detail = rules > 0 && plans > 0
+                ? $"，{rules} 条调度规则与 {plans} 个调度方案里的引用已恢复默认"
+                : rules > 0
+                    ? $"，{rules} 条调度规则已恢复默认"
+                    : plans > 0
+                        ? $"，{plans} 个调度方案里的引用已恢复默认"
+                        : string.Empty;
+
+            _log.Info($"掩码已删除：{mask.Name}{detail}");
 
             return MaskListResponse($"已删除掩码：{mask.Name}");
         }
@@ -1878,6 +1923,33 @@ namespace Zentwik.Worker
                 Message = "ok",
                 Payload = JsonSerializer.Serialize(usage, IpcJsonContext.Default.MaskUsagePayload)
             };
+        }
+
+        /// <summary>把当前规则集里引用该掩码的规则改为默认，返回被改的条数。</summary>
+        private int ClearMaskFromRules(string maskId)
+        {
+            int touched = 0;
+
+            foreach (ScheduleRule rule in _scheduling.Profile.Rules)
+            {
+                if (rule.Target != SchedulingTarget.TargetMask
+                    || !string.Equals(rule.MaskId, maskId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                // 只改目标，规则本身与优先级保留：用户删的是掩码，不是这条调度。
+                rule.Target = SchedulingTarget.None;
+                rule.MaskId = string.Empty;
+                rule.TargetMask = 0;
+                rule.MaskName = string.Empty;
+                touched++;
+            }
+
+            if (touched > 0)
+                _scheduling.Save(_scheduling.Profile.Rules);
+
+            return touched;
         }
 
         /// <summary>把调度方案里引用该掩码的规则改成默认，返回被改的方案数。</summary>
@@ -2020,7 +2092,7 @@ namespace Zentwik.Worker
                 fallback ??= candidate;
             }
 
-            return fallback?.Id ?? rule.TargetMask.ToString(CultureInfo.InvariantCulture);
+            return fallback?.Id ?? rule.TargetMask.ToString();
         }
 
 

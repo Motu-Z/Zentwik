@@ -1,16 +1,13 @@
 using System.Text.Json.Serialization;
+using Zentwik.Core.Helpers;
 
 namespace Zentwik.Core.Ipc
 {
     /// <summary>
-    /// <c>query-cpu-topology</c> 的返回体：掩码网格需要的三个数。
+    /// <c>query-cpu-topology</c> 的返回体：掩码网格需要的核关系。
     ///
-    /// 网格是「CCD → 物理核 → 逻辑线程」三层生成的，三层全部可以从这三个数推导出来
-    /// （CCD 数 = ⌈cores / coresPerCcd⌉）。把 CCD 数也传一份，界面就有两个能推出
-    /// 同一个值的来源，某个机器上探测出 <c>coresPerCcd = 0</c> 时两者会打架。
-    ///
-    /// 没有 SMT（或探测不到）。此时每个物理核只有一个线程槽，
-    /// 「只选物理核」与「全选」是同一件事 —— 界面按 1 画即可，不需要特判。
+    /// <c>cores</c> / <c>coresPerCcd</c> / <c>threadsPerCore</c> 是旧版字段，
+    /// 界面按公式推格子；混合架构推不出 P / E 边界，改由 <c>coreMasks</c> 直给。
     /// </summary>
     public sealed class CpuTopologyPayload
     {
@@ -25,5 +22,20 @@ namespace Zentwik.Core.Ipc
         /// <summary>每核逻辑线程数（SMT 宽度）。</summary>
         [JsonPropertyName("threadsPerCore")]
         public int ThreadsPerCore { get; set; } = 1;
+
+        /// <summary>处理器厂商，线格式 <c>amd</c> / <c>intel</c> / <c>unknown</c>。</summary>
+        [JsonPropertyName("vendor")]
+        public string Vendor { get; set; } = "unknown";
+
+        /// <summary>
+        /// 每个物理核的线程掩码，位 i = 逻辑处理器 i。顺序即核序号。
+        /// 空数组表示探测不到，界面退回公式推导。
+        /// </summary>
+        [JsonPropertyName("coreMasks")]
+        public CoreMask[] CoreMasks { get; set; } = System.Array.Empty<CoreMask>();
+
+        /// <summary>与 <c>coreMasks</c> 一一对应的效率类，越大越偏性能。</summary>
+        [JsonPropertyName("coreClasses")]
+        public int[] CoreClasses { get; set; } = System.Array.Empty<int>();
     }
 }

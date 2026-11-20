@@ -1,3 +1,4 @@
+using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
 using Xunit;
@@ -12,9 +13,10 @@ namespace Zentwik.Tests
         {
             // 12：save-mask / query-masks 增加掩码下发方式（type）。
             // 16：新增 query-mask-usage（掩码被规则与方案引用的数量）。
+            // 18：query-cpu-topology 增加厂商、每核线程掩码与效率类。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
             // 否则「顺手把版本号往上加」这种改动没人会注意到。
-            Assert.Equal(17, WorkerPipeContract.ProtocolVersion);
+            Assert.Equal(19, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }
@@ -100,6 +102,32 @@ namespace Zentwik.Tests
             Assert.False(response.Success);
             Assert.Equal(WorkerPipeContract.VersionMismatchMessage, response.Message);
             Assert.Null(response.Payload);
+        }
+
+        [Fact]
+        public void Topology_payload_roundtrips_core_relations()
+        {
+            CpuTopologyPayload payload = new()
+            {
+                Cores = 8,
+                CoresPerCcd = 8,
+                ThreadsPerCore = 2,
+                Vendor = CpuVendorNames.Intel,
+                CoreMasks = new CoreMask[] { new(0x3UL), new(0xCUL) },
+                CoreClasses = new[] { 10, 1 }
+            };
+
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                payload, Zentwik.Core.Serialization.IpcJsonContext.Default.CpuTopologyPayload);
+
+            CpuTopologyPayload? back = System.Text.Json.JsonSerializer.Deserialize(
+                json, Zentwik.Core.Serialization.IpcJsonContext.Default.CpuTopologyPayload);
+
+            Assert.NotNull(back);
+            Assert.Equal("intel", back!.Vendor);
+            Assert.Equal(new CoreMask[] { new(0x3UL), new(0xCUL) }, back.CoreMasks);
+            Assert.Equal(new[] { 10, 1 }, back.CoreClasses);
+            Assert.Contains("\"0x3\"", json);
         }
     }
 }

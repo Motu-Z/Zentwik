@@ -562,6 +562,12 @@ namespace Zentwik.Core.Services
 
             int applied = 0;
 
+            if (!MaskBinding.TryToGroupMask(mask.Mask, out ulong groupMask))
+            {
+                _log.Warn($"场景调度：{outcome.TriggerArgument} → {mask.Name} 跳过：{MaskBinding.HighBitsMessage}");
+                return;
+            }
+
             foreach (int pid in pids)
             {
                 bool byAffinityMask = mask.Type == MaskType.AffinityMask;
@@ -571,13 +577,13 @@ namespace Zentwik.Core.Services
                     _watcher?.ClearOwnAffinity(pid);
 
                 CpuSetScheduleResult result = byAffinityMask
-                    ? ScheduleWithAffinity(pid, mask)
-                    : _scheduler.ScheduleToMask(pid, mask.Mask);
+                    ? ScheduleWithAffinity(pid, groupMask)
+                    : _scheduler.ScheduleToMask(pid, groupMask);
 
                 if (result.Success)
                 {
                     applied++;
-                    _watcher?.NoteBinding(pid, outcome.TriggerArgument, mask.Mask, byAffinityMask, outcome.RuleId);
+                    _watcher?.NoteBinding(pid, outcome.TriggerArgument, groupMask, byAffinityMask, outcome.RuleId);
                 }
                 else
                 {
@@ -615,7 +621,7 @@ namespace Zentwik.Core.Services
         /// 看上去就像「换了掩码没反应」，所以先清掉我们设过的那条限制。
         /// 反向（CPU 集路径上清亲和性）不做：亲和性可能是用户自己在别处设的。
         /// </summary>
-        private CpuSetScheduleResult ScheduleWithAffinity(int pid, CustomMask mask)
+        private CpuSetScheduleResult ScheduleWithAffinity(int pid, ulong groupMask)
         {
             if (!_scheduler!.IsAffinityMaskSupported)
             {
@@ -631,7 +637,7 @@ namespace Zentwik.Core.Services
             if (!_scheduler.ClearDefaultCpuSets(pid, out string? error) && !string.IsNullOrEmpty(error))
                 _log.Info($"场景调度：按 Affinity Mask 绑定前清除默认 CPU Sets 失败（PID {pid}）：{error}");
 
-            return _scheduler.ScheduleToAffinityMask(pid, mask.Mask);
+            return _scheduler.ScheduleToAffinityMask(pid, groupMask);
         }
 
         /// <summary>电源动作：切到规则指定的电源方案。已经是那一套就不重复下发。</summary>

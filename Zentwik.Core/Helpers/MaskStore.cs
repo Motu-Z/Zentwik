@@ -60,7 +60,7 @@ namespace Zentwik.Core.Helpers
         public string Name { get; set; } = string.Empty;
 
         /// <summary>逻辑核掩码，位 i = 1 表示包含逻辑处理器 i。</summary>
-        public ulong Mask { get; set; }
+        public CoreMask Mask { get; set; }
 
         /// <summary>下发方式。老数据没有这个字段，反序列化后为 <see cref="MaskType.CpuSets"/>。</summary>
         public MaskType Type { get; set; }
@@ -74,7 +74,7 @@ namespace Zentwik.Core.Helpers
         public bool Preset { get; set; }
 
         /// <summary>已勾选的逻辑核数量（用于列表展示）。</summary>
-        public int CoreCount => BitOperations.PopCount(Mask);
+        public int CoreCount => Mask.PopCount;
     }
 
     /// <summary>masks.presets.json：已铺过的预置项组合，用来保证删掉后不重建。</summary>
@@ -296,7 +296,7 @@ namespace Zentwik.Core.Helpers
         /// 记在 masks.presets.json，用户删掉某一项后重启不会又冒出来。
         /// 同名的已存在（用户自建）就跳过不覆盖，但照样记账，免得每次启动都试一遍。
         /// </summary>
-        public int SeedPresets(IEnumerable<(string Key, string Name, ulong Mask)> presets)
+        public int SeedPresets(IEnumerable<(string Key, string Name, CoreMask Mask)> presets)
         {
             MaskPresetLedger ledger = ReadLedger();
             HashSet<string> seeded = new(ledger.Seeded, StringComparer.Ordinal);
@@ -304,14 +304,14 @@ namespace Zentwik.Core.Helpers
             bool ledgerChanged = false;
             int added = 0;
 
-            foreach ((string key, string name, ulong mask) in presets)
+            foreach ((string key, string name, CoreMask mask) in presets)
             {
                 if (!seeded.Add(key))
                     continue;
 
                 ledgerChanged = true;
 
-                if (mask == 0)
+                if (mask.IsZero)
                     continue;
 
                 if (_masks.Any(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)))
@@ -328,6 +328,32 @@ namespace Zentwik.Core.Helpers
                 Save();
 
             return added;
+        }
+
+        /// <summary>
+        /// 把旧命名的预置项改成现行命名。只改 <see cref="CustomMask.Preset"/> 项且名字与旧名
+        /// 完全一致，用户自己改过名的一律不碰。
+        /// </summary>
+        public int RenamePresets(IEnumerable<(string Legacy, string Current)> pairs)
+        {
+            int renamed = 0;
+
+            foreach ((string legacy, string current) in pairs)
+            {
+                foreach (CustomMask mask in _masks)
+                {
+                    if (!mask.Preset || !string.Equals(mask.Name, legacy, StringComparison.Ordinal))
+                        continue;
+
+                    mask.Name = current;
+                    renamed++;
+                }
+            }
+
+            if (renamed > 0)
+                Save();
+
+            return renamed;
         }
 
         private MaskPresetLedger ReadLedger()

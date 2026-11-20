@@ -10,7 +10,7 @@ namespace Zentwik.Core.Ipc
     /// schedules.json 的字段演进绑死到 IPC 上 —— 改一个存储字段就破坏一次协议。
     ///
     ///   · <c>"ccd"</c>  → targetValue 是核心组序号的十进制字符串（"0" / "1" / …），旧版协议，只在迁移前出现；
-    ///   · <c>"mask"</c> → targetValue 是掩码的十进制字符串（ulong，如 "65280"），UI 用 ulong.Parse；
+    ///   · <c>"mask"</c> → targetValue 是掩码的十六进制串（如 <c>"0xFF00"</c>），UI 用 MaskFormatter 解析；
     ///   · <c>"none"</c> → targetValue 为空串。
     ///
     /// 保存时 <c>targetValue</c> 取核心组序号或**掩码 Id**；

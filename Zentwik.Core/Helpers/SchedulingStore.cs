@@ -60,7 +60,7 @@ namespace Zentwik.Core.Helpers
         /// 自定义掩码的快照值（Target = TargetMask 时有效）。
         /// 用于掩码被删除后仍可按快照下发，提高后台监听的健壮性。
         /// </summary>
-        public ulong TargetMask { get; set; }
+        public CoreMask TargetMask { get; set; }
 
         /// <summary>
         /// 规则来源路径（仅用于排障与界面回显）。
@@ -115,7 +115,7 @@ namespace Zentwik.Core.Helpers
         public int LegacyCcdIndex => IsLegacyCcd ? (int)Target - 1 : -1;
 
         /// <summary>把旧版 CCD 目标改写成掩码。已是掩码时返回 false。</summary>
-        public bool ApplyLegacyMask(ulong mask, string maskId, string maskName)
+        public bool ApplyLegacyMask(CoreMask mask, string maskId, string maskName)
         {
             if (!IsLegacyCcd)
                 return false;
@@ -127,13 +127,13 @@ namespace Zentwik.Core.Helpers
             return true;
         }
 
-        /// <summary>规则的展示名（如 "CCD0"、"纯大核"、"0-7,16-23"）。</summary>
+        /// <summary>规则的展示名（如 "CCD 0"、"纯大核"、"0-7,16-23"）。</summary>
         public string Label
         {
             get
             {
                 if (IsLegacyCcd)
-                    return $"核心组 {LegacyCcdIndex}";
+                    return $"CCD {LegacyCcdIndex}";
 
                 if (Target == SchedulingTarget.TargetMask)
                 {

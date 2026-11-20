@@ -9,10 +9,10 @@ namespace Zentwik.Tests
     /// <summary>核心组预置掩码的播种：铺一次、删了不重建、不覆盖用户自建。</summary>
     public sealed class MaskPresetSeedTests
     {
-        private static readonly (string Key, string Name, ulong Mask)[] TwoGroups =
+        private static readonly (string Key, string Name, CoreMask Mask)[] TwoGroups =
         {
-            ("group:0xFFFF", "CCD0", 0xFFFFUL),
-            ("group:0xFFFF0000", "CCD1", 0xFFFF0000UL)
+            ("group:0xFFFF", "CCD0", new CoreMask(0xFFFFUL)),
+            ("group:0xFFFF0000", "CCD1", new CoreMask(0xFFFF0000UL))
         };
 
         private static MaskStore NewStore(FakeAppPaths paths)
@@ -64,7 +64,7 @@ namespace Zentwik.Tests
             for (int i = 0; i < MaskStore.MaxCount; i++)
             {
                 Assert.True(
-                    store.Upsert(new CustomMask { Name = $"自建{i}", Mask = 0xFUL }, out MaskStore.UpsertError error),
+                    store.Upsert(new CustomMask { Name = $"自建{i}", Mask = new CoreMask(0xFUL) }, out MaskStore.UpsertError error),
                     error.ToString());
             }
 
@@ -78,12 +78,12 @@ namespace Zentwik.Tests
             FakeAppPaths paths = new();
             MaskStore store = NewStore(paths);
 
-            CustomMask own = new() { Name = "CCD0", Mask = 0x1UL };
+            CustomMask own = new() { Name = "CCD0", Mask = new CoreMask(0x1UL) };
             Assert.True(store.Upsert(own, out _));
 
             Assert.Equal(1, store.SeedPresets(TwoGroups));
             Assert.Equal(2, store.Masks.Count);
-            Assert.Equal(0x1UL, store.FindByName("CCD0")!.Mask);
+            Assert.Equal(0x1UL, store.FindByName("CCD0")!.Mask.Low);
         }
 
         [Fact]
@@ -103,15 +103,33 @@ namespace Zentwik.Tests
         [Fact]
         public void GroupName_UsesVendorTerm_OnlyWhenMultipleGroups()
         {
-            Assert.Equal("CCD0", CpuVendorProbe.GroupName(CpuVendor.Amd, 0, 2));
-            Assert.Equal("CCD1", CpuVendorProbe.GroupName(CpuVendor.Amd, 1, 2));
+            Assert.Equal("CCD 0", CpuVendorProbe.GroupName(CpuVendor.Amd, 0, 2));
+            Assert.Equal("CCD 1", CpuVendorProbe.GroupName(CpuVendor.Amd, 1, 2));
 
-            Assert.Equal("Tile0", CpuVendorProbe.GroupName(CpuVendor.Intel, 0, 2));
-            Assert.Equal("分组0", CpuVendorProbe.GroupName(CpuVendor.Unknown, 0, 2));
+            // 非 AMD 一律用系统实际划分单位，不再出现 Tile / 分组这类自造词
+            Assert.Equal("Group 0", CpuVendorProbe.GroupName(CpuVendor.Intel, 0, 2));
+            Assert.Equal("Group 0", CpuVendorProbe.GroupName(CpuVendor.Unknown, 0, 2));
 
-            // 单组一律叫「全核心」：Intel 桌面只有一个 L3 域，说 Tile0 没有意义
-            Assert.Equal("全核心", CpuVendorProbe.GroupName(CpuVendor.Intel, 0, 1));
-            Assert.Equal("全核心", CpuVendorProbe.GroupName(CpuVendor.Amd, 0, 1));
+            // 单组一律叫 All Cores：只有一个 L3 域时说序号没有意义
+            Assert.Equal("All Cores", CpuVendorProbe.GroupName(CpuVendor.Intel, 0, 1));
+            Assert.Equal("All Cores", CpuVendorProbe.GroupName(CpuVendor.Amd, 0, 1));
+        }
+
+        [Fact]
+        public void RenamePresets_TouchesOnlyUntouchedPresetNames()
+        {
+            FakeAppPaths paths = new();
+            MaskStore store = NewStore(paths);
+            store.SeedPresets(new (string, string, CoreMask)[] { ("group:0xFF", "CCD0", new CoreMask(0xFFUL)) });
+
+            CustomMask userNamed = new() { Name = "前八个核", Mask = new CoreMask(0xFFUL), Preset = true };
+            Assert.True(store.Upsert(userNamed, out _));
+
+            int renamed = store.RenamePresets(new (string, string)[] { ("CCD0", "CCD 0") });
+
+            Assert.Equal(1, renamed);
+            Assert.Contains(store.Masks, m => m.Name == "CCD 0");
+            Assert.Contains(store.Masks, m => m.Name == "前八个核");
         }
 
         [Fact]
@@ -122,12 +140,12 @@ namespace Zentwik.Tests
             Assert.False(MaskFormatter.TryParse("Tile1", out _, out _));
 
             // 带前缀就按掩码走
-            Assert.True(MaskFormatter.TryParse("0xCCD0", out ulong mask, out _));
-            Assert.Equal(0xCCD0UL, mask);
+            Assert.True(MaskFormatter.TryParse("0xCCD0", out CoreMask mask, out _));
+            Assert.Equal(0xCCD0UL, mask.Low);
 
             // 纯字母的 hex 不受影响
-            Assert.True(MaskFormatter.TryParse("FFFF", out ulong ffff, out _));
-            Assert.Equal(0xFFFFUL, ffff);
+            Assert.True(MaskFormatter.TryParse("FFFF", out CoreMask ffff, out _));
+            Assert.Equal(0xFFFFUL, ffff.Low);
         }
     }
 }

@@ -615,7 +615,7 @@ public sealed class WorkerBridge
     public async Task<IpcOutcome<MaskListPayload>> SaveMaskAsync(
         string? id,
         string name,
-        ulong mask,
+        CoreMask mask,
         string? type = null,
         int timeoutMs = 5_000,
         CancellationToken cancellationToken = default)

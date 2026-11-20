@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
+using Zentwik.Core.Services;
 using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
@@ -21,7 +22,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
     {
         _owner = owner;
 
-        BuildGrid(DemoCores, DemoCoresPerCcd, DemoThreadsPerCore);
+        BuildGrid(DemoTopology());
 
         // 诊断模式没有 Worker，构造时就种一份，截图与自检拿到的不是空弹层。
         if (ProcessViewModel.SuppressWorkerInit)
@@ -245,7 +246,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
         if (topology is { Success: true, Value: not null })
         {
-            BuildGrid(topology.Value.Cores, topology.Value.CoresPerCcd, topology.Value.ThreadsPerCore);
+            BuildGrid(topology.Value);
         }
         else
         {
@@ -426,7 +427,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
             IpcOutcome<List<ScheduleRulePayload>> rules = await WorkerBridge.Instance
                 .QuerySchedulingRulesAsync().ConfigureAwait(true);
 
-            List<ScheduleRulePayload> inUse = rules.Success && rules.Value is not null
+            List<ScheduleRulePayload> references = rules.Success && rules.Value is not null
                 ? rules.Value.Where(
                     r => string.Equals(r.TargetType, "mask", StringComparison.Ordinal)
                          && string.Equals(r.TargetValue, item.Id, StringComparison.Ordinal)).ToList()
@@ -437,21 +438,22 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
             int plans = usage.Success && usage.Value is not null ? usage.Value.Plans : 0;
 
-            if (inUse.Count > 0 || plans > 0)
+            // 引用清理由后台在删除时一并做，界面只负责说清后果。
+            if (references.Count > 0 || plans > 0)
             {
                 ConfirmService.Instance.Request(
                     "删除掩码",
-                    new[] { UsageText(inUse.Count, plans) },
-                    () => Fire(() => RemoveMaskAsync(item, inUse)),
+                    new[] { UsageText(references.Count, plans) },
+                    () => Fire(() => RemoveMaskAsync(item)),
                     "删除");
                 return;
             }
 
-            await RemoveMaskAsync(item, inUse).ConfigureAwait(true);
+            await RemoveMaskAsync(item).ConfigureAwait(true);
         });
     }
 
-    /// <summary>删除确认里的一行说明：方案里的引用由后台一并恢复默认。</summary>
+    /// <summary>删除确认里的一行说明：规则与方案里的引用由后台一并恢复默认。</summary>
     private static string UsageText(int rules, int plans)
     {
         if (rules > 0 && plans > 0)
@@ -463,32 +465,8 @@ public sealed class MaskManagerViewModel : ViewModelBase
         return $"有 {plans} 个方案正在使用此掩码，删除后恢复默认";
     }
 
-    private async Task RemoveMaskAsync(SavedMaskItem item, List<ScheduleRulePayload> ruleReferences)
+    private async Task RemoveMaskAsync(SavedMaskItem item)
     {
-        // 先把引用规则的 target 清成 none：掩码删了以后规则留着没意义，
-        // 但它还带着优先级设置，所以只改目标、不删规则。
-        foreach (ScheduleRulePayload rule in ruleReferences)
-        {
-            SaveScheduleRulePayload payload = new()
-            {
-                Id = rule.Id,
-                ProcessName = rule.ProcessName,
-                TargetType = "none",
-                TargetValue = string.Empty,
-                Priority = rule.Priority,
-                Enabled = rule.Enabled
-            };
-
-            IpcOutcome<string> cleared = await WorkerBridge.Instance
-                .SaveScheduleRuleAsync(payload).ConfigureAwait(true);
-
-            if (!cleared.Success)
-            {
-                ToastError(cleared.Message);
-                return;
-            }
-        }
-
         IpcOutcome<MaskListPayload> outcome = await WorkerBridge.Instance
             .DeleteMaskAsync(item.Id).ConfigureAwait(true);
 
@@ -510,9 +488,9 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
     private void Save()
     {
-        ulong mask = BuildMask();
+        CoreMask mask = BuildMask();
 
-        if (mask == 0)
+        if (mask.IsZero)
         {
             ToastError("至少选择一个核心");
             return;
@@ -593,14 +571,14 @@ public sealed class MaskManagerViewModel : ViewModelBase
         });
     }
 
-    private void ApplyMaskToGrid(ulong mask)
+    private void ApplyMaskToGrid(CoreMask mask)
     {
         BulkApply(() =>
         {
             foreach (CcdGroup group in CcdGroups)
             foreach (CoreSlot core in group.Cores)
             foreach (ThreadSlot thread in core.Threads)
-                thread.IsSelected = (mask & BitAt(thread.LogicalIndex)) != 0;
+                thread.IsSelected = mask[thread.LogicalIndex];
         });
     }
 
@@ -630,24 +608,20 @@ public sealed class MaskManagerViewModel : ViewModelBase
             UpdateCount();
     }
 
-    private ulong BuildMask()
+    private CoreMask BuildMask()
     {
-        ulong mask = 0;
+        CoreMask mask = CoreMask.Zero;
 
         foreach (CcdGroup group in CcdGroups)
         foreach (CoreSlot core in group.Cores)
         foreach (ThreadSlot thread in core.Threads)
         {
             if (thread.IsSelected)
-                mask |= BitAt(thread.LogicalIndex);
+                mask = mask.With(thread.LogicalIndex);
         }
 
         return mask;
     }
-
-    /// <summary>C# 对移位计数取模，>= 64 会绕回低位；超出位图宽度的核直接忽略。</summary>
-    private static ulong BitAt(int index)
-        => index is >= 0 and < 64 ? 1UL << index : 0UL;
 
     private void UpdateCount()
     {
@@ -664,50 +638,135 @@ public sealed class MaskManagerViewModel : ViewModelBase
         SelectedCoreCount = count;
     }
 
-    /// <summary>按后台拓扑重建网格</summary>
-    private void BuildGrid(int cores, int coresPerCcd, int threadsPerCore)
+    /// <summary>按后台拓扑重建网格。混合架构按 P / E 分组，其余按 CCD 宽度公式排布。</summary>
+    private void BuildGrid(CpuTopologyPayload topology)
     {
-        cores = Math.Max(1, cores);
-        coresPerCcd = coresPerCcd <= 0 ? cores : Math.Min(coresPerCcd, cores);
-        int threads = Math.Max(1, threadsPerCore);
-
         // 拓扑是异步到达的，用户可能已经先勾了几个核。重建前留一份位图。
-        ulong previous = BuildMask();
+        CoreMask previous = BuildMask();
 
         CcdGroups.Clear();
 
-        int ccdCount = (cores + coresPerCcd - 1) / coresPerCcd;
+        if (!BuildMixedGrid(topology))
+            BuildFormulaGrid(topology);
 
-        for (int ccd = 0; ccd < ccdCount; ccd++)
+        if (!previous.IsZero)
+            ApplyMaskToGrid(previous);
+
+        UpdateCount();
+    }
+
+    /// <summary>效率类不止一档就是混合架构：最高的一档是 P-Core，其余归 E-Core。</summary>
+    private bool BuildMixedGrid(CpuTopologyPayload topology)
+    {
+        CoreMask[] masks = topology.CoreMasks ?? Array.Empty<CoreMask>();
+        int[] classes = topology.CoreClasses ?? Array.Empty<int>();
+
+        if (!MixedCorePlan.TrySplit(masks, classes, out CoreMask performanceMask, out CoreMask efficiencyMask))
+            return false;
+
+        CcdGroup performance = new(0, "P-Core");
+        CcdGroup efficiency = new(1, "E-Core");
+
+        int perfIndex = 0;
+        int effIndex = 0;
+
+        for (int i = 0; i < masks.Length; i++)
         {
-            CcdGroup group = new(ccd);
-            int firstCore = ccd * coresPerCcd;
+            if (masks[i].IsZero)
+                continue;
+
+            // 组内核号从 0 起：P-Core 0-7 与 E-Core 0-7 是各自独立的编号空间。
+            if (!(masks[i] & performanceMask).IsZero)
+                performance.Cores.Add(NewCore(perfIndex++, masks[i]));
+            else if (!(masks[i] & efficiencyMask).IsZero)
+                efficiency.Cores.Add(NewCore(effIndex++, masks[i]));
+        }
+
+        if (performance.Cores.Count > 0)
+            CcdGroups.Add(performance);
+
+        if (efficiency.Cores.Count > 0)
+            CcdGroups.Add(efficiency);
+
+        return CcdGroups.Count > 0;
+    }
+
+    /// <summary>非混合架构：按每 CCD 核数分组。有真实核掩码就用它，没有才按核号 × 线程数推。</summary>
+    private void BuildFormulaGrid(CpuTopologyPayload topology)
+    {
+        int cores = Math.Max(1, topology.Cores);
+        int coresPerCcd = topology.CoresPerCcd <= 0 ? cores : Math.Min(topology.CoresPerCcd, cores);
+        int threads = Math.Max(1, topology.ThreadsPerCore);
+        int groupCount = (cores + coresPerCcd - 1) / coresPerCcd;
+
+        // 公式假定每核线程数一致且位序连续，SMT 不齐时会错位；掩码对齐时以掩码为准。
+        CoreMask[] masks = topology.CoreMasks ?? Array.Empty<CoreMask>();
+        bool hasMasks = masks.Length >= cores;
+
+        CpuVendor vendor = CpuVendorNames.Parse(topology.Vendor);
+
+        for (int groupIndex = 0; groupIndex < groupCount; groupIndex++)
+        {
+            // 组名只走一处换算，界面里不再出现第二个「CCD」字面量。
+            string label = CpuVendorProbe.GroupName(vendor, groupIndex, groupCount);
+
+            CcdGroup group = new(groupIndex, label);
+            int firstCore = groupIndex * coresPerCcd;
             int coreCount = Math.Min(coresPerCcd, cores - firstCore);
 
             for (int core = 0; core < coreCount; core++)
             {
                 // 核编号一路排下去：CCD1 的第一个核是 Core 8，不是又从 Core 0 起。
                 int globalCore = firstCore + core;
-                CoreSlot slot = new(globalCore, globalCore * threads);
+                CoreMask threadMask;
 
-                for (int thread = 0; thread < threads; thread++)
+                if (hasMasks)
                 {
-                    ThreadSlot item = new((globalCore * threads) + thread, thread);
-                    item.PropertyChanged += OnThreadSelectionChanged;
-                    slot.Threads.Add(item);
+                    threadMask = masks[globalCore];
+
+                    if (threadMask.IsZero)
+                        continue;
+                }
+                else
+                {
+                    threadMask = CoreMask.Zero;
+
+                    for (int thread = 0; thread < threads; thread++)
+                        threadMask = threadMask.With((globalCore * threads) + thread);
                 }
 
-                group.Cores.Add(slot);
+                group.Cores.Add(NewCore(globalCore, threadMask));
             }
 
-            CcdGroups.Add(group);
+            if (group.Cores.Count > 0)
+                CcdGroups.Add(group);
+        }
+    }
+
+    /// <summary>按线程掩码建一个核：位号即逻辑处理器序号，顺序即线程号。</summary>
+    private CoreSlot NewCore(int coreIndex, CoreMask threadMask)
+    {
+        CoreSlot slot = new(coreIndex, threadMask);
+        int threadIndex = 0;
+
+        foreach (int bit in threadMask.Bits())
+        {
+            ThreadSlot item = new(bit, threadIndex++);
+            item.PropertyChanged += OnThreadSelectionChanged;
+            slot.Threads.Add(item);
         }
 
-        if (previous != 0)
-            ApplyMaskToGrid(previous);
-
-        UpdateCount();
+        return slot;
     }
+
+    /// <summary>诊断模式下的占位拓扑，保持 AMD 双 CCD 外观。</summary>
+    private static CpuTopologyPayload DemoTopology() => new()
+    {
+        Cores = DemoCores,
+        CoresPerCcd = DemoCoresPerCcd,
+        ThreadsPerCore = DemoThreadsPerCore,
+        Vendor = CpuVendorNames.Amd
+    };
 
     private static void ToastError(string message)
     {
@@ -720,7 +779,7 @@ public sealed class MaskManagerViewModel : ViewModelBase
 
 public sealed class SavedMaskItem : ViewModelBase
 {
-    public SavedMaskItem(string id, string name, ulong mask, MaskType type = MaskType.CpuSets)
+    public SavedMaskItem(string id, string name, CoreMask mask, MaskType type = MaskType.CpuSets)
     {
         Id = id;
         Name = name;
@@ -732,12 +791,12 @@ public sealed class SavedMaskItem : ViewModelBase
 
     public string Name { get; private set; }
 
-    public ulong Mask { get; private set; }
+    public CoreMask Mask { get; private set; }
 
     public MaskType Type { get; private set; }
 
     /// <summary>改名或改核集合走原地更新，换实例会让列表选中与下拉一起丢。</summary>
-    internal void Refresh(string name, ulong mask, MaskType type)
+    internal void Refresh(string name, CoreMask mask, MaskType type)
     {
         if (string.Equals(Name, name, StringComparison.Ordinal) && Mask == mask && Type == type)
         {
@@ -758,10 +817,10 @@ public sealed class SavedMaskItem : ViewModelBase
     public string TypeLabel => Type == MaskType.AffinityMask ? "AM" : "CS";
 
     /// <summary>卡片上的核心范围。空掩码不显示，Core 那边空值文案是「无」。</summary>
-    public string RangeText => Mask == 0 ? string.Empty : MaskFormatter.ToRangeText(Mask);
+    public string RangeText => Mask.IsZero ? string.Empty : MaskFormatter.ToRangeText(Mask);
 
     public string CountText =>
-        BitOperations.PopCount(Mask).ToString(CultureInfo.InvariantCulture) + " 个处理器";
+        Mask.PopCount.ToString(CultureInfo.InvariantCulture) + " 个处理器";
 
     private bool _isSelected;
 
@@ -774,25 +833,36 @@ public sealed class SavedMaskItem : ViewModelBase
 
 public sealed class CcdGroup
 {
-    public CcdGroup(int index) => Index = index;
+    public CcdGroup(int index, string label)
+    {
+        Index = index;
+        Label = label;
+    }
 
     public int Index { get; }
 
-    public string DisplayName => $"CCD {Index}";
+    /// <summary>组标题。AMD 是 CCD n，混合架构是 P-Core / E-Core，其余按厂商换算。</summary>
+    public string Label { get; }
+
+    public string DisplayName => Label;
 
     public ObservableCollection<CoreSlot> Cores { get; } = new();
 }
 
 public sealed class CoreSlot
 {
-    public CoreSlot(int coreIndex, int logicalIndex)
+    public CoreSlot(int coreIndex, CoreMask threadMask)
     {
         CoreIndex = coreIndex;
-        LogicalIndex = logicalIndex;
+        ThreadMask = threadMask;
+        LogicalIndex = threadMask.FirstBit < 0 ? 0 : threadMask.FirstBit;
     }
 
-    /// <summary>全局物理核序号，跨 CCD 连续。</summary>
+    /// <summary>组内物理核序号。</summary>
     public int CoreIndex { get; }
+
+    /// <summary>该核占用的逻辑处理器位图。</summary>
+    public CoreMask ThreadMask { get; }
 
     /// <summary>该核第一个逻辑处理器的序号（掩码位起点）。</summary>
     public int LogicalIndex { get; }

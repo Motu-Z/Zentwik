@@ -947,7 +947,7 @@ namespace Zentwik.Tests
 
             // 没有 MaskId 的旧规则退回掩码位（掩码表里查不到时）。
             Assert.Equal("mask", items[4].TargetType);
-            Assert.Equal("255", items[4].TargetValue);
+            Assert.Equal("0xFF", items[4].TargetValue);
         }
 
         // ==================== 场景规则查询 / 增删 ====================

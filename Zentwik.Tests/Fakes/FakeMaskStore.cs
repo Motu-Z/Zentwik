@@ -31,11 +31,11 @@ namespace Zentwik.Tests.Fakes
 
         public void ResetToFactory() => _masks.Clear();
 
-        public int SeedPresets(IEnumerable<(string Key, string Name, ulong Mask)> presets)
+        public int SeedPresets(IEnumerable<(string Key, string Name, CoreMask Mask)> presets)
         {
             int added = 0;
 
-            foreach ((string _, string name, ulong mask) in presets)
+            foreach ((string _, string name, CoreMask mask) in presets)
             {
                 if (_masks.Any(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)))
                     continue;
@@ -45,6 +45,25 @@ namespace Zentwik.Tests.Fakes
             }
 
             return added;
+        }
+
+        public int RenamePresets(IEnumerable<(string Legacy, string Current)> pairs)
+        {
+            int renamed = 0;
+
+            foreach ((string legacy, string current) in pairs)
+            {
+                foreach (CustomMask mask in _masks)
+                {
+                    if (!mask.Preset || !string.Equals(mask.Name, legacy, StringComparison.Ordinal))
+                        continue;
+
+                    mask.Name = current;
+                    renamed++;
+                }
+            }
+
+            return renamed;
         }
 
         public bool Upsert(CustomMask mask, out MaskStore.UpsertError error)
@@ -75,7 +94,7 @@ namespace Zentwik.Tests.Fakes
             _masks.FirstOrDefault(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>测试用：直接塞一条掩码进去。</summary>
-        public CustomMask Seed(string name, ulong mask)
+        public CustomMask Seed(string name, CoreMask mask)
         {
             CustomMask created = new() { Name = name, Mask = mask };
             _masks.Add(created);

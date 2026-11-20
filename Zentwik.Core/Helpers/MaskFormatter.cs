@@ -15,35 +15,37 @@ namespace Zentwik.Core.Helpers
     ///
     /// 输出统一为「区间列表」（0-7,16-23），比纯十六进制更易读；
     /// 同时提供十六进制形式用于悬停提示。
+    /// 上限是 <see cref="CoreMask.Width"/>，不再假定 64 位。
     /// </summary>
     public static class MaskFormatter
     {
         private static readonly char[] Separators = { ',', '，', ' ', ';', '；' };
 
         /// <summary>位掩码转「区间列表」文本，如 0x00FF00FF → "0-7,16-23"。</summary>
-        public static string ToRangeText(ulong mask)
+        public static string ToRangeText(CoreMask mask)
         {
-            if (mask == 0)
+            if (mask.IsZero)
                 return "无";
 
             List<string> parts = new();
-            int i = 0;
+            int start = -1;
+            int previous = -2;
 
-            while (i < 64)
+            foreach (int bit in mask.Bits())
             {
-                while (i < 64 && (mask & (1UL << i)) == 0)
-                    i++;
+                if (bit != previous + 1)
+                {
+                    if (start >= 0)
+                        parts.Add(start == previous ? $"{start}" : $"{start}-{previous}");
 
-                if (i >= 64)
-                    break;
+                    start = bit;
+                }
 
-                int start = i;
-                while (i < 64 && (mask & (1UL << i)) != 0)
-                    i++;
-
-                int end = i - 1;
-                parts.Add(start == end ? $"{start}" : $"{start}-{end}");
+                previous = bit;
             }
+
+            if (start >= 0)
+                parts.Add(start == previous ? $"{start}" : $"{start}-{previous}");
 
             return string.Join(",", parts);
         }
@@ -52,9 +54,9 @@ namespace Zentwik.Core.Helpers
         /// 解析用户输入的掩码文本。
         /// 返回 true 表示解析成功，mask 为结果，error 为失败原因。
         /// </summary>
-        public static bool TryParse(string? text, out ulong mask, out string? error)
+        public static bool TryParse(string? text, out CoreMask mask, out string? error)
         {
-            mask = 0;
+            mask = CoreMask.Zero;
             error = null;
 
             if (string.IsNullOrWhiteSpace(text))
@@ -82,6 +84,43 @@ namespace Zentwik.Core.Helpers
                 : TryParseList(input, out mask, out error);
         }
 
+        /// <summary>只按十六进制解析。协议与落盘里的掩码走这里，不做区间识别。</summary>
+        public static bool TryParseHexToken(string text, out CoreMask mask)
+        {
+            mask = CoreMask.Zero;
+
+            string body = text.Trim();
+
+            if (body.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                body = body.Substring(2);
+
+            if (body.Length == 0 || body.Length > 32)
+                return false;
+
+            ulong low = 0;
+            ulong high = 0;
+
+            // 从右往左按 16 位一段切，右边 16 个字符进位 0-63，左边归 64-127。
+            string lower = body.Length > 16 ? body.Substring(body.Length - 16) : body;
+            string upper = body.Length > 16 ? body.Substring(0, body.Length - 16) : string.Empty;
+
+            if (!ulong.TryParse(lower, System.Globalization.NumberStyles.HexNumber, null, out low))
+                return false;
+
+            if (upper.Length > 0
+                && !ulong.TryParse(upper, System.Globalization.NumberStyles.HexNumber, null, out high))
+            {
+                return false;
+            }
+
+            mask = new CoreMask(low, high);
+            return true;
+        }
+
+        /// <summary>解析失败返回 0，供「带了就别崩」的场景使用。</summary>
+        public static CoreMask ParseOrZero(string? text)
+            => TryParse(text, out CoreMask mask, out _) ? mask : CoreMask.Zero;
+
         /// <summary>
         /// 十六进制的判定要收紧：纯数字（如 "16"）必须留给枚举列表，
         /// 否则用户想表达 0-16 区间之外的单个核时会被误读成十六进制。
@@ -94,16 +133,12 @@ namespace Zentwik.Core.Helpers
              input.All(Uri.IsHexDigit) &&
              input.Any(char.IsLetter));
 
-        private static bool TryParseHex(string input, out ulong mask, out string? error)
+        private static bool TryParseHex(string input, out CoreMask mask, out string? error)
         {
-            string body = input.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                ? input.Substring(2)
-                : input;
-
-            if (!ulong.TryParse(body, System.Globalization.NumberStyles.HexNumber, null, out mask))
+            if (!TryParseHexToken(input, out mask))
             {
-                error = $"“{input}”不是合法的十六进制掩码";
-                mask = 0;
+                error = $"“{input}”不是合法的十六进制掩码（上限 128 位）";
+                mask = CoreMask.Zero;
                 return false;
             }
 
@@ -111,9 +146,9 @@ namespace Zentwik.Core.Helpers
         }
 
         /// <summary>区间列表（0-7,16-23）与枚举列表（0,1,2,3）共用一套分隔符切分。</summary>
-        private static bool TryParseList(string input, out ulong mask, out string? error)
+        private static bool TryParseList(string input, out CoreMask mask, out string? error)
         {
-            mask = 0;
+            mask = CoreMask.Zero;
 
             foreach (string rawPart in input.Split(Separators, StringSplitOptions.RemoveEmptyEntries))
             {
@@ -133,7 +168,7 @@ namespace Zentwik.Core.Helpers
             return Validate(mask, out error);
         }
 
-        private static bool TryParseRange(string part, int dash, ref ulong mask, out string? error)
+        private static bool TryParseRange(string part, int dash, ref CoreMask mask, out string? error)
         {
             if (!int.TryParse(part.Substring(0, dash).Trim(), out int from) ||
                 !int.TryParse(part.Substring(dash + 1).Trim(), out int to))
@@ -142,20 +177,18 @@ namespace Zentwik.Core.Helpers
                 return false;
             }
 
-            if (from < 0 || to > 63 || from > to)
+            if (from < 0 || to >= CoreMask.Width || from > to)
             {
-                error = $"区间“{part}”超出 0-63 范围或起止颠倒";
+                error = $"区间“{part}”超出 0-{CoreMask.Width - 1} 范围或起止颠倒";
                 return false;
             }
 
-            for (int i = from; i <= to; i++)
-                mask |= 1UL << i;
-
+            mask |= CoreMask.FromRange(from, to);
             error = null;
             return true;
         }
 
-        private static bool TryParseSingle(string part, ref ulong mask, out string? error)
+        private static bool TryParseSingle(string part, ref CoreMask mask, out string? error)
         {
             if (!int.TryParse(part, out int core))
             {
@@ -163,21 +196,22 @@ namespace Zentwik.Core.Helpers
                 return false;
             }
 
-            if (core < 0 || core > 63)
+            if (core < 0 || core >= CoreMask.Width)
             {
-                error = $"逻辑处理器 {core} 超出 0-63 范围";
+                error = $"逻辑处理器 {core} 超出 0-{CoreMask.Width - 1} 范围";
                 return false;
             }
 
-            mask |= 1UL << core;
+            mask = mask.With(core);
             error = null;
             return true;
         }
 
-        private static bool Validate(ulong mask, out string? error)
+        private static bool Validate(CoreMask mask, out string? error)
         {
             error = null;
-            if (mask == 0)
+
+            if (mask.IsZero)
             {
                 error = "掩码不能为 0（至少选择一个逻辑处理器）";
                 return false;

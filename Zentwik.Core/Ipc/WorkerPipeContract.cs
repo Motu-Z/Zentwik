@@ -27,10 +27,12 @@ namespace Zentwik.Core.Ipc
         /// 13 最小处理器状态与系统散热方式（apply-power-policy / query-power-policy 新字段）｜
         /// 14 query-smu-status 下发处理器厂商 ｜ 15 snapshot-logs 首行附累计条数 ｜
         /// 16 query-mask-usage（掩码被规则与方案引用的数量）｜
-        /// 17 snapshot-logs 窗口扩到 200 条并在首行附最近一条异常。
+        /// 17 snapshot-logs 窗口扩到 200 条并在首行附最近一条异常 ｜
+        /// 18 query-cpu-topology 下发厂商、每核线程掩码与效率类 ｜
+        /// 19 掩码线格式改为十六进制串（128 位，可表达跨处理器组的选择）。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 17;
+        public const int ProtocolVersion = 19;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -341,7 +343,7 @@ namespace Zentwik.Core.Ipc
         /// <summary>
         /// 新增或按 Id 覆盖一套自定义掩码。
         ///
-        /// 参数：<c>Payload</c> = JSON <c>{"id":"...","name":"纯大核","mask":65280}</c>
+        /// 参数：<c>Payload</c> = JSON <c>{"id":"...","name":"纯大核","mask":"0xFF00"}</c>
         /// （<see cref="SaveMaskPayload"/>）。<c>id</c> 为空串 = 新建，Id 由 Worker 生成。
         ///
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = 写入后的 <see cref="MaskListPayload"/>
@@ -376,12 +378,16 @@ namespace Zentwik.Core.Ipc
         public const string CommandQueryMaskUsage = "query-mask-usage";
 
         /// <summary>
-        /// 查询本机 CPU 拓扑（掩码网格要按真实核数与 CCD 排布生成）。
+        /// 查询本机 CPU 拓扑（掩码网格要按真实核关系生成）。
         ///
         /// 参数：无（<c>Payload</c> 忽略）。
         /// 返回：<c>Success = true</c> 时 <c>Payload</c> = JSON
-        /// <c>{"cores":16,"coresPerCcd":8,"threadsPerCore":2}</c>
+        /// <c>{"cores":16,"coresPerCcd":8,"threadsPerCore":2,"vendor":"amd",
+        /// "coreMasks":["0x3","0xC",...],"coreClasses":[0,0,...]}</c>
         /// （<see cref="CpuTopologyPayload"/>）。
+        ///
+        /// <c>coreMasks</c> 是每个物理核的线程掩码，空数组表示探测不到、界面退回公式推导。
+        /// 混合架构靠 <c>coreClasses</c> 区分 P / E 核，<c>coresPerCcd</c> 在非 AMD 机器上无意义。
         ///
         /// 掩码是「位 i = 逻辑处理器 i」，位数直接来自拓扑。界面按 16 核画格子，
         /// 在 8 核机器上会画出不存在的核 —— 勾上就是一次写不进去的保存。

@@ -111,6 +111,9 @@ namespace Zentwik.Core.Services
         /// <summary>已告警过的失效掩码 Id，掩码恢复后移除。</summary>
         private readonly HashSet<string> _missingMaskIds = new(StringComparer.Ordinal);
 
+        /// <summary>已告警过的「掩码超出单组宽度」规则，避免每秒扫描刷屏。</summary>
+        private readonly HashSet<string> _highBitsWarned = new(StringComparer.Ordinal);
+
         /// <summary>读回比对的轮数计数器。约 5 秒一次：漂移是秒级现象，不必每轮都读。</summary>
         private int _driftRound;
 
@@ -253,6 +256,7 @@ namespace Zentwik.Core.Services
                 _instances.Clear();
                 _applied.Clear();
                 _missingMaskIds.Clear();
+                _highBitsWarned.Clear();
                 _lastAlive = null;
 
                 ReleaseMutex();
@@ -839,9 +843,18 @@ namespace Zentwik.Core.Services
                 }
             }
 
-            ulong mask = rule.Target == SchedulingTarget.TargetMask
-                ? (found?.Mask ?? rule.TargetMask)
-                : 0;
+            CoreMask wanted = rule.Target == SchedulingTarget.TargetMask
+                ? found?.Mask ?? rule.TargetMask
+                : CoreMask.Zero;
+
+            // 只有单处理器组内的位能写进去；越界直接跳过并说明，不截断。
+            if (!MaskBinding.TryToGroupMask(wanted, out ulong mask) && !rule.IsLegacyCcd)
+            {
+                if (_highBitsWarned.Add(rule.Id))
+                    _log.Warn($"{name} 的规则跳过：{MaskBinding.HighBitsMessage}");
+
+                return;
+            }
 
             // 掩码还在就用它的当前方式，掩码被删了才退回规则里的快照 ——
             // 少了这份快照，删除掩码会让 Affinity Mask 规则静默改按 CPU Sets 下发。
