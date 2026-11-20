@@ -252,21 +252,10 @@ namespace Zentwik.Core.Services
 
         private void ClearMemory()
         {
-            bool locked = false;
-
-            try
+            // 直接阻塞：写侧临界区只有几十微秒，没有反向依赖，拿不到锁只可能是线程被调度挤开。
+            // 原来用 TryEnter + 超时跳过，命中时用户点了「清空」却看到日志还在。
+            lock (_entriesGate)
             {
-                Monitor.TryEnter(_entriesGate, 100, ref locked);
-
-                if (!locked)
-                {
-                    // 拿不到锁就放弃清缓冲，队列与文件照清 —— 至少下次不会被旧日志淹掉。
-                    // 这里刻意不写日志：写日志本身要拿同一把锁，在一个「已经等不到锁」的
-                    // 分支里再去排队，等于把 100ms 变成无限。
-                    System.Diagnostics.Debug.WriteLine("清空日志：等待内存缓冲超时，已跳过内存清空");
-                    return;
-                }
-
                 _entries.Clear();
                 Volatile.Write(ref _lastError, null);
                 Volatile.Write(ref _lastWarn, null);
@@ -278,11 +267,6 @@ namespace Zentwik.Core.Services
                 Interlocked.Exchange(ref _totalWarn, 0);
                 Interlocked.Exchange(ref _totalError, 0);
                 Interlocked.Exchange(ref _totalCritical, 0);
-            }
-            finally
-            {
-                if (locked)
-                    Monitor.Exit(_entriesGate);
             }
         }
 
