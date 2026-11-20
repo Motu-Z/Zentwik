@@ -7,6 +7,9 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
+#ifndef MyAppVersionNumeric
+  #define MyAppVersionNumeric "0.0.0.0"
+#endif
 
 ; /DLite 切精简版（负载 pkg-portable，需预装 .NET 10 桌面运行时）；缺省为完整版。
 ; 用开关而非 /D 传路径：含反斜杠的值会被 ISCC 当表达式解析。
@@ -23,6 +26,7 @@
 AppId={{4C1E7A52-8B3D-49F6-9E24-6D7B2F8C1A35}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersionNumeric}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher=Motu
 DefaultDirName={autopf}\{#MyAppName}

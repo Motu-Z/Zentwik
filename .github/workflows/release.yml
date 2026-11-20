@@ -1,4 +1,4 @@
-name: Build and Release Zentwik
+﻿name: Build and Release Zentwik
 
 on:
   push:
@@ -36,7 +36,10 @@ jobs:
         $tag = "${{ github.event.inputs.tag_name || github.ref_name }}"
         $v = $tag -replace '^v', ''
         "version=$v" >> $env:GITHUB_OUTPUT
-        Write-Host "Version: $v"
+        $numeric = ($v -replace '-.*$', '') -replace '[^0-9.]', ''
+        if ($numeric -notmatch '^\d+\.\d+\.\d+$') { $numeric = '0.0.0' }
+        "numeric=$numeric.0" >> $env:GITHUB_OUTPUT
+        Write-Host "Version: $v (file version $numeric.0)"
 
     - name: Publish Worker (Native AOT)
       run: |
@@ -96,9 +99,10 @@ jobs:
       shell: pwsh
       run: |
         $v = "${{ steps.ver.outputs.version }}"
-        & "$env:ISCC" "/DMyAppVersion=$v" "installer\zentwik.iss"
+        $n = "${{ steps.ver.outputs.numeric }}"
+        & "$env:ISCC" "/DMyAppVersion=$v" "/DMyAppVersionNumeric=$n" "installer\zentwik.iss"
         if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败：完整包（退出码 $LASTEXITCODE）" }
-        & "$env:ISCC" "/DMyAppVersion=$v" "/DLite" "installer\zentwik.iss"
+        & "$env:ISCC" "/DMyAppVersion=$v" "/DMyAppVersionNumeric=$n" "/DLite" "installer\zentwik.iss"
         if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败：精简包（退出码 $LASTEXITCODE）" }
         $full = Get-ChildItem ./dist -Filter '*-Setup.exe'
         $lite = Get-ChildItem ./dist -Filter '*-Setup-Lite.exe'
