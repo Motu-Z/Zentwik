@@ -14,6 +14,64 @@
         <conv:BooleanToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBooleanToVisibilityConverter x:Key="InvBoolToVis" />
         <conv:DimOpacityConverter x:Key="DimOpacity" />
+
+        <DataTemplate x:Key="TuningFieldTemplate">
+            <Border Style="{StaticResource PanelStyle}" Padding="20,14" Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="{Binding Label}"
+                               Style="{StaticResource RowTitleStyle}"
+                               VerticalAlignment="Center" />
+
+                    <Slider Grid.Row="0" Grid.Column="1"
+                            Style="{StaticResource ThinSliderStyle}"
+                            VerticalAlignment="Center"
+                            Margin="0,0,24,0"
+                            Minimum="{Binding Minimum}"
+                            Maximum="{Binding Maximum}"
+                            TickFrequency="{Binding Step}"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding Value, Mode=TwoWay}"
+                            IsEnabled="{Binding IsAvailable}"
+                            automation:AutomationProperties.Name="{Binding AutomationName}" />
+
+                    <TextBox Grid.Row="0" Grid.Column="2"
+                             Style="{StaticResource CoreNumberFieldStyle}"
+                             Width="88"
+                             FontSize="30"
+                             TextAlignment="Right"
+                             conv:InputAssist.SelectAllOnFocus="True"
+                             automation:AutomationProperties.Name="{Binding AutomationName}"
+                             IsReadOnly="{Binding IsUnavailable}"
+                             Text="{Binding Text, UpdateSourceTrigger=LostFocus, Mode=TwoWay}" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                    <TextBlock Grid.Row="0" Grid.Column="3"
+                               Text="{Binding Unit}"
+                               Margin="6,0,0,2"
+                               VerticalAlignment="Center"
+                               FontFamily="{DynamicResource AppMonoFontFamily}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                               Text="{Binding Hint}"
+                               Style="{StaticResource HintStyle}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
     </UserControl.Resources>
 
     <Grid>
@@ -212,71 +270,29 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
                         </Border>
+
+                        <Border Style="{StaticResource SectionHeaderStyle}"
+                                Margin="0,14,0,0"
+                                Visibility="{Binding PowerLimitVisible, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="POWER LIMIT / 功耗限制"
+                                       Style="{StaticResource SectionTitleStyle}" />
+                        </Border>
+
+                        <TextBlock Text="写入后由处理器按上限限制功耗，超过即降频"
+                                   Style="{StaticResource HintStyle}"
+                                   Margin="0,14,0,0"
+                                   Visibility="{Binding PowerLimitVisible, Converter={StaticResource BoolToVis}}" />
+
+                        <ItemsControl ItemsSource="{Binding PowerLimits}"
+                                      Margin="0,14,0,0"
+                                      ItemTemplate="{StaticResource TuningFieldTemplate}"
+                                      Visibility="{Binding PowerLimitVisible, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
                     <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
                                 Margin="32,32,32,32"
                                 HorizontalAlignment="Left"
                                 Visibility="{Binding IsIntel, Converter={StaticResource BoolToVis}}">
-
-                        <StackPanel.Resources>
-                            <DataTemplate x:Key="IntelFieldTemplate">
-                                <Border Style="{StaticResource PanelStyle}" Padding="20,14" Margin="0,0,0,12">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="120" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-
-                                        <TextBlock Grid.Row="0" Grid.Column="0"
-                                                   Text="{Binding Label}"
-                                                   Style="{StaticResource RowTitleStyle}"
-                                                   VerticalAlignment="Center" />
-
-                                        <Slider Grid.Row="0" Grid.Column="1"
-                                                Style="{StaticResource ThinSliderStyle}"
-                                                VerticalAlignment="Center"
-                                                Margin="0,0,24,0"
-                                                Minimum="{Binding Minimum}"
-                                                Maximum="{Binding Maximum}"
-                                                TickFrequency="{Binding Step}"
-                                                IsSnapToTickEnabled="True"
-                                                Value="{Binding Value, Mode=TwoWay}"
-                                                IsEnabled="{Binding IsAvailable}"
-                                                automation:AutomationProperties.Name="{Binding AutomationName}" />
-
-                                        <TextBox Grid.Row="0" Grid.Column="2"
-                                                 Style="{StaticResource CoreNumberFieldStyle}"
-                                                 Width="88"
-                                                 FontSize="30"
-                                                 TextAlignment="Right"
-                                                 conv:InputAssist.SelectAllOnFocus="True"
-                                                 automation:AutomationProperties.Name="{Binding AutomationName}"
-                                                 IsReadOnly="{Binding IsUnavailable}"
-                                                 Text="{Binding Text, UpdateSourceTrigger=LostFocus, Mode=TwoWay}" Foreground="{DynamicResource TextPrimaryBrush}" />
-
-                                        <TextBlock Grid.Row="0" Grid.Column="3"
-                                                   Text="{Binding Unit}"
-                                                   Margin="6,0,0,2"
-                                                   VerticalAlignment="Center"
-                                                   FontFamily="{DynamicResource AppMonoFontFamily}"
-                                                   FontSize="13"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-
-                                        <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
-                                                   Text="{Binding Hint}"
-                                                   Style="{StaticResource HintStyle}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </StackPanel.Resources>
 
                         <Border Style="{StaticResource SectionHeaderStyle}">
                             <TextBlock Text="VOLTAGE OFFSET / 电压偏移"
@@ -291,7 +307,7 @@
 
                         <ItemsControl ItemsSource="{Binding IntelVoltages}"
                                       Margin="0,14,0,0"
-                                      ItemTemplate="{StaticResource IntelFieldTemplate}" />
+                                      ItemTemplate="{StaticResource TuningFieldTemplate}" />
 
                         <Border Style="{StaticResource SectionHeaderStyle}" Margin="0,14,0,0">
                             <TextBlock Text="TURBO RATIO LIMIT / 睿频上限"
@@ -356,7 +372,7 @@
 
                         <ItemsControl ItemsSource="{Binding IntelPowers}"
                                       Margin="0,14,0,0"
-                                      ItemTemplate="{StaticResource IntelFieldTemplate}" />
+                                      ItemTemplate="{StaticResource TuningFieldTemplate}" />
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -73,6 +73,16 @@ namespace Zentwik.Core.Ipc
         /// <summary>FMax（MHz）。0 = 不碰。仅调校方案有值。</summary>
         [JsonPropertyName("fmaxMhz")]
         public uint FMaxMHz { get; set; }
+
+        /// <summary>功耗上限（W）。null = 不碰。仅调校方案有值。</summary>
+        [JsonPropertyName("stapmWatts")]
+        public int? StapmWatts { get; set; }
+
+        [JsonPropertyName("fastWatts")]
+        public int? FastWatts { get; set; }
+
+        [JsonPropertyName("slowWatts")]
+        public int? SlowWatts { get; set; }
 
         /// <summary>规则条数。仅调度方案使用，界面靠它显示「N 条规则」。</summary>
         [JsonPropertyName("ruleCount")]
@@ -168,6 +178,16 @@ namespace Zentwik.Core.Ipc
         /// <summary>FMax（MHz）。仅调校方案使用。</summary>
         [JsonPropertyName("fmaxMhz")]
         public uint? FMaxMHz { get; set; }
+
+        /// <summary>功耗上限（W）。仅调校方案使用；不传表示不动这一块。</summary>
+        [JsonPropertyName("stapmWatts")]
+        public int? StapmWatts { get; set; }
+
+        [JsonPropertyName("fastWatts")]
+        public int? FastWatts { get; set; }
+
+        [JsonPropertyName("slowWatts")]
+        public int? SlowWatts { get; set; }
 
         /// <summary>
         /// 可选的 Windows 电源方案 GUID。仅电源方案使用；

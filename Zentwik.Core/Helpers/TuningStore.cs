@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using Zentwik.Core.Services;
 using Zentwik.Core.Serialization;
@@ -22,6 +22,13 @@ namespace Zentwik.Core.Helpers
         /// 全局重置时 FMax 恢复到此基线（或 5400）。
         /// </summary>
         public uint FMaxBaselineMHz { get; set; }
+
+        /// <summary>功耗上限（W）。null = 不碰。</summary>
+        public int? PowerLimitStapmWatts { get; set; }
+
+        public int? PowerLimitFastWatts { get; set; }
+
+        public int? PowerLimitSlowWatts { get; set; }
 
         /// <summary>最近一次成功应用的时间（本地时间，ISO8601）。</summary>
         public string? AppliedAt { get; set; }

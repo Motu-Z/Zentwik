@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
@@ -29,6 +29,8 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(SmuStatusPayload))]
     [JsonSerializable(typeof(TuningSnapshotPayload))]
     [JsonSerializable(typeof(IntelTuningPayload))]
+    [JsonSerializable(typeof(ApplyPowerLimitPayload))]
+    [JsonSerializable(typeof(PowerLimitPayload))]
     [JsonSerializable(typeof(ApplyIntelTuningPayload))]
     [JsonSerializable(typeof(PlanQueryPayload))]
     [JsonSerializable(typeof(SavePlanPayload))]

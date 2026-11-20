@@ -10,10 +10,10 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>Intel 调校的数值字段：电压平面、功耗上限或时长。</summary>
-public sealed partial class IntelNumericField : ObservableObject
+/// <summary>调校页的数值字段：电压平面、功耗上限或时长。</summary>
+public sealed partial class TuningNumericField : ObservableObject
 {
-    public IntelNumericField(
+    public TuningNumericField(
         string label,
         string hint,
         string unit,
@@ -198,10 +198,10 @@ public partial class TuningViewModel
     }
 
     /// <summary>电压平面：核心、核显、缓存。</summary>
-    public ObservableCollection<IntelNumericField> IntelVoltages { get; } = new();
+    public ObservableCollection<TuningNumericField> IntelVoltages { get; } = new();
 
     /// <summary>功耗限制：持续功耗、短时功耗、短时功耗时长。</summary>
-    public ObservableCollection<IntelNumericField> IntelPowers { get; } = new();
+    public ObservableCollection<TuningNumericField> IntelPowers { get; } = new();
 
     /// <summary>倍频上限八档。</summary>
     public ObservableCollection<IntelRatioItem> IntelRatios { get; } = new();
@@ -213,13 +213,13 @@ public partial class TuningViewModel
         if (_intelFieldsReady)
             return;
 
-        IntelVoltages.Add(new IntelNumericField("核心电压", "处理器核心供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
-        IntelVoltages.Add(new IntelNumericField("核显电压", "集成显卡供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
-        IntelVoltages.Add(new IntelNumericField("缓存电压", "末级缓存供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+        IntelVoltages.Add(new TuningNumericField("核心电压", "处理器核心供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+        IntelVoltages.Add(new TuningNumericField("核显电压", "集成显卡供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
+        IntelVoltages.Add(new TuningNumericField("缓存电压", "末级缓存供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
 
-        IntelPowers.Add(new IntelNumericField("持续功耗", "长时间维持的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
-        IntelPowers.Add(new IntelNumericField("短时功耗", "短时间可超过的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
-        IntelPowers.Add(new IntelNumericField("短时功耗时长", "短时功耗维持的秒数，0 表示不限", "秒", 0, IntelTauMinimum, IntelTauMaximum, IntelTauStep));
+        IntelPowers.Add(new TuningNumericField("持续功耗", "长时间维持的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
+        IntelPowers.Add(new TuningNumericField("短时功耗", "短时间可超过的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
+        IntelPowers.Add(new TuningNumericField("短时功耗时长", "短时功耗维持的秒数，0 表示不限", "秒", 0, IntelTauMinimum, IntelTauMaximum, IntelTauStep));
 
         for (int i = 0; i < IntelTuningCodec.RatioSlots; i++)
             IntelRatios.Add(new IntelRatioItem(i, IntelRatioMinimum));
@@ -377,7 +377,7 @@ public partial class TuningViewModel
         }
     }
 
-    private static void ApplyNumericField(IntelNumericField field, int? value, int minimum, int maximum)
+    private static void ApplyNumericField(TuningNumericField field, int? value, int minimum, int maximum)
     {
         if (value.HasValue)
         {
