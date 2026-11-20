@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -8,7 +8,7 @@
     <AssemblyName>Zentwik.Core</AssemblyName>
     <LangVersion>latest</LangVersion>
 
-    <Version>2.5.2</Version>
+    <Version>2.6.0</Version>
     <FileVersion>2.4.6.0</FileVersion>
     <AssemblyVersion>2.4.6.0</AssemblyVersion>
 
@@ -31,6 +31,11 @@
     <!-- PawnIO 模块由驱动加载，不进单文件包。 -->
     <None Include="..\libs\PawnIO\RyzenSMU.bin"
           Link="PawnIO\RyzenSMU.bin"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          ExcludeFromSingleFile="true" />
+    <None Include="..\libs\PawnIO\IntelMSR.bin"
+          Link="PawnIO\IntelMSR.bin"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest"
           ExcludeFromSingleFile="true" />

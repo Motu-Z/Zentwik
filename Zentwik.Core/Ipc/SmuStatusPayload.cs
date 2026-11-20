@@ -27,5 +27,9 @@ namespace Zentwik.Core.Ipc
         /// <summary>处理器厂商：<c>amd</c> / <c>intel</c> / <c>unknown</c>。</summary>
         [JsonPropertyName("vendor")]
         public string? Vendor { get; set; }
+
+        /// <summary>Intel MSR 调校通道是否就绪。</summary>
+        [JsonPropertyName("intelTuning")]
+        public bool IntelTuning { get; set; }
     }
 }

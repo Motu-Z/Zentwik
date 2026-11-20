@@ -142,6 +142,17 @@ namespace Zentwik.Tests
         }
 
         [Fact]
+        public void QuerySmuStatus_IntelTuning_FlagFollowsChannel()
+        {
+            PipeResponse ready = PipeServerService.BuildSmuStatusResponse(new StubSmuReader(false, intelTuning: true));
+            Assert.Contains("\"intelTuning\":true", ready.Payload!, StringComparison.Ordinal);
+
+            // AMD 与老态：通道未就绪时必须报 false，界面据此隐藏调校页。
+            PipeResponse missing = PipeServerService.BuildSmuStatusResponse(new StubSmuReader(false));
+            Assert.Contains("\"intelTuning\":false", missing.Payload!, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void QuerySmuSnapshot_Success_ReturnsPayload()
         {
             SmuSnapshot snapshot = new()
@@ -1304,8 +1315,13 @@ namespace Zentwik.Tests
         private sealed class StubSmuReader : ISmuReader
         {
             private readonly bool _available;
+            private readonly bool _intelTuning;
 
-            public StubSmuReader(bool available) => _available = available;
+            public StubSmuReader(bool available, bool intelTuning = false)
+            {
+                _available = available;
+                _intelTuning = intelTuning;
+            }
 
             public bool IsAvailable => _available;
             public string? LastError => _available ? null : "StubSmuReader：模拟 PawnIO 未就绪";
@@ -1321,6 +1337,16 @@ namespace Zentwik.Tests
             public SmuFMaxResult WriteFMax(uint mhz) => new() { AllSucceeded = true, Requested = mhz, ReadBack = mhz };
 
             public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default) => _available;
+
+            public bool IsIntel => false;
+
+            public bool IsIntelTuningAvailable => _intelTuning;
+
+            public IntelTuningSnapshot ReadIntelTuning()
+                => new() { Success = false, Error = "StubSmuReader：不提供 Intel 通道" };
+
+            public IntelTuningResult ApplyIntelTuning(IntelTuningRequest request)
+                => new() { Fatal = "StubSmuReader：不提供 Intel 通道" };
 
             public void Dispose() { }
         }

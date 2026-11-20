@@ -18,6 +18,10 @@ namespace Zentwik.Core.Services
 
         private SmuSession? _session;
 
+        private readonly CpuVendor _vendor;
+        private IntelTuningSession? _intel;
+        private IntelTuningSnapshot? _intelBaseline;
+
         private uint _coresPerCcd;
         private int _coreCount;
 
@@ -75,10 +79,20 @@ namespace Zentwik.Core.Services
             ArgumentNullException.ThrowIfNull(log);
 
             _log = log;
+            _vendor = CpuVendorProbe.Detect();
+
+            if (_vendor == CpuVendor.Intel)
+            {
+                InitializeIntel();
+                return;
+            }
+
             Initialize();
         }
 
         private static string ModulePath => Path.Combine(AppContext.BaseDirectory, "PawnIO", "RyzenSMU.bin");
+
+        private static string IntelModulePath => Path.Combine(AppContext.BaseDirectory, "PawnIO", "IntelMSR.bin");
 
         private void Initialize()
         {
@@ -125,11 +139,125 @@ namespace Zentwik.Core.Services
             }
         }
 
+        /// <summary>Intel 平台：跳过 SMU，建立 MSR 通道并记录原始值。</summary>
+        private void InitializeIntel()
+        {
+            try
+            {
+                _intel = IntelTuningSession.TryOpen(IntelModulePath);
+                if (_intel is null)
+                {
+                    LastError = "Intel MSR 模块不可用（PawnIO 驱动未安装或模块缺失）";
+                    _log.Warn(LastError);
+                    return;
+                }
+
+                IntelTuningSnapshot snapshot = _intel.Read();
+                if (!snapshot.Success)
+                {
+                    LastError = snapshot.Error ?? "Intel MSR 读取失败";
+                    _log.Warn($"Intel 调校通道不可用：{LastError}");
+                    _intel.Dispose();
+                    _intel = null;
+                    return;
+                }
+
+                _intelBaseline = snapshot;
+                _coreCount = CpuIdentity.Read().PhysicalCores;
+                LastError = null;
+                _log.Info(
+                    $"Intel 调校通道就绪：核心 {VoltageText(snapshot.CoreMilliVolts)} · " +
+                    $"核显 {VoltageText(snapshot.GpuMilliVolts)} · 缓存 {VoltageText(snapshot.CacheMilliVolts)}");
+            }
+            catch (Exception ex)
+            {
+                _intel = null;
+                LastError = ex.Message;
+                _log.Error($"Intel 调校通道初始化失败：{ex}");
+            }
+        }
+
+        private static string VoltageText(int? milliVolts)
+            => milliVolts.HasValue ? $"{milliVolts.Value} mV" : "读取失败";
+
+        public bool IsIntel => _vendor == CpuVendor.Intel;
+
+        public bool IsIntelTuningAvailable => _intel is not null;
+
+        public IntelTuningSnapshot ReadIntelTuning()
+        {
+            if (_intel is null)
+                return new IntelTuningSnapshot { Success = false, Error = LastError ?? "Intel 调校通道不可用" };
+
+            return _intel.Read();
+        }
+
+        public IntelTuningResult ApplyIntelTuning(IntelTuningRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            if (_intel is null)
+                return new IntelTuningResult { Fatal = LastError ?? "Intel 调校通道不可用" };
+
+            if (request.RestoreBaseline)
+            {
+                if (_intelBaseline is null)
+                    return new IntelTuningResult { Fatal = "缺少原始值快照" };
+
+                IntelTuningResult restored = _intel.Restore(_intelBaseline);
+                LogIntelWrite("恢复原始值", restored);
+                return restored;
+            }
+
+            Dictionary<IntelVoltagePlane, int> planes = new();
+            if (request.CoreMilliVolts.HasValue)
+                planes[IntelVoltagePlane.Core] = request.CoreMilliVolts.Value;
+            if (request.GpuMilliVolts.HasValue)
+                planes[IntelVoltagePlane.Gpu] = request.GpuMilliVolts.Value;
+            if (request.CacheMilliVolts.HasValue)
+                planes[IntelVoltagePlane.Cache] = request.CacheMilliVolts.Value;
+
+            IntelTuningResult result = new();
+
+            if (planes.Count > 0)
+            {
+                IntelTuningResult voltage = _intel.ApplyVoltage(planes);
+                result.Failures.AddRange(voltage.Failures);
+                foreach (KeyValuePair<string, int> pair in voltage.Applied)
+                    result.Applied[pair.Key] = pair.Value;
+            }
+
+            if (request.Ratios is { Length: IntelTuningCodec.RatioSlots })
+            {
+                IntelTuningResult ratios = _intel.ApplyRatios(request.Ratios);
+                result.Failures.AddRange(ratios.Failures);
+            }
+
+            result.AllSucceeded = result.Failures.Count == 0;
+            LogIntelWrite("写入", result);
+            return result;
+        }
+
+        private void LogIntelWrite(string action, IntelTuningResult result)
+        {
+            if (result.Failures.Count == 0)
+            {
+                _log.Info($"Intel 调校{action}完成");
+                return;
+            }
+
+            foreach (string failure in result.Failures)
+                _log.Error($"Intel 调校{action}：{failure}");
+        }
+
         /// <summary>等待 PawnIO 驱动就绪（自启 / 静默场景专用）。</summary>
         /// <param name="maxSeconds">最长等待秒数（默认 60）。</param>
         /// <param name="token">取消令牌：关机或用户放弃时可中断等待，不拖住后台线程。</param>
         public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default)
         {
+            if (IsIntel)
+                return _intel is not null;
+
             if (IsAvailable)
                 return true;
 
@@ -472,6 +600,7 @@ namespace Zentwik.Core.Services
         /// <summary>DI 单例，实例生命周期等于进程；退出期不关闭设备，避免并发访问抛异常。</summary>
         public void Dispose()
         {
+            _intel?.Dispose();
         }
     }
 

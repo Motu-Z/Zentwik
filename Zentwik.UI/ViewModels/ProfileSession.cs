@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -1032,7 +1032,7 @@ public static class PlanHub
         List<Task> work = [Scheduling.InitializeAsync(), Power.InitializeAsync()];
 
         // 非 AMD 上不拉调校方案：方案条与动作候选里都不该出现用不了的东西。
-        if (WorkerStatus.Instance.IsTuningSupported)
+        if (WorkerStatus.Instance.IsTuningPlanSupported)
             work.Add(Tuning.InitializeAsync());
 
         await Task.WhenAll(work).ConfigureAwait(true);

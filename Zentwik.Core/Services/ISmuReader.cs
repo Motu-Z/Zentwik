@@ -36,5 +36,17 @@ namespace Zentwik.Core.Services
         /// 返回 false 表示超时或被取消。
         /// </summary>
         bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default);
+
+        /// <summary>处理器厂商是否为 Intel。Intel 平台走 MSR 通道，不用 SMU。</summary>
+        bool IsIntel { get; }
+
+        /// <summary>Intel MSR 调校通道是否就绪（模块已加载且可读）。</summary>
+        bool IsIntelTuningAvailable { get; }
+
+        /// <summary>读取 Intel 电压偏移与睿频上限；通道未就绪时返回失败快照。</summary>
+        IntelTuningSnapshot ReadIntelTuning();
+
+        /// <summary>写入 Intel 调校值；<c>RestoreBaseline</c> 为真时回到首次读到的值。</summary>
+        IntelTuningResult ApplyIntelTuning(IntelTuningRequest request);
     }
 }

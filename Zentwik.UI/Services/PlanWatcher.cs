@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows.Threading;
@@ -76,7 +76,7 @@ internal sealed class PlanWatcher
 
             foreach (PlanKind kind in Kinds)
             {
-                if (kind == PlanKind.Tuning && !ViewModels.WorkerStatus.Instance.IsTuningSupported)
+                if (kind == PlanKind.Tuning && !ViewModels.WorkerStatus.Instance.IsTuningPlanSupported)
                     continue;
 
                 string? id = outcome.Value.For(kind);

@@ -14,9 +14,10 @@ namespace Zentwik.Tests
             // 12：save-mask / query-masks 增加掩码下发方式（type）。
             // 16：新增 query-mask-usage（掩码被规则与方案引用的数量）。
             // 18：query-cpu-topology 增加厂商、每核线程掩码与效率类。
+            // 20：Intel 调校新增 query-intel-tuning / apply-intel-tuning。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
             // 否则「顺手把版本号往上加」这种改动没人会注意到。
-            Assert.Equal(19, WorkerPipeContract.ProtocolVersion);
+            Assert.Equal(20, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }
@@ -79,6 +80,13 @@ namespace Zentwik.Tests
 
             // 清空必须落到后台：只清界面那份缓存的话，下次刷新日志会全回来。
             Assert.Equal("clear-logs", WorkerPipeContract.CommandClearLogs);
+        }
+
+        [Fact]
+        public void IntelTuningCommands_match_contract_strings()
+        {
+            Assert.Equal("query-intel-tuning", WorkerPipeContract.CommandQueryIntelTuning);
+            Assert.Equal("apply-intel-tuning", WorkerPipeContract.CommandApplyIntelTuning);
         }
 
         [Fact]

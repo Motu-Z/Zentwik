@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
@@ -15,13 +15,13 @@ public class BehaviorViewModel : ViewModelBase
         // 与侧栏「调校」共用同一判定：非 AMD 平台整行隐藏，厂商未知时照常显示。
         WorkerStatus.Instance.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(WorkerStatus.IsTuningSupported))
+            if (e.PropertyName == nameof(WorkerStatus.IsTuningPlanSupported))
                 OnPropertyChanged(nameof(TuningSupported));
         };
     }
 
     /// <summary>平台不支持调校时，依赖 SMU 的设置整行隐藏。</summary>
-    public bool TuningSupported => WorkerStatus.Instance.IsTuningSupported;
+    public bool TuningSupported => WorkerStatus.Instance.IsTuningPlanSupported;
 
     private void OnSettingChanged(string? name)
     {

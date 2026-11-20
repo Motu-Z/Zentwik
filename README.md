@@ -49,8 +49,8 @@ dotnet test  Zentwik.Tests/Zentwik.Tests.csproj -c Release
 - [SMUDebugTool](https://github.com/irusanov/SMUDebugTool/)：Ryzen SMU 参数读写的参考实现
 - [CPUSetSetter](https://github.com/SimonvBez/CPUSetSetter)：CPU Sets 与双 CCD 拓扑识别的行为参照
 - [PawnIO](https://github.com/namazso/PawnIO)：SMU 访问的内核驱动
-- [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)：`RyzenSMU` 驱动模块（LGPL-2.1）
+- [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)：`RyzenSMU`、`IntelMSR` 驱动模块（LGPL-2.1）
 
 ## 许可
 
-[Apache-2.0](LICENSE)。`libs/PawnIO/RyzenSMU.bin` 来自 [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)（LGPL-2.1），作为独立文件随包分发，用户可自行替换。
+[Apache-2.0](LICENSE)。`libs/PawnIO/` 下的 `RyzenSMU.bin` 与 `IntelMSR.bin` 来自 [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules)（LGPL-2.1），作为独立文件随包分发，用户可自行替换。

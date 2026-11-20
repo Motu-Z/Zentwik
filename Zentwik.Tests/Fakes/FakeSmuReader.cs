@@ -25,6 +25,17 @@ namespace Zentwik.Tests.Fakes
         public SmuWriteResult WriteCurveOptimizer(IReadOnlyList<int> margins) => new() { AllSucceeded = true };
         public SmuFMaxResult WriteFMax(uint mhz) => new() { AllSucceeded = true };
         public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default) => Available;
+
+        public bool IsIntel => false;
+
+        public bool IsIntelTuningAvailable => false;
+
+        public IntelTuningSnapshot ReadIntelTuning()
+            => new() { Success = false, Error = "FakeSmuReader：不提供 Intel 通道" };
+
+        public IntelTuningResult ApplyIntelTuning(IntelTuningRequest request)
+            => new() { Fatal = "FakeSmuReader：不提供 Intel 通道" };
+
         public void Dispose() { }
     }
 }

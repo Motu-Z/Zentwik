@@ -125,6 +125,7 @@ public partial class TuningViewModel : ObservableObject
     public bool CanSave =>
         !IsBusy
         && SmuAvailable
+        && !IsIntel
         && (IsDirty || (PlanHub.Tuning.Current is null && !PlanHub.SuppressWorkerInit));
 
     /// <summary>界面挂载期间冻结脏标记</summary>
@@ -179,6 +180,9 @@ public partial class TuningViewModel : ObservableObject
             PlanHub.Tuning,
             nameof(PlanScope.CurrentChanged),
             OnCurrentProfileChanged);
+
+        // 厂商是连上 Worker 之后才知道的，界面按它切 AMD / Intel 两套表单。
+        WorkerStatus.Instance.PropertyChanged += OnWorkerStatusChanged;
     }
 
     /// <summary>与 Worker 对一次数：SMU 是否可写、硬件当前值、当前方案存的值</summary>
@@ -406,7 +410,21 @@ public partial class TuningViewModel : ObservableObject
                 return;
             }
 
-            if (ForceSmuOffline || !status.Value.Available)
+            if (ForceSmuOffline)
+            {
+                MarkSmuUnavailable(null);
+                await FallbackToStoredValuesAsync().ConfigureAwait(true);
+                return;
+            }
+
+            // Intel 平台走 MSR 通道：SMU 必然不可用，不能拿 available 判可用性。
+            if (WorkerStatus.Instance.IsIntel)
+            {
+                await RefreshIntelAsync(notifyOnFailure).ConfigureAwait(true);
+                return;
+            }
+
+            if (!status.Value.Available)
             {
                 MarkSmuUnavailable(status.Value.Error);
                 await FallbackToStoredValuesAsync().ConfigureAwait(true);
@@ -743,6 +761,8 @@ public partial class TuningViewModel : ObservableObject
         ReadbackCommand.NotifyCanExecuteChanged();
         DiscardCommand.NotifyCanExecuteChanged();
         ApplyCommand.NotifyCanExecuteChanged();
+        ApplyIntelCommand.NotifyCanExecuteChanged();
+        RestoreIntelCommand.NotifyCanExecuteChanged();
 
         if (!value && _recheckProfileOnIdle)
         {
@@ -769,6 +789,10 @@ public partial class TuningViewModel : ObservableObject
     /// </summary>
     private void SyncPlanDirty()
     {
+        // Intel 走 MSR 直写，不经过方案，脏标没有承载对象。
+        if (IsIntel)
+            return;
+
         PlanItem? item = PlanHub.Tuning.Current;
 
         bool differs = false;

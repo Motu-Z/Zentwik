@@ -29,10 +29,11 @@ namespace Zentwik.Core.Ipc
         /// 16 query-mask-usage（掩码被规则与方案引用的数量）｜
         /// 17 snapshot-logs 窗口扩到 200 条并在首行附最近一条异常 ｜
         /// 18 query-cpu-topology 下发厂商、每核线程掩码与效率类 ｜
-        /// 19 掩码线格式改为十六进制串（128 位，可表达跨处理器组的选择）。
+        /// 19 掩码线格式改为十六进制串（128 位，可表达跨处理器组的选择）｜
+        /// 20 Intel 调校：query-intel-tuning / apply-intel-tuning，query-smu-status 增 intelTuning。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 19;
+        public const int ProtocolVersion = 20;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -154,6 +155,23 @@ namespace Zentwik.Core.Ipc
         /// 显示可用性，也让「刷新」这个动作的代价（一次完整探测）显式可见。
         /// </summary>
         public const string CommandQuerySmuSnapshot = "query-smu-snapshot";
+
+        /// <summary>
+        /// 读取 Intel 调校现状（只读，不写 MSR）。
+        ///
+        /// 参数：无（<c>Payload</c> 忽略）。
+        /// 返回：<c>Payload</c> = JSON <see cref="IntelTuningPayload"/>。
+        /// </summary>
+        public const string CommandQueryIntelTuning = "query-intel-tuning";
+
+        /// <summary>
+        /// 写入 Intel 电压偏移与睿频上限。
+        ///
+        /// 参数：<c>Payload</c> = JSON <see cref="ApplyIntelTuningPayload"/>，为 null 的字段不动。
+        /// 返回：<c>Payload</c> = 写后重新读取的 <see cref="IntelTuningPayload"/>；
+        /// 回读不一致算失败，原因写进 <c>Message</c>。
+        /// </summary>
+        public const string CommandApplyIntelTuning = "apply-intel-tuning";
         /// <summary>
         /// 查询某一类方案（调校 / 调度 / 电源）的列表与生效项。
         ///

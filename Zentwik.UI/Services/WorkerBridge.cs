@@ -177,6 +177,7 @@ public sealed class WorkerBridge
 
         status.IsElevated = smu is { TransportFailed: false, Success: true, Value.Available: true };
         status.Vendor = smu is { TransportFailed: false, Success: true } ? smu.Value?.Vendor : null;
+        status.IntelTuning = smu is { TransportFailed: false, Success: true, Value.IntelTuning: true };
     }
 
     // 调校页的三条命令（强类型出口）
@@ -207,6 +208,39 @@ public sealed class WorkerBridge
             cancellationToken).ConfigureAwait(false);
 
         return ToOutcome(response, IpcJsonContext.Default.TuningSnapshotPayload);
+    }
+
+    /// <summary>Intel 电压偏移与睿频上限，只读</summary>
+    public async Task<IpcOutcome<IntelTuningPayload>> QueryIntelTuningAsync(
+        int timeoutMs = 15_000,
+        CancellationToken cancellationToken = default)
+    {
+        PipeResponse? response = await SendAsync(
+            WorkerPipeContract.CommandQueryIntelTuning,
+            null,
+            timeoutMs,
+            cancellationToken).ConfigureAwait(false);
+
+        return ToOutcome(response, IpcJsonContext.Default.IntelTuningPayload);
+    }
+
+    /// <summary>写入 Intel 调校值；返回写后重新读取的结果</summary>
+    public async Task<IpcOutcome<IntelTuningPayload>> ApplyIntelTuningAsync(
+        ApplyIntelTuningPayload request,
+        int timeoutMs = 30_000,
+        CancellationToken cancellationToken = default)
+    {
+        string payload = JsonSerializer.Serialize(
+            request,
+            IpcJsonContext.Default.ApplyIntelTuningPayload);
+
+        PipeResponse? response = await SendAsync(
+            WorkerPipeContract.CommandApplyIntelTuning,
+            payload,
+            timeoutMs,
+            cancellationToken).ConfigureAwait(false);
+
+        return ToOutcome(response, IpcJsonContext.Default.IntelTuningPayload);
     }
 
     // 方案（plans.json，三类各自独立）

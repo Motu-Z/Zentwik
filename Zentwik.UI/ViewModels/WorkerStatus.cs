@@ -69,13 +69,35 @@ public sealed class WorkerStatus : ViewModelBase
         {
             if (SetProperty(ref _vendor, value))
             {
+                OnPropertyChanged(nameof(IsIntel));
+                OnPropertyChanged(nameof(IsTuningSupported));
+                OnPropertyChanged(nameof(IsTuningPlanSupported));
+            }
+        }
+    }
+
+    private bool _intelTuning;
+
+    /// <summary>Intel MSR 调校通道是否就绪；老版本不带该字段时为 false。</summary>
+    public bool IntelTuning
+    {
+        get => _intelTuning;
+        set
+        {
+            if (SetProperty(ref _intelTuning, value))
+            {
                 OnPropertyChanged(nameof(IsTuningSupported));
             }
         }
     }
 
-    /// <summary>调校页只在 AMD 上有意义；厂商未知时照常显示，别把功能藏没了。</summary>
-    public bool IsTuningSupported => !string.Equals(Vendor, CpuVendorNames.Intel, StringComparison.OrdinalIgnoreCase);
+    public bool IsIntel => string.Equals(Vendor, CpuVendorNames.Intel, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>AMD 走 SMU，Intel 要有 MSR 通道；厂商未知时照常显示，别把功能藏没了。</summary>
+    public bool IsTuningSupported => !IsIntel || IntelTuning;
+
+    /// <summary>调校方案、场景动作与启动异常拦截只对 SMU 生效；Intel 直接写 MSR，不经过方案。</summary>
+    public bool IsTuningPlanSupported => !IsIntel;
 
     public string StatusText => IsConnected ? "Worker 已连接" : "Worker 未连接";
 

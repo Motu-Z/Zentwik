@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
 using Zentwik.UI.Services;
@@ -376,7 +376,7 @@ public sealed class ScenariosViewModel : ViewModelBase
 
         WorkerBridge bridge = WorkerBridge.Instance;
 
-        if (WorkerStatus.Instance.IsTuningSupported)
+        if (WorkerStatus.Instance.IsTuningPlanSupported)
         {
             await FillActionOptionsAsync(bridge, PlanKind.Tuning, EditorProfiles).ConfigureAwait(true);
         }
@@ -391,7 +391,7 @@ public sealed class ScenariosViewModel : ViewModelBase
 
         // 方案被删后不能悄悄把动作改成「保持原样」：保留引用并在下拉里标出来，
         // 由用户自己决定换成什么，保存时再拦一次。
-        if (WorkerStatus.Instance.IsTuningSupported)
+        if (WorkerStatus.Instance.IsTuningPlanSupported)
             EnsureStaleOption(EditorProfiles, EditorProfileId, "（调校方案已删除）");
 
         EnsureStaleOption(EditorSchedules, EditorScheduleId, "（调度方案已删除）");

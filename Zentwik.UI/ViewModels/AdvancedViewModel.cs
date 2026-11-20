@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using Zentwik.Core.Ipc;
@@ -12,7 +12,7 @@ public class AdvancedViewModel : ViewModelBase
     private readonly AppSettings _settings = AppSettings.Instance;
 
     /// <summary>平台不支持调校时，安全区整组隐藏。</summary>
-    public bool TuningSupported => WorkerStatus.Instance.IsTuningSupported;
+    public bool TuningSupported => WorkerStatus.Instance.IsTuningPlanSupported;
 
     // 安全
 
@@ -110,7 +110,7 @@ public class AdvancedViewModel : ViewModelBase
         // 与侧栏「调校」共用同一判定：非 AMD 平台整组隐藏，厂商未知时照常显示。
         WorkerStatus.Instance.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(WorkerStatus.IsTuningSupported))
+            if (e.PropertyName == nameof(WorkerStatus.IsTuningPlanSupported))
                 OnPropertyChanged(nameof(TuningSupported));
         };
 

@@ -318,6 +318,12 @@ namespace Zentwik.Worker
                 case WorkerPipeContract.CommandQuerySmuSnapshot:
                     return await RunQuerySmuSnapshotAsync(token);
 
+                case WorkerPipeContract.CommandQueryIntelTuning:
+                    return await RunQueryIntelTuningAsync(token);
+
+                case WorkerPipeContract.CommandApplyIntelTuning:
+                    return await RunApplyIntelTuningAsync(request.Payload, token);
+
                 case WorkerPipeContract.CommandQueryPlans:
                     return RunQueryPlans(request.Payload);
 
@@ -2740,6 +2746,110 @@ namespace Zentwik.Worker
             };
         }
 
+        private async Task<PipeResponse> RunQueryIntelTuningAsync(CancellationToken token)
+        {
+            try
+            {
+                IntelTuningSnapshot snapshot = await Task.Run(
+                    () => _smu.ReadIntelTuning(),
+                    token).ConfigureAwait(false);
+
+                return BuildIntelTuningResponse(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"读取 Intel 调校异常：{ex.GetType().Name}: {ex.Message}");
+                return Fail($"读取 Intel 调校失败：{ex.Message}");
+            }
+        }
+
+        /// <summary>Intel 读数 → 管道响应。可用性走 Payload，不压平 Success。</summary>
+        internal static PipeResponse BuildIntelTuningResponse(IntelTuningSnapshot snapshot)
+        {
+            IntelTuningPayload payload = new()
+            {
+                Available = snapshot.Success,
+                Error = snapshot.Error,
+                CoreMilliVolts = snapshot.CoreMilliVolts,
+                GpuMilliVolts = snapshot.GpuMilliVolts,
+                CacheMilliVolts = snapshot.CacheMilliVolts,
+                Ratios = snapshot.Ratios.Length > 0 ? snapshot.Ratios : null
+            };
+
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = snapshot.Success,
+                Message = snapshot.Success
+                    ? "已读取 Intel 调校"
+                    : snapshot.Error ?? "读取 Intel 调校失败",
+                Payload = JsonSerializer.Serialize(payload, IpcJsonContext.Default.IntelTuningPayload)
+            };
+        }
+
+        private async Task<PipeResponse> RunApplyIntelTuningAsync(string? payload, CancellationToken token)
+        {
+            ApplyIntelTuningPayload? request;
+            try
+            {
+                request = string.IsNullOrWhiteSpace(payload)
+                    ? new ApplyIntelTuningPayload()
+                    : JsonSerializer.Deserialize(payload, IpcJsonContext.Default.ApplyIntelTuningPayload);
+            }
+            catch (JsonException)
+            {
+                return Fail("应用 Intel 调校失败：请求格式不合法");
+            }
+
+            if (request is null)
+                return Fail("应用 Intel 调校失败：请求为空");
+
+            try
+            {
+                IntelTuningResult result = await Task.Run(
+                    () => _smu.ApplyIntelTuning(new IntelTuningRequest
+                    {
+                        CoreMilliVolts = request.CoreMilliVolts,
+                        GpuMilliVolts = request.GpuMilliVolts,
+                        CacheMilliVolts = request.CacheMilliVolts,
+                        Ratios = request.Ratios,
+                        RestoreBaseline = request.Restore
+                    }),
+                    token).ConfigureAwait(false);
+
+                IntelTuningSnapshot after = await Task.Run(
+                    () => _smu.ReadIntelTuning(),
+                    token).ConfigureAwait(false);
+
+                PipeResponse response = BuildIntelTuningResponse(after);
+
+                if (!result.AllSucceeded)
+                {
+                    string reason = result.Fatal ?? string.Join("；", result.Failures);
+                    return new PipeResponse
+                    {
+                        Version = WorkerPipeContract.ProtocolVersion,
+                        Success = false,
+                        Message = $"应用 Intel 调校失败：{reason}",
+                        Payload = response.Payload
+                    };
+                }
+
+                return new PipeResponse
+                {
+                    Version = WorkerPipeContract.ProtocolVersion,
+                    Success = true,
+                    Message = "Intel 调校已写入",
+                    Payload = response.Payload
+                };
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"应用 Intel 调校异常：{ex}");
+                return Fail($"应用 Intel 调校失败：{ex.Message}");
+            }
+        }
+
         /// <summary>查询 SMU 可用性；查询是否成功与是否可用分开表达。</summary>
         internal static PipeResponse BuildSmuStatusResponse(ISmuReader smu)
         {
@@ -2747,7 +2857,8 @@ namespace Zentwik.Worker
             {
                 Available = smu.IsAvailable,
                 Error = smu.IsAvailable ? null : smu.LastError,
-                Vendor = CpuVendorNames.ToName(CpuVendorProbe.Detect())
+                Vendor = CpuVendorNames.ToName(CpuVendorProbe.Detect()),
+                IntelTuning = smu.IsIntelTuningAvailable
             };
 
             return new PipeResponse
