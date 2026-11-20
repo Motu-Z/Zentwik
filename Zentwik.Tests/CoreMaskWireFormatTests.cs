@@ -61,6 +61,19 @@ namespace Zentwik.Tests
         }
 
         [Fact]
+        public void Save_mask_payload_rejects_text_above_128_bits()
+        {
+            // 静默转零会让保存失败报成「至少要选一个逻辑处理器」，与真实原因无关。
+            JsonException ex = Assert.Throws<JsonException>(() =>
+                JsonSerializer.Deserialize(
+                    "{\"name\":\"a\",\"mask\":\"0x1FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF\"}",
+                    IpcJsonContext.Default.SaveMaskPayload));
+
+            Assert.Contains("掩码格式不合法", ex.Message);
+            Assert.Contains("128", ex.Message);
+        }
+
+        [Fact]
         public void Stored_masks_file_reads_legacy_numbers_and_writes_hex()
         {
             // 老版本落盘的就是数字，读不进来等于用户升级后掩码全丢。

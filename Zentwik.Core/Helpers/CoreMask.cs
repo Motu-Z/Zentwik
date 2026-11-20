@@ -173,7 +173,11 @@ namespace Zentwik.Core.Helpers
                 if (string.IsNullOrWhiteSpace(text))
                     return CoreMask.Zero;
 
-                return MaskFormatter.TryParseHexToken(text, out CoreMask parsed) ? parsed : CoreMask.Zero;
+                if (MaskFormatter.TryParseHexToken(text, out CoreMask parsed))
+                    return parsed;
+
+                // 不能静默转零：调用方会把「格式错」当成「没选核心」，报出与原因无关的文案。
+                throw new JsonException($"掩码格式不合法：{text}，上限 128 位");
             }
 
             if (reader.TokenType == JsonTokenType.Number && reader.TryGetUInt64(out ulong value))

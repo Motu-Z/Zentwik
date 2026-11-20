@@ -162,9 +162,22 @@ namespace Zentwik.Worker
                 {
                     string line = await ReadLineAsync(server, token);
 
-                    PipeRequest? request = JsonSerializer.Deserialize(
-                        line,
-                        IpcJsonContext.Default.PipeRequest);
+                    PipeRequest? request;
+
+                    try
+                    {
+                        request = JsonSerializer.Deserialize(
+                            line,
+                            IpcJsonContext.Default.PipeRequest);
+                    }
+                    catch (JsonException ex)
+                    {
+                        // 载荷里的值不合法（例如掩码串写坏）。回一句话给客户端，
+                        // 不能只吞异常 —— 那边会表现为连接被断开，原因完全不可见。
+                        _log.Warn($"请求格式不合法：{ex.Message}");
+                        await WriteLineAsync(server, Fail($"请求格式不合法：{ex.Message}"), token);
+                        continue;
+                    }
 
                     PipeResponse response;
 
@@ -534,7 +547,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"保存界面设置失败：{ex.Message}");
             }
 
             if (request is null)
@@ -776,7 +789,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"查询方案失败：{ex.Message}");
             }
 
             if (request is null || !PlanKinds.TryParse(request.Kind, out PlanKind kind))
@@ -853,7 +866,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"保存方案失败：{ex.Message}");
             }
 
             if (request is null || !PlanKinds.TryParse(request.Kind, out PlanKind kind))
@@ -970,7 +983,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"删除方案失败：{ex.Message}");
             }
 
             if (request is null
@@ -1012,7 +1025,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Task.FromResult(Fail($"Payload 不是合法 JSON：{ex.Message}"));
+                return Task.FromResult(Fail($"重命名方案失败：{ex.Message}"));
             }
 
             if (request is null
@@ -1050,7 +1063,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"应用方案失败：{ex.Message}");
             }
 
             if (request is null
@@ -1337,7 +1350,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"保存计划规则失败：{ex.Message}");
             }
 
             if (request is null || string.IsNullOrWhiteSpace(request.ProcessName))
@@ -1802,7 +1815,7 @@ namespace Zentwik.Worker
         {
             if (string.IsNullOrEmpty(payload))
             {
-                return Fail("缺少 Payload（需要 {\"id\":\"...\",\"name\":\"...\",\"mask\":65280}）");
+                return Fail("缺少 Payload（需要 {\"id\":\"...\",\"name\":\"...\",\"mask\":\"0xFF00\"}）");
             }
 
             SaveMaskPayload? request;
@@ -1812,11 +1825,13 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                // 前缀由命令给出：这里能反序列化失败的只有字段类型与掩码串，
+                // 直接抛「Payload」这种词，用户看不出该改哪。
+                return Fail($"保存掩码失败：{ex.Message}");
             }
 
             if (request is null)
-                return Fail("Payload 不是合法的 save-mask 请求");
+                return Fail("保存掩码失败：请求为空");
 
             if (request.Mask == 0)
                 return Fail("至少要选一个逻辑处理器");
@@ -1896,7 +1911,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"查询掩码占用失败：{ex.Message}");
             }
 
             string id = (request?.MaskId ?? string.Empty).Trim();
@@ -2146,7 +2161,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"保存场景规则失败：{ex.Message}");
             }
 
             if (request is null)
@@ -2268,7 +2283,7 @@ namespace Zentwik.Worker
             }
             catch (JsonException ex)
             {
-                return Fail($"Payload 不是合法 JSON：{ex.Message}");
+                return Fail($"切换自动场景失败：{ex.Message}");
             }
 
             if (request is null)
