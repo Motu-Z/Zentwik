@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Zentwik.Core.Services;
 using Zentwik.UI.Services;
 using Zentwik.UI.ViewModels;
 
@@ -306,7 +307,14 @@ public partial class App : Application
 
         var window = new MainWindow();
         MainWindow = window;
-        window.Show();
+
+        // --tray：登录自启只建托盘，主窗口等用户从托盘唤起。
+        bool startInTray = e.Args.Contains(AutoStartService.TrayArgument);
+
+        if (!startInTray)
+        {
+            window.Show();
+        }
 
         // 第二个实例发来的「显示窗口」由主实例接住。
         if (!diagnosticMode)
@@ -331,9 +339,12 @@ public partial class App : Application
 
         // 系统托盘。
         bool isScreenshotMode = e.Args.Contains("--screenshot");
-        if (!isScreenshotMode)
+        bool trayReady = !isScreenshotMode && SetupTray(window);
+
+        // --tray 且托盘没建起来：没有入口可点，退回显示主窗口。
+        if (startInTray && !trayReady)
         {
-            SetupTray(window);
+            window.Show();
         }
 
         // 离屏截图模式。
@@ -1620,8 +1631,8 @@ public partial class App : Application
     /// <summary>托盘图标实例 —— 必须持有引用，否则会被 GC 回收， 消息窗口随之销毁，托盘图标也会消失</summary>
     private TrayIconService? _tray;
 
-    /// <summary>创建托盘图标并接上主窗口的显示 / 退出</summary>
-    private void SetupTray(MainWindow window)
+    /// <summary>创建托盘图标并接上主窗口的显示 / 退出；返回 false 表示托盘不可用。</summary>
+    private bool SetupTray(MainWindow window)
     {
         var theme = AppThemeService.Instance;
 
@@ -1638,7 +1649,7 @@ public partial class App : Application
             Debug.WriteLine("[App] 托盘图标创建失败，关闭窗口将直接退出。");
             // Initialize 失败时 HWND / HICON 已经建了一半，对象随即不可达。
             tray.Dispose();
-            return;
+            return false;
         }
 
         _tray = tray;
@@ -1679,6 +1690,8 @@ public partial class App : Application
 
             _tray?.Dispose();
         };
+
+        return true;
     }
 
     /// <summary>把主窗口叫到前台；最小化时先还原，否则 Activate 不生效。</summary>
