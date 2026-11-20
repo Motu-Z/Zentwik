@@ -2086,6 +2086,44 @@ public static class IntegrationTest
             Check($"{name}：{expected} 处段头全部带底线", count == expected, $"实际 {count}");
         }
 
+        // 设置说明：关掉「说明」后每行小字折叠，行标题照常
+        {
+            var appSettings = ViewModels.AppSettings.Instance;
+            bool hintBefore = appSettings.ShowHintText;
+
+            try
+            {
+                var page = new Views.SettingsView();
+                Render(page, 1168, 820);
+
+                var hintStyle = Application.Current.TryFindResource("HintStyle") as Style;
+
+                List<TextBlock> Hints() => FindAll<TextBlock>(page)
+                    .Where(t => hintStyle is not null && t.Style == hintStyle)
+                    .ToList();
+
+                int total = Hints().Count;
+
+                appSettings.ShowHintText = false;
+                page.UpdateLayout();
+
+                Check("说明：关掉后小字折叠",
+                      total > 0 && Hints().All(t => t.Visibility != Visibility.Visible),
+                      $"{Hints().Count(t => t.Visibility == Visibility.Visible)}/{total} 仍可见");
+
+                appSettings.ShowHintText = true;
+                page.UpdateLayout();
+
+                Check("说明：打开后小字恢复",
+                      Hints().Any(t => t.Visibility == Visibility.Visible),
+                      $"{Hints().Count(t => t.Visibility == Visibility.Visible)}/{total} 可见");
+            }
+            finally
+            {
+                appSettings.ShowHintText = hintBefore;
+            }
+        }
+
         // 日志：单一级别筛选 + 统计仪表
         var logs = new LogsViewModel();
         Check("日志：有占位日志", logs.Entries.Count > 0, $"{logs.Entries.Count}");

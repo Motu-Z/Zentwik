@@ -59,6 +59,10 @@ public sealed class SettingsViewModel : ViewModelBase
                     OnPropertyChanged(nameof(ToastDuration));
                     OnPropertyChanged(nameof(ToastDurationText));
                     break;
+
+                case nameof(AppSettings.ShowHintText):
+                    OnPropertyChanged(nameof(ShowHintText));
+                    break;
             }
         };
 
@@ -297,6 +301,18 @@ public sealed class SettingsViewModel : ViewModelBase
             if (_settings.NotifyOnTraySuccess == value) return;
 
             _settings.NotifyOnTraySuccess = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool ShowHintText
+    {
+        get => _settings.ShowHintText;
+        set
+        {
+            if (_settings.ShowHintText == value) return;
+
+            _settings.ShowHintText = value;
             OnPropertyChanged();
         }
     }

@@ -44,11 +44,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="启动异常自动拦截" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="连续 3 次写入未完成时，本次启动不应用调校"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="连续 3 次写入未完成时，本次启动不应用调校" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -71,11 +67,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="连续异常启动次数" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="正常退出后清零，满 3 次触发拦截"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="正常退出后清零，满 3 次触发拦截" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -99,11 +91,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="智能休眠感知" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="从睡眠恢复后重新下发当前调校"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="从睡眠恢复后重新下发当前调校" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -126,11 +114,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="紧急恢复安全参数" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="核心曲线归零、频率上限回基线"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="核心曲线归零、频率上限回基线" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -161,11 +145,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="SMU 硬件自检报告" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="生成诊断快照并保存到桌面"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="生成诊断快照并保存到桌面" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -190,11 +170,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="导出运行日志" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="汇总后台日志保存到桌面"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="汇总后台日志保存到桌面" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -217,11 +193,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="恢复默认电源策略" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="电源参数回出厂折中值"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="电源参数回出厂折中值" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Button Grid.Column="1"
@@ -252,11 +224,7 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="停用全部功能" Style="{StaticResource DangerZoneTitleStyle}" />
 
-                                    <TextBlock Text="关闭自动应用、进程监听、休眠感知与启动拦截"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="0,4,0,0"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="停用后不再自动执行已启用的功能，已生效的设置保持不变" Style="{StaticResource HintStyle}" />
                                 </StackPanel>
 
                                 <Button Grid.Column="1"
@@ -277,11 +245,7 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="清除全部用户数据（恢复出厂设置）" Style="{StaticResource DangerZoneTitleStyle}" />
 
-                                    <TextBlock Text="删除方案、规则与设置，并重置注册表入口"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="0,4,0,0"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="删除方案、规则与设置，并重置注册表入口" Style="{StaticResource HintStyle}" />
                                 </StackPanel>
 
                                 <Button Grid.Column="1"

@@ -64,6 +64,7 @@ public sealed class AppSettings : ViewModelBase
                     _watchProcesses = saved.WatchProcesses;
                     _errorBubble = saved.ErrorBubble;
                     _notifyOnTraySuccess = saved.NotifyOnTraySuccess;
+                    _showHintText = saved.ShowHintText;
 
                     OnPropertyChanged(nameof(SmartAntiBrick));
                     OnPropertyChanged(nameof(SmartHibernateAware));
@@ -74,6 +75,7 @@ public sealed class AppSettings : ViewModelBase
                     OnPropertyChanged(nameof(WatchProcesses));
                     OnPropertyChanged(nameof(ErrorBubble));
                     OnPropertyChanged(nameof(NotifyOnTraySuccess));
+                    OnPropertyChanged(nameof(ShowHintText));
                 }
             }
         }
@@ -232,6 +234,7 @@ public sealed class AppSettings : ViewModelBase
                 WatchProcesses = _watchProcesses,
                 ErrorBubble = _errorBubble,
                 NotifyOnTraySuccess = _notifyOnTraySuccess,
+                ShowHintText = _showHintText,
             };
 
             File.WriteAllText(
@@ -263,6 +266,9 @@ public sealed class AppSettings : ViewModelBase
         public bool ErrorBubble { get; set; }
 
         public bool NotifyOnTraySuccess { get; set; }
+
+        /// <summary>旧配置没有这个字段，缺省必须是 true，否则升级后小字会整片消失。</summary>
+        public bool ShowHintText { get; set; } = true;
     }
 
     private bool _smartAntiBrick = true;
@@ -337,5 +343,14 @@ public sealed class AppSettings : ViewModelBase
     {
         get => _notifyOnTraySuccess;
         set => SetProperty(ref _notifyOnTraySuccess, value);
+    }
+
+    private bool _showHintText = true;
+
+    /// <summary>设置页每行的说明文字。关掉只留行标题。仅存本地，不进协议。</summary>
+    public bool ShowHintText
+    {
+        get => _showHintText;
+        set => SetProperty(ref _showHintText, value);
     }
 }

@@ -43,11 +43,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="开机启动行为" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="{Binding StartupHint}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding StartupHint}" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -102,11 +98,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="关闭窗口行为" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="{Binding CloseHint}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding CloseHint}" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -154,11 +146,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="后台效率行为" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="{Binding IdleTrimHint}"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding IdleTrimHint}" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <Border Grid.Column="1"
@@ -200,11 +188,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="启动时自动应用调校" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="打开界面时自动将当前方案写入硬件"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="打开界面时自动将当前方案写入硬件" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"
@@ -227,11 +211,7 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                 <TextBlock Text="监听进程并自动调度" Style="{StaticResource RowTitleStyle}" />
 
-                                <TextBlock Text="匹配到规则时自动调整核心与优先级"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Margin="0,4,0,0"
-                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="匹配到规则时自动调整核心与优先级" Style="{StaticResource HintStyle}" />
                             </StackPanel>
 
                             <ToggleButton Grid.Column="1"

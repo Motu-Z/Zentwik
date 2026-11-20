@@ -55,11 +55,7 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="主题模式" Style="{StaticResource RowTitleStyle}" />
 
-                                    <TextBlock Text="{Binding ThemeModeHint}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="0,4,0,0"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding ThemeModeHint}" Style="{StaticResource HintStyle}" />
                                 </StackPanel>
 
                                 <Border Grid.Column="1"
@@ -102,11 +98,7 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="色彩" Style="{StaticResource RowTitleStyle}" />
 
-                                    <TextBlock Text="{Binding AccentHint}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="0,4,0,0"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding AccentHint}" Style="{StaticResource HintStyle}" />
                                 </StackPanel>
 
                                 <Border Grid.Column="1"
@@ -142,11 +134,7 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                     <TextBlock Text="色相" Style="{StaticResource RowTitleStyle}" />
 
-                                    <TextBlock Text="拖动滑块或填入十六进制值"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Margin="0,4,0,0"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="拖动滑块或填入十六进制值" Style="{StaticResource HintStyle}" />
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1"
@@ -179,6 +167,29 @@
                                 </StackPanel>
                             </Grid>
                         </Grid>
+
+                        <Border Style="{StaticResource FlatRowStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
+                                    <TextBlock Text="说明" Style="{StaticResource RowTitleStyle}" />
+
+                                    <TextBlock Text="关闭后每行只留标题" Style="{StaticResource HintStyle}" />
+                                </StackPanel>
+
+                                <ToggleButton Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              VerticalAlignment="Center"
+                                              automation:AutomationProperties.Name="说明"
+                                              IsChecked="{Binding ShowHintText, Mode=TwoWay}" />
+
+                                <Border Style="{StaticResource DashRuleStyle}" />
+                            </Grid>
+                        </Border>
                         <!-- 入口 -->
                         <StackPanel Margin="0,48,0,0">
                             <Border Style="{StaticResource SectionHeaderStyle}">
@@ -195,11 +206,7 @@
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                         <TextBlock Text="桌面右键菜单" Style="{StaticResource RowTitleStyle}" />
 
-                                        <TextBlock Text="桌面空白处右键点击打开界面"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Margin="0,4,0,0"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="桌面空白处右键点击打开界面" Style="{StaticResource HintStyle}" />
                                     </StackPanel>
 
                                     <ToggleButton Grid.Column="1"
@@ -222,11 +229,7 @@
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                         <TextBlock Text="托盘方案切换" Style="{StaticResource RowTitleStyle}" />
 
-                                        <TextBlock Text="托盘右键切换用户自定义方案"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Margin="0,4,0,0"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="托盘右键切换用户自定义方案" Style="{StaticResource HintStyle}" />
                                     </StackPanel>
 
                                     <ToggleButton Grid.Column="1"
@@ -254,11 +257,7 @@
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                         <TextBlock Text="运行异常时通知" Style="{StaticResource RowTitleStyle}" />
 
-                                        <TextBlock Text="出错时弹出系统通知，托盘不可用时改用界面内提示"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Margin="0,4,0,0"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="出错时弹出系统通知，托盘不可用时改用界面内提示" Style="{StaticResource HintStyle}" />
                                     </StackPanel>
 
                                     <ToggleButton Grid.Column="1"
@@ -281,11 +280,7 @@
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                         <TextBlock Text="托盘切换时通知" Style="{StaticResource RowTitleStyle}" />
 
-                                        <TextBlock Text="托盘右键切换方案时显示通知，关闭后只在失败时通知"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Margin="0,4,0,0"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="托盘右键切换方案时显示通知，关闭后只在失败时通知" Style="{StaticResource HintStyle}" />
                                     </StackPanel>
 
                                     <ToggleButton Grid.Column="1"
@@ -308,11 +303,7 @@
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
                                         <TextBlock Text="界面提示停留" Style="{StaticResource RowTitleStyle}" />
 
-                                        <TextBlock Text="仅影响界面内提示，系统通知时长由 Windows 决定"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Margin="0,4,0,0"
-                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="仅影响界面内提示，系统通知时长由 Windows 决定" Style="{StaticResource HintStyle}" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

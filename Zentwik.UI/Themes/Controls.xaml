@@ -61,6 +61,16 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
 
+    <!-- 设置页每行的说明。关掉「说明」后整行折叠，行标题与控件照常。 -->
+    <Style x:Key="HintStyle" TargetType="TextBlock" BasedOn="{StaticResource RowDescStyle}">
+        <Setter Property="Margin" Value="0,4,0,0" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Source={x:Static vm:AppSettings.Instance}, Path=ShowHintText}" Value="False">
+                <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- 容器 -->
     <!-- 面板：左右分栏里的每一栏、以及浮层卡片 -->
     <Style x:Key="PanelStyle" TargetType="Border">
