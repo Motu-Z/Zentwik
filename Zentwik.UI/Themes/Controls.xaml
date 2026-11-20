@@ -1071,11 +1071,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
                     <Border x:Name="Bd"
-                            Background="{DynamicResource LineBrush}"
+                            Background="{DynamicResource TextTertiaryBrush}"
                             CornerRadius="3" />
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TextTertiaryBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource TextSecondaryBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -1117,8 +1117,40 @@
         </Setter>
     </Style>
 
-    <!-- 滚动容器 -->
+    <!-- 滚动容器：滚动条浮在内容之上，不占列宽，内容宽度与页边距不随滚动条出现而变 -->
     <Style x:Key="PageScrollStyle" TargetType="ScrollViewer">
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />
+        <Setter Property="PanningMode" Value="VerticalOnly" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollViewer">
+                    <Grid Background="{TemplateBinding Background}">
+                        <ScrollContentPresenter x:Name="PART_ScrollContentPresenter"
+                                                CanContentScroll="{TemplateBinding CanContentScroll}"
+                                                Content="{TemplateBinding Content}"
+                                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                Margin="{TemplateBinding Padding}" />
+
+                        <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Stretch"
+                                   Margin="0,8,4,8"
+                                   Orientation="Vertical"
+                                   Focusable="False"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 内嵌表单：内容贴边，滚动条占位列宽，避免浮起时压住输入框边框 -->
+    <Style x:Key="FormScrollStyle" TargetType="ScrollViewer">
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource NoFocusVisual}" />

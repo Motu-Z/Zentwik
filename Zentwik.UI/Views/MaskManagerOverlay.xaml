@@ -171,7 +171,7 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <ScrollViewer Grid.Row="0" Style="{StaticResource PageScrollStyle}">
+            <ScrollViewer Grid.Row="0" Style="{StaticResource FormScrollStyle}">
                 <StackPanel>
                     <ItemsControl ItemsSource="{Binding MaskManager.SavedMasks}"
                                   automation:AutomationProperties.Name="已保存掩码列表">
@@ -324,7 +324,7 @@
                         IsHitTestVisible="False" />
             </Grid>
 
-            <ScrollViewer Grid.Row="1" Style="{StaticResource PageScrollStyle}">
+            <ScrollViewer Grid.Row="1" Style="{StaticResource FormScrollStyle}">
                 <StackPanel Margin="0,16,0,16">
 
                     <!-- 名称 -->
