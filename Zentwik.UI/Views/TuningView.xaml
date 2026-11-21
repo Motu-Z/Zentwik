@@ -300,7 +300,7 @@
                                        Style="{StaticResource SectionTitleStyle}" />
                         </Border>
 
-                        <TextBlock Text="负值为降压，正值表示加压"
+                        <TextBlock Text="负值为降压，正值为加压"
                                    Style="{StaticResource HintStyle}"
                                    Margin="0,14,0,0" />
 
