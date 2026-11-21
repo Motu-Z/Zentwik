@@ -324,12 +324,6 @@ namespace Zentwik.Worker
                 case WorkerPipeContract.CommandApplyIntelTuning:
                     return await RunApplyIntelTuningAsync(request.Payload, token);
 
-                case WorkerPipeContract.CommandQueryPowerLimit:
-                    return await RunQueryPowerLimitAsync(token);
-
-                case WorkerPipeContract.CommandApplyPowerLimit:
-                    return await RunApplyPowerLimitAsync(request.Payload, token);
-
                 case WorkerPipeContract.CommandQueryPlans:
                     return RunQueryPlans(request.Payload);
 
@@ -855,9 +849,6 @@ namespace Zentwik.Worker
             IsActive = entry.IsActive,
             CoreMargins = entry.CurveOptimizer ?? Array.Empty<int>(),
             FMaxMHz = entry.FMaxMHz,
-            StapmWatts = entry.PowerLimitStapmWatts,
-            FastWatts = entry.PowerLimitFastWatts,
-            SlowWatts = entry.PowerLimitSlowWatts,
             RuleCount = entry.ScheduleRules?.Count ?? 0,
             RuleDigest = ScheduleRuleDigest.Of(
                 entry.ScheduleRules is null
@@ -919,12 +910,6 @@ namespace Zentwik.Worker
                                 entry.CurveOptimizer = request.CoreMargins;
                             if (request.FMaxMHz.HasValue)
                                 entry.FMaxMHz = request.FMaxMHz.Value;
-                            if (request.StapmWatts.HasValue)
-                                entry.PowerLimitStapmWatts = request.StapmWatts.Value;
-                            if (request.FastWatts.HasValue)
-                                entry.PowerLimitFastWatts = request.FastWatts.Value;
-                            if (request.SlowWatts.HasValue)
-                                entry.PowerLimitSlowWatts = request.SlowWatts.Value;
                             break;
 
                         case PlanKind.Scheduling:
@@ -2788,10 +2773,7 @@ namespace Zentwik.Worker
                 CoreMilliVolts = snapshot.CoreMilliVolts,
                 GpuMilliVolts = snapshot.GpuMilliVolts,
                 CacheMilliVolts = snapshot.CacheMilliVolts,
-                Ratios = snapshot.Ratios.Length > 0 ? snapshot.Ratios : null,
-                PowerLimit1Watts = snapshot.PowerLimit1Watts,
-                PowerLimit2Watts = snapshot.PowerLimit2Watts,
-                TauSeconds = snapshot.TauSeconds
+                Ratios = snapshot.Ratios.Length > 0 ? snapshot.Ratios : null
             };
 
             return new PipeResponse
@@ -2831,9 +2813,6 @@ namespace Zentwik.Worker
                         GpuMilliVolts = request.GpuMilliVolts,
                         CacheMilliVolts = request.CacheMilliVolts,
                         Ratios = request.Ratios,
-                        PowerLimit1Watts = request.PowerLimit1Watts,
-                        PowerLimit2Watts = request.PowerLimit2Watts,
-                        TauSeconds = request.TauSeconds,
                         RestoreBaseline = request.Restore
                     }),
                     token).ConfigureAwait(false);
@@ -2869,110 +2848,6 @@ namespace Zentwik.Worker
                 _log.Error($"应用 Intel 调校异常：{ex}");
                 return Fail($"应用 Intel 调校失败：{ex.Message}");
             }
-        }
-
-        /// <summary>读取 AMD 功耗上限；平台是否支持与是否读到值分开表达。</summary>
-        private async Task<PipeResponse> RunQueryPowerLimitAsync(CancellationToken token)
-        {
-            try
-            {
-                PowerLimitSnapshot snapshot = await Task.Run(
-                    () => _smu.ReadPowerLimits(),
-                    token).ConfigureAwait(false);
-
-                return BuildPowerLimitResponse(snapshot);
-            }
-            catch (Exception ex)
-            {
-                _log.Warn($"读取功耗限制异常：{ex.GetType().Name}: {ex.Message}");
-                return Fail($"读取功耗限制失败：{ex.Message}");
-            }
-        }
-
-        private async Task<PipeResponse> RunApplyPowerLimitAsync(string? payload, CancellationToken token)
-        {
-            ApplyPowerLimitPayload? request;
-            try
-            {
-                request = string.IsNullOrWhiteSpace(payload)
-                    ? new ApplyPowerLimitPayload()
-                    : JsonSerializer.Deserialize(payload, IpcJsonContext.Default.ApplyPowerLimitPayload);
-            }
-            catch (JsonException)
-            {
-                return Fail("应用功耗限制失败：请求格式不合法");
-            }
-
-            if (request is null)
-                return Fail("应用功耗限制失败：请求为空");
-
-            int? stapm = request.StapmWatts is int a ? a * 1000 : null;
-            int? fast = request.FastWatts is int b ? b * 1000 : null;
-            int? slow = request.SlowWatts is int c ? c * 1000 : null;
-
-            try
-            {
-                PowerLimitWriteResult result = await Task.Run(
-                    () => _smu.ApplyPowerLimits(stapm, fast, slow),
-                    token).ConfigureAwait(false);
-
-                PowerLimitSnapshot after = await Task.Run(
-                    () => _smu.ReadPowerLimits(),
-                    token).ConfigureAwait(false);
-
-                PipeResponse response = BuildPowerLimitResponse(after);
-
-                if (!result.AllSucceeded)
-                {
-                    string reason = result.Fatal ?? string.Join("；", result.Failures);
-                    return new PipeResponse
-                    {
-                        Version = WorkerPipeContract.ProtocolVersion,
-                        Success = false,
-                        Message = $"应用功耗限制失败：{reason}",
-                        Payload = response.Payload
-                    };
-                }
-
-                return new PipeResponse
-                {
-                    Version = WorkerPipeContract.ProtocolVersion,
-                    Success = true,
-                    Message = "功耗限制已写入",
-                    Payload = response.Payload
-                };
-            }
-            catch (Exception ex)
-            {
-                _log.Error($"应用功耗限制异常：{ex}");
-                return Fail($"应用功耗限制失败：{ex.Message}");
-            }
-        }
-
-        /// <summary>功耗读数 → 管道响应；协议层用瓦，缺值保持 null。</summary>
-        internal static PipeResponse BuildPowerLimitResponse(PowerLimitSnapshot snapshot)
-        {
-            PowerLimitPayload payload = new()
-            {
-                Supported = snapshot.Supported,
-                Available = snapshot.Available,
-                Error = snapshot.Error,
-                StapmWatts = snapshot.StapmMilliWatts is int stapm ? stapm / 1000 : null,
-                FastWatts = snapshot.FastMilliWatts is int fast ? fast / 1000 : null,
-                SlowWatts = snapshot.SlowMilliWatts is int slow ? slow / 1000 : null
-            };
-
-            string message = snapshot.Available
-                ? "已读取功耗限制"
-                : snapshot.Error ?? (snapshot.Supported ? "读取功耗限制失败" : "该平台不支持功耗限制");
-
-            return new PipeResponse
-            {
-                Version = WorkerPipeContract.ProtocolVersion,
-                Success = snapshot.Available,
-                Message = message,
-                Payload = JsonSerializer.Serialize(payload, IpcJsonContext.Default.PowerLimitPayload)
-            };
         }
 
         /// <summary>查询 SMU 可用性；查询是否成功与是否可用分开表达。</summary>

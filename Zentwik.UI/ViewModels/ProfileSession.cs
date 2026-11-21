@@ -459,9 +459,6 @@ public sealed class PlanScope : ViewModelBase
             item.IsActive = entry.IsActive;
             item.CoreMargins = entry.CoreMargins ?? Array.Empty<int>();
             item.FMaxMHz = entry.FMaxMHz;
-            item.StapmWatts = entry.StapmWatts;
-            item.FastWatts = entry.FastWatts;
-            item.SlowWatts = entry.SlowWatts;
             item.RuleCount = entry.RuleCount;
             item.RuleDigest = entry.RuleDigest ?? string.Empty;
             item.PowerSchemeGuid = entry.PowerSchemeGuid;
@@ -950,10 +947,7 @@ public sealed class PlanScope : ViewModelBase
         uint? fMaxMHz = null,
         string? powerSchemeGuid = null,
         string? name = null,
-        ApplyPowerPolicyPayload? powerPolicy = null,
-        int? stapmWatts = null,
-        int? fastWatts = null,
-        int? slowWatts = null)
+        ApplyPowerPolicyPayload? powerPolicy = null)
     {
         if (PlanHub.SuppressWorkerInit)
             return Current;
@@ -972,10 +966,7 @@ public sealed class PlanScope : ViewModelBase
                     coreMargins,
                     fMaxMHz,
                     powerSchemeGuid,
-                    powerPolicy,
-                    stapmWatts,
-                    fastWatts,
-                    slowWatts)
+                    powerPolicy)
                 .ConfigureAwait(true);
 
             if (!outcome.Success)
@@ -1000,22 +991,13 @@ public sealed class PlanScope : ViewModelBase
     }
 
     /// <summary>把刚下发的调校值写回内存里的那一份，免得切走再切回来看到旧值。</summary>
-    public void RememberTuning(int[] margins, uint fMaxMHz, int? stapmWatts, int? fastWatts, int? slowWatts)
+    public void RememberTuning(int[] margins, uint fMaxMHz)
     {
         if (Current is null)
             return;
 
         Current.CoreMargins = margins;
         Current.FMaxMHz = fMaxMHz;
-
-        if (stapmWatts.HasValue)
-            Current.StapmWatts = stapmWatts;
-
-        if (fastWatts.HasValue)
-            Current.FastWatts = fastWatts;
-
-        if (slowWatts.HasValue)
-            Current.SlowWatts = slowWatts;
 
         // 摘要读的就是这两个字段，不刷新会一直显示旧的核数与区间。
         Current.Summary = DescribePlan(Kind, Current);
@@ -1141,13 +1123,6 @@ public sealed class PlanItem : ViewModelBase
 
     /// <summary>这份方案存的 FMax；0 = 不碰 FMax。</summary>
     public uint FMaxMHz { get; set; }
-
-    /// <summary>功耗上限（W）。null = 不碰。</summary>
-    public int? StapmWatts { get; set; }
-
-    public int? FastWatts { get; set; }
-
-    public int? SlowWatts { get; set; }
 
     /// <summary>调度方案的规则条数。</summary>
     public int RuleCount { get; set; }

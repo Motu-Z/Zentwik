@@ -272,22 +272,6 @@
                             </Grid>
                         </Border>
 
-                        <Border Style="{StaticResource SectionHeaderStyle}"
-                                Margin="0,14,0,0"
-                                Visibility="{Binding PowerLimitVisible, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="POWER LIMIT / 功耗限制"
-                                       Style="{StaticResource SectionTitleStyle}" />
-                        </Border>
-
-                        <TextBlock Text="写入后由处理器按上限限制功耗，超过即降频"
-                                   Style="{StaticResource HintStyle}"
-                                   Margin="0,14,0,0"
-                                   Visibility="{Binding PowerLimitVisible, Converter={StaticResource BoolToVis}}" />
-
-                        <ItemsControl ItemsSource="{Binding PowerLimits}"
-                                      Margin="0,14,0,0"
-                                      ItemTemplate="{StaticResource TuningFieldTemplate}"
-                                      Visibility="{Binding PowerLimitVisible, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
                     <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
@@ -362,18 +346,6 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <Border Style="{StaticResource SectionHeaderStyle}" Margin="0,14,0,0">
-                            <TextBlock Text="POWER LIMIT / 功耗限制"
-                                       Style="{StaticResource SectionTitleStyle}" />
-                        </Border>
-
-                        <TextBlock Text="写入后由处理器按上限限制功耗，超过即降频"
-                                   Style="{StaticResource HintStyle}"
-                                   Margin="0,14,0,0" />
-
-                        <ItemsControl ItemsSource="{Binding IntelPowers}"
-                                      Margin="0,14,0,0"
-                                      ItemTemplate="{StaticResource TuningFieldTemplate}" />
                     </StackPanel>
                 </Grid>
             </ScrollViewer>

@@ -17,11 +17,8 @@ namespace Zentwik.Core.Services
         public bool CurveOptimizerApplied { get; set; }
         public bool FMaxApplied { get; set; }
 
-        /// <summary>功耗上限写入并回读一致。</summary>
-        public bool PowerLimitApplied { get; set; }
-
         /// <summary>执行了写入且没有任何失败项。</summary>
-        public bool AnythingApplied => CurveOptimizerApplied || FMaxApplied || PowerLimitApplied;
+        public bool AnythingApplied => CurveOptimizerApplied || FMaxApplied;
 
         public bool Success => !Skipped && Errors.Count == 0 && AnythingApplied;
 
@@ -95,20 +92,16 @@ namespace Zentwik.Core.Services
 
             bool hasCo = margins.Length > 0 && margins.Any(v => v != int.MinValue);
             bool hasFMax = fMax > 0;
-            bool hasPower = profile.PowerLimitStapmWatts.HasValue
-                || profile.PowerLimitFastWatts.HasValue
-                || profile.PowerLimitSlowWatts.HasValue;
-
             // 跳过也算一次结果：调校页要靠它显示「本次启动未应用 + 原因」，
             // 否则用户无从区别「应用失败」和「压根没尝试」。
             if (!ignoreStartupGate && !_settings.Settings.ApplyTuningOnStartup)
                 return Skip("「启动时自动应用调校」已关闭，本次未写入 SMU");
 
-            if (!hasCo && !hasFMax && !hasPower)
+            if (!hasCo && !hasFMax)
                 return Skip("没有已保存的调校，本次未写入 SMU");
 
             TuningApplyOutcome outcome = new();
-            Write(profile, margins, fMax, hasCo, hasFMax, outcome);
+            Write(margins, fMax, hasCo, hasFMax, outcome);
             return Record(outcome);
         }
 
@@ -124,17 +117,12 @@ namespace Zentwik.Core.Services
 
         /// <summary>执行 SMU 写入（CO / FMax）。失败明细写进 outcome，不向外抛。</summary>
         private void Write(
-            TuningProfile profile,
             int[] margins,
             uint fMax,
             bool hasCo,
             bool hasFMax,
             TuningApplyOutcome outcome)
         {
-            bool hasPower = profile.PowerLimitStapmWatts.HasValue
-                || profile.PowerLimitFastWatts.HasValue
-                || profile.PowerLimitSlowWatts.HasValue;
-
             // WaitForAvailability(60) 只返回可用性布尔：驱动未就绪就跳过写入。
             // 本方法只在后台线程被调用，等 60 秒不会冻住界面。
             //
@@ -151,8 +139,7 @@ namespace Zentwik.Core.Services
 
             _log.Info(
                 $"启动应用调校：读取到已保存配置，CO {margins.Length} 核" +
-                (hasFMax ? $"，FMax {fMax} MHz" : "，未设置 FMax") +
-                (hasPower ? "，含功耗上限" : string.Empty));
+                (hasFMax ? $"，FMax {fMax} MHz" : "，未设置 FMax"));
 
             // ReadSnapshot 会填充写入所需的拓扑（核心数 / 每 CCD 核数）
             try
@@ -239,37 +226,6 @@ namespace Zentwik.Core.Services
                 {
                     outcome.Errors.Add($"FMax 写入异常：{ex.Message}");
                     _log.Error($"启动应用调校：FMax 写入异常：{ex.Message}");
-                }
-            }
-
-            // ---------- 功耗上限 ----------
-            if (hasPower)
-            {
-                try
-                {
-                    PowerLimitWriteResult power = reader.ApplyPowerLimits(
-                        profile.PowerLimitStapmWatts is int stapm ? stapm * 1000 : null,
-                        profile.PowerLimitFastWatts is int fast ? fast * 1000 : null,
-                        profile.PowerLimitSlowWatts is int slow ? slow * 1000 : null);
-
-                    if (power.AllSucceeded)
-                    {
-                        outcome.PowerLimitApplied = true;
-                        _log.Info("启动应用调校：功耗上限写入并回读一致");
-                    }
-                    else
-                    {
-                        outcome.Errors.Add(power.Fatal is not null
-                            ? $"功耗上限写入失败：{power.Fatal}"
-                            : $"功耗上限写入失败：{string.Join("；", power.Failures)}");
-
-                        _log.Error("启动应用调校：功耗上限写入未成功");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    outcome.Errors.Add($"功耗上限写入异常：{ex.Message}");
-                    _log.Error($"启动应用调校：功耗上限写入异常：{ex.Message}");
                 }
             }
 

@@ -48,14 +48,5 @@ namespace Zentwik.Core.Services
 
         /// <summary>写入 Intel 调校值；<c>RestoreBaseline</c> 为真时回到首次读到的值。</summary>
         IntelTuningResult ApplyIntelTuning(IntelTuningRequest request);
-
-        /// <summary>该平台是否有可用的功耗限制命令组（AMD 专用）。</summary>
-        bool IsPowerLimitSupported { get; }
-
-        /// <summary>读取当前的持续、短时与平均功耗上限。</summary>
-        PowerLimitSnapshot ReadPowerLimits();
-
-        /// <summary>写入功耗上限并回读校验；null 表示该项不动。</summary>
-        PowerLimitWriteResult ApplyPowerLimits(int? stapmMilliWatts, int? fastMilliWatts, int? slowMilliWatts);
     }
 }

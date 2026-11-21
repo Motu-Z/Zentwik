@@ -53,13 +53,6 @@ namespace Zentwik.Core.Services
         /// <summary>FMax（MHz），0 = 不碰。仅 <see cref="PlanKind.Tuning"/> 使用。</summary>
         public uint FMaxMHz { get; set; }
 
-        /// <summary>功耗上限（W），null = 不碰。仅 <see cref="PlanKind.Tuning"/> 使用。</summary>
-        public int? PowerLimitStapmWatts { get; set; }
-
-        public int? PowerLimitFastWatts { get; set; }
-
-        public int? PowerLimitSlowWatts { get; set; }
-
         /// <summary>绑核规则快照。仅 <see cref="PlanKind.Scheduling"/> 使用。</summary>
         public List<ScheduleRule> ScheduleRules { get; set; } = new();
 
@@ -346,9 +339,6 @@ namespace Zentwik.Core.Services
                     Name = "默认",
                     CurveOptimizer = (int[])tuning.CurveOptimizer.Clone(),
                     FMaxMHz = tuning.FMaxMHz,
-                    PowerLimitStapmWatts = tuning.PowerLimitStapmWatts,
-                    PowerLimitFastWatts = tuning.PowerLimitFastWatts,
-                    PowerLimitSlowWatts = tuning.PowerLimitSlowWatts,
                 });
             }
 
@@ -598,10 +588,7 @@ namespace Zentwik.Core.Services
                     {
                         CurveOptimizer = (int[])entry.CurveOptimizer.Clone(),
                         FMaxMHz = entry.FMaxMHz,
-                        FMaxBaselineMHz = _tuning.Profile.FMaxBaselineMHz,
-                        PowerLimitStapmWatts = entry.PowerLimitStapmWatts,
-                        PowerLimitFastWatts = entry.PowerLimitFastWatts,
-                        PowerLimitSlowWatts = entry.PowerLimitSlowWatts
+                        FMaxBaselineMHz = _tuning.Profile.FMaxBaselineMHz
                     });
 
                     TuningApplyOutcome? outcome = _tuningApply.ApplyFromStore(ignoreStartupGate);
@@ -698,9 +685,6 @@ namespace Zentwik.Core.Services
                         Name = name,
                         CurveOptimizer = (int[])tuning.CurveOptimizer.Clone(),
                         FMaxMHz = tuning.FMaxMHz,
-                        PowerLimitStapmWatts = tuning.PowerLimitStapmWatts,
-                        PowerLimitFastWatts = tuning.PowerLimitFastWatts,
-                        PowerLimitSlowWatts = tuning.PowerLimitSlowWatts,
                     };
                 }
 

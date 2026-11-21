@@ -164,8 +164,6 @@ public partial class TuningViewModel : ObservableObject
         _baselineFMax = _fMaxMHz;
         _baselineMargins = Snapshot();
 
-        InitializePowerLimitFields();
-
         _ready = true;
 
         // 方案值在内存里（列表是 query-profiles 一次带回来的）：
@@ -245,17 +243,13 @@ public partial class TuningViewModel : ObservableObject
         {
             int[] margins = Snapshot();
             uint fMax = (uint)Math.Max(0, FMaxMHz);
-            (int? stapm, int? fast, int? slow) = CurrentPowerLimits();
 
             // 先存进方案再下发：应用读的是方案，保存失败要说清是哪一步出的问题。
             PlanItem? saved = await PlanHub.Tuning
                 .SaveAsync(
                     margins,
                     fMax,
-                    name: newPlanName ?? PlanHub.Tuning.Current?.Name,
-                    stapmWatts: stapm,
-                    fastWatts: fast,
-                    slowWatts: slow)
+                    name: newPlanName ?? PlanHub.Tuning.Current?.Name)
                 .ConfigureAwait(true);
 
             if (saved is null)
@@ -279,7 +273,7 @@ public partial class TuningViewModel : ObservableObject
                 return;
             }
 
-            PlanHub.Tuning.RememberTuning(margins, fMax, stapm, fast, slow);
+            PlanHub.Tuning.RememberTuning(margins, fMax);
             AcceptCurrentAsBaseline();
             ToastService.Instance.Show($"已应用到「{saved.Name}」");
         }
@@ -308,22 +302,18 @@ public partial class TuningViewModel : ObservableObject
         {
             int[] margins = Snapshot();
             uint fMax = (uint)Math.Max(0, FMaxMHz);
-            (int? stapm, int? fast, int? slow) = CurrentPowerLimits();
 
             PlanItem? saved = await PlanHub.Tuning
                 .SaveAsync(
                     margins,
                     fMax,
-                    name: PlanHub.Tuning.Current?.Name,
-                    stapmWatts: stapm,
-                    fastWatts: fast,
-                    slowWatts: slow)
+                    name: PlanHub.Tuning.Current?.Name)
                 .ConfigureAwait(true);
 
             if (saved is null)
                 return;
 
-            PlanHub.Tuning.RememberTuning(margins, fMax, stapm, fast, slow);
+            PlanHub.Tuning.RememberTuning(margins, fMax);
             AcceptCurrentAsBaseline();
         }
         catch (Exception ex)
@@ -471,9 +461,6 @@ public partial class TuningViewModel : ObservableObject
 
             ApplySnapshot(snapshot.Value);
 
-            // 功耗上限是独立通道，读不到不影响调校主流程。
-            await RefreshPowerLimitsAsync().ConfigureAwait(true);
-
             // 主动回读要显示硬件真值；初始化 / 切方案才叠上当前方案的编辑值。
             if (reloadPlan)
                 LoadProfileValues();
@@ -554,10 +541,7 @@ public partial class TuningViewModel : ObservableObject
 
         _loadedProfileId = item?.Id;
 
-        bool hasPower = item is not null
-            && (item.StapmWatts.HasValue || item.FastWatts.HasValue || item.SlowWatts.HasValue);
-
-        if (item is null || (item.CoreMargins.Length == 0 && item.FMaxMHz == 0 && !hasPower))
+        if (item is null || (item.CoreMargins.Length == 0 && item.FMaxMHz == 0))
         {
             return false;
         }
@@ -575,8 +559,6 @@ public partial class TuningViewModel : ObservableObject
             {
                 FMaxMHz = Math.Clamp((int)item.FMaxMHz, FMaxMinimum, FMaxMaximum);
             }
-
-            LoadPowerLimitValues(item);
 
             AcceptCurrentAsBaseline();
             return true;
@@ -710,11 +692,6 @@ public partial class TuningViewModel : ObservableObject
         _baselineMargins = Snapshot();
         _baselineFMax = FMaxMHz;
 
-        (int? stapm, int? fast, int? slow) = CurrentPowerLimits();
-        _baselineStapm = stapm;
-        _baselineFast = fast;
-        _baselineSlow = slow;
-
         IsDirty = false;
 
         // IsDirty 本来已是 false 时上面不会触发回调，方案条的「未保存」会残留不走。
@@ -728,10 +705,7 @@ public partial class TuningViewModel : ObservableObject
             return;
         }
 
-        (int? stapm, int? fast, int? slow) = CurrentPowerLimits();
-
         IsDirty = FMaxMHz != _baselineFMax
-            || PowerLimitsDiffer(stapm, fast, slow)
             || !Snapshot().SequenceEqual(_baselineMargins);
 
         // IsDirty 一直为 true 时不会触发 OnIsDirtyChanged，方案条就停在旧判定上。
@@ -845,7 +819,7 @@ public partial class TuningViewModel : ObservableObject
                                    || now.Select((v, i) => (v, plan: item.CoreMargins[i]))
                                          .Any(t => t.plan != int.MinValue && t.plan != t.v));
 
-            differs = fMaxDiffers || coresDiffer || PlanPowerLimitsDiffer(item);
+            differs = fMaxDiffers || coresDiffer;
 
         }
 

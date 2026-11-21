@@ -1348,13 +1348,6 @@ namespace Zentwik.Tests
             public IntelTuningResult ApplyIntelTuning(IntelTuningRequest request)
                 => new() { Fatal = "StubSmuReader：不提供 Intel 通道" };
 
-            public bool IsPowerLimitSupported => false;
-
-            public PowerLimitSnapshot ReadPowerLimits() => new() { Supported = false, Error = "测试桩" };
-
-            public PowerLimitWriteResult ApplyPowerLimits(int? stapmMilliWatts, int? fastMilliWatts, int? slowMilliWatts)
-                => new() { Fatal = "测试桩" };
-
             public void Dispose() { }
         }
     }

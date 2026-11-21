@@ -32,9 +32,10 @@ namespace Zentwik.Core.Ipc
         /// 19 掩码线格式改为十六进制串（128 位，可表达跨处理器组的选择）｜
         /// 20 Intel 调校：query-intel-tuning / apply-intel-tuning，query-smu-status 增 intelTuning。
         /// 21 AMD 功耗限制：query-power-limit / apply-power-limit。
+        /// 22 移除功耗限制（AMD 与 Intel）：删 query-power-limit / apply-power-limit。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 21;
+        public const int ProtocolVersion = 22;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -174,22 +175,7 @@ namespace Zentwik.Core.Ipc
         /// </summary>
         public const string CommandApplyIntelTuning = "apply-intel-tuning";
 
-        /// <summary>
-        /// 读取 AMD 功耗上限（只读）。
-        ///
-        /// 参数：无（<c>Payload</c> 忽略）。
-        /// 返回：<c>Payload</c> = JSON <see cref="PowerLimitPayload"/>。
-        /// </summary>
-        public const string CommandQueryPowerLimit = "query-power-limit";
 
-        /// <summary>
-        /// 写入 AMD 功耗上限。
-        ///
-        /// 参数：<c>Payload</c> = JSON <see cref="ApplyPowerLimitPayload"/>，为 null 的字段不动。
-        /// 返回：<c>Payload</c> = 写后重新读取的 <see cref="PowerLimitPayload"/>；
-        /// 回读不一致算失败，原因写进 <c>Message</c>。
-        /// </summary>
-        public const string CommandApplyPowerLimit = "apply-power-limit";
         /// <summary>
         /// 查询某一类方案（调校 / 调度 / 电源）的列表与生效项。
         ///

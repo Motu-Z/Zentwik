@@ -16,9 +16,10 @@ namespace Zentwik.Tests
             // 18：query-cpu-topology 增加厂商、每核线程掩码与效率类。
             // 20：Intel 调校新增 query-intel-tuning / apply-intel-tuning。
             // 21：AMD 功耗限制新增 query-power-limit / apply-power-limit。
+            // 22：移除功耗限制（AMD 与 Intel），删上述两条命令。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
             // 否则「顺手把版本号往上加」这种改动没人会注意到。
-            Assert.Equal(21, WorkerPipeContract.ProtocolVersion);
+            Assert.Equal(22, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }
@@ -89,9 +90,6 @@ namespace Zentwik.Tests
             Assert.Equal("query-intel-tuning", WorkerPipeContract.CommandQueryIntelTuning);
             Assert.Equal("apply-intel-tuning", WorkerPipeContract.CommandApplyIntelTuning);
 
-            // 21：功耗限制的读写两条命令。
-            Assert.Equal("query-power-limit", WorkerPipeContract.CommandQueryPowerLimit);
-            Assert.Equal("apply-power-limit", WorkerPipeContract.CommandApplyPowerLimit);
         }
 
         [Fact]

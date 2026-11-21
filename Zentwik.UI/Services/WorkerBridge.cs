@@ -243,39 +243,6 @@ public sealed class WorkerBridge
         return ToOutcome(response, IpcJsonContext.Default.IntelTuningPayload);
     }
 
-    /// <summary>AMD 功耗上限，只读</summary>
-    public async Task<IpcOutcome<PowerLimitPayload>> QueryPowerLimitAsync(
-        int timeoutMs = 15_000,
-        CancellationToken cancellationToken = default)
-    {
-        PipeResponse? response = await SendAsync(
-            WorkerPipeContract.CommandQueryPowerLimit,
-            null,
-            timeoutMs,
-            cancellationToken).ConfigureAwait(false);
-
-        return ToOutcome(response, IpcJsonContext.Default.PowerLimitPayload);
-    }
-
-    /// <summary>写入 AMD 功耗上限；返回写后重新读取的结果</summary>
-    public async Task<IpcOutcome<PowerLimitPayload>> ApplyPowerLimitAsync(
-        ApplyPowerLimitPayload request,
-        int timeoutMs = 30_000,
-        CancellationToken cancellationToken = default)
-    {
-        string payload = JsonSerializer.Serialize(
-            request,
-            IpcJsonContext.Default.ApplyPowerLimitPayload);
-
-        PipeResponse? response = await SendAsync(
-            WorkerPipeContract.CommandApplyPowerLimit,
-            payload,
-            timeoutMs,
-            cancellationToken).ConfigureAwait(false);
-
-        return ToOutcome(response, IpcJsonContext.Default.PowerLimitPayload);
-    }
-
     // 方案（plans.json，三类各自独立）
 
     /// <summary>三类分开查，而不是一次全拿：三页各管各的方案， 合成一次会让「切了调校方案，进程页的方案条也跟着变」</summary>
@@ -325,9 +292,6 @@ public sealed class WorkerBridge
         uint? fMaxMHz = null,
         string? powerSchemeGuid = null,
         ApplyPowerPolicyPayload? powerPolicy = null,
-        int? stapmWatts = null,
-        int? fastWatts = null,
-        int? slowWatts = null,
         int timeoutMs = 5_000,
         CancellationToken cancellationToken = default)
     {
@@ -339,9 +303,6 @@ public sealed class WorkerBridge
                 Name = name,
                 CoreMargins = coreMargins,
                 FMaxMHz = fMaxMHz,
-                StapmWatts = stapmWatts,
-                FastWatts = fastWatts,
-                SlowWatts = slowWatts,
                 PowerSchemeGuid = powerSchemeGuid,
                 PowerPolicy = powerPolicy,
             },

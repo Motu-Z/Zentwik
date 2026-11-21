@@ -29,8 +29,6 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(SmuStatusPayload))]
     [JsonSerializable(typeof(TuningSnapshotPayload))]
     [JsonSerializable(typeof(IntelTuningPayload))]
-    [JsonSerializable(typeof(ApplyPowerLimitPayload))]
-    [JsonSerializable(typeof(PowerLimitPayload))]
     [JsonSerializable(typeof(ApplyIntelTuningPayload))]
     [JsonSerializable(typeof(PlanQueryPayload))]
     [JsonSerializable(typeof(SavePlanPayload))]

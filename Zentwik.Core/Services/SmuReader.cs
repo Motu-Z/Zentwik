@@ -233,19 +233,6 @@ namespace Zentwik.Core.Services
                 result.Failures.AddRange(ratios.Failures);
             }
 
-            if (request.PowerLimit1Watts.HasValue && request.PowerLimit2Watts.HasValue)
-            {
-                IntelTuningResult power = _intel.ApplyPowerLimits(
-                    request.PowerLimit1Watts.Value,
-                    request.PowerLimit2Watts.Value,
-                    request.TauSeconds ?? 0);
-                if (!string.IsNullOrEmpty(power.Fatal))
-                    result.Failures.Add(power.Fatal);
-                result.Failures.AddRange(power.Failures);
-                foreach (KeyValuePair<string, int> pair in power.Applied)
-                    result.Applied[pair.Key] = pair.Value;
-            }
-
             result.AllSucceeded = result.Failures.Count == 0;
             LogIntelWrite("写入", result);
             return result;
@@ -586,85 +573,6 @@ namespace Zentwik.Core.Services
 
             return result;
         }
-
-        /// <summary>该平台的功耗命令组是否可用。</summary>
-        public bool IsPowerLimitSupported => _session?.IsPowerLimitSupported == true;
-
-        /// <summary>从功耗表读取当前的持续、短时与平均功耗上限。</summary>
-        public PowerLimitSnapshot ReadPowerLimits()
-        {
-            PowerLimitSnapshot snapshot = new();
-            if (_session is null || !IsAvailable)
-            {
-                snapshot.Error = LastError ?? "SMU 未初始化";
-                return snapshot;
-            }
-
-            try
-            {
-                lock (_syncRoot)
-                {
-                    SmuPowerLimitSnapshot raw = _session.ReadPowerLimits();
-                    snapshot.Supported = raw.Supported;
-                    snapshot.Available = raw.Available;
-                    snapshot.Error = raw.Error;
-                    snapshot.StapmMilliWatts = raw.StapmMilliWatts;
-                    snapshot.FastMilliWatts = raw.FastMilliWatts;
-                    snapshot.SlowMilliWatts = raw.SlowMilliWatts;
-                }
-            }
-            catch (Exception ex)
-            {
-                snapshot.Error = ex.Message;
-                _log.Error($"读取功耗限制异常：{ex}");
-            }
-
-            return snapshot;
-        }
-
-        /// <summary>写入功耗上限并回读校验；null 表示该项不动。</summary>
-        public PowerLimitWriteResult ApplyPowerLimits(int? stapm, int? fast, int? slow)
-        {
-            PowerLimitWriteResult result = new();
-            if (_session is null || !IsAvailable)
-            {
-                result.Fatal = LastError ?? "SMU 未初始化";
-                return result;
-            }
-
-            if (!stapm.HasValue && !fast.HasValue && !slow.HasValue)
-            {
-                result.Fatal = "没有要写入的功耗项";
-                return result;
-            }
-
-            try
-            {
-                lock (_syncRoot)
-                {
-                    SmuPowerLimitResult raw = _session.ApplyPowerLimits(stapm, fast, slow);
-                    result.AllSucceeded = raw.AllSucceeded;
-                    result.Failures.AddRange(raw.Failures);
-                }
-
-                _log.Info(
-                    $"功耗限制写入：持续 {FormatWatts(stapm)}，短时 {FormatWatts(fast)}，" +
-                    $"平均 {FormatWatts(slow)}，结果 {(result.AllSucceeded ? "成功" : "失败")}");
-
-                foreach (string failure in result.Failures)
-                    _log.Warn($"功耗限制：{failure}");
-            }
-            catch (Exception ex)
-            {
-                result.Fatal = ex.Message;
-                _log.Error($"写入功耗限制异常：{ex}");
-            }
-
-            return result;
-        }
-
-        private static string FormatWatts(int? milliWatts)
-            => milliWatts.HasValue ? $"{milliWatts.Value / 1000} W" : "不动";
 
         /// <summary>
         /// 把「线性核序号」拆成库要求的 (core, ccd, ccx) 三元组。

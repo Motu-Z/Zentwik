@@ -10,7 +10,7 @@ using Zentwik.UI.Services;
 
 namespace Zentwik.UI.ViewModels;
 
-/// <summary>调校页的数值字段：电压平面、功耗上限或时长。</summary>
+/// <summary>调校页的数值字段：电压平面或倍频上限。</summary>
 public sealed partial class TuningNumericField : ObservableObject
 {
     public TuningNumericField(
@@ -162,13 +162,6 @@ public partial class TuningViewModel
     public const int IntelRatioMinimum = 8;
     public const int IntelRatioMaximum = 60;
 
-    public const int IntelPowerMinimum = 5;
-    public const int IntelPowerMaximum = 300;
-    public const int IntelPowerStep = 1;
-    public const int IntelTauMinimum = 0;
-    public const int IntelTauMaximum = 128;
-    public const int IntelTauStep = 1;
-
     /// <summary>厂商由 Worker 下发，未知时按 AMD 处理。</summary>
     public bool IsIntel => WorkerStatus.Instance.IsIntel;
 
@@ -201,9 +194,6 @@ public partial class TuningViewModel
     /// <summary>电压平面：核心、核显、缓存。</summary>
     public ObservableCollection<TuningNumericField> IntelVoltages { get; } = new();
 
-    /// <summary>功耗限制：持续功耗、短时功耗、短时功耗时长。</summary>
-    public ObservableCollection<TuningNumericField> IntelPowers { get; } = new();
-
     /// <summary>倍频上限八档。</summary>
     public ObservableCollection<IntelRatioItem> IntelRatios { get; } = new();
 
@@ -217,10 +207,6 @@ public partial class TuningViewModel
         IntelVoltages.Add(new TuningNumericField("核心电压", "处理器核心供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
         IntelVoltages.Add(new TuningNumericField("核显电压", "集成显卡供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
         IntelVoltages.Add(new TuningNumericField("缓存电压", "末级缓存供电", "mV", 0, IntelVoltageMinimum, IntelVoltageMaximum, IntelVoltageStep));
-
-        IntelPowers.Add(new TuningNumericField("持续功耗", "长时间维持的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
-        IntelPowers.Add(new TuningNumericField("短时功耗", "短时间可超过的上限", "W", 0, IntelPowerMinimum, IntelPowerMaximum, IntelPowerStep));
-        IntelPowers.Add(new TuningNumericField("短时功耗时长", "短时功耗维持的秒数，0 表示不限", "秒", 0, IntelTauMinimum, IntelTauMaximum, IntelTauStep));
 
         for (int i = 0; i < IntelTuningCodec.RatioSlots; i++)
             IntelRatios.Add(new IntelRatioItem(i, IntelRatioMinimum));
@@ -253,13 +239,6 @@ public partial class TuningViewModel
 
             if (IntelRatios.All(item => item.IsAvailable))
                 request.Ratios = IntelRatios.Select(item => item.Ratio).ToArray();
-
-            if (IntelPowers[0].IsAvailable && IntelPowers[1].IsAvailable)
-            {
-                request.PowerLimit1Watts = IntelPowers[0].Value;
-                request.PowerLimit2Watts = IntelPowers[1].Value;
-                request.TauSeconds = IntelPowers[2].IsAvailable ? IntelPowers[2].Value : 0;
-            }
 
             IpcOutcome<IntelTuningPayload> outcome = await WorkerBridge.Instance
                 .ApplyIntelTuningAsync(request, ApplyTimeoutMs)
@@ -353,10 +332,6 @@ public partial class TuningViewModel
             ApplyNumericField(IntelVoltages[0], payload.CoreMilliVolts, IntelVoltageMinimum, IntelVoltageMaximum);
             ApplyNumericField(IntelVoltages[1], payload.GpuMilliVolts, IntelVoltageMinimum, IntelVoltageMaximum);
             ApplyNumericField(IntelVoltages[2], payload.CacheMilliVolts, IntelVoltageMinimum, IntelVoltageMaximum);
-
-            ApplyNumericField(IntelPowers[0], payload.PowerLimit1Watts, IntelPowerMinimum, IntelPowerMaximum);
-            ApplyNumericField(IntelPowers[1], payload.PowerLimit2Watts, IntelPowerMinimum, IntelPowerMaximum);
-            ApplyNumericField(IntelPowers[2], payload.TauSeconds, IntelTauMinimum, IntelTauMaximum);
 
             int[] ratios = payload.Ratios ?? Array.Empty<int>();
             for (int i = 0; i < IntelRatios.Count; i++)
