@@ -92,11 +92,12 @@
 
                 <TextBlock Grid.Column="0" Text="调校" Style="{StaticResource PageTitleStyle}" />
 
+                <!-- ProfileBar 会把自身 DataContext 换成 PlanScope，Visibility 不能走默认 DataContext -->
                 <views:ProfileBar Kind="{x:Static core:PlanKind.Tuning}" Grid.Column="1"
                                   Margin="16,0,0,0"
                                   HorizontalAlignment="Left"
                                   VerticalAlignment="Center"
-                                  Visibility="{Binding IsIntel, Converter={StaticResource InvBoolToVis}}"
+                                  Visibility="{Binding DataContext.IsIntel, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InvBoolToVis}}"
                                   shell:WindowChrome.IsHitTestVisibleInChrome="True" />
 
                 <StackPanel Grid.Column="2"

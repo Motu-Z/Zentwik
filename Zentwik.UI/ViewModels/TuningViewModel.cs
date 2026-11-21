@@ -105,6 +105,7 @@ public partial class TuningViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanOperate))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
+    [NotifyPropertyChangedFor(nameof(CanApplyIntel))]
     private bool _isBusy;
 
     [ObservableProperty]

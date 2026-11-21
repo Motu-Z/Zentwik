@@ -185,6 +185,7 @@ public partial class TuningViewModel
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyIntel))]
     private bool _intelAvailable;
 
     /// <summary>Intel 通道就绪状态变化时整页遮罩跟着切。</summary>
@@ -329,7 +330,8 @@ public partial class TuningViewModel
         if (!outcome.Success || outcome.Value is null || !outcome.Value.Available)
         {
             IntelAvailable = false;
-            ClearBlocking();
+            WorkerConnected = true;
+            SmuAvailable = false;
             BlockingTitle = "调校通道不可用";
             BlockingDetail = outcome.Value?.Error ?? outcome.Message ?? "Intel MSR 模块未就绪";
             NotifyIf(notifyOnFailure, "无法读取 Intel 调校值");

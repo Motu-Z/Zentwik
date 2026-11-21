@@ -93,8 +93,8 @@ public sealed class WorkerStatus : ViewModelBase
 
     public bool IsIntel => string.Equals(Vendor, CpuVendorNames.Intel, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>AMD 走 SMU，Intel 要有 MSR 通道；厂商未知时照常显示，别把功能藏没了。</summary>
-    public bool IsTuningSupported => !IsIntel || IntelTuning;
+    /// <summary>调校页在 AMD（SMU）与 Intel（MSR）上都存在；通道是否就绪交给页面内遮罩，没装驱动时也要能进页看到提示。</summary>
+    public bool IsTuningSupported => true;
 
     /// <summary>调校方案、场景动作与启动异常拦截只对 SMU 生效；Intel 直接写 MSR，不经过方案。</summary>
     public bool IsTuningPlanSupported => !IsIntel;
