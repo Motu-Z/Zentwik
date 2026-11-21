@@ -102,7 +102,9 @@ public sealed class WorkerStatus : ViewModelBase
     public string StatusText => IsConnected ? "Worker 已连接" : "Worker 未连接";
 
     public string DetailText => IsConnected
-        ? (IsElevated ? "提权进程运行中，具备 SMU 写入权限" : "后台服务在线，SMU 当前不可写")
+        ? (IsIntel
+            ? (IsElevated ? "提权进程运行中，具备 MSR 写入权限" : "后台服务在线，MSR 当前不可写")
+            : (IsElevated ? "提权进程运行中，具备 SMU 写入权限" : "后台服务在线，SMU 当前不可写"))
         : FailureDetail ?? "后台服务未响应，调校与调度都不会生效";
 
     /// <summary>连不上的原因不是「重新检测」能解决的，就别提示去点。</summary>

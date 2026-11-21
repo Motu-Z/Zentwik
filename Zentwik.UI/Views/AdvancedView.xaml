@@ -143,7 +143,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,24,0">
-                                <TextBlock Text="SMU 硬件自检报告" Style="{StaticResource RowTitleStyle}" />
+                                <TextBlock Text="硬件自检报告" Style="{StaticResource RowTitleStyle}" />
 
                                 <TextBlock Text="生成诊断快照并保存到桌面" Style="{StaticResource HintStyle}" />
                             </StackPanel>

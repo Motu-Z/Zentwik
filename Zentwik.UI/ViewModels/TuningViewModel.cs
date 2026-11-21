@@ -423,7 +423,7 @@ public partial class TuningViewModel : ObservableObject
                 // 查不到状态：既不能说可写，也不能说不可写，按不可用处理并给出原文。
                 MarkSmuUnavailable(string.IsNullOrEmpty(status.Message) ? SmuUnavailableHint : status.Message);
                 await FallbackToStoredValuesAsync().ConfigureAwait(true);
-                NotifyIf(notifyOnFailure, "无法获取 SMU 状态");
+                NotifyIf(notifyOnFailure, "无法获取硬件状态");
                 return;
             }
 
@@ -750,7 +750,7 @@ public partial class TuningViewModel : ObservableObject
     {
         WorkerConnected = true;
         SmuAvailable = false;
-        BlockingTitle = "SMU 接口不可用";
+        BlockingTitle = WorkerStatus.Instance.IsIntel ? "调校通道不可用" : "SMU 接口不可用";
         BlockingDetail = string.IsNullOrWhiteSpace(reason) ? SmuUnavailableHint : reason!;
     }
 
