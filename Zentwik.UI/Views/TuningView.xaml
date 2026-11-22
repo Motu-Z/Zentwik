@@ -168,13 +168,8 @@
             <ScrollViewer Style="{StaticResource PageScrollStyle}"
                           Opacity="{Binding SmuAvailable, Converter={StaticResource DimOpacity}}">
                 <Grid>
-                    <!-- 列上限约束内容最大宽度，窗口变窄时列宽随之收缩，右侧不溢出 -->
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0"
+                    <!-- 默认 Stretch + MaxWidth：窄窗收缩不裁切，宽窗到 1320 后与其它页一样居中 -->
+                    <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
                                 Margin="32,32,32,32"
                                 Visibility="{Binding IsIntel, Converter={StaticResource InvBoolToVis}}">
 
@@ -279,7 +274,7 @@
 
                     </StackPanel>
 
-                    <StackPanel Grid.Column="0"
+                    <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
                                 Margin="32,32,32,32"
                                 Visibility="{Binding IsIntel, Converter={StaticResource BoolToVis}}">
 
