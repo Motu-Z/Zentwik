@@ -168,9 +168,14 @@
             <ScrollViewer Style="{StaticResource PageScrollStyle}"
                           Opacity="{Binding SmuAvailable, Converter={StaticResource DimOpacity}}">
                 <Grid>
-                    <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
+                    <!-- 列上限约束内容最大宽度，窗口变窄时列宽随之收缩，右侧不溢出 -->
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0"
                                 Margin="32,32,32,32"
-                                HorizontalAlignment="Left"
                                 Visibility="{Binding IsIntel, Converter={StaticResource InvBoolToVis}}">
 
                         <Border Style="{StaticResource SectionHeaderStyle}">
@@ -198,8 +203,8 @@
                                                        FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
-                                            <TextBox Width="76"
-                                                     HorizontalAlignment="Center"
+                                            <TextBox MinWidth="62"
+                                                     HorizontalAlignment="Stretch"
                                                      TextAlignment="Center"
                                                      Margin="0,3,0,0"
                                                      conv:InputAssist.SelectAllOnFocus="True"
@@ -274,9 +279,8 @@
 
                     </StackPanel>
 
-                    <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"
+                    <StackPanel Grid.Column="0"
                                 Margin="32,32,32,32"
-                                HorizontalAlignment="Left"
                                 Visibility="{Binding IsIntel, Converter={StaticResource BoolToVis}}">
 
                         <Border Style="{StaticResource SectionHeaderStyle}">
@@ -322,8 +326,8 @@
                                                        FontSize="11"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
-                                            <TextBox Width="76"
-                                                     HorizontalAlignment="Center"
+                                            <TextBox MinWidth="62"
+                                                     HorizontalAlignment="Stretch"
                                                      TextAlignment="Center"
                                                      Margin="0,3,0,0"
                                                      conv:InputAssist.SelectAllOnFocus="True"
