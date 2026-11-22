@@ -18,6 +18,10 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
+    /// <summary>窗口所在显示器的 DPI；失败返回 0。</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT
     {

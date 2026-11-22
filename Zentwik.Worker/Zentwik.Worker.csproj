@@ -15,7 +15,7 @@
     <OutputPath Condition="'$(Configuration)' == 'Release'">D:\Projects\Zentwik-App\</OutputPath>
     <OutputPath Condition="'$(Configuration)' != 'Release'">D:\Projects\Zentwik-App\$(Configuration)\</OutputPath>
 
-    <Version>2.6.0-can8</Version>
+    <Version>2.6.0-can9</Version>
     <FileVersion>2.4.6.0</FileVersion>
     <AssemblyVersion>2.4.6.0</AssemblyVersion>
   </PropertyGroup>

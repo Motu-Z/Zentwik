@@ -34,6 +34,7 @@ namespace Zentwik.Smoke
                 failures += RenderWindow(app);
                 failures += RenderTuningView(app);
                 failures += DumpTuningLayout();
+                failures += AuditOverflow();
                 failures += VerifyInteractions();
                 failures += AuditStaticResourceKeys(app);
             }
@@ -336,6 +337,100 @@ namespace Zentwik.Smoke
             }
 
             return 0;
+        }
+
+        /// <summary>
+        /// 逐页、逐宽度扫一遍：谁的内容右缘超过了页面宿主。超出的部分会被外层
+        /// ScrollViewer（横向 Disabled）裁掉，界面看不出来但内容确实少了。
+        /// </summary>
+        private static int AuditOverflow()
+        {
+            Write("[2c] 窄窗右侧溢出审计");
+
+            double[] widths = { 1172, 1040, 900 };
+            string[] navNames =
+            {
+                "NavTuning", "NavProcess", "NavPower", "NavScenarios",
+                "NavLogs", "NavMisc", "NavBehavior", "NavAdvanced"
+            };
+
+            int bad = 0;
+
+            var window = new Zentwik.UI.MainWindow { Width = 1172, Height = 820 };
+            window.Measure(new Size(1172, 820));
+            window.Arrange(new Rect(0, 0, 1172, 820));
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+            window.UpdateLayout();
+
+            if (window.Content is not FrameworkElement root)
+            {
+                Write("    ! 主窗口没有内容根元素");
+                return 1;
+            }
+
+            foreach (double width in widths)
+            {
+                root.Measure(new Size(width, 820));
+                root.Arrange(new Rect(0, 0, width, 820));
+                root.UpdateLayout();
+
+                ContentControl? host = Descendants(root).OfType<ContentControl>()
+                                                       .FirstOrDefault(c => c.Name == "ContentHost");
+                if (host is null)
+                {
+                    Write("    ! 找不到 ContentHost");
+                    return bad + 1;
+                }
+
+                foreach (string navName in navNames)
+                {
+                    RadioButton? nav = Descendants(root).OfType<RadioButton>()
+                                                        .FirstOrDefault(b => b.Name == navName);
+                    if (nav is null)
+                        continue;
+
+                    nav.IsChecked = true;
+                    root.UpdateLayout();
+                    window.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+                    root.UpdateLayout();
+
+                    double right = host.ActualWidth;
+                    int over = 0;
+                    string sample = "";
+
+                    foreach (FrameworkElement element in Descendants(host).OfType<FrameworkElement>())
+                    {
+                        if (!element.IsVisible || element.ActualWidth <= 0)
+                            continue;
+
+                        Point origin;
+                        try { origin = element.TranslatePoint(new Point(0, 0), host); }
+                        catch { continue; }
+
+                        double edge = origin.X + element.ActualWidth;
+                        if (edge <= right + 0.5 || origin.X >= right)
+                            continue;
+
+                        over++;
+                        if (sample.Length == 0)
+                        {
+                            string label = element is TextBlock tx ? tx.Text
+                                         : element is Control c && c.Name.Length > 0 ? c.Name
+                                         : element.GetType().Name;
+                            sample = $"{element.GetType().Name}「{Truncate(label, 14)}」右缘 {edge:F0}";
+                        }
+                    }
+
+                    Write($"    {width:F0} 宽 · {navName[3..],-9} 溢出 {over,3} 个" +
+                          (over > 0 ? $"   例：{sample} / 宿主宽 {right:F0}" : ""));
+
+                    if (over > 0)
+                        bad++;
+                }
+            }
+
+            return bad;
         }
 
         private static string Truncate(string? text, int max)

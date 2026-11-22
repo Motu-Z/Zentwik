@@ -586,6 +586,13 @@ public partial class MainWindow : Window
                 mmi.ptMaxSize.X = info.rcWork.Right - info.rcWork.Left;
                 mmi.ptMaxSize.Y = info.rcWork.Bottom - info.rcWork.Top;
 
+                // 这条消息一旦 handled，WPF 就不再把 MinWidth/MinHeight 写进追踪尺寸，
+                // 拖动边缘可以缩到内容被裁的低宽度 —— 最小尺寸只能在这里自己补。
+                uint dpi = NativeMethods.GetDpiForWindow(hwnd);
+                double scale = dpi == 0 ? 1.0 : dpi / 96.0;
+                mmi.ptMinTrackSize.X = (int)Math.Round(LayoutMetrics.WindowMinWidth * scale);
+                mmi.ptMinTrackSize.Y = (int)Math.Round(LayoutMetrics.WindowMinHeight * scale);
+
                 Marshal.StructureToPtr(mmi, lParam, true);
                 handled = true;
             }
