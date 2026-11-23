@@ -788,9 +788,12 @@ public static class IntegrationTest
             Check("调校：状态区不再列「电压偏移范围」", !texts.Contains("电压偏移范围"));
             Check("调校：不再单独列出 SMU 状态行（改为整页不可用）", !texts.Contains("SMU 状态"));
 
-            // 8 列自然排布：16 核正好两行，最后一行不满也不强求
-            var grid = FindAll<UniformGrid>(tuning).FirstOrDefault();
-            Check("调校：核心格 8 列排布", grid?.Columns == 8, $"列数 {(grid is null ? "无 UniformGrid" : grid.Columns)}");
+            // 每个 CCD 一张卡片，卡内 4 列 × 2 行
+            var gridList = FindAll<UniformGrid>(tuning).ToList();
+            int cardGrids = gridList.Count(g => g.Columns == 4);
+            Check("调校：每张 CCD 卡内 4 列排布",
+                  cardGrids > 0,
+                  $"4 列矩阵 {cardGrids} 处 / UniformGrid 共 {gridList.Count} 处");
 
             // SMU 不可用：整页遮罩 + 内容压暗，回读 / 应用同时禁用
             var available = new Views.TuningView();

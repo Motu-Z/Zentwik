@@ -13,6 +13,9 @@ public partial class TuningViewModel : ObservableObject
 {
     private const string SmuUnavailableHint = "请确保已安装 PawnIO 驱动并以管理员权限运行";
 
+    /// <summary>每个 CCD 的核数，与 SmuSession 的 CoreMask 分组一致。</summary>
+    private const int CoresPerCcd = 8;
+
     // 状态查询只读内存字段；快照要真读一次硬件；
     // 下发放到 75 秒是为了盖住 Worker 等 PawnIO 的 60 秒。
     private const int StatusTimeoutMs = 2_000;
@@ -34,7 +37,11 @@ public partial class TuningViewModel : ObservableObject
 
     /// <summary>物理核心数 = 逐核 CO 的格子数。</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupColumns))]
     private int _cpuCoreCount = SeedCoreCount;
+
+    /// <summary>CCD 组的排布列数：双 CCD 并排，单 CCD 占满一行。</summary>
+    public int GroupColumns => CpuCoreCount > CoresPerCcd ? 2 : 1;
 
     /// <summary>SMU 是否可写。false 时整页遮罩、「保存并应用」禁用。</summary>
     [ObservableProperty]
@@ -56,12 +63,39 @@ public partial class TuningViewModel : ObservableObject
     /// <summary>逐核偏移项。长度 = <see cref="CpuCoreCount"/>，核数变了整段重建。</summary>
     public ObservableCollection<CoreMarginItem> CoreMargins { get; } = new();
 
+    /// <summary>按 CCD 分组的视图，组内元素与 <see cref="CoreMargins"/> 是同一批实例。</summary>
+    public ObservableCollection<CoreGroupItem> CoreGroups { get; } = new();
+
     /// <summary>逐核 CO 的上下限</summary>
     public int CoreMarginMinimum => SmuReader.CoMin;
 
     public int CoreMarginMaximum => SmuReader.CoMax;
 
     public int CoreMarginStep => 1;
+
+    /// <summary>全部核心同时加减 / 归零：先把 16 格铺成同一档再逐核微调。</summary>
+    [RelayCommand]
+    private void ShiftAllCores(string? delta)
+    {
+        int step = delta == "-" ? -CoreMarginStep : CoreMarginStep;
+        ApplyToAll(item => item.Margin += step);
+    }
+
+    [RelayCommand]
+    private void ZeroAllCores() => ApplyToAll(item => item.Margin = 0);
+
+    private void ApplyToAll(Action<CoreMarginItem> action)
+    {
+        if (!SmuAvailable || IsBusy)
+        {
+            return;
+        }
+
+        foreach (CoreMarginItem item in CoreMargins)
+        {
+            action(item);
+        }
+    }
 
     /// <summary>频率上限（MHz）。</summary>
     [ObservableProperty]
@@ -157,6 +191,8 @@ public partial class TuningViewModel : ObservableObject
         {
             CoreMargins.Add(CreateItem(i, seed[i]));
         }
+
+        RebuildCoreGroups(seed.Length);
 
         _fMaxMHz = 4750;
         _fMaxText = _fMaxMHz.ToString(CultureInfo.InvariantCulture);
@@ -644,6 +680,7 @@ public partial class TuningViewModel : ObservableObject
     private void RebuildCoreMargins(int coreCount, IReadOnlyList<int> values)
     {
         CoreMargins.Clear();
+        CoreGroups.Clear();
 
         for (int i = 0; i < coreCount; i++)
         {
@@ -651,7 +688,24 @@ public partial class TuningViewModel : ObservableObject
             CoreMargins.Add(CreateItem(i, margin));
         }
 
+        RebuildCoreGroups(coreCount);
+
         CpuCoreCount = coreCount;
+    }
+
+    /// <summary>按 CCD 8 核切成组视图，元素与 <see cref="CoreMargins"/> 是同一批实例</summary>
+    private void RebuildCoreGroups(int coreCount)
+    {
+        CoreGroups.Clear();
+
+        for (int start = 0, ccd = 0; start < coreCount; start += CoresPerCcd, ccd++)
+        {
+            CoreMarginItem[] slice = CoreMargins.Skip(start)
+                                                .Take(Math.Min(CoresPerCcd, coreCount - start))
+                                                .ToArray();
+
+            CoreGroups.Add(new CoreGroupItem(ccd, slice, CoreMarginStep));
+        }
     }
 
     private CoreMarginItem CreateItem(int index, int margin)
@@ -846,6 +900,50 @@ public partial class TuningViewModel : ObservableObject
     }
 }
 
+/// <summary>一个 CCD 的核组：组内按钮作用于本组全部核</summary>
+public partial class CoreGroupItem : ObservableObject
+{
+    public string Title { get; }
+
+    public IReadOnlyList<CoreMarginItem> Items { get; }
+
+    public int Step { get; }
+
+    public CoreGroupItem(int index, IReadOnlyList<CoreMarginItem> items, int step)
+    {
+        Title = $"CCD {index}";
+        Items = items;
+        Step = step;
+    }
+
+    [RelayCommand]
+    private void Increase()
+    {
+        foreach (CoreMarginItem item in Items)
+        {
+            item.Margin += Step;
+        }
+    }
+
+    [RelayCommand]
+    private void Decrease()
+    {
+        foreach (CoreMarginItem item in Items)
+        {
+            item.Margin -= Step;
+        }
+    }
+
+    [RelayCommand]
+    private void Zero()
+    {
+        foreach (CoreMarginItem item in Items)
+        {
+            item.Margin = 0;
+        }
+    }
+}
+
 /// <summary>单个核心的 CO 偏移项</summary>
 public partial class CoreMarginItem : ObservableObject
 {
@@ -864,6 +962,9 @@ public partial class CoreMarginItem : ObservableObject
 
     public string DisplayName => $"核心 {Index}";
 
+    /// <summary>网格里的紧凑核号，如 <c>C0</c>。</summary>
+    public string ShortName => $"C{Index}";
+
     /// <summary>该核的值读不到（读取失败 / 被禁用）</summary>
     public bool IsUnavailable
     {
@@ -877,10 +978,14 @@ public partial class CoreMarginItem : ObservableObject
 
             OnPropertyChanged(nameof(EditText));
             OnPropertyChanged(nameof(IsReadOnly));
+            OnPropertyChanged(nameof(IsEditable));
         }
     }
 
     public bool IsReadOnly => IsUnavailable;
+
+    /// <summary>步进按钮是否可点</summary>
+    public bool IsEditable => !IsUnavailable;
 
     /// <summary>该核的偏移值</summary>
     public int Margin
