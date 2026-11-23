@@ -122,7 +122,7 @@
                             <TextBox.Style>
                                 <Style TargetType="TextBox" BasedOn="{StaticResource CoreNumberFieldStyle}">
                                     <Setter Property="Width" Value="Auto" />
-                                    <Setter Property="FontSize" Value="18" />
+                                    <Setter Property="FontSize" Value="20" />
                                     <Setter Property="FontWeight" Value="Bold" />
                                     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                                     <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
@@ -250,162 +250,383 @@
                                 Margin="32,32,32,32"
                                 Visibility="{Binding IsIntel, Converter={StaticResource InvBoolToVis}}">
 
-                        <Border Style="{StaticResource SectionHeaderStyle}">
-                            <TextBlock Text="CURVE OPTIMIZER / 核心电压偏移"
-                                       Style="{StaticResource SectionTitleStyle}" />
-                        </Border>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                        <!-- 每个 CCD 一张卡片，卡内 4 列 × 2 行 -->
-                        <ItemsControl ItemsSource="{Binding CoreGroups}" Margin="0,24,-12,0">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Columns="{Binding GroupColumns}" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="{DynamicResource PanelBrush}"
-                                            BorderBrush="{DynamicResource LineBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="8"
-                                            Margin="0,0,12,0"
-                                            ClipToBounds="True">
-                                        <StackPanel>
-                                            <Border Background="{DynamicResource PanelHoverBrush}"
-                                                    BorderBrush="{DynamicResource LineBrush}"
-                                                    BorderThickness="0,0,0,1"
-                                                    Padding="12,6">
-                                                <Grid>
-                                                    <TextBlock Text="{Binding Title}"
-                                                               VerticalAlignment="Center"
-                                                               FontSize="12"
-                                                               FontWeight="Bold"
-                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <!-- 电压偏移占左栏，频率上限占右栏 -->
+                            <StackPanel Grid.Column="0" Margin="0,0,12,0">
 
-                                                    <StackPanel Orientation="Horizontal"
-                                                                HorizontalAlignment="Right"
-                                                                VerticalAlignment="Center">
-                                                        <Button Style="{StaticResource ActionButtonStyle}"
-                                                                Width="24"
-                                                                Height="24"
-                                                                Padding="0"
-                                                                Content="−"
-                                                                FontSize="13"
-                                                                IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                Command="{Binding DecreaseCommand}"
-                                                                automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部减一}" />
-                                                        <Button Style="{StaticResource ActionButtonStyle}"
-                                                                Width="24"
-                                                                Height="24"
-                                                                Padding="0"
-                                                                Margin="4,0,0,0"
-                                                                IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                Command="{Binding ZeroCommand}"
-                                                                automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部归零}">
-                                                            <Ellipse Width="10"
-                                                                     Height="10"
-                                                                     Stroke="{DynamicResource TextPrimaryBrush}"
-                                                                     StrokeThickness="1.5" />
-                                                        </Button>
-                                                        <Button Style="{StaticResource ActionButtonStyle}"
-                                                                Width="24"
-                                                                Height="24"
-                                                                Padding="0"
-                                                                Margin="4,0,0,0"
-                                                                Content="+"
-                                                                FontSize="13"
-                                                                IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                Command="{Binding IncreaseCommand}"
-                                                                automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部加一}" />
-                                                    </StackPanel>
-                                                </Grid>
+                                <Border Style="{StaticResource SectionHeaderStyle}">
+                                    <Grid MinHeight="26">
+                                        <TextBlock Text="CURVE OPTIMIZER / 核心电压偏移"
+                                                   Style="{StaticResource SectionTitleStyle}" />
+
+                                        <Border x:Name="ScopeSegmentBar"
+                                                Style="{StaticResource SegmentGroupStyle}"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center"
+                                                automation:AutomationProperties.Name="偏移编辑粒度">
+                                            <StackPanel Orientation="Horizontal">
+                                                <RadioButton GroupName="MarginScope"
+                                                             Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                             Content="全核"
+                                                             automation:AutomationProperties.Name="全核统一设置偏移"
+                                                             IsChecked="{Binding IsScopeAllCores, Mode=TwoWay}" />
+                                                <RadioButton GroupName="MarginScope"
+                                                             Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                             Content="分 CCD"
+                                                             automation:AutomationProperties.Name="按 CCD 设置偏移"
+                                                             IsChecked="{Binding IsScopePerCcd, Mode=TwoWay}" />
+                                                <RadioButton GroupName="MarginScope"
+                                                             Style="{StaticResource SegmentedAccentRadioButtonStyle}"
+                                                             Content="分核"
+                                                             automation:AutomationProperties.Name="按核心设置偏移"
+                                                             IsChecked="{Binding IsScopePerCore, Mode=TwoWay}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+
+                                <!-- 全核档：一个值作用于全部核心 -->
+                                <Border Style="{StaticResource PanelStyle}"
+                                        Padding="20,14"
+                                        Margin="0,20,0,0"
+                                        Visibility="{Binding IsScopeAllCores, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <Grid>
+                                            <TextBlock Text="全部核心"
+                                                       Style="{StaticResource RowTitleStyle}"
+                                                       HorizontalAlignment="Left"
+                                                       VerticalAlignment="Center" />
+
+                                            <StackPanel Orientation="Horizontal"
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center">
+                                                <Button Style="{StaticResource SpinArrowButtonStyle}"
+                                                        Width="20"
+                                                        Height="32"
+                                                        Margin="0,0,6,0"
+                                                        Content="−"
+                                                        FontSize="16"
+                                                        IsEnabled="{Binding CanOperate}"
+                                                        Command="{Binding StepAllCoreCommand}"
+                                                        CommandParameter="-"
+                                                        automation:AutomationProperties.Name="全部核心偏移减一" />
+
+                                                <TextBox Width="88"
+                                                         Style="{StaticResource CoreNumberFieldStyle}"
+                                                         FontSize="20"
+                                                         FontWeight="SemiBold"
+                                                         TextAlignment="Center"
+                                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                                         conv:InputAssist.SelectAllOnFocus="True"
+                                                         automation:AutomationProperties.Name="全部核心电压偏移"
+                                                         Text="{Binding AllCoreText, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" />
+
+                                                <Button Style="{StaticResource SpinArrowButtonStyle}"
+                                                        Width="20"
+                                                        Height="32"
+                                                        Margin="6,0,0,0"
+                                                        Content="+"
+                                                        FontSize="16"
+                                                        IsEnabled="{Binding CanOperate}"
+                                                        Command="{Binding StepAllCoreCommand}"
+                                                        CommandParameter="+"
+                                                        automation:AutomationProperties.Name="全部核心偏移加一" />
+
+                                                <TextBlock Text="mV"
+                                                           Margin="8,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Slider Style="{StaticResource ThinSliderStyle}"
+                                                Margin="0,16,0,0"
+                                                Minimum="{Binding CoreMarginMinimum}"
+                                                Maximum="{Binding CoreMarginMaximum}"
+                                                TickFrequency="1"
+                                                IsSnapToTickEnabled="True"
+                                                Value="{Binding AllCoreMargin, Mode=TwoWay}"
+                                                automation:AutomationProperties.Name="全部核心电压偏移滑块" />
+
+                                        <Grid Margin="0,6,0,0">
+                                            <TextBlock Text="{Binding CoreMarginMinimum}"
+                                                       HorizontalAlignment="Left"
+                                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding CoreMarginMaximum}"
+                                                       HorizontalAlignment="Right"
+                                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 分 CCD 档：每张卡片一个值，作用于该 CCD 的全部核心 -->
+                                <ItemsControl ItemsSource="{Binding CoreGroups}"
+                                              Margin="0,20,0,-12"
+                                              Visibility="{Binding IsScopePerCcd, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource PanelStyle}" Margin="0,0,0,12" Padding="20,14">
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Style="{StaticResource RowTitleStyle}"
+                                                                   HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center" />
+
+                                                        <StackPanel Orientation="Horizontal"
+                                                                    HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Center">
+                                                            <Button Style="{StaticResource SpinArrowButtonStyle}"
+                                                                    Width="20"
+                                                                    Height="32"
+                                                                    Margin="0,0,6,0"
+                                                                    Content="−"
+                                                                    FontSize="16"
+                                                                    IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                    Command="{Binding DecreaseCommand}"
+                                                                    automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 偏移减一}" />
+
+                                                            <TextBox Width="88"
+                                                                     Style="{StaticResource CoreNumberFieldStyle}"
+                                                                     FontSize="20"
+                                                                     FontWeight="SemiBold"
+                                                                     TextAlignment="Center"
+                                                                     Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                     conv:InputAssist.SelectAllOnFocus="True"
+                                                                     automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 电压偏移}"
+                                                                     Text="{Binding UniformText, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" />
+
+                                                            <Button Style="{StaticResource SpinArrowButtonStyle}"
+                                                                    Width="20"
+                                                                    Height="32"
+                                                                    Margin="6,0,0,0"
+                                                                    Content="+"
+                                                                    FontSize="16"
+                                                                    IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                    Command="{Binding IncreaseCommand}"
+                                                                    automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 偏移加一}" />
+
+                                                            <TextBlock Text="mV"
+                                                                       Margin="8,0,0,0"
+                                                                       VerticalAlignment="Center"
+                                                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                                       FontSize="12"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <Slider Style="{StaticResource ThinSliderStyle}"
+                                                            Margin="0,16,0,0"
+                                                            Minimum="{Binding DataContext.CoreMarginMinimum, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            Maximum="{Binding DataContext.CoreMarginMaximum, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            TickFrequency="1"
+                                                            IsSnapToTickEnabled="True"
+                                                            Value="{Binding UniformMargin, Mode=TwoWay}"
+                                                            automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 电压偏移滑块}" />
+
+                                                    <Grid Margin="0,6,0,0">
+                                                        <TextBlock Text="{Binding DataContext.CoreMarginMinimum, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                   HorizontalAlignment="Left"
+                                                                   FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Text="{Binding DataContext.CoreMarginMaximum, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                   HorizontalAlignment="Right"
+                                                                   FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                                   FontSize="11"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    </Grid>
+                                                </StackPanel>
                                             </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
-                                            <ItemsControl ItemsSource="{Binding Items}"
-                                                          ItemTemplate="{StaticResource CoreCellTemplate}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <UniformGrid Columns="4" />
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                <!-- 分核档：每个 CCD 一张卡片，卡内 4 列 × 2 行 -->
+                                <ItemsControl ItemsSource="{Binding CoreGroups}"
+                                              Margin="0,20,0,-12"
+                                              Visibility="{Binding IsScopePerCore, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Style="{StaticResource PanelStyle}"
+                                                    Margin="0,0,0,12"
+                                                    ClipToBounds="True">
+                                                <StackPanel>
+                                                    <Border Background="{DynamicResource PanelHoverBrush}"
+                                                            BorderBrush="{DynamicResource LineBrush}"
+                                                            BorderThickness="0,0,0,1"
+                                                            Padding="12,6">
+                                                        <Grid>
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="12"
+                                                                       FontWeight="Bold"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
 
-                        <Border Style="{StaticResource SectionHeaderStyle}" Margin="0,28,0,0">
-                            <TextBlock Text="FMAX TARGET / 最高加速频率"
-                                       Style="{StaticResource SectionTitleStyle}" />
-                        </Border>
+                                                            <StackPanel Orientation="Horizontal"
+                                                                        HorizontalAlignment="Right"
+                                                                        VerticalAlignment="Center">
+                                                                <Button Style="{StaticResource ActionButtonStyle}"
+                                                                        Width="24"
+                                                                        Height="24"
+                                                                        Padding="0"
+                                                                        Content="−"
+                                                                        FontSize="13"
+                                                                        IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                        Command="{Binding DecreaseCommand}"
+                                                                        automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部减一}" />
+                                                                <Button Style="{StaticResource ActionButtonStyle}"
+                                                                        Width="24"
+                                                                        Height="24"
+                                                                        Padding="0"
+                                                                        Margin="4,0,0,0"
+                                                                        IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                        Command="{Binding ZeroCommand}"
+                                                                        automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部归零}">
+                                                                    <Ellipse Width="6"
+                                                                             Height="6"
+                                                                             Stroke="{DynamicResource TextPrimaryBrush}"
+                                                                             StrokeThickness="1.2" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource ActionButtonStyle}"
+                                                                        Width="24"
+                                                                        Height="24"
+                                                                        Padding="0"
+                                                                        Margin="4,0,0,0"
+                                                                        Content="+"
+                                                                        FontSize="13"
+                                                                        IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                        Command="{Binding IncreaseCommand}"
+                                                                        automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部加一}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
 
-                        <Border Style="{StaticResource PanelStyle}" Padding="20,16" Margin="0,16,0,0">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-                                    <Button Style="{StaticResource SpinArrowButtonStyle}"
-                                            Width="20"
-                                            Height="32"
-                                            Margin="0,0,6,0"
-                                            VerticalAlignment="Bottom"
-                                            Content="−"
-                                            FontSize="16"
-                                            IsEnabled="{Binding CanOperate}"
-                                            Command="{Binding StepFMaxDownCommand}"
-                                            automation:AutomationProperties.Name="最高加速频率减十" />
+                                                    <ItemsControl ItemsSource="{Binding Items}"
+                                                                  ItemTemplate="{StaticResource CoreCellTemplate}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <UniformGrid Columns="4" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
-                                    <TextBox MinWidth="80"
-                                             Style="{StaticResource CoreNumberFieldStyle}"
-                                             FontSize="24"
-                                             FontWeight="SemiBold"
-                                             TextAlignment="Left"
-                                             conv:InputAssist.SelectAllOnFocus="True"
-                                             automation:AutomationProperties.Name="最高加速频率数值"
-                                             Text="{Binding FMaxText, UpdateSourceTrigger=LostFocus, Mode=TwoWay}"
-                                             Foreground="{DynamicResource TextPrimaryBrush}" />
-
-                                    <Button Style="{StaticResource SpinArrowButtonStyle}"
-                                            Width="20"
-                                            Height="32"
-                                            Margin="6,0,0,0"
-                                            VerticalAlignment="Bottom"
-                                            Content="+"
-                                            FontSize="16"
-                                            IsEnabled="{Binding CanOperate}"
-                                            Command="{Binding StepFMaxUpCommand}"
-                                            automation:AutomationProperties.Name="最高加速频率加十" />
-
-                                    <TextBlock Text="MHz"
-                                               Margin="8,0,0,3"
-                                               VerticalAlignment="Bottom"
-                                               FontFamily="{DynamicResource AppMonoFontFamily}"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                </StackPanel>
-
-                                <Slider Style="{StaticResource ThinSliderStyle}"
-                                        Margin="0,14,0,0"
-                                        Minimum="{Binding FMaxMinimum}"
-                                        Maximum="{Binding FMaxMaximum}"
-                                        Value="{Binding FMaxMHz, Mode=TwoWay}"
-                                        automation:AutomationProperties.Name="最高加速频率" />
-
-                                <Grid Margin="0,6,0,0">
-                                    <TextBlock Text="{Binding FMaxMinimum}"
-                                               HorizontalAlignment="Left"
-                                               FontFamily="{DynamicResource AppMonoFontFamily}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding FMaxMaximum}"
-                                               HorizontalAlignment="Right"
-                                               FontFamily="{DynamicResource AppMonoFontFamily}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                </Grid>
                             </StackPanel>
-                        </Border>
 
+                            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+
+                                <Border Style="{StaticResource SectionHeaderStyle}">
+                                    <!-- 高度随左栏档位控件走，两栏段头才齐平 -->
+                                    <Grid MinHeight="{Binding ActualHeight, ElementName=ScopeSegmentBar}">
+                                        <TextBlock Text="FMAX TARGET / 最高加速频率"
+                                                   Style="{StaticResource SectionTitleStyle}" />
+                                    </Grid>
+                                </Border>
+
+                                <Border Style="{StaticResource PanelStyle}"
+                                        Padding="20,14"
+                                        Margin="0,20,0,0">
+                                    <StackPanel>
+                                        <Grid>
+                                            <TextBlock Text="频率上限"
+                                                       Style="{StaticResource RowTitleStyle}"
+                                                       HorizontalAlignment="Left"
+                                                       VerticalAlignment="Center" />
+
+                                            <StackPanel Orientation="Horizontal"
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center">
+                                                <Button Style="{StaticResource SpinArrowButtonStyle}"
+                                                        Width="20"
+                                                        Height="32"
+                                                        Margin="0,0,6,0"
+                                                        Content="−"
+                                                        FontSize="16"
+                                                        IsEnabled="{Binding CanOperate}"
+                                                        Command="{Binding StepFMaxDownCommand}"
+                                                        automation:AutomationProperties.Name="最高加速频率减十" />
+
+                                                <TextBox Width="88"
+                                                         Style="{StaticResource CoreNumberFieldStyle}"
+                                                         FontSize="20"
+                                                         FontWeight="SemiBold"
+                                                         TextAlignment="Center"
+                                                         conv:InputAssist.SelectAllOnFocus="True"
+                                                         automation:AutomationProperties.Name="最高加速频率数值"
+                                                         Text="{Binding FMaxText, UpdateSourceTrigger=LostFocus, Mode=TwoWay}"
+                                                         Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                                                <Button Style="{StaticResource SpinArrowButtonStyle}"
+                                                        Width="20"
+                                                        Height="32"
+                                                        Margin="6,0,0,0"
+                                                        Content="+"
+                                                        FontSize="16"
+                                                        IsEnabled="{Binding CanOperate}"
+                                                        Command="{Binding StepFMaxUpCommand}"
+                                                        automation:AutomationProperties.Name="最高加速频率加十" />
+
+                                                <TextBlock Text="MHz"
+                                                           Margin="8,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Slider Style="{StaticResource ThinSliderStyle}"
+                                                Margin="0,16,0,0"
+                                                Minimum="{Binding FMaxMinimum}"
+                                                Maximum="{Binding FMaxMaximum}"
+                                                Value="{Binding FMaxMHz, Mode=TwoWay}"
+                                                automation:AutomationProperties.Name="最高加速频率" />
+
+                                        <Grid Margin="0,6,0,0">
+                                            <TextBlock Text="{Binding FMaxMinimum}"
+                                                       HorizontalAlignment="Left"
+                                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding FMaxMaximum}"
+                                                       HorizontalAlignment="Right"
+                                                       FontFamily="{DynamicResource AppMonoFontFamily}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
 
                     <StackPanel MaxWidth="{x:Static lm:LayoutMetrics.FormContentWidth}"

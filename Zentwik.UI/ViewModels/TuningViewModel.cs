@@ -73,6 +73,116 @@ public partial class TuningViewModel : ObservableObject
 
     public int CoreMarginStep => 1;
 
+    /// <summary>偏移编辑粒度：全核一个值 / 每 CCD 一个值 / 每核一个值。</summary>
+    public enum TuningScope
+    {
+        AllCores,
+        PerCcd,
+        PerCore,
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsScopeAllCores))]
+    [NotifyPropertyChangedFor(nameof(IsScopePerCcd))]
+    [NotifyPropertyChangedFor(nameof(IsScopePerCore))]
+    private TuningScope _marginScope = TuningScope.PerCore;
+
+    /// <summary>三档各自绑一个 bool：RadioButton 的 IsChecked 只能双向绑 bool。</summary>
+    public bool IsScopeAllCores
+    {
+        get => MarginScope == TuningScope.AllCores;
+        set
+        {
+            if (value)
+                MarginScope = TuningScope.AllCores;
+        }
+    }
+
+    public bool IsScopePerCcd
+    {
+        get => MarginScope == TuningScope.PerCcd;
+        set
+        {
+            if (value)
+                MarginScope = TuningScope.PerCcd;
+        }
+    }
+
+    public bool IsScopePerCore
+    {
+        get => MarginScope == TuningScope.PerCore;
+        set
+        {
+            if (value)
+                MarginScope = TuningScope.PerCore;
+        }
+    }
+
+    /// <summary>全核档的偏移：显示取第一个可读核，写入时全部核同值。</summary>
+    public int AllCoreMargin
+    {
+        get => CoreMargins.FirstOrDefault(item => !item.IsUnavailable)?.Margin ?? 0;
+        set
+        {
+            if (!SmuAvailable || IsBusy)
+                return;
+
+            int clamped = Math.Clamp(value, CoreMarginMinimum, CoreMarginMaximum);
+
+            foreach (CoreMarginItem item in CoreMargins)
+                item.Margin = clamped;
+        }
+    }
+
+    /// <summary>全核档输入框的文本，保留「-」「空」这类输入中间态。</summary>
+    public string AllCoreText
+    {
+        get => _allCoreText;
+        set
+        {
+            if (!SetProperty(ref _allCoreText, value))
+                return;
+
+            // 回写文本也会进 setter，此时不能把值当作用户输入再写一遍全部核。
+            if (_syncingAllCoreText)
+                return;
+
+            if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+                return;
+
+            AllCoreMargin = parsed;
+        }
+    }
+
+    private string _allCoreText = "0";
+    private bool _syncingAllCoreText;
+
+    private void SyncAllCoreText()
+    {
+        if (_syncingAllCoreText)
+            return;
+
+        _syncingAllCoreText = true;
+        AllCoreText = AllCoreMargin.ToString(CultureInfo.InvariantCulture);
+        _syncingAllCoreText = false;
+    }
+
+    [RelayCommand]
+    private void StepAllCore(string? delta)
+    {
+        AllCoreMargin += delta == "-" ? -CoreMarginStep : CoreMarginStep;
+        SyncAllCoreText();
+    }
+
+    [RelayCommand]
+    private void ZeroAllCore() => StepAllCoreTo(0);
+
+    private void StepAllCoreTo(int value)
+    {
+        AllCoreMargin = value;
+        SyncAllCoreText();
+    }
+
     /// <summary>全部核心同时加减 / 归零：先把 16 格铺成同一档再逐核微调。</summary>
     [RelayCommand]
     private void ShiftAllCores(string? delta)
@@ -193,6 +303,8 @@ public partial class TuningViewModel : ObservableObject
         }
 
         RebuildCoreGroups(seed.Length);
+
+        SyncAllCoreText();
 
         _fMaxMHz = 4750;
         _fMaxText = _fMaxMHz.ToString(CultureInfo.InvariantCulture);
@@ -690,6 +802,8 @@ public partial class TuningViewModel : ObservableObject
 
         RebuildCoreGroups(coreCount);
 
+        SyncAllCoreText();
+
         CpuCoreCount = coreCount;
     }
 
@@ -729,6 +843,8 @@ public partial class TuningViewModel : ObservableObject
             if (e.PropertyName == nameof(CoreMarginItem.Margin))
             {
                 MarkDirty();
+                OnPropertyChanged(nameof(AllCoreMargin));
+                SyncAllCoreText();
             }
         };
 
@@ -914,6 +1030,55 @@ public partial class CoreGroupItem : ObservableObject
         Title = $"CCD {index}";
         Items = items;
         Step = step;
+        _uniformText = UniformMargin.ToString(CultureInfo.InvariantCulture);
+
+        foreach (CoreMarginItem item in items)
+        {
+            item.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(CoreMarginItem.Margin))
+                    SyncUniform();
+            };
+        }
+    }
+
+    /// <summary>组内统一偏移：显示取第一个可读核，写入时全组同值。</summary>
+    public int UniformMargin
+    {
+        get => Items.FirstOrDefault(item => !item.IsUnavailable)?.Margin ?? 0;
+        set
+        {
+            foreach (CoreMarginItem item in Items)
+                item.Margin = value;
+        }
+    }
+
+    /// <summary>分 CCD 档输入框的文本，保留「-」「空」这类输入中间态。</summary>
+    [ObservableProperty]
+    private string _uniformText = "0";
+
+    partial void OnUniformTextChanged(string value)
+    {
+        if (_syncingUniform)
+            return;
+
+        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            return;
+
+        UniformMargin = parsed;
+    }
+
+    private bool _syncingUniform;
+
+    private void SyncUniform()
+    {
+        if (_syncingUniform)
+            return;
+
+        _syncingUniform = true;
+        OnPropertyChanged(nameof(UniformMargin));
+        UniformText = UniformMargin.ToString(CultureInfo.InvariantCulture);
+        _syncingUniform = false;
     }
 
     [RelayCommand]

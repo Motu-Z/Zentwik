@@ -795,6 +795,37 @@ public static class IntegrationTest
                   cardGrids > 0,
                   $"4 列矩阵 {cardGrids} 处 / UniformGrid 共 {gridList.Count} 处");
 
+            // 三档只换编辑方式，不得把一组的值写到别的组去
+            if (tuning.DataContext is TuningViewModel scopeVm)
+            {
+                int[] before = scopeVm.CoreMargins.Select(c => c.Margin).ToArray();
+
+                foreach (TuningViewModel.TuningScope scope in new[]
+                         {
+                             TuningViewModel.TuningScope.AllCores,
+                             TuningViewModel.TuningScope.PerCcd,
+                             TuningViewModel.TuningScope.PerCore,
+                         })
+                {
+                    scopeVm.MarginScope = scope;
+                    Render(tuning, 1168, 820);
+
+                    bool all = scopeVm.IsScopeAllCores;
+                    bool ccd = scopeVm.IsScopePerCcd;
+                    bool core = scopeVm.IsScopePerCore;
+                    Check($"调校：粒度 {scope} 只点亮对应档位",
+                          all == (scope == TuningViewModel.TuningScope.AllCores)
+                          && ccd == (scope == TuningViewModel.TuningScope.PerCcd)
+                          && core == (scope == TuningViewModel.TuningScope.PerCore),
+                          $"全核={all} 分CCD={ccd} 分核={core}");
+                }
+
+                int[] after = scopeVm.CoreMargins.Select(c => c.Margin).ToArray();
+                Check("调校：切换编辑粒度不改写核心值",
+                      after.SequenceEqual(before),
+                      $"前 {string.Join(",", before)} / 后 {string.Join(",", after)}");
+            }
+
             // SMU 不可用：整页遮罩 + 内容压暗，回读 / 应用同时禁用
             var available = new Views.TuningView();
             Render(available, 1168, 820);
