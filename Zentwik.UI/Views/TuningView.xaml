@@ -299,20 +299,24 @@
                                                                 Height="24"
                                                                 Padding="0"
                                                                 Margin="4,0,0,0"
+                                                                IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                Command="{Binding ZeroCommand}"
+                                                                automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部归零}">
+                                                            <Ellipse Width="10"
+                                                                     Height="10"
+                                                                     Stroke="{DynamicResource TextPrimaryBrush}"
+                                                                     StrokeThickness="1.5" />
+                                                        </Button>
+                                                        <Button Style="{StaticResource ActionButtonStyle}"
+                                                                Width="24"
+                                                                Height="24"
+                                                                Padding="0"
+                                                                Margin="4,0,0,0"
                                                                 Content="+"
                                                                 FontSize="13"
                                                                 IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 Command="{Binding IncreaseCommand}"
                                                                 automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部加一}" />
-                                                        <Button Style="{StaticResource ActionButtonStyle}"
-                                                                Height="24"
-                                                                Padding="10,0"
-                                                                Margin="4,0,0,0"
-                                                                Content="归零"
-                                                                FontSize="12"
-                                                                IsEnabled="{Binding DataContext.CanOperate, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                Command="{Binding ZeroCommand}"
-                                                                automation:AutomationProperties.Name="{Binding Title, StringFormat={}{0} 全部归零}" />
                                                     </StackPanel>
                                                 </Grid>
                                             </Border>
