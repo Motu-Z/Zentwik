@@ -210,7 +210,8 @@ public sealed class AppSettings : ViewModelBase
     private static MainWindowCloseBehavior ParseClose(string value) => value switch
     {
         "Exit" => MainWindowCloseBehavior.ExitAll,
-        "WorkerOnly" => MainWindowCloseBehavior.CloseWindowOnly,
+
+        // 旧配置的「只留服务」与新「收进托盘」等价，读进来就归一，避免出现第三档。
         _ => MainWindowCloseBehavior.MinimizeToTray,
     };
 

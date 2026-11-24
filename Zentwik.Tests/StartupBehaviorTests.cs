@@ -60,15 +60,15 @@ namespace Zentwik.Tests
 
         // ==================== 关闭策略 ====================
 
-        /// <summary>Tray：窗口销毁，应用与 Worker 都继续跑。</summary>
+        /// <summary>Tray：界面进程退出，后台服务与托盘保留。</summary>
         [Fact]
-        public void ClosePolicy_Tray_KeepsProcessAlive()
+        public void ClosePolicy_Tray_ExitsUiKeepsWorker()
         {
             CloseDecision decision = CloseBehaviorPolicy.Decide(CloseBehavior.Tray);
 
             Assert.False(decision.Cancel);
-            Assert.False(decision.Shutdown);
-            Assert.True(decision.ClearMainWindow);
+            Assert.True(decision.Shutdown);
+            Assert.False(decision.ClearMainWindow);
         }
 
         /// <summary>Exit：窗口关掉、应用退出（OnExit 里再决定要不要关 Worker）。</summary>

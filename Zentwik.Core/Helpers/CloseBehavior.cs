@@ -17,10 +17,10 @@ namespace Zentwik.Core.Helpers
         /// <summary>B1：完全退出。UI 退出，并让本次 UI 拉起的 Worker 一起退出。</summary>
         Exit = 0,
 
-        /// <summary>B2：收托盘。销毁 MainWindow，UI 进程存活，托盘图标由 UI 持有。</summary>
+        /// <summary>B2：收进托盘。界面退出，后台服务与托盘保留（托盘由后台服务持有）。</summary>
         Tray = 1,
 
-        /// <summary>B3：只留 Worker。UI 进程退出，Worker 常驻（无论由谁拉起）。</summary>
+        /// <summary>B3：旧的「只留后台服务」。托盘归后台服务后与 B2 等价，读取时归一。</summary>
         WorkerOnly = 2
     }
 
@@ -58,6 +58,10 @@ namespace Zentwik.Core.Helpers
     /// </summary>
     public static class CloseBehaviorPolicy
     {
+        /// <summary>旧配置里的「只留后台服务」与「收进托盘」在新架构下等价：都退界面、留后台服务。</summary>
+        public static CloseBehavior Normalize(CloseBehavior behavior) =>
+            behavior == CloseBehavior.WorkerOnly ? CloseBehavior.Tray : behavior;
+
         /// <summary>
         /// 三档的中文说明。界面下拉与日志共用一份，避免两处文案漂移。
         /// 与 <c>AutoStartService.DescribeMode</c> 对称：一个描述「开机拉什么」，
@@ -67,7 +71,7 @@ namespace Zentwik.Core.Helpers
         {
             CloseBehavior.Exit => "完全退出",
             CloseBehavior.Tray => "收进托盘",
-            CloseBehavior.WorkerOnly => "只留后台服务",
+            CloseBehavior.WorkerOnly => "收进托盘（旧版）",
             _ => "未知行为"
         };
 
@@ -75,15 +79,15 @@ namespace Zentwik.Core.Helpers
         {
             CloseBehavior.Tray => new CloseDecision(
                 Cancel: false,
-                Shutdown: false,
-                ClearMainWindow: true,
-                LogMessage: "[关闭行为] Tray：窗口已销毁，托盘保留，UI 进程与 Worker 都不动"),
+                Shutdown: true,
+                ClearMainWindow: false,
+                LogMessage: "[关闭行为] Tray：界面退出，后台服务与托盘保留（OnExit 不发 shutdown）"),
 
             CloseBehavior.WorkerOnly => new CloseDecision(
                 Cancel: false,
                 Shutdown: true,
                 ClearMainWindow: false,
-                LogMessage: "[关闭行为] WorkerOnly：UI 进程退出，Worker 常驻（OnExit 不发 shutdown）"),
+                LogMessage: "[关闭行为] WorkerOnly：旧值，按收进托盘处理，后台服务保留"),
 
             _ => new CloseDecision(
                 Cancel: false,

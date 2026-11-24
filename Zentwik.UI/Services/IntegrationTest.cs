@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using Zentwik.Core.Helpers;
 using Zentwik.UI.Services;
 using Zentwik.UI.ViewModels;
 using ScenarioTrigger = Zentwik.Core.Services.ScenarioTrigger;
@@ -2335,38 +2336,27 @@ public static class IntegrationTest
                   hintTray.Length > 0 && hintNone.Length > 0 && hintTray != hintNone,
                   $"{hintTray} / {hintNone}");
 
-            behavior.CloseWindowOnly = true;
-            Check("行为：关闭行为写回 CloseWindowOnly",
-                  settings.CloseBehavior == MainWindowCloseBehavior.CloseWindowOnly,
+            behavior.CloseMinimizeToTray = true;
+            Check("行为：关闭行为写回 MinimizeToTray",
+                  settings.CloseBehavior == MainWindowCloseBehavior.MinimizeToTray,
                   settings.CloseBehavior.ToString());
-            Check("行为：关闭行为三档互斥",
-                  !behavior.CloseMinimizeToTray && !behavior.CloseExitAll);
+            Check("行为：关闭行为两档互斥", !behavior.CloseExitAll);
 
-            string hintWindowOnly = behavior.CloseHint;
+            string hintHide = behavior.CloseHint;
             behavior.CloseExitAll = true;
             string hintExitAll = behavior.CloseHint;
-            behavior.CloseMinimizeToTray = true;
-            string hintHide = behavior.CloseHint;
-            Check("行为：关闭说明三档各不相同",
-                  hintWindowOnly != hintExitAll
-                  && hintExitAll != hintHide
-                  && hintHide != hintWindowOnly,
-                  hintWindowOnly);
+            Check("行为：关闭说明两档不同",
+                  hintHide.Length > 0 && hintExitAll.Length > 0 && hintHide != hintExitAll,
+                  $"{hintHide} / {hintExitAll}");
 
             Check("行为：完全退出时关闭窗口并连带关后台",
-                  MainWindow.ResolveCloseAction(true, MainWindowCloseBehavior.ExitAll)
+                  MainWindow.ResolveCloseAction(MainWindowCloseBehavior.ExitAll)
                   == MainWindow.WindowCloseAction.ExitAll);
-            Check("行为：收进托盘时隐藏窗口",
-                  MainWindow.ResolveCloseAction(true, MainWindowCloseBehavior.MinimizeToTray)
-                  == MainWindow.WindowCloseAction.Hide);
-            Check("行为：仅留服务时只退 UI、保住后台",
-                  MainWindow.ResolveCloseAction(true, MainWindowCloseBehavior.CloseWindowOnly)
+            Check("行为：收进托盘时只退界面、保住后台",
+                  MainWindow.ResolveCloseAction(MainWindowCloseBehavior.MinimizeToTray)
                   == MainWindow.WindowCloseAction.ExitUiKeepWorker);
-            Check("行为：托盘不可用时收进托盘退化为完全退出",
-                  MainWindow.ResolveCloseAction(false, MainWindowCloseBehavior.MinimizeToTray)
-                  == MainWindow.WindowCloseAction.ExitAll);
-            Check("行为：仅留服务不需要托盘",
-                  MainWindow.ResolveCloseAction(false, MainWindowCloseBehavior.CloseWindowOnly)
+            Check("行为：旧的只留服务归到收进托盘",
+                  MainWindow.ResolveCloseAction(MainWindowCloseBehavior.CloseWindowOnly)
                   == MainWindow.WindowCloseAction.ExitUiKeepWorker);
 
             behavior.AutoApplyTuning = false;
@@ -2396,8 +2386,8 @@ public static class IntegrationTest
                 ToastSeconds = 9,
             });
 
-            Check("设置：远程值映射到关闭行为",
-                  settings.CloseBehavior == MainWindowCloseBehavior.CloseWindowOnly,
+            Check("设置：远程 WorkerOnly 归到收进托盘",
+                  settings.CloseBehavior == MainWindowCloseBehavior.MinimizeToTray,
                   settings.CloseBehavior.ToString());
             Check("设置：远程值映射到后台开关",
                   !settings.WatchProcesses && !settings.ErrorBubble);
@@ -2461,39 +2451,60 @@ public static class IntegrationTest
         Say("\n=== 入口：桌面右键与托盘菜单 ===");
 
         // 菜单是 Win32 弹窗，点不了自动化；能断言的是喂给它的那份模型。
-        IReadOnlyList<TrayMenuItem> bare = TrayMenuBuilder.Build(includePlans: false);
+        IReadOnlyList<TrayMenuItem> bare = TrayMenu.Build(Array.Empty<TrayPlanGroup>());
 
         Check("托盘：关掉方案后只剩显示与退出",
               bare.Count == 3
-              && bare[0].Key == TrayMenuBuilder.KeyShow
-              && bare[2].Key == TrayMenuBuilder.KeyExit,
+              && bare[0].Key == TrayMenu.KeyShow
+              && bare[2].Key == TrayMenu.KeyExit,
               $"{bare.Count} 项");
 
         Check("托盘：分隔线不是可点项", bare[1].IsSeparator && bare[1].Label.Length == 0);
 
-        IReadOnlyList<TrayMenuItem> full = TrayMenuBuilder.Build(includePlans: true);
+        List<TrayPlanGroup> planGroups = new();
+
+        foreach ((Zentwik.Core.Services.PlanKind kind, string label) in new[]
+                 {
+                     (Zentwik.Core.Services.PlanKind.Tuning, "调校方案"),
+                     (Zentwik.Core.Services.PlanKind.Scheduling, "调度方案"),
+                     (Zentwik.Core.Services.PlanKind.Power, "电源方案"),
+                 })
+        {
+            IReadOnlyList<PlanItem> plans = PlanHub.Of(kind).Items;
+
+            if (plans.Count == 0)
+            {
+                continue;
+            }
+
+            planGroups.Add(new TrayPlanGroup(
+                label,
+                plans.Select(p => new TrayMenuItem(TrayMenu.PlanKey(kind, p.Id), p.Name, p.IsActive)).ToList()));
+        }
+
+        IReadOnlyList<TrayMenuItem> full = TrayMenu.Build(planGroups);
         List<TrayMenuItem> groups = full.Where(i => i.Children is { Count: > 0 }).ToList();
 
         Check("托盘：列出方案分组", groups.Count > 0, $"{groups.Count} 组");
 
         Check("托盘：分组下每项都能还原成 kind 与 id",
-              groups.All(g => g.Children!.All(c => TrayMenuBuilder.TryParsePlanKey(c.Key, out _, out _))),
+              groups.All(g => g.Children!.All(c => TrayMenu.TryParsePlanKey(c.Key, out _, out _))),
               string.Join("/", groups.Select(g => g.Label)));
 
         Check("托盘：当前生效的方案带勾选",
               groups.SelectMany(g => g.Children!).Any(c => c.IsChecked),
               $"{groups.SelectMany(g => g.Children!).Count(c => c.IsChecked)} 项");
 
-        string powerKey = TrayMenuBuilder.PlanKey(Zentwik.Core.Services.PlanKind.Power, "plan-42");
+        string powerKey = TrayMenu.PlanKey(Zentwik.Core.Services.PlanKind.Power, "plan-42");
 
         Check("托盘：方案 Key 往返一致",
-              TrayMenuBuilder.TryParsePlanKey(powerKey, out var parsedKind, out string parsedId)
+              TrayMenu.TryParsePlanKey(powerKey, out var parsedKind, out string parsedId)
               && parsedKind == Zentwik.Core.Services.PlanKind.Power
               && parsedId == "plan-42",
               powerKey);
 
         Check("托盘：非方案 Key 不误判",
-              !TrayMenuBuilder.TryParsePlanKey(TrayMenuBuilder.KeyShow, out _, out _));
+              !TrayMenu.TryParsePlanKey(TrayMenu.KeyShow, out _, out _));
 
         string command = DesktopContextMenuService.CommandText;
 

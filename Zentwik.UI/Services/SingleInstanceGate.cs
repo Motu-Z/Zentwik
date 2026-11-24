@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Text;
 using System.Threading;
 using System.Windows;
+using Zentwik.Core.Ipc;
 
 namespace Zentwik.UI.Services;
 
@@ -16,9 +17,7 @@ public static class SingleInstanceGate
     /// <summary>按会话隔离：远程桌面另开会话时，两边各留一个界面是合理的。</summary>
     private const string MutexName = @"Local\Zentwik.UI.SingleInstance";
 
-    private const string PipeName = "Zentwik.UI.Activate";
-
-    private const string ShowMessage = "show";
+    private static string PipeName => WorkerPipeContract.UiActivatePipeName;
 
     private static Mutex? _mutex;
 
@@ -39,9 +38,9 @@ public static class SingleInstanceGate
     }
 
     /// <summary>在主实例里监听激活请求；回调已封送到 UI 线程。</summary>
-    public static void Listen(Action onActivate)
+    public static void Listen(Action onShow, Action onExit)
     {
-        Thread thread = new(() => ListenLoop(onActivate))
+        Thread thread = new(() => ListenLoop(onShow, onExit))
         {
             IsBackground = true,
             Name = "Zentwik.UiActivate",
@@ -50,7 +49,7 @@ public static class SingleInstanceGate
         thread.Start();
     }
 
-    private static void ListenLoop(Action onActivate)
+    private static void ListenLoop(Action onShow, Action onExit)
     {
         while (true)
         {
@@ -63,9 +62,16 @@ public static class SingleInstanceGate
 
                 using StreamReader reader = new(server, Encoding.UTF8);
 
-                if (string.Equals(reader.ReadLine(), ShowMessage, StringComparison.Ordinal))
+                string? command = reader.ReadLine();
+
+                // 后台服务的托盘退出与第二个实例的唤出共用这条管道。
+                if (string.Equals(command, WorkerPipeContract.UiActivateExit, StringComparison.Ordinal))
                 {
-                    Application.Current?.Dispatcher.BeginInvoke((Action)onActivate);
+                    Application.Current?.Dispatcher.BeginInvoke((Action)onExit);
+                }
+                else if (string.Equals(command, WorkerPipeContract.UiActivateShow, StringComparison.Ordinal))
+                {
+                    Application.Current?.Dispatcher.BeginInvoke((Action)onShow);
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
@@ -87,7 +93,7 @@ public static class SingleInstanceGate
                 client.Connect(400);
 
                 using StreamWriter writer = new(client, new UTF8Encoding(false));
-                writer.WriteLine(ShowMessage);
+                writer.WriteLine(WorkerPipeContract.UiActivateShow);
                 writer.Flush();
                 return;
             }

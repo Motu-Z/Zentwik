@@ -63,6 +63,15 @@ namespace Zentwik.Core.Ipc
         /// </summary>
         public const string WorkerMutexName = @"Global\Zentwik.Worker.SingleInstance";
 
+        /// <summary>UI 侧的单实例激活管道。反向使用：Worker 托盘用它叫醒或关掉界面。</summary>
+        public const string UiActivatePipeName = "Zentwik.UI.Activate";
+
+        /// <summary>激活指令：显示主窗口。</summary>
+        public const string UiActivateShow = "show";
+
+        /// <summary>激活指令：界面退出（后台服务继续运行）。</summary>
+        public const string UiActivateExit = "exit";
+
         /// <summary>连通性探测。不产生副作用，可被 UI 高频调用。</summary>
         public const string CommandPing = "ping";
 

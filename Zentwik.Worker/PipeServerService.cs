@@ -40,6 +40,9 @@ namespace Zentwik.Worker
         private CancellationTokenSource? _stopToken;
         private Task? _acceptLoop;
 
+        /// <summary>界面设置已保存。触发线程是 IPC 处理线程，订阅方自己封送到主线程。</summary>
+        public event Action? SettingsSaved;
+
         public PipeServerService(
             ILogService log,
             IWorkerLifetime lifetime,
@@ -621,6 +624,9 @@ namespace Zentwik.Worker
             {
                 return Fail($"设置已改但写盘失败：{ex.Message}");
             }
+
+            // 关闭行为可能刚把托盘开关翻了个面，托盘宿主在主线程重评估一次。
+            SettingsSaved?.Invoke();
 
             if (watchChanged)
             {

@@ -18,13 +18,30 @@ public static class SystemTheme
     /// <summary>读不到时的兜底强调色（参考 HTML 的默认蓝 #38BDF8）。</summary>
     private static readonly Color FallbackAccent = Color.FromRgb(0x38, 0xBD, 0xF8);
 
-    /// <summary>系统是否处于浅色主题。</summary>
-    public static bool IsSystemLightTheme()
+    /// <summary>应用模式是否为浅色（系统设置里的「应用模式」）。</summary>
+    public static bool IsSystemLightTheme() => ReadLightFlag("AppsUseLightTheme");
+
+    /// <summary>任务栏是否为浅色（系统设置里的「Windows 模式」，与「应用模式」可分别设置）。</summary>
+    public static bool IsTaskbarLight()
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
-            if (key?.GetValue("AppsUseLightTheme") is int v)
+            // 键不存在时与「应用模式」保持一致，避免读不到就判反。
+            if (key?.GetValue("SystemUsesLightTheme") is int v) return v != 0;
+        }
+        catch
+        {
+        }
+        return IsSystemLightTheme();
+    }
+
+    private static bool ReadLightFlag(string name)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
+            if (key?.GetValue(name) is int v)
             {
                 return v != 0;
             }

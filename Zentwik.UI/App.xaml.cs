@@ -53,7 +53,7 @@ public partial class App : Application
 
         // 诊断模式不拉起后台服务。
         if (e.Args.Any(a => a is "--screenshot" or "--selftest" or "--itest"
-                               or "--trayprobe" or "--perf" or "--perf-empty"))
+                               or "--trayicons" or "--perf" or "--perf-empty"))
         {
             Services.WorkerBridge.AllowAutoStart = false;
         }
@@ -224,26 +224,22 @@ public partial class App : Application
             ViewModels.TuningViewModel.SuppressWorkerInit = true;
         }
 
-        // 托盘探针（诊断用）。
-        if (e.Args.Contains("--trayprobe"))
+        // 托盘位图生成（诊断用）：后台服务没有 WPF 渲染路径，图标在这里预渲染好再内嵌。
+        if (e.Args.Contains("--trayicons"))
         {
             AttachConsole(ATTACH_PARENT_PROCESS);
 
             AppThemeService.Instance.Initialize();
 
-            var probePalette = LogoPaletteFactory.BuildForTray(
-                darkTaskbar: !SystemTheme.IsSystemLightTheme());
+            int iconIndex = Array.FindIndex(e.Args, a => a == "--trayicons");
+            string? iconDir = iconIndex + 1 < e.Args.Length && !e.Args[iconIndex + 1].StartsWith("--")
+                ? e.Args[iconIndex + 1]
+                : System.IO.Path.GetTempPath();
 
-            using var probeTray = new TrayIconService();
-            bool probeOk = probeTray.Initialize(
-                AppThemeService.Instance.BuildLogoDrawing,
-                probePalette.Body,
-                probePalette.Shadow);
+            (string dark, string light) = TrayIconAssets.Write(iconDir);
 
-            Console.WriteLine($"trayprobe: available  = {probeOk}");
-            Console.WriteLine($"trayprobe: pixelSize  = {probeTray.RenderedPixelSize}");
-            Console.WriteLine($"trayprobe: body       = {probePalette.Body}");
-            Console.WriteLine($"trayprobe: shadow     = {probePalette.Shadow}");
+            Console.WriteLine($"trayicons: dark  = {dark} ({new System.IO.FileInfo(dark).Length} 字节)");
+            Console.WriteLine($"trayicons: light = {light} ({new System.IO.FileInfo(light).Length} 字节)");
             Console.Out.Flush();
 
             Shutdown(0);
@@ -308,18 +304,15 @@ public partial class App : Application
         var window = new MainWindow();
         MainWindow = window;
 
-        // --tray：登录自启只建托盘，主窗口等用户从托盘唤起。
-        bool startInTray = e.Args.Contains(AutoStartService.TrayArgument);
+        // 界面总是带窗口启动：托盘归后台服务，开机自启的托盘形态不再拉起界面。
+        window.Show();
 
-        if (!startInTray)
-        {
-            window.Show();
-        }
-
-        // 第二个实例发来的「显示窗口」由主实例接住。
+        // 第二个实例发来的「显示窗口」与后台服务的「退出」都由主实例接住。
         if (!diagnosticMode)
         {
-            Services.SingleInstanceGate.Listen(() => BringToFront(window));
+            Services.SingleInstanceGate.Listen(
+                () => BringToFront(window),
+                () => window.CloseForWorkerExit());
         }
 
         // 性能探针（诊断用）。
@@ -335,16 +328,6 @@ public partial class App : Application
 
             RunPerfProbe(window);
             return;
-        }
-
-        // 系统托盘。
-        bool isScreenshotMode = e.Args.Contains("--screenshot");
-        bool trayReady = !isScreenshotMode && SetupTray(window);
-
-        // --tray 且托盘没建起来：没有入口可点，退回显示主窗口。
-        if (startInTray && !trayReady)
-        {
-            window.Show();
         }
 
         // 离屏截图模式。
@@ -1628,71 +1611,6 @@ public partial class App : Application
         warmup.Start();
     }
 
-    /// <summary>托盘图标实例 —— 必须持有引用，否则会被 GC 回收， 消息窗口随之销毁，托盘图标也会消失</summary>
-    private TrayIconService? _tray;
-
-    /// <summary>创建托盘图标并接上主窗口的显示 / 退出；返回 false 表示托盘不可用。</summary>
-    private bool SetupTray(MainWindow window)
-    {
-        var theme = AppThemeService.Instance;
-
-        var tray = new TrayIconService();
-
-        // 托盘图标用中性灰，**不跟随强调色** 。
-        var trayPalette = LogoPaletteFactory.BuildForTray(
-            darkTaskbar: !SystemTheme.IsSystemLightTheme());
-
-        if (!tray.Initialize(theme.BuildLogoDrawing, trayPalette.Body, trayPalette.Shadow))
-        {
-            // 托盘不可用 → 关闭按钮必须正常退出，
-            // 否则用户会把应用「关掉」却再也打不开。
-            Debug.WriteLine("[App] 托盘图标创建失败，关闭窗口将直接退出。");
-            // Initialize 失败时 HWND / HICON 已经建了一半，对象随即不可达。
-            tray.Dispose();
-            return false;
-        }
-
-        _tray = tray;
-
-        // 系统通知的落点就是托盘图标；托盘建不起来时 ToastService 退回界面内提示。
-        ViewModels.ToastService.SystemNotify = tray.ShowBalloon;
-
-        tray.ShowRequested += (_, _) => BringToFront(window);
-
-        // 托盘右键菜单由 TrayIconService 直接用 TrackPopupMenuEx 弹出（系统原生），
-        // 不再需要 WPF 自绘菜单与它的 0x1 宿主窗口。
-        // 内容现取：方案列表要在连上后台之后才有。
-        tray.SetMenuProvider(BuildTrayMenu);
-        tray.ItemInvoked += (_, key) => ApplyTrayCommand(key);
-
-        tray.ExitRequested += (_, _) => window.ExitApplication();
-
-        // 托盘已就绪；关闭按钮的具体行为由设置里的「关闭主窗口」决定。
-        window.MinimizeToTrayEnabled = true;
-
-        // 系统任务栏明暗变化 → 托盘图标跟着换配色。
-        theme.SystemThemeChanged += (_, _) =>
-        {
-            var palette = LogoPaletteFactory.BuildForTray(
-                darkTaskbar: !SystemTheme.IsSystemLightTheme());
-            tray.UpdateColors(palette.Body, palette.Shadow);
-        };
-
-        Exit += (_, _) =>
-        {
-            // 「仅留服务」= 只退 UI，Worker 常驻，不能连带杀掉。
-            if (ViewModels.AppSettings.Instance.CloseBehavior
-                != ViewModels.MainWindowCloseBehavior.CloseWindowOnly)
-            {
-                WorkerLauncher.RequestShutdown(
-                    TimeSpan.FromSeconds(1.5), evenIfNotOwned: true);
-            }
-
-            _tray?.Dispose();
-        };
-
-        return true;
-    }
 
     /// <summary>把主窗口叫到前台；最小化时先还原，否则 Activate 不生效。</summary>
     private static void BringToFront(MainWindow window)
@@ -1709,51 +1627,7 @@ public partial class App : Application
 
     /// <summary>诊断参数下不参与单实例：自检与截图要能同时跑多个进程。</summary>
     private static bool IsDiagnosticMode(string[] args) =>
-        args.Any(a => a is "--screenshot" or "--selftest" or "--itest" or "--perf" or "--perf-empty" or "--powerclean"
+        args.Any(a => a is "--screenshot" or "--selftest" or "--itest" or "--trayicons" or "--perf" or "--perf-empty" or "--powerclean"
                       || a.Contains("probe", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>右键那一刻现算菜单：方案列表要等连上后台才有，建图标时取不到。</summary>
-    private static IReadOnlyList<TrayMenuItem> BuildTrayMenu() =>
-        TrayMenuBuilder.Build(UiEntrySettings.TrayPlanMenu);
-
-    /// <summary>托盘里的方案项：窗口多半藏在托盘里，结果只能靠气泡回执。</summary>
-    private void ApplyTrayCommand(string key)
-    {
-        if (!TrayMenuBuilder.TryParsePlanKey(key, out var kind, out string id))
-        {
-            return;
-        }
-
-        PlanScope scope = PlanHub.Of(kind);
-        PlanItem? target = scope.Items.FirstOrDefault(p => p.Id == id);
-
-        if (target is not null)
-        {
-            _ = ApplyPlanFromTrayAsync(scope, target);
-        }
-    }
-
-    private async Task ApplyPlanFromTrayAsync(PlanScope scope, PlanItem target)
-    {
-        IpcOutcome<string> outcome = await WorkerBridge.Instance
-            .ApplyPlanAsync(scope.Kind, target.Id).ConfigureAwait(true);
-
-        if (!outcome.Success)
-        {
-            ViewModels.ToastService.Instance.NotifySystem(
-                "切换失败", outcome.Message.Length > 0 ? outcome.Message : "后台服务未响应");
-            return;
-        }
-
-        // 勾选态跟着后台走：只有确认成功才挪，失败保持原样。
-        foreach (PlanItem item in scope.Items)
-        {
-            item.IsActive = ReferenceEquals(item, target);
-        }
-
-        if (ViewModels.AppSettings.Instance.NotifyOnTraySuccess)
-        {
-            ViewModels.ToastService.Instance.NotifySystem("已切换方案", $"已切换到 {target.Name}");
-        }
-    }
 }

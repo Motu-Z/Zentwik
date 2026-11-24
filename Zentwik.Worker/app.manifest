@@ -20,5 +20,11 @@
     </application>
   </compatibility>
 
-  <!-- 刻意不写 dpiAware / dpiAwareness：Worker 无窗口，没有任何 DPI 语义。 -->
+  <!-- 托盘图标按物理像素渲染，必须声明 DPI 感知：非感知进程的 SM_CXSMICON 恒为 16。 -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">permonitorv2</dpiAwareness>
+    </windowsSettings>
+  </application>
 </assembly>

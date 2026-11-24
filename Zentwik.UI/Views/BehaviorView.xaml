@@ -113,12 +113,6 @@
 
                                     <RadioButton GroupName="Close"
                                                  Style="{StaticResource SegmentedAccentRadioButtonStyle}"
-                                                 Content="仅留服务"
-                                                 automation:AutomationProperties.Name="退出界面，后台服务继续运行"
-                                                 IsChecked="{Binding CloseWindowOnly, Mode=TwoWay}" />
-
-                                    <RadioButton GroupName="Close"
-                                                 Style="{StaticResource SegmentedAccentRadioButtonStyle}"
                                                  Content="完全退出"
                                                  automation:AutomationProperties.Name="完全退出"
                                                  IsChecked="{Binding CloseExitAll, Mode=TwoWay}" />

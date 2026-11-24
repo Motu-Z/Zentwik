@@ -38,7 +38,6 @@ public class BehaviorViewModel : ViewModelBase
             case nameof(AppSettings.CloseBehavior):
                 OnPropertyChanged(nameof(CloseMinimizeToTray));
                 OnPropertyChanged(nameof(CloseExitAll));
-                OnPropertyChanged(nameof(CloseWindowOnly));
                 OnPropertyChanged(nameof(CloseHint));
                 break;
 
@@ -89,9 +88,10 @@ public class BehaviorViewModel : ViewModelBase
 
     // 关闭主窗口
 
+    /// <summary>收进托盘：退界面，后台服务与托盘继续运行。旧的「只留服务」也归到这一档。</summary>
     public bool CloseMinimizeToTray
     {
-        get => _settings.CloseBehavior == MainWindowCloseBehavior.MinimizeToTray;
+        get => _settings.CloseBehavior != MainWindowCloseBehavior.ExitAll;
         set { if (value) SetCloseBehavior(MainWindowCloseBehavior.MinimizeToTray); }
     }
 
@@ -101,19 +101,10 @@ public class BehaviorViewModel : ViewModelBase
         set { if (value) SetCloseBehavior(MainWindowCloseBehavior.ExitAll); }
     }
 
-    public bool CloseWindowOnly
-    {
-        get => _settings.CloseBehavior == MainWindowCloseBehavior.CloseWindowOnly;
-        set { if (value) SetCloseBehavior(MainWindowCloseBehavior.CloseWindowOnly); }
-    }
-
     /// <summary>当前关闭行为的一句话说明。</summary>
-    public string CloseHint => _settings.CloseBehavior switch
-    {
-        MainWindowCloseBehavior.MinimizeToTray => "隐藏窗口，后台服务继续运行",
-        MainWindowCloseBehavior.ExitAll => "退出应用并停止后台服务",
-        _ => "关闭界面，后台服务继续运行"
-    };
+    public string CloseHint => _settings.CloseBehavior == MainWindowCloseBehavior.ExitAll
+        ? "退出应用并停止后台服务"
+        : "关闭界面，后台服务继续运行";
 
     // 后台效率
 
@@ -234,7 +225,6 @@ public class BehaviorViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(CloseMinimizeToTray));
         OnPropertyChanged(nameof(CloseExitAll));
-        OnPropertyChanged(nameof(CloseWindowOnly));
         OnPropertyChanged(nameof(CloseHint));
     }
 }

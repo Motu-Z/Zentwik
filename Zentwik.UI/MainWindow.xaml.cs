@@ -464,33 +464,22 @@ public partial class MainWindow : Window
         Close();
     }
 
-    // 托盘图标是否创建成功。没有托盘时窗口不能隐藏，否则没人能把它叫回来。
-    public bool MinimizeToTrayEnabled { get; set; }
-
     internal enum WindowCloseAction
     {
-        /// <summary>退 UI，并连带关掉本次 UI 拉起的 Worker。</summary>
+        /// <summary>退界面，并连带停掉后台服务。</summary>
         ExitAll,
 
-        /// <summary>只退 UI，Worker 常驻。</summary>
+        /// <summary>只退界面，后台服务与托盘常驻。</summary>
         ExitUiKeepWorker,
-
-        /// <summary>窗口收进托盘，UI 进程存活。</summary>
-        Hide,
     }
 
-    internal static WindowCloseAction ResolveCloseAction(
-        bool trayAvailable,
-        MainWindowCloseBehavior behavior)
-    {
-        if (behavior == MainWindowCloseBehavior.CloseWindowOnly)
-            return WindowCloseAction.ExitUiKeepWorker;
-
-        if (behavior == MainWindowCloseBehavior.ExitAll || !trayAvailable)
-            return WindowCloseAction.ExitAll;
-
-        return WindowCloseAction.Hide;
-    }
+    /// <summary>
+    /// 两档：托盘归后台服务后，「收进托盘」与旧的「只留服务」等价，都是退界面。
+    /// </summary>
+    internal static WindowCloseAction ResolveCloseAction(MainWindowCloseBehavior behavior) =>
+        behavior == MainWindowCloseBehavior.ExitAll
+            ? WindowCloseAction.ExitAll
+            : WindowCloseAction.ExitUiKeepWorker;
 
     /// <summary>退出时给 Worker 发 shutdown 的超时。分连接与收发两段，最坏约两倍。</summary>
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(2);
@@ -502,31 +491,19 @@ public partial class MainWindow : Window
         if (_allowClose)
             return;
 
-        WindowCloseAction action = ResolveCloseAction(
-            MinimizeToTrayEnabled, AppSettings.Instance.CloseBehavior);
-
-        if (action == WindowCloseAction.ExitAll)
+        if (ResolveCloseAction(AppSettings.Instance.CloseBehavior) == WindowCloseAction.ExitAll)
         {
             // 窗口关掉之后 WPF 立刻结束进程，fire-and-forget 的关闭请求经常还没连上。
             WorkerLauncher.RequestShutdown(ShutdownTimeout, evenIfNotOwned: true);
         }
-
-        // 两档退出都让窗口正常关闭。
-        if (action != WindowCloseAction.Hide)
-            return;
-
-        e.Cancel = true;
-        Hide();
     }
 
     private bool _allowClose;
 
-    public void ExitApplication()
+    /// <summary>后台服务的托盘退出：只关界面，不再发 shutdown。</summary>
+    public void CloseForWorkerExit()
     {
         _allowClose = true;
-
-        // 托盘里的「退出」是显式关整个应用，不受「仅留服务」影响。
-        WorkerLauncher.RequestShutdown(ShutdownTimeout, evenIfNotOwned: true);
         Close();
     }
 

@@ -98,7 +98,7 @@ namespace Zentwik.Core.Services
         public static string DescribeMode(AutoStartMode mode) => mode switch
         {
             AutoStartMode.None => "不自启",
-            AutoStartMode.WorkerOnly => "只启动后台服务（不显示界面、不建托盘）",
+            AutoStartMode.WorkerOnly => "只启动后台服务（不显示界面）",
             AutoStartMode.WorkerWithTray => "启动后台服务 + 托盘图标",
             AutoStartMode.WorkerWithUI => "启动后台服务 + 主界面",
             _ => "未知形态"
