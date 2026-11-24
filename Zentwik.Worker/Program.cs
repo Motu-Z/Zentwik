@@ -195,7 +195,7 @@ namespace Zentwik.Worker
                     return "后台服务未响应";
                 }
 
-                return success && !TraySuccessNotifyEnabled() ? null : message;
+                return success && !ReadFlag("ui-settings.json", "NotifyOnTraySuccess") ? null : message;
             };
             host.ShowRequested = () => _ = Task.Run(() => LaunchUi(log, null));
 
@@ -223,7 +223,7 @@ namespace Zentwik.Worker
         /// <summary>右键那一刻现算：方案可能刚在界面里被新建、改名、切换。</summary>
         private static IReadOnlyList<TrayMenuItem> BuildTrayMenu(PlanService plans)
         {
-            if (!TrayPlanMenuEnabled())
+            if (!ReadFlag("ui-entry.json", "trayPlanMenu"))
             {
                 return TrayMenu.Build(Array.Empty<TrayPlanGroup>());
             }
@@ -258,15 +258,15 @@ namespace Zentwik.Worker
             }
         }
 
-        /// <summary>托盘切换后是否弹回执。该开关在 ui-settings.json，不进后台同步链路。</summary>
-        private static bool TraySuccessNotifyEnabled()
+        /// <summary>读数据目录下某个 JSON 的布尔项。AOT 下不能用反射反序列化，手工读一项。</summary>
+        private static bool ReadFlag(string fileName, string property)
         {
             try
             {
                 string path = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                     "Zentwik",
-                    "ui-settings.json");
+                    fileName);
 
                 if (!File.Exists(path))
                 {
@@ -275,33 +275,7 @@ namespace Zentwik.Worker
 
                 using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
 
-                return !document.RootElement.TryGetProperty("NotifyOnTraySuccess", out JsonElement value)
-                       || value.ValueKind != JsonValueKind.False;
-            }
-            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-            {
-                return true;
-            }
-        }
-
-        /// <summary>读 ui-entry.json 的托盘方案开关。AOT 下不能用反射反序列化，手工读一项。</summary>
-        private static bool TrayPlanMenuEnabled()
-        {
-            try
-            {
-                string path = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "Zentwik",
-                    "ui-entry.json");
-
-                if (!File.Exists(path))
-                {
-                    return true;
-                }
-
-                using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-
-                return !document.RootElement.TryGetProperty("trayPlanMenu", out JsonElement value)
+                return !document.RootElement.TryGetProperty(property, out JsonElement value)
                        || value.ValueKind != JsonValueKind.False;
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)

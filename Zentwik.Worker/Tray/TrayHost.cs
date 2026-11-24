@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Win32;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Services;
 
@@ -51,7 +50,7 @@ namespace Zentwik.Worker.Tray
 
         private bool _added;
 
-        private bool _onDarkTray = true;
+        private bool _darkTray = true;
 
         private int _taskbarCreatedMessage;
 
@@ -73,12 +72,16 @@ namespace Zentwik.Worker.Tray
         /// <summary>当前设置下图标是否该显示；设置保存后由主线程重问一次。</summary>
         public Func<bool>? ShouldShow { get; set; }
 
-        public bool IsAvailable => _added;
-
         /// <summary>建隐藏窗口与消息通道。图标是否显示由 <see cref="SetVisible"/> 决定。</summary>
         public bool Start()
         {
             _current = this;
+
+            if (_onDark.IsEmpty || _onLight.IsEmpty)
+            {
+                _log.Warn("托盘：图标资源缺失");
+                return false;
+            }
 
             if (!RegisterWindowClass())
             {
@@ -110,6 +113,8 @@ namespace Zentwik.Worker.Tray
 
             AllowMessages();
 
+            NativeMenuTheme.Apply(dark: !SystemAppearance.IsTaskbarLight());
+
             return true;
         }
 
@@ -121,40 +126,39 @@ namespace Zentwik.Worker.Tray
                 return;
             }
 
-            if (visible)
+            if (!visible)
             {
-                if (_onDark.IsEmpty || _onLight.IsEmpty)
+                if (_added)
                 {
-                    _log.Warn("托盘：图标资源缺失，跳过显示");
-                    return;
-                }
-
-                CheckEnvironment(force: true);
-
-                if (!_added)
-                {
-                    _added = AddIcon();
-                    _log.Info(_added ? "托盘：已显示" : "托盘：Shell_NotifyIcon 添加失败");
+                    RemoveIcon();
+                    _log.Info("托盘：已撤下");
                 }
 
                 return;
             }
 
+            CheckEnvironment(force: true);
+
+            if (_added)
+            {
+                return;
+            }
+
+            _added = AddIcon();
+            _log.Info(_added ? "托盘：已显示" : "托盘：Shell_NotifyIcon 添加失败");
+        }
+
+        private unsafe void RemoveIcon()
+        {
             if (!_added)
             {
                 return;
             }
 
-            TrayNative.NOTIFYICONDATAW data = new()
-            {
-                cbSize = sizeof(TrayNative.NOTIFYICONDATAW),
-                hWnd = _hwnd,
-                uID = IconId,
-            };
+            TrayNative.NOTIFYICONDATAW data = NewData();
 
             TrayNative.Shell_NotifyIconW(TrayNative.NIM_DELETE, ref data);
             _added = false;
-            _log.Info("托盘：已撤下");
         }
 
         /// <summary>从任意线程请求重评估图标是否该显示。</summary>
@@ -206,14 +210,9 @@ namespace Zentwik.Worker.Tray
                 return;
             }
 
-            TrayNative.NOTIFYICONDATAW data = new()
-            {
-                cbSize = sizeof(TrayNative.NOTIFYICONDATAW),
-                hWnd = _hwnd,
-                uID = IconId,
-                uFlags = TrayNative.NIF_INFO,
-                uTimeoutOrVersion = 5000,
-            };
+            TrayNative.NOTIFYICONDATAW data = NewData();
+            data.uFlags = TrayNative.NIF_INFO;
+            data.uTimeoutOrVersion = 5000;
 
             CopyText(data.szInfo, 256, text);
             CopyText(data.szInfoTitle, 64, title);
@@ -274,15 +273,10 @@ namespace Zentwik.Worker.Tray
 
         private unsafe bool AddIcon()
         {
-            TrayNative.NOTIFYICONDATAW data = new()
-            {
-                cbSize = sizeof(TrayNative.NOTIFYICONDATAW),
-                hWnd = _hwnd,
-                uID = IconId,
-                uFlags = TrayNative.NIF_MESSAGE | TrayNative.NIF_ICON | TrayNative.NIF_TIP,
-                uCallbackMessage = TrayNative.WM_TRAY,
-                hIcon = _icon,
-            };
+            TrayNative.NOTIFYICONDATAW data = NewData();
+            data.uFlags = TrayNative.NIF_MESSAGE | TrayNative.NIF_ICON | TrayNative.NIF_TIP;
+            data.uCallbackMessage = TrayNative.WM_TRAY;
+            data.hIcon = _icon;
 
             CopyText(data.szTip, 128, "Zentwik");
 
@@ -292,14 +286,9 @@ namespace Zentwik.Worker.Tray
 
         private unsafe void ModifyIcon()
         {
-            TrayNative.NOTIFYICONDATAW data = new()
-            {
-                cbSize = sizeof(TrayNative.NOTIFYICONDATAW),
-                hWnd = _hwnd,
-                uID = IconId,
-                uFlags = TrayNative.NIF_ICON,
-                hIcon = _icon,
-            };
+            TrayNative.NOTIFYICONDATAW data = NewData();
+            data.uFlags = TrayNative.NIF_ICON;
+            data.hIcon = _icon;
 
             TrayNative.Shell_NotifyIconW(TrayNative.NIM_MODIFY, ref data);
         }
@@ -307,10 +296,12 @@ namespace Zentwik.Worker.Tray
         /// <summary>按任务栏明暗与系统小图标尺寸重选一档；没变化就不动资源。</summary>
         private void CheckEnvironment(bool force)
         {
-            bool dark = IsTaskbarDark();
+            bool dark = !SystemAppearance.IsTaskbarLight();
             int size = Math.Clamp(TrayNative.GetSystemMetrics(TrayNative.SM_CXSMICON), 16, 48);
 
-            if (!force && dark == _onDarkTray && size == _iconSize)
+            NativeMenuTheme.Apply(dark);
+
+            if (!force && dark == _darkTray && size == _iconSize)
             {
                 return;
             }
@@ -326,7 +317,7 @@ namespace Zentwik.Worker.Tray
 
             _icon = newIcon;
             _iconSize = size;
-            _onDarkTray = dark;
+            _darkTray = dark;
 
             if (_added)
             {
@@ -337,26 +328,6 @@ namespace Zentwik.Worker.Tray
             {
                 TrayNative.DestroyIcon(previous);
             }
-        }
-
-        private static bool IsTaskbarDark()
-        {
-            try
-            {
-                using RegistryKey? key = Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-
-                // 任务栏跟随「Windows 模式」，与应用模式是两个键。
-                if (key?.GetValue("SystemUsesLightTheme") is int light)
-                {
-                    return light == 0;
-                }
-            }
-            catch (Exception)
-            {
-            }
-
-            return true;
         }
 
         private static IntPtr WindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -412,13 +383,7 @@ namespace Zentwik.Worker.Tray
                 return;
             }
 
-            Dictionary<int, string> commands = new();
-            int nextId = 1;
-
-            IReadOnlyList<TrayMenuItem> items =
-                MenuProvider?.Invoke() ?? TrayMenu.Build(Array.Empty<TrayPlanGroup>());
-
-            IntPtr menu = BuildMenu(items, commands, ref nextId);
+            IntPtr menu = TrayNative.CreatePopupMenu();
 
             if (menu == IntPtr.Zero)
             {
@@ -427,13 +392,16 @@ namespace Zentwik.Worker.Tray
 
             try
             {
-                foreach (KeyValuePair<int, string> pair in commands)
+                MenuState state = new();
+
+                FillMenu(
+                    menu,
+                    MenuProvider?.Invoke() ?? TrayMenu.Build(Array.Empty<TrayPlanGroup>()),
+                    state);
+
+                if (state.DefaultId != 0)
                 {
-                    if (pair.Value == TrayMenu.KeyShow)
-                    {
-                        TrayNative.SetMenuDefaultItem(menu, (uint)pair.Key, 0);
-                        break;
-                    }
+                    TrayNative.SetMenuDefaultItem(menu, (uint)state.DefaultId, 0);
                 }
 
                 TrayNative.GetCursorPos(out TrayNative.POINT point);
@@ -450,7 +418,7 @@ namespace Zentwik.Worker.Tray
 
                 TrayNative.PostMessageW(_hwnd, TrayNative.WM_NULL, IntPtr.Zero, IntPtr.Zero);
 
-                if (command > 0 && commands.TryGetValue(command, out string? key))
+                if (command > 0 && state.Commands.TryGetValue(command, out string? key))
                 {
                     Invoke(key);
                 }
@@ -462,16 +430,8 @@ namespace Zentwik.Worker.Tray
             }
         }
 
-        private static IntPtr BuildMenu(
-            IReadOnlyList<TrayMenuItem> items, Dictionary<int, string> commands, ref int nextId)
+        private static void FillMenu(IntPtr menu, IReadOnlyList<TrayMenuItem> items, MenuState state)
         {
-            IntPtr menu = TrayNative.CreatePopupMenu();
-
-            if (menu == IntPtr.Zero)
-            {
-                return menu;
-            }
-
             foreach (TrayMenuItem item in items)
             {
                 if (item.IsSeparator)
@@ -482,20 +442,24 @@ namespace Zentwik.Worker.Tray
 
                 if (item.Children is { Count: > 0 })
                 {
-                    IntPtr submenu = BuildMenu(item.Children, commands, ref nextId);
+                    IntPtr submenu = TrayNative.CreatePopupMenu();
+                    FillMenu(submenu, item.Children, state);
                     TrayNative.AppendMenuW(
                         menu, TrayNative.MF_POPUP | TrayNative.MF_STRING, submenu, item.Label);
                     continue;
                 }
 
-                int id = nextId++;
-                commands[id] = item.Key;
+                int id = state.NextId++;
+                state.Commands[id] = item.Key;
+
+                if (item.Key == TrayMenu.KeyShow)
+                {
+                    state.DefaultId = id;
+                }
 
                 uint flags = TrayNative.MF_STRING | (item.IsChecked ? (uint)TrayNative.MF_CHECKED : 0u);
                 TrayNative.AppendMenuW(menu, flags, new IntPtr(id), item.Label);
             }
-
-            return menu;
         }
 
         private void Invoke(string key)
@@ -536,32 +500,34 @@ namespace Zentwik.Worker.Tray
             });
         }
 
+        /// <summary>菜单项编号到命令键的映射，顺带记下默认项。</summary>
+        private sealed class MenuState
+        {
+            public Dictionary<int, string> Commands { get; } = new();
+
+            public int NextId { get; set; } = 1;
+
+            public int DefaultId { get; set; }
+        }
+
+        private unsafe TrayNative.NOTIFYICONDATAW NewData() => new()
+        {
+            cbSize = sizeof(TrayNative.NOTIFYICONDATAW),
+            hWnd = _hwnd,
+            uID = IconId,
+        };
+
         private static unsafe void CopyText(char* destination, int capacity, string value)
         {
             int length = Math.Min(value.Length, capacity - 1);
 
-            for (int i = 0; i < length; i++)
-            {
-                destination[i] = value[i];
-            }
-
+            value.AsSpan(0, length).CopyTo(new Span<char>(destination, capacity));
             destination[length] = '\0';
         }
 
         public unsafe void Dispose()
         {
-            if (_added)
-            {
-                TrayNative.NOTIFYICONDATAW data = new()
-                {
-                    cbSize = sizeof(TrayNative.NOTIFYICONDATAW),
-                    hWnd = _hwnd,
-                    uID = IconId,
-                };
-
-                TrayNative.Shell_NotifyIconW(TrayNative.NIM_DELETE, ref data);
-                _added = false;
-            }
+            RemoveIcon();
 
             if (_icon != IntPtr.Zero)
             {

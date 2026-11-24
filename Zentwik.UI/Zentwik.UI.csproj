@@ -18,7 +18,7 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredPGO>true</TieredPGO>
 
-    <Version>2.6.0-can13</Version>
+    <Version>2.6.0-can14</Version>
     <FileVersion>2.4.6.0</FileVersion>
     <AssemblyVersion>2.4.6.0</AssemblyVersion>
 

@@ -122,71 +122,6 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(IntPtr hIcon);
 
-    //  由 DIB 创建 HICON（托盘图标运行时渲染用）
-
-    /// <summary>CreateDIBSection 的用法：DIB_RGB_COLORS。</summary>
-    public const uint DIB_RGB_COLORS = 0;
-
-    /// <summary>biHeight 取负表示自上而下（top-down）DIB。</summary>
-    public const int DIB_TOPDOWN = -1;
-
-    /// <summary>biCompression：BI_RGB，不压缩。</summary>
-    public const uint BI_RGB = 0;
-
-    /// <summary>BITMAPINFOHEADER + 附加的 RGBQUAD 数组（biSizeImage 之后紧跟）</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    public struct BITMAPINFO
-    {
-        public uint biSize;
-        public int biWidth;
-        public int biHeight;
-        public ushort biPlanes;
-        public ushort biBitCount;
-        public uint biCompression;
-        public uint biSizeImage;
-        public int biXPelsPerMeter;
-        public int biYPelsPerMeter;
-        public uint biClrUsed;
-        public uint biClrImportant;
-
-        // RGBQUAD[1] —— 32bpp 时不需要调色板，但结构体要留出这个位置，
-        // 否则 CreateDIBSection 会因为结构体长度不符而失败。
-        public uint biColors;
-    }
-
-    /// <summary>ICONINFO —— 描述一个图标（彩色位图 + 掩码位图）</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    public struct ICONINFO
-    {
-        public bool fIcon;
-        public int xHotspot;
-        public int yHotspot;
-        public IntPtr hbmMask;
-        public IntPtr hbmColor;
-    }
-
-    [DllImport("gdi32.dll", SetLastError = true)]
-    public static extern IntPtr CreateDIBSection(
-        IntPtr hdc, ref BITMAPINFO pbmi, uint iUsage,
-        out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
-
-    [DllImport("gdi32.dll", SetLastError = true)]
-    public static extern IntPtr CreateBitmap(
-        int nWidth, int nHeight, uint nPlanes, uint nBitsPerPixel, IntPtr lpBits);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern IntPtr CreateIconIndirect(ref ICONINFO piconinfo);
-
-    [DllImport("gdi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool DeleteObject(IntPtr hObject);
-
-    [DllImport("user32.dll")]
-    public static extern IntPtr GetDC(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-
     /// <summary>屏幕坐标点。</summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
@@ -258,29 +193,4 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    /// <summary>让进程内的 Win32 原生控件（菜单、消息框、滚动条）跟随系统深浅色</summary>
-    public static void EnableNativeDarkMenus()
-    {
-        try
-        {
-            if (Environment.OSVersion.Version.Build < 22000)
-            {
-                return;
-            }
-
-            SetPreferredAppMode(1);
-            FlushMenuThemes();
-        }
-        catch (Exception)
-        {
-            // 精简版系统可能缺这个导出 —— 退回系统默认浅色菜单，不影响功能
-        }
-    }
-
-    [DllImport("uxtheme.dll", EntryPoint = "#135")]
-    private static extern int SetPreferredAppMode(int mode);
-
-    [DllImport("uxtheme.dll", EntryPoint = "#136")]
-    private static extern void FlushMenuThemes();
 }

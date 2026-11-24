@@ -11,10 +11,6 @@ namespace Zentwik.Worker.Tray
     internal static partial class TrayNative
     {
         public const int WM_NULL = 0x0000;
-        public const int WM_DESTROY = 0x0002;
-        public const int WM_CLOSE = 0x0010;
-        public const int WM_QUERYENDSESSION = 0x0011;
-        public const int WM_ENDSESSION = 0x0016;
         public const int WM_SETTINGCHANGE = 0x001A;
         public const int WM_DISPLAYCHANGE = 0x007E;
 
@@ -51,14 +47,11 @@ namespace Zentwik.Worker.Tray
         public const uint MSGFLT_ALLOW = 1;
 
         public const uint QS_ALLINPUT = 0x04FF;
-        public const uint INFINITE = 0xFFFFFFFF;
         public const uint WAIT_OBJECT_0 = 0;
-        public const uint WAIT_TIMEOUT = 0x102;
 
         public const uint PM_REMOVE = 0x0001;
         public const int SM_CXSMICON = 49;
         public const int DIB_RGB_COLORS = 0;
-        public const int GWLP_USERDATA = -21;
         public const int IDC_ARROW = 32512;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -185,11 +178,6 @@ namespace Zentwik.Worker.Tray
         [LibraryImport("user32.dll")]
         internal static partial IntPtr LoadCursorW(IntPtr hInstance, IntPtr lpCursorName);
 
-        [LibraryImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static partial bool SetWindowPos(
-            IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-
         [LibraryImport("shell32.dll", EntryPoint = "Shell_NotifyIconW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool Shell_NotifyIconW(int dwMessage, ref NOTIFYICONDATAW lpData);
@@ -267,6 +255,13 @@ namespace Zentwik.Worker.Tray
 
         [LibraryImport("user32.dll")]
         internal static partial int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+        /// <summary>uxtheme 未文档化入口：强制菜单明暗。须在菜单创建前设好，改后要 Flush。</summary>
+        [DllImport("uxtheme.dll", EntryPoint = "#135")]
+        internal static extern int SetPreferredAppMode(int mode);
+
+        [DllImport("uxtheme.dll", EntryPoint = "#136")]
+        internal static extern void FlushMenuThemes();
     }
 
     /// <summary>
@@ -315,46 +310,26 @@ namespace Zentwik.Worker.Tray
 
         public bool IsEmpty => _frames.Count == 0;
 
-        /// <summary>取与目标像素边长最接近的一档。</summary>
-        public byte[]? Nearest(int targetSize)
+        /// <summary>按目标边长取最接近的一档建 HICON。像素是 BGRA 直通 alpha，掩码位图只作协议要求存在。</summary>
+        public IntPtr CreateHIcon(int targetSize)
         {
             if (_frames.Count == 0)
             {
-                return null;
+                return IntPtr.Zero;
             }
 
-            (int Size, byte[] Pixels) best = _frames[0];
-            int bestDelta = Math.Abs(best.Size - targetSize);
+            (int Size, byte[] Pixels) frame = _frames[0];
 
-            foreach ((int Size, byte[] Pixels) frame in _frames)
+            foreach ((int Size, byte[] Pixels) candidate in _frames)
             {
-                int delta = Math.Abs(frame.Size - targetSize);
-                if (delta < bestDelta)
+                if (Math.Abs(candidate.Size - targetSize) < Math.Abs(frame.Size - targetSize))
                 {
-                    best = frame;
-                    bestDelta = delta;
+                    frame = candidate;
                 }
             }
 
-            return best.Pixels;
-        }
-
-        /// <summary>建 HICON。像素是 BGRA 直通 alpha，掩码位图只作协议要求存在。</summary>
-        public IntPtr CreateHIcon(int targetSize)
-        {
-            byte[]? pixels = Nearest(targetSize);
-
-            if (pixels is null)
-            {
-                return IntPtr.Zero;
-            }
-
-            int size = (int)Math.Round(Math.Sqrt(pixels.Length / 4.0));
-
-            if (size <= 0)
-            {
-                return IntPtr.Zero;
-            }
+            int size = frame.Size;
+            byte[] pixels = frame.Pixels;
 
             IntPtr hdc = TrayNative.GetDC(IntPtr.Zero);
 

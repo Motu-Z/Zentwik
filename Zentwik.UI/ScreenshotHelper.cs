@@ -175,7 +175,7 @@ internal static class ScreenshotHelper
                 int size = sizes[i];
                 var image = new Image
                 {
-                    Source = TrayIconRenderer.RenderDrawing(drawing, size),
+                    Source = TrayIconAssets.RenderDrawing(drawing, size),
                     Width = size,
                     Height = size,
                 };

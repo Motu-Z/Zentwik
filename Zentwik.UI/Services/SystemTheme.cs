@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System.Windows.Media;
+using Zentwik.Core.Helpers;
 
 namespace Zentwik.UI.Services;
 
@@ -7,9 +8,6 @@ namespace Zentwik.UI.Services;
 /// <remarks>DWM\AccentColor 是 COLORREF（0x00BBGGRR）；AccentPalette 每 4 字节为 RGBA，主色在索引 3。</remarks>
 public static class SystemTheme
 {
-    private const string PersonalizeKey =
-        @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-
     private const string AccentPaletteKey =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent";
 
@@ -19,39 +17,7 @@ public static class SystemTheme
     private static readonly Color FallbackAccent = Color.FromRgb(0x38, 0xBD, 0xF8);
 
     /// <summary>应用模式是否为浅色（系统设置里的「应用模式」）。</summary>
-    public static bool IsSystemLightTheme() => ReadLightFlag("AppsUseLightTheme");
-
-    /// <summary>任务栏是否为浅色（系统设置里的「Windows 模式」，与「应用模式」可分别设置）。</summary>
-    public static bool IsTaskbarLight()
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
-            // 键不存在时与「应用模式」保持一致，避免读不到就判反。
-            if (key?.GetValue("SystemUsesLightTheme") is int v) return v != 0;
-        }
-        catch
-        {
-        }
-        return IsSystemLightTheme();
-    }
-
-    private static bool ReadLightFlag(string name)
-    {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
-            if (key?.GetValue(name) is int v)
-            {
-                return v != 0;
-            }
-        }
-        catch
-        {
-            // 注册表不可读（极少见）→ 回落到深色，与应用默认一致
-        }
-        return false;
-    }
+    public static bool IsSystemLightTheme() => SystemAppearance.IsAppLight();
 
     /// <summary>读取系统强调色</summary>
     public static Color GetSystemAccentColor()

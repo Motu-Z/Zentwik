@@ -36,9 +36,9 @@ public partial class App : Application
         // 全局禁用原生虚线焦点框。
         FocusVisualKiller.Initialize();
 
-        // 让 Win32 原生控件（托盘右键菜单、消息框、滚动条）跟随系统深浅色。
-        // 不调用的话，深色系统上会从托盘弹出一张纯白菜单。
-        NativeMethods.EnableNativeDarkMenus();
+        // 让 Win32 原生控件（消息框、滚动条）跟随应用深浅色。
+        Zentwik.Core.Helpers.NativeMenuTheme.Apply(
+            dark: !Zentwik.Core.Helpers.SystemAppearance.IsAppLight());
 
         // 外壳状态（诊断用）
         // --worker=offline: 把左下角的 Worker 状态灯切成断开态，用来核对两种外观。
