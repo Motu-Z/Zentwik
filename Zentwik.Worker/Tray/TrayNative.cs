@@ -255,13 +255,6 @@ namespace Zentwik.Worker.Tray
 
         [LibraryImport("user32.dll")]
         internal static partial int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-
-        /// <summary>uxtheme 未文档化入口：强制菜单明暗。须在菜单创建前设好，改后要 Flush。</summary>
-        [DllImport("uxtheme.dll", EntryPoint = "#135")]
-        internal static extern int SetPreferredAppMode(int mode);
-
-        [DllImport("uxtheme.dll", EntryPoint = "#136")]
-        internal static extern void FlushMenuThemes();
     }
 
     /// <summary>
