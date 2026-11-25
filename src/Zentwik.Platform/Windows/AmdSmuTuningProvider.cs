@@ -23,7 +23,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
     private DateTimeOffset _lastFailureAt = DateTimeOffset.MinValue;
     private CpuTuningStatus? _lastFailure;
     private CoCommands _commands;
-    private CoreAddressing _addressing = CoreAddressing.Bitmask;
+    private AmdCoreMap _coreMap = AmdCoreMap.Empty;
     private uint _smuVersion;
     private bool _probed;
 
@@ -48,20 +48,20 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
                 return false;
             }
 
-            var values = new List<CoreOffset>(_info.PhysicalCoreCount);
-            var failed = new List<string>(_info.PhysicalCoreCount);
+            var values = new List<CoreOffset>(_coreMap.Cores.Count);
+            var failed = new List<string>(_coreMap.Cores.Count);
             var result = new long[MaxArgs];
-            for (var core = 0; core < _info.PhysicalCoreCount; core++)
+            foreach (var core in _coreMap.Cores)
             {
                 Array.Clear(result);
-                var mask = EncodeMask((uint)core);
+                var mask = AmdCoreMask.Encode(core, _commands.Family);
                 if (!TrySend(_commands.Get, [mask], result, out var failure))
                 {
-                    failed.Add($"{core}(0x{mask:X8}) {failure}");
+                    failed.Add($"{core.LogicalIndex}(CCD {core.Ccd}/核 {core.Core}, 0x{mask:X8}) {failure}");
                     continue;
                 }
 
-                values.Add(new CoreOffset(core, SignExtend16(result[0])));
+                values.Add(new CoreOffset(core.LogicalIndex, SignExtend16(result[0])));
             }
 
             if (values.Count == 0)
@@ -73,7 +73,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             offsets = values;
             error = failed.Count == 0
                 ? null
-                : $"{failed.Count}/{_info.PhysicalCoreCount} 个核读取失败：{string.Join("；", failed)}";
+                : $"{failed.Count}/{_coreMap.Cores.Count} 个核读取失败：{string.Join("；", failed)}";
             return true;
         }
     }
@@ -94,7 +94,13 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
                 return false;
             }
 
-            var mask = EncodeMask((uint)core);
+            if (!_coreMap.TryGet(core, out var address))
+            {
+                error = $"核 {core} 不在当前映射中（共 {_coreMap.Cores.Count} 个物理核）。";
+                return false;
+            }
+
+            var mask = AmdCoreMask.Encode(address, _commands.Family);
             var payload = (mask & 0xFFF0_0000u) | (unchecked((uint)offset) & 0xFFFFu);
             var scratch = new long[MaxArgs];
             if (!TrySend(_commands.Set, [payload], scratch, out error))
@@ -164,7 +170,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         _session?.Dispose();
         _session = null;
         _probed = false;
-        _addressing = CoreAddressing.Bitmask;
+        _coreMap = AmdCoreMap.Empty;
 
         var vendor = _info.CpuVendor;
         if (!string.Equals(vendor, "AuthenticAMD", StringComparison.OrdinalIgnoreCase))
@@ -219,7 +225,14 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             return new CpuTuningStatus(HardwareAvailability.ProbeFailed, error, vendor, PlatformName(family, model), true, false);
         }
 
-        if (!ProbeCoreAccess(out error))
+        _coreMap = ResolveCoreMap(family, out error);
+        if (!_coreMap.IsUsable)
+        {
+            DisposeSession();
+            return new CpuTuningStatus(HardwareAvailability.Rejected, error ?? _coreMap.Detail, vendor, PlatformName(family, model), true, false);
+        }
+
+        if (!ProbeCoreReads(out error))
         {
             DisposeSession();
             return new CpuTuningStatus(HardwareAvailability.Rejected, error, vendor, PlatformName(family, model), true, false);
@@ -230,36 +243,64 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
     }
 
     /// <summary>
-    /// 各代固件对核地址的编码并不一致：有的把核序号放在 bit[23:20]，有的用独热位 bit[20+核]。
-    /// 用只读命令试出可用的那一种，避免把「掩码 0」当成有效核地址发给固件。
+    /// 映射优先取 APOB 固件表（由 ZENTWIK_APOB_TABLE 提供），否则由 CPUID 核号与 L3 缓存域推导。
+    /// 两种来源都要求通过校验；都不可用时返回不可用，不退回按序号推算。
     /// </summary>
-    private bool ProbeCoreAccess(out string? error)
+    private AmdCoreMap ResolveCoreMap(uint family, out string? error)
     {
-        var attempts = new List<string>(2);
+        error = null;
 
-        foreach (var addressing in (ReadOnlySpan<CoreAddressing>)[CoreAddressing.Bitmask, CoreAddressing.Index])
+        if (AmdApobSource.TryLoad(out var table, out var loadError))
         {
-            var previous = _addressing;
-            _addressing = addressing;
-            var mask = EncodeMask(0);
+            if (AmdApobCoreMap.TryParse(table!, family, _info.ProcessorCount, out var map, out var parseError))
+            {
+                return map;
+            }
 
+            // 指定了 APOB 表却不能解析：说明映射假设不成立，不能改用别的来源掩盖。
+            error = parseError;
+            return AmdCoreMap.Empty;
+        }
+
+        if (loadError is not null)
+        {
+            error = loadError;
+            return AmdCoreMap.Empty;
+        }
+
+        var topology = AmdWindowsTopology.Resolve(family, _info.PhysicalCoreCount, _info.ProcessorCount, out var topologyError);
+        error = topologyError;
+        return topology;
+    }
+
+    /// <summary>
+    /// 只读探测：按映射逐个核发读命令，任一成功即认为通道可用。单个核（例如掩码为 0 的核 0）被拒
+    /// 不代表整条通道不可用，因此不在第一个核上就下结论，也不尝试别的编码。
+    /// </summary>
+    private bool ProbeCoreReads(out string? error)
+    {
+        string? firstFailure = null;
+
+        foreach (var core in _coreMap.Cores)
+        {
+            var mask = AmdCoreMask.Encode(core, _commands.Family);
             if (TrySend(_commands.Get, [mask], new long[MaxArgs], out var failure))
             {
                 error = null;
                 return true;
             }
 
-            _addressing = previous;
-            attempts.Add($"0x{mask:X8} → {failure}");
+            firstFailure ??= $"核 {core.LogicalIndex}（CCD {core.Ccd} / 核 {core.Core}，掩码 0x{mask:X8}）：{failure}";
         }
 
-        error = $"物理核 0 的 CO 读取被平台拒绝（{string.Join("；", attempts)}）";
+        error = $"全部 {_coreMap.Cores.Count} 个核的 CO 读取都被拒绝，首个失败为 {firstFailure}";
         return false;
     }
 
     private CpuTuningStatus Available() => new(
         HardwareAvailability.Available,
-        $"SMU 0x{_smuVersion:X8}，{_info.PhysicalCoreCount} 个物理核 / {_info.ProcessorCount} 线程。写入后逐核回读校验。",
+        $"SMU 0x{_smuVersion:X8}，{_coreMap.Cores.Count} 个物理核 / {_info.ProcessorCount} 线程。"
+        + $"{_coreMap.Detail}写入后逐核回读校验。",
         _info.CpuVendor,
         PlatformName(_commands.Family, _commands.Model),
         true,
@@ -294,23 +335,6 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         }
 
         return true;
-    }
-
-    private uint EncodeMask(uint core)
-    {
-        var ccd = core / 8;
-        var localCore = core % 8;
-
-        if (_addressing == CoreAddressing.Bitmask)
-        {
-            return _commands.Family > 0x17
-                ? (ccd << 28) | (1u << (int)(20 + localCore))
-                : (ccd << 28) | (1u << (int)(24 + ((core / 4) % 2))) | (1u << (int)(20 + (core % 4)));
-        }
-
-        return _commands.Family > 0x17
-            ? (ccd << 28) | (localCore << 20)
-            : (ccd << 28) | (((core / 4) % 2) << 24) | ((core % 4) << 20);
     }
 
     private static string DescribeFailure(uint message, int code)
@@ -400,12 +424,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         _session?.Dispose();
         _session = null;
         _probed = false;
-    }
-
-    private enum CoreAddressing
-    {
-        Bitmask,
-        Index,
+        _coreMap = AmdCoreMap.Empty;
     }
 
     private readonly record struct CoCommands(uint Family, uint Model, uint Set, uint Get);

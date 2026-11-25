@@ -48,6 +48,7 @@ internal static partial class Native
     internal static partial uint GetActiveProcessorGroupCount();
 
     internal const int RelationProcessorCore = 0;
+    internal const int RelationCache = 2;
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -55,6 +56,12 @@ internal static partial class Native
         int relationshipType,
         nint buffer,
         ref uint length);
+
+    [LibraryImport("kernel32.dll")]
+    internal static partial nint GetCurrentThread();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial UIntPtr SetThreadAffinityMask(nint thread, UIntPtr mask);
 
     internal static readonly nint InvalidHandleValue = -1;
 

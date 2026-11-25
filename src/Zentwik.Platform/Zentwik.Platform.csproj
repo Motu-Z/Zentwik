@@ -9,4 +9,8 @@
     <ProjectReference Include="..\Zentwik.Domain\Zentwik.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Zentwik.Platform.Tests" />
+  </ItemGroup>
+
 </Project>

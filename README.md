@@ -78,7 +78,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 调校通道可用性：`available` / `notSupported` / `driverUnavailable` / `moduleMissing` / `privilegeMissing`（PawnIO 拒绝访问，需要管理员运行代理）/ `probeFailed` / `rejected`（通道可用但平台拒绝该操作，例如固件锁定 CO）。
 
-核地址编码在探测阶段确定：先按独热位 `bit[20+核]` 读物理核 0，失败再试序号编码 `bit[23:20]`；两种都被拒绝才报 `rejected` 并附上每次尝试的掩码与错误码。
+核地址编码固定为 `[31:28]` CCD、`[27:24]` CCX、`[23:20]` 核内序号（数值字段，不是独热位）；写入参数低 16 位放 margin 的补码。核的物理位置优先取自 APOB 固件映射（`ZENTWIK_APOB_TABLE` 指向原始表），否则由 CPUID `0x8000001E` 的硬件核号与系统 L3 缓存域推导，并与物理核数、线程数交叉校验；两种来源都不可用时状态报 `rejected` 并给出原因，不按 `序号 / 8` 推算。
 
 场景恢复：场景退出且 `RestoreOnExit` 为真时回退自己的写入；代理停止时同样回退；上次异常退出遗留的写入在下次启动（同一启动周期内）补回退，整机重启后不擅自改写。
 
@@ -87,5 +87,5 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 - AMD FMax 写入、CPU Sets 写入、GPU 遥测、进程调度持续 enforce。
 - Intel 通道只做了 MSR 读取与电压偏移写入；睿频上限仅读，且没有在 Intel 机器上实测。
 - 服务安装/卸载与 Session 0 → 用户会话通信已在管理员会话验证通过（含伪造 owner.sid 的拒绝路径）；服务异常终止后的 SCM 恢复动作尚未实测。
-- AMD CO 在物理机上仍读不到：SMU 对 `0xD5` 返回 0xFF（命令执行失败）。已改为按物理核寻址并自动协商掩码编码，等待实机复验；写入同样未验证。
+- AMD CO 的读写未在真机验证：当前会话非管理员，PawnIO 拒绝访问，通道停在 `privilegeMissing`。此前"SMU 对 `0xD5` 返回 0xFF"的记录是在错误的独热位掩码下得到的，已不能作为平台限制的证据。
 - 休眠唤醒后的实际值复核未做。
