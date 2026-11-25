@@ -49,16 +49,25 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             }
 
             var values = new List<CoreOffset>(_info.PhysicalCoreCount);
+            var failed = new List<string>(_info.PhysicalCoreCount);
             var result = new long[MaxArgs];
             for (var core = 0; core < _info.PhysicalCoreCount; core++)
             {
                 Array.Clear(result);
-                if (!TrySend(_commands.Get, [EncodeMask((uint)core)], result, out error))
+                var mask = EncodeMask((uint)core);
+                if (!TrySend(_commands.Get, [mask], result, out var failure))
                 {
-                    return false;
+                    failed.Add($"{core}(0x{mask:X8}) {failure}");
+                    continue;
                 }
 
                 values.Add(new CoreOffset(core, SignExtend16(result[0])));
+            }
+
+            if (failed.Count > 0)
+            {
+                error = $"{failed.Count}/{_info.PhysicalCoreCount} 个核读取失败：{string.Join("；", failed)}";
+                return false;
             }
 
             offsets = values;
