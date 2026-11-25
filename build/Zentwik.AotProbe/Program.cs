@@ -285,7 +285,7 @@ internal static class Program
         Check("di.autoStart", true, "已构造（控制台代码页探测完成）");
 
         // 两条通道在任意平台都必须可解析：一条是真实现，另一条是不支持桩。
-        // 不能按具体类型取 —— 厂商模块只注册自己那一个，CI 跑在 Intel 机器上。
+        // 不能按具体类型取 —— 厂商模块只注册自己那一个。
         try
         {
             IAmdTuningChannel amd = provider.GetRequiredService<IAmdTuningChannel>();
@@ -297,6 +297,11 @@ internal static class Program
         {
             Check("tuning.channels", false, $"{ex.GetType().Name}: {ex.Message}");
         }
+
+        // 构建机池混装 AMD 与 Intel，注册分支随机器漂移；
+        // 两个厂商各建一次容器，才和跑在哪台机器上无关。
+        CheckVendorContainer(root, CpuVendor.Amd);
+        CheckVendorContainer(root, CpuVendor.Intel);
 
         // SMU 放在最后：构造后读状态会真的去开 PawnIO 驱动。
         // 直接 new 而不是解析容器，才能在非 AMD 机器上也走一遍真实类型。
@@ -322,6 +327,35 @@ internal static class Program
         catch (Exception ex)
         {
             Check("cpuset.topology", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 按指定厂商再注册一次容器，只验两条通道都能解析。
+    ///
+    /// 不开 ValidateOnBuild：那会真的构造全部单例，把只读探针变成一次完整启动。
+    /// </summary>
+    private static void CheckVendorContainer(string root, CpuVendor vendor)
+    {
+        string name = CpuVendorNames.ToName(vendor);
+
+        try
+        {
+            ServiceCollection services = new();
+            services.AddZentwikModules(
+                vendor,
+                options => options.Directory = Path.Combine(root, "VendorLogs", name));
+
+            using ServiceProvider provider = services.BuildServiceProvider();
+
+            IAmdTuningChannel amd = provider.GetRequiredService<IAmdTuningChannel>();
+            IIntelTuningChannel intel = provider.GetRequiredService<IIntelTuningChannel>();
+
+            Check($"di.vendor-{name}", true, $"amd={amd.Status}, intel={intel.Status}");
+        }
+        catch (Exception ex)
+        {
+            Check($"di.vendor-{name}", false, $"{ex.GetType().Name}: {ex.Message}");
         }
     }
 }
