@@ -8,10 +8,12 @@
     <PublishAot>false</PublishAot>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Zentwik.Contracts\Zentwik.Contracts.csproj" />
+    <ProjectReference Include="..\Zentwik.Core\Zentwik.Core.csproj" />
     <ProjectReference Include="..\Zentwik.Domain\Zentwik.Domain.csproj" />
     <ProjectReference Include="..\Zentwik.Platform\Zentwik.Platform.csproj" />
   </ItemGroup>

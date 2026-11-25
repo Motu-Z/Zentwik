@@ -158,7 +158,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 _ui.Post(_ =>
                 {
                     Replace(Capabilities, capabilities.Select(static c => new CapabilityRow(c.Id, c.State, c.Detail ?? string.Empty)));
-                    Replace(Plans, plans.Select(static p => new PlanRow(p.Kind, p.Name, $"rev {p.Revision}")));
+                    Replace(Plans, plans.Select(static p => new PlanRow(p.Kind.ToString(), p.Name, $"rev {p.Revision}")));
                     Replace(Scenes, scenes.Select(static s => new SceneRow(s.Name, $"P{s.Priority}", string.Join(" · ", s.TargetPlanIds))));
                     _coreCount = status.ProcessorCount;
                     Raise(nameof(CoreText));

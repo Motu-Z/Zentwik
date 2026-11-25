@@ -8,13 +8,13 @@ namespace Zentwik.Contracts.Protocol;
 
 public static class ProtocolInfo
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     public const string PipeName = "zentwik-next-agent";
 
     public const int MaxFrameBytes = 4 * 1024 * 1024;
 
-    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
 }
 
 public static class Ops
@@ -22,17 +22,40 @@ public static class Ops
     public const string Ping = "agent.ping";
     public const string Status = "agent.status";
     public const string CapabilitiesList = "capabilities.list";
+    public const string ModulesList = "modules.list";
     public const string TelemetrySubscribe = "telemetry.subscribe";
     public const string TelemetryUnsubscribe = "telemetry.unsubscribe";
+
     public const string PlansList = "plans.list";
+    public const string PlansGet = "plans.get";
+    public const string PlansSave = "plans.save";
+    public const string PlansDelete = "plans.delete";
+    public const string PlansApply = "plans.apply";
+    public const string PlansRevert = "plans.revert";
+
     public const string ScenesList = "scenes.list";
+    public const string ScenesGet = "scenes.get";
+    public const string ScenesSave = "scenes.save";
+    public const string ScenesDelete = "scenes.delete";
+    public const string ScenesActivate = "scenes.activate";
+    public const string ScenesDeactivate = "scenes.deactivate";
+
+    public const string LedgerList = "ledger.list";
+    public const string LedgerRelease = "ledger.release";
+
     public const string SettingsGet = "settings.get";
     public const string SettingsSet = "settings.set";
+
+    public const string TuningRead = "hardware.tuning.read";
+
+    public const string DiagnosticsDoctor = "diagnostics.doctor";
+    public const string DiagnosticsLog = "diagnostics.log";
 }
 
 public static class Events
 {
     public const string TelemetrySample = "telemetry.sample";
+    public const string SceneChanged = "scene.changed";
 }
 
 public static class ErrorCodes
@@ -41,7 +64,19 @@ public static class ErrorCodes
     public const string ProtocolMalformed = "protocol.malformed";
     public const string UnknownOperation = "request.unknown_operation";
     public const string PayloadInvalid = "request.payload_invalid";
+    public const string Unauthorized = "request.unauthorized";
     public const string Internal = "agent.internal";
+
+    public const string PlanNotFound = "plan.not_found";
+    public const string PlanInvalid = "plan.invalid";
+    public const string PlanRevisionMismatch = "plan.revision_mismatch";
+    public const string SceneNotFound = "scene.not_found";
+    public const string SceneInvalid = "scene.invalid";
+    public const string LedgerEntryMissing = "ledger.entry_missing";
+
+    public const string HardwareUnavailable = "hardware.unavailable";
+    public const string HardwareWriteFailed = "hardware.write_failed";
+    public const string HardwareVerifyFailed = "hardware.verify_failed";
 }
 
 public sealed class RequestEnvelope

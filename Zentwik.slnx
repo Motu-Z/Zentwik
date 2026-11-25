@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Zentwik.Contracts/Zentwik.Contracts.csproj" />
+    <Project Path="src/Zentwik.Core/Zentwik.Core.csproj" />
     <Project Path="src/Zentwik.Domain/Zentwik.Domain.csproj" />
     <Project Path="src/Zentwik.Localization/Zentwik.Localization.csproj" />
     <Project Path="src/Zentwik.Platform/Zentwik.Platform.csproj" />
@@ -9,6 +10,7 @@
     <Project Path="src/Zentwik.Cli/Zentwik.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Zentwik.Core.Tests/Zentwik.Core.Tests.csproj" />
     <Project Path="tests/Zentwik.Domain.Tests/Zentwik.Domain.Tests.csproj" />
     <Project Path="tests/Zentwik.Contracts.Tests/Zentwik.Contracts.Tests.csproj" />
   </Folder>

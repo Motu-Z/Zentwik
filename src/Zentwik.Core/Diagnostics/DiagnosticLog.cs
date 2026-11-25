@@ -1,31 +1,55 @@
 using System.Text;
+using Zentwik.Contracts.Dto;
 
-namespace Zentwik.Agent.Diagnostics;
+namespace Zentwik.Core.Diagnostics;
 
 /// <summary>按天分文件；只记操作事实，不记完整配置内容。</summary>
-public sealed class AgentLog : IDisposable
+public sealed class DiagnosticLog : IDisposable
 {
     private const long MaxFileBytes = 8 * 1024 * 1024;
+    private const int RecentCapacity = 200;
 
     private readonly string _directory;
     private readonly Lock _gate = new();
     private readonly bool _echo;
+    private readonly Queue<LogEntryDto> _recent = new(RecentCapacity);
     private StreamWriter? _writer;
     private DateOnly _currentDay;
     private int _disposed;
 
-    public AgentLog(string dataDirectory, bool echoToConsole = true)
+    public DiagnosticLog(string dataDirectory, bool echoToConsole = true)
     {
         _directory = Path.Combine(dataDirectory, "logs");
         _echo = echoToConsole;
         Directory.CreateDirectory(_directory);
     }
 
-    public void Info(string message) => Write("INFO", message);
+    public string DirectoryPath => _directory;
 
-    public void Warn(string message) => Write("WARN", message);
+    public string? CurrentFilePath => _writer?.BaseStream is { } stream
+        ? (stream as FileStream)?.Name
+        : null;
 
-    public void Error(string message) => Write("ERROR", message);
+    public void Info(string message) => Write("info", message);
+
+    public void Warn(string message) => Write("warn", message);
+
+    public void Error(string message) => Write("error", message);
+
+    public IReadOnlyList<LogEntryDto> Recent(int limit) => Recent(limit, null);
+
+    public IReadOnlyList<LogEntryDto> RecentErrors(int limit) => Recent(limit, "error");
+
+    private IReadOnlyList<LogEntryDto> Recent(int limit, string? level)
+    {
+        lock (_gate)
+        {
+            return _recent
+                .Where(entry => level is null || entry.Level == level)
+                .TakeLast(Math.Clamp(limit, 1, RecentCapacity))
+                .ToArray();
+        }
+    }
 
     private void Write(string level, string message)
     {
@@ -34,10 +58,17 @@ public sealed class AgentLog : IDisposable
             return;
         }
 
-        var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff} {level,-5} {message}";
+        var timestamp = DateTimeOffset.Now;
+        var line = $"{timestamp:yyyy-MM-dd HH:mm:ss.fff} {level.ToUpperInvariant(),-5} {message}";
 
         lock (_gate)
         {
+            _recent.Enqueue(new LogEntryDto(timestamp, level, message));
+            while (_recent.Count > RecentCapacity)
+            {
+                _recent.Dequeue();
+            }
+
             try
             {
                 EnsureWriter();
@@ -46,7 +77,6 @@ public sealed class AgentLog : IDisposable
             }
             catch (IOException)
             {
-                // 日志失败不得影响主流程。
             }
             catch (UnauthorizedAccessException)
             {

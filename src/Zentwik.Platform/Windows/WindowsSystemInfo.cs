@@ -26,6 +26,8 @@ public sealed class WindowsSystemInfo : ISystemInfo
 
     public string? CpuName => ReadProcessorValue("ProcessorNameString");
 
+    public string? CpuIdentifier => ReadProcessorValue("Identifier");
+
     private static string? ReadProcessorValue(string name)
     {
         try

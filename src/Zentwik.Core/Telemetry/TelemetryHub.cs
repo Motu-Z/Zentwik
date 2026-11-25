@@ -1,6 +1,6 @@
 using Zentwik.Platform;
 
-namespace Zentwik.Agent.Telemetry;
+namespace Zentwik.Core.Telemetry;
 
 /// <summary>采样串行化：Win32 差分状态在并发调用下会错乱。</summary>
 public sealed class TelemetryHub(ITelemetrySource source)
@@ -45,7 +45,6 @@ public sealed class TelemetryHub(ITelemetrySource source)
             }
             catch (Exception)
             {
-                // 采样失败不终止订阅：下一个周期继续尝试。
                 continue;
             }
 

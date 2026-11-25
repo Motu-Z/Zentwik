@@ -7,6 +7,12 @@ internal static partial class Native
 {
     public const uint ErrorSuccess = 0;
 
+    public const uint GenericRead = 0x80000000;
+    public const uint GenericWrite = 0x40000000;
+    public const uint FileShareRead = 0x00000001;
+    public const uint FileShareWrite = 0x00000002;
+    public const uint OpenExisting = 3;
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct FileTime
     {
@@ -60,13 +66,48 @@ internal static partial class Native
     [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial nint LocalFree(nint memory);
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DeviceIoControl(
+        nint device,
+        uint code,
+        byte[]? inBuffer,
+        uint inSize,
+        byte[]? outBuffer,
+        uint outSize,
+        out uint returned,
+        nint overlapped);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetNamedPipeClientProcessId(nint pipe, out uint processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetNamedPipeClientSessionId(nint pipe, out uint sessionId);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SystemPowerStatus
+    {
+        public byte AcLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag;
+        public uint BatteryLifeTime;
+        public uint BatteryFullLifeTime;
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetSystemPowerStatus(out SystemPowerStatus status);
+
     [LibraryImport("powrprof.dll")]
     internal static partial uint PowerGetActiveScheme(nint userRootPowerKey, out nint activePolicyGuid);
 
     [LibraryImport("powrprof.dll")]
     internal static partial uint PowerSetActiveScheme(nint userRootPowerKey, in Guid schemeGuid);
 
-    [LibraryImport("powrprof.dll")]
+    [LibraryImport("powrprof.dll", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial uint PowerReadFriendlyName(
         nint rootPowerKey,
         in Guid schemeGuid,
@@ -74,4 +115,46 @@ internal static partial class Native
         nint powerSettingGuid,
         [Out] byte[] buffer,
         ref uint bufferSize);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerEnumerate(
+        nint rootPowerKey,
+        nint schemeGuid,
+        nint subGroupGuid,
+        uint accessor,
+        uint index,
+        [Out] byte[]? buffer,
+        ref uint bufferSize);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerReadACValueIndex(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        in Guid subGroupGuid,
+        in Guid settingGuid,
+        out uint value);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerReadDCValueIndex(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        in Guid subGroupGuid,
+        in Guid settingGuid,
+        out uint value);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerWriteACValueIndex(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        in Guid subGroupGuid,
+        in Guid settingGuid,
+        uint value);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerWriteDCValueIndex(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        in Guid subGroupGuid,
+        in Guid settingGuid,
+        uint value);
 }

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Zentwik.Domain.Capabilities;
 
 namespace Zentwik.Platform.Windows;
@@ -6,30 +5,36 @@ namespace Zentwik.Platform.Windows;
 /// <summary>只读能力探测。写入能力一律不宣称可用：API 存在不等于能安全写入。</summary>
 public static class WindowsCapabilityProbes
 {
-    public static IEnumerable<ICapabilityProbe> Create(ISystemInfo info, ITelemetrySource telemetry) =>
+    public static IEnumerable<ICapabilityProbe> Create(
+        ISystemInfo info,
+        ITelemetrySource telemetry,
+        ICpuTuningProvider tuning,
+        IProcessScheduler scheduler,
+        IPowerPolicyService power) =>
     [
-        new PowerPolicyProbe(),
+        new PowerPolicyProbe(power),
         new TelemetryProbe(telemetry),
-        new CpuSetsProbe(),
-        new VendorDriverProbe(CapabilityIds.AmdSmu, "AMD", "RyzenSMU", info),
-        new VendorDriverProbe(CapabilityIds.IntelMsr, "Intel", "IntelMSR", info),
+        new CpuTuningProbe(tuning),
+        new SchedulingProbe(),
+        new IntelMsrProbe(info),
+        new SceneEngineProbe(),
     ];
 }
 
-internal sealed class PowerPolicyProbe : ICapabilityProbe
+internal sealed class PowerPolicyProbe(IPowerPolicyService power) : ICapabilityProbe
 {
     public string CapabilityId => CapabilityIds.PowerPolicy;
 
     public CapabilityDescriptor Probe()
     {
-        var active = new Win32PowerPolicyService().GetActiveScheme();
+        var active = power.GetActiveScheme();
         return new CapabilityDescriptor
         {
             Id = CapabilityId,
             State = active is null ? CapabilityState.Failed : CapabilityState.Enabled,
             Detail = active is null
                 ? "PowerGetActiveScheme 未返回活动方案。"
-                : $"活动方案 {active.FriendlyName}；写入需要管理员权限。",
+                : $"活动方案 {active.FriendlyName}；切换与写入需要管理员权限。",
         };
     }
 }
@@ -62,71 +67,76 @@ internal sealed class TelemetryProbe(ITelemetrySource telemetry) : ICapabilityPr
     }
 }
 
-internal sealed class CpuSetsProbe : ICapabilityProbe
+internal sealed class CpuTuningProbe(ICpuTuningProvider tuning) : ICapabilityProbe
 {
-    public string CapabilityId => CapabilityIds.CpuSets;
+    public string CapabilityId => CapabilityIds.AmdSmu;
 
     public CapabilityDescriptor Probe()
     {
-        var available = NativeLibrary.TryLoad("kernel32.dll", out var module)
-                        && NativeLibrary.TryGetExport(module, "SetProcessDefaultCpuSets", out _);
+        var status = tuning.Query();
+        var state = status.Availability switch
+        {
+            HardwareAvailability.Available => CapabilityState.Degraded,
+            HardwareAvailability.ProbeFailed => CapabilityState.Failed,
+            HardwareAvailability.DriverUnavailable or HardwareAvailability.ModuleMissing => CapabilityState.Installed,
+            _ => CapabilityState.Unavailable,
+        };
 
         return new CapabilityDescriptor
         {
             Id = CapabilityId,
-            State = available ? CapabilityState.Installed : CapabilityState.Unavailable,
-            Detail = available
-                ? "API 可用；调度写入路径尚未实现。"
-                : "当前系统不支持 SetProcessDefaultCpuSets。",
+            State = state,
+            Detail = status.Simulated ? $"模拟：{status.Detail}" : status.Detail,
         };
     }
 }
 
-/// <summary>只探测设备能否打开，不代表读写已验证，因此最高只给 Degraded。</summary>
-internal sealed class VendorDriverProbe(string capabilityId, string vendorToken, string module, ISystemInfo info)
-    : ICapabilityProbe
+internal sealed class SchedulingProbe : ICapabilityProbe
 {
-    public string CapabilityId => capabilityId;
+    public string CapabilityId => CapabilityIds.AffinityMask;
+
+    public CapabilityDescriptor Probe() => new()
+    {
+        Id = CapabilityId,
+        State = CapabilityState.Enabled,
+        Detail = "亲和性与优先级可用；超过 64 个逻辑处理器时受处理器组限制。",
+    };
+}
+
+internal sealed class IntelMsrProbe(ISystemInfo info) : ICapabilityProbe
+{
+    public string CapabilityId => CapabilityIds.IntelMsr;
 
     public CapabilityDescriptor Probe()
     {
-        var name = info.CpuName ?? string.Empty;
-        if (!name.Contains(vendorToken, StringComparison.OrdinalIgnoreCase))
+        var vendor = info.CpuVendor ?? string.Empty;
+        if (!vendor.Contains("Intel", StringComparison.OrdinalIgnoreCase))
         {
             return new CapabilityDescriptor
             {
-                Id = capabilityId,
+                Id = CapabilityId,
                 State = CapabilityState.Unavailable,
-                Detail = $"当前处理器不是 {vendorToken}（{name}）。",
+                Detail = $"当前处理器不是 Intel（{info.CpuName ?? vendor}）。",
             };
         }
 
-        var deviceOpen = PawnIoDevice.IsAvailable();
         return new CapabilityDescriptor
         {
-            Id = capabilityId,
-            State = deviceOpen ? CapabilityState.Degraded : CapabilityState.Unavailable,
-            Detail = deviceOpen
-                ? $"PawnIO 设备可打开（模块 {module}）；写入链路未验证。"
-                : $"未检测到 PawnIO 驱动，{module} 模块不可用。",
+            Id = CapabilityId,
+            State = CapabilityState.Unavailable,
+            Detail = "Intel MSR 通道尚未实现；需要 PawnIO IntelMSR 白名单模块与独立的会话级方案语义。",
         };
     }
 }
 
-internal static class PawnIoDevice
+internal sealed class SceneEngineProbe : ICapabilityProbe
 {
-    private const uint OpenExisting = 3;
-    private const uint ShareReadWrite = 0x00000003;
+    public string CapabilityId => CapabilityIds.SceneEngine;
 
-    public static bool IsAvailable()
+    public CapabilityDescriptor Probe() => new()
     {
-        var handle = Native.CreateFileW(@"\\.\PawnIO", 0, ShareReadWrite, 0, OpenExisting, 0, 0);
-        if (handle == Native.InvalidHandleValue)
-        {
-            return false;
-        }
-
-        Native.CloseHandle(handle);
-        return true;
-    }
+        Id = CapabilityId,
+        State = CapabilityState.Running,
+        Detail = "触发评估、优先级仲裁与账本回退已启用。",
+    };
 }

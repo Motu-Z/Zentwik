@@ -1,7 +1,7 @@
 using Zentwik.Domain.Capabilities;
 using Zentwik.Platform;
 
-namespace Zentwik.Agent.Capabilities;
+namespace Zentwik.Core.Capabilities;
 
 /// <summary>探测有成本也有副作用，缓存 5 秒：既不每次重探，也不必重启代理才能看到驱动变化。</summary>
 public sealed class CapabilityService(IEnumerable<ICapabilityProbe> probes)
@@ -43,7 +43,6 @@ public sealed class CapabilityService(IEnumerable<ICapabilityProbe> probes)
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // 单个能力探测失败只影响该能力，不影响其他能力。
             return new CapabilityDescriptor
             {
                 Id = probe.CapabilityId,

@@ -1,5 +1,12 @@
 namespace Zentwik.Domain.Scenes;
 
+public static class SceneTriggerKinds
+{
+    public const string Manual = "manual";
+    public const string Process = "process";
+    public const string PowerSource = "powerSource";
+}
+
 public sealed record SceneAction
 {
     public required string PlanId { get; init; }
@@ -12,6 +19,7 @@ public sealed record SceneTrigger
 {
     public required string Kind { get; init; }
 
+    // process：进程名；powerSource：ac 或 dc；manual：忽略。
     public string? Argument { get; init; }
 }
 
@@ -37,6 +45,9 @@ public sealed record Scene
     public DateTimeOffset? LastActivatedAt { get; init; }
 
     public string? LastOutcome { get; init; }
+
+    public bool IsManualOnly => Triggers.Count == 0
+                                || Triggers.All(static t => string.Equals(t.Kind, SceneTriggerKinds.Manual, StringComparison.Ordinal));
 }
 
 public sealed record SceneCandidate(string SceneId, int Priority, DateTimeOffset ActivatedAt);

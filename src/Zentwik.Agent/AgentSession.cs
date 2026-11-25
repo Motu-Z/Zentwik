@@ -1,13 +1,21 @@
 using System.IO.Pipes;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
-using Zentwik.Agent.Diagnostics;
+using Zentwik.Agent.Security;
+using Zentwik.Contracts;
 using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Json;
 using Zentwik.Contracts.Protocol;
-using Zentwik.Domain.Capabilities;
+using Zentwik.Core.Diagnostics;
+using Zentwik.Core.Modules;
+using Zentwik.Core.Plans;
+using Zentwik.Core.Scenes;
+using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Scenes;
 using Zentwik.Domain.Settings;
+using Zentwik.Platform;
 
 namespace Zentwik.Agent;
 
@@ -18,7 +26,8 @@ internal sealed class AgentSession : IAsyncDisposable
 
     private readonly NamedPipeServerStream _pipe;
     private readonly AgentServer _server;
-    private readonly AgentLog _log;
+    private readonly DiagnosticLog _log;
+    private readonly CallerIdentity _caller;
     private readonly Channel<ResponseEnvelope> _outbound = Channel.CreateUnbounded<ResponseEnvelope>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
@@ -27,17 +36,18 @@ internal sealed class AgentSession : IAsyncDisposable
     private long _droppedSamples;
     private int _disposed;
 
-    public AgentSession(NamedPipeServerStream pipe, AgentServer server, AgentLog log)
+    public AgentSession(NamedPipeServerStream pipe, AgentServer server, DiagnosticLog log, CallerIdentity caller)
     {
         _pipe = pipe;
         _server = server;
         _log = log;
+        _caller = caller;
+        _server.SceneChanged += OnSceneChanged;
     }
 
     public async Task RunAsync(CancellationToken ct)
     {
-        var peer = DescribePeer();
-        _log.Info($"客户端接入：{peer}");
+        _log.Info($"客户端接入：pid {_caller.ProcessId}，会话 {_caller.SessionId}，用户 {_caller.UserSid}，完整性 {_caller.Integrity}");
 
         var writer = WriteLoopAsync(ct);
         try
@@ -62,11 +72,11 @@ internal sealed class AgentSession : IAsyncDisposable
         }
         catch (ProtocolException ex)
         {
-            _log.Warn($"协议错误，断开连接（{peer}）：{ex.Message}");
+            _log.Warn($"协议错误，断开连接（pid {_caller.ProcessId}）：{ex.Message}");
         }
         catch (IOException ex)
         {
-            _log.Warn($"管道中断（{peer}）：{ex.Message}");
+            _log.Warn($"管道中断（pid {_caller.ProcessId}）：{ex.Message}");
         }
         finally
         {
@@ -80,7 +90,7 @@ internal sealed class AgentSession : IAsyncDisposable
             {
             }
 
-            _log.Info($"客户端断开：{peer}（丢弃采样 {Interlocked.Read(ref _droppedSamples)} 帧）");
+            _log.Info($"客户端断开：pid {_caller.ProcessId}（丢弃采样 {Interlocked.Read(ref _droppedSamples)} 帧）");
         }
     }
 
@@ -115,9 +125,17 @@ internal sealed class AgentSession : IAsyncDisposable
         {
             return await DispatchAsync(request, ct).ConfigureAwait(false);
         }
+        catch (CoreException ex)
+        {
+            return ResponseEnvelope.Failure(request.Id, request.Op, ex.Code, ex.Message);
+        }
+        catch (JsonException ex)
+        {
+            return ResponseEnvelope.Failure(request.Id, request.Op, ErrorCodes.PayloadInvalid, ex.Message);
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _log.Error($"命令 {request.Op} 失败：{ex.Message}");
+            _log.Error($"命令 {request.Op} 失败：{ex}");
             return ResponseEnvelope.Failure(request.Id, request.Op, ErrorCodes.Internal, ex.Message);
         }
     }
@@ -127,60 +145,143 @@ internal sealed class AgentSession : IAsyncDisposable
         switch (request.Op)
         {
             case Ops.Ping:
-                return ResponseEnvelope.Success(request.Id, request.Op, null);
+                return Ok(request, null);
 
             case Ops.Status:
-                return ResponseEnvelope.Success(
-                    request.Id,
-                    request.Op,
-                    JsonSerializer.SerializeToElement(BuildStatus(), ZentwikJson.Default.AgentStatusDto));
+                return Ok(request, JsonSerializer.SerializeToElement(BuildStatus(), ZentwikJson.Default.AgentStatusDto));
 
             case Ops.CapabilitiesList:
             {
-                var capabilities = _server.Capabilities.Get().Select(ToDto).ToArray();
-                return ResponseEnvelope.Success(
-                    request.Id,
-                    request.Op,
-                    JsonSerializer.SerializeToElement(capabilities, ZentwikJson.Default.CapabilityDtoArray));
+                var capabilities = _server.Capabilities.Get().Select(Mapping.ToDto).ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(capabilities, ZentwikJson.Default.CapabilityDtoArray));
+            }
+
+            case Ops.ModulesList:
+            {
+                var modules = ModuleCatalog.Describe(_server.Capabilities.Get(), _server.Options.UseFake).ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(modules, ZentwikJson.Default.ModuleDtoArray));
             }
 
             case Ops.PlansList:
             {
-                var plans = _server.Store.Current.Plans.Select(ToDto).ToArray();
-                return ResponseEnvelope.Success(
-                    request.Id,
-                    request.Op,
-                    JsonSerializer.SerializeToElement(plans, ZentwikJson.Default.PlanSummaryDtoArray));
+                var plans = _server.Store.Current.Plans.ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(plans, ZentwikJson.Default.PlanArray));
+            }
+
+            case Ops.PlansGet:
+            {
+                var plan = FindPlan(RequirePayload(request, ZentwikJson.Default.IdRequest).Id);
+                return Ok(request, JsonSerializer.SerializeToElement(plan, ZentwikJson.Default.Plan));
+            }
+
+            case Ops.PlansSave:
+                return await SavePlanAsync(request, ct).ConfigureAwait(false);
+
+            case Ops.PlansDelete:
+                return await DeletePlanAsync(request, ct).ConfigureAwait(false);
+
+            case Ops.PlansApply:
+            {
+                var id = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
+                var outcome = await _server.Plans.ApplyAsync(id, $"plan:{id}", int.MaxValue - 1, ct).ConfigureAwait(false);
+                return Ok(request, JsonSerializer.SerializeToElement(ToDto(outcome), ZentwikJson.Default.PlanApplyResultDto));
+            }
+
+            case Ops.PlansRevert:
+            {
+                var id = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
+                var targets = await _server.Plans.RevertPlanAsync(id, ct).ConfigureAwait(false);
+                var plan = FindPlan(id);
+                return Ok(request, JsonSerializer.SerializeToElement(
+                    new PlanApplyResultDto(
+                        id,
+                        "reverted",
+                        plan.LastApply?.AppliedAt,
+                        plan.LastApply?.PersistsAcrossReboot ?? true,
+                        "已回退",
+                        [.. targets.Select(ToDto)]),
+                    ZentwikJson.Default.PlanApplyResultDto));
             }
 
             case Ops.ScenesList:
             {
                 var scenes = _server.Store.Current.Scenes
-                    .OrderByDescending(static s => s.Priority)
-                    .ThenBy(static s => s.Name, StringComparer.Ordinal)
-                    .Select(ToDto)
+                    .OrderByDescending(static scene => scene.Priority)
+                    .ThenBy(static scene => scene.Name, StringComparer.Ordinal)
+                    .Select(scene => Mapping.ToSummary(scene, _server.Scenes.ActiveSceneId))
                     .ToArray();
-                return ResponseEnvelope.Success(
-                    request.Id,
-                    request.Op,
-                    JsonSerializer.SerializeToElement(scenes, ZentwikJson.Default.SceneSummaryDtoArray));
+                return Ok(request, JsonSerializer.SerializeToElement(scenes, ZentwikJson.Default.SceneSummaryDtoArray));
+            }
+
+            case Ops.ScenesGet:
+            {
+                var scene = FindScene(RequirePayload(request, ZentwikJson.Default.IdRequest).Id);
+                return Ok(request, JsonSerializer.SerializeToElement(scene, ZentwikJson.Default.Scene));
+            }
+
+            case Ops.ScenesSave:
+                return await SaveSceneAsync(request, ct).ConfigureAwait(false);
+
+            case Ops.ScenesDelete:
+                return await DeleteSceneAsync(request, ct).ConfigureAwait(false);
+
+            case Ops.ScenesActivate:
+            {
+                var id = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
+                var activation = await _server.Scenes.ActivateAsync(id, ct).ConfigureAwait(false);
+                return Ok(request, JsonSerializer.SerializeToElement(ToDto(activation), ZentwikJson.Default.SceneActivationDto));
+            }
+
+            case Ops.ScenesDeactivate:
+            {
+                var activation = await _server.Scenes.DeactivateAsync(ct).ConfigureAwait(false)
+                                 ?? new SceneActivation(string.Empty, false, "没有活动场景。", []);
+                return Ok(request, JsonSerializer.SerializeToElement(ToDto(activation), ZentwikJson.Default.SceneActivationDto));
+            }
+
+            case Ops.LedgerList:
+            {
+                var entries = _server.Plans.Entries.ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(entries, ZentwikJson.Default.LedgerEntryArray));
+            }
+
+            case Ops.LedgerRelease:
+            {
+                var target = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
+                var released = await _server.Plans.ReleaseTakeoverAsync(target, ct).ConfigureAwait(false);
+                return Ok(request, JsonSerializer.SerializeToElement(released, ZentwikJson.Default.Boolean));
             }
 
             case Ops.SettingsGet:
-                return ResponseEnvelope.Success(
-                    request.Id,
-                    request.Op,
-                    JsonSerializer.SerializeToElement(ToDto(_server.Store.Current.Settings), ZentwikJson.Default.SettingsDto));
+                return Ok(request, JsonSerializer.SerializeToElement(
+                    Mapping.ToDto(_server.Store.Current.Settings),
+                    ZentwikJson.Default.SettingsDto));
 
             case Ops.SettingsSet:
                 return await ApplySettingsAsync(request, ct).ConfigureAwait(false);
+
+            case Ops.TuningRead:
+            {
+                var snapshot = ReadTuning();
+                return Ok(request, JsonSerializer.SerializeToElement(snapshot, ZentwikJson.Default.TuningSnapshotDto));
+            }
+
+            case Ops.DiagnosticsDoctor:
+                return Ok(request, JsonSerializer.SerializeToElement(_server.Doctor.Build(), ZentwikJson.Default.DoctorDto));
+
+            case Ops.DiagnosticsLog:
+            {
+                var limit = RequirePayload(request, ZentwikJson.Default.LogRequest).Limit;
+                var entries = _server.Log.Recent(limit).ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(entries, ZentwikJson.Default.LogEntryDtoArray));
+            }
 
             case Ops.TelemetrySubscribe:
                 return StartTelemetry(request);
 
             case Ops.TelemetryUnsubscribe:
                 StopTelemetry();
-                return ResponseEnvelope.Success(request.Id, request.Op, null);
+                return Ok(request, null);
 
             default:
                 return ResponseEnvelope.Failure(
@@ -191,42 +292,125 @@ internal sealed class AgentSession : IAsyncDisposable
         }
     }
 
+    private async Task<ResponseEnvelope> SavePlanAsync(RequestEnvelope request, CancellationToken ct)
+    {
+        var incoming = RequirePayload(request, ZentwikJson.Default.Plan);
+        ValidatePlan(incoming);
+
+        var existing = _server.Store.Current.Plans.FirstOrDefault(plan =>
+            string.Equals(plan.Id, incoming.Id, StringComparison.Ordinal));
+
+        var now = DateTimeOffset.Now;
+        var saved = existing is null
+            ? incoming with { Revision = 1, CreatedAt = now, UpdatedAt = now, LastApply = null }
+            : incoming with
+            {
+                Revision = existing.Revision + 1,
+                CreatedAt = existing.CreatedAt,
+                UpdatedAt = now,
+                LastApply = existing.LastApply,
+            };
+
+        await _server.Store.UpdateAsync(
+            document => document with
+            {
+                Plans = existing is null
+                    ? [.. document.Plans, saved]
+                    : document.Plans.Select(plan => plan.Id == saved.Id ? saved : plan).ToArray(),
+            },
+            ct).ConfigureAwait(false);
+
+        _log.Info($"方案已保存：{saved.Id} rev {saved.Revision}");
+        return Ok(request, JsonSerializer.SerializeToElement(saved, ZentwikJson.Default.Plan));
+    }
+
+    private async Task<ResponseEnvelope> DeletePlanAsync(RequestEnvelope request, CancellationToken ct)
+    {
+        var id = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
+        var plan = FindPlan(id);
+
+        var usedBy = _server.Store.Current.Scenes
+            .Where(scene => scene.Actions.Any(action => string.Equals(action.PlanId, id, StringComparison.Ordinal)))
+            .Select(static scene => scene.Id)
+            .ToArray();
+
+        if (usedBy.Length > 0)
+        {
+            throw new CoreException(ErrorCodes.PlanInvalid, $"方案被场景引用：{string.Join(",", usedBy)}。");
+        }
+
+        await _server.Store.UpdateAsync(
+            document => document with
+            {
+                Plans = document.Plans.Where(candidate => candidate.Id != plan.Id).ToArray(),
+            },
+            ct).ConfigureAwait(false);
+
+        _log.Info($"方案已删除：{plan.Id}");
+        return Ok(request, JsonSerializer.SerializeToElement(true, ZentwikJson.Default.Boolean));
+    }
+
+    private async Task<ResponseEnvelope> SaveSceneAsync(RequestEnvelope request, CancellationToken ct)
+    {
+        var incoming = RequirePayload(request, ZentwikJson.Default.Scene);
+        ValidateScene(incoming);
+
+        var existing = _server.Store.Current.Scenes.FirstOrDefault(scene =>
+            string.Equals(scene.Id, incoming.Id, StringComparison.Ordinal));
+
+        var saved = existing is null
+            ? incoming
+            : incoming with { LastActivatedAt = existing.LastActivatedAt, LastOutcome = existing.LastOutcome };
+
+        await _server.Store.UpdateAsync(
+            document => document with
+            {
+                Scenes = existing is null
+                    ? [.. document.Scenes, saved]
+                    : document.Scenes.Select(scene => scene.Id == saved.Id ? saved : scene).ToArray(),
+            },
+            ct).ConfigureAwait(false);
+
+        _log.Info($"场景已保存：{saved.Id}");
+        return Ok(request, JsonSerializer.SerializeToElement(saved, ZentwikJson.Default.Scene));
+    }
+
+    private async Task<ResponseEnvelope> DeleteSceneAsync(RequestEnvelope request, CancellationToken ct)
+    {
+        var id = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
+        var scene = FindScene(id);
+
+        if (string.Equals(_server.Scenes.ActiveSceneId, id, StringComparison.Ordinal))
+        {
+            await _server.Scenes.DeactivateAsync(ct).ConfigureAwait(false);
+        }
+
+        await _server.Store.UpdateAsync(
+            document => document with
+            {
+                Scenes = document.Scenes.Where(candidate => candidate.Id != scene.Id).ToArray(),
+            },
+            ct).ConfigureAwait(false);
+
+        _log.Info($"场景已删除：{scene.Id}");
+        return Ok(request, JsonSerializer.SerializeToElement(true, ZentwikJson.Default.Boolean));
+    }
+
     private async Task<ResponseEnvelope> ApplySettingsAsync(RequestEnvelope request, CancellationToken ct)
     {
-        if (request.Payload is null)
-        {
-            return ResponseEnvelope.Failure(request.Id, request.Op, ErrorCodes.PayloadInvalid, "缺少载荷。");
-        }
-
-        SettingsPatch? patch;
-        try
-        {
-            patch = request.Payload.Value.Deserialize(ZentwikJson.Default.SettingsPatch);
-        }
-        catch (JsonException ex)
-        {
-            return ResponseEnvelope.Failure(request.Id, request.Op, ErrorCodes.PayloadInvalid, ex.Message);
-        }
-
-        if (patch is null)
-        {
-            return ResponseEnvelope.Failure(request.Id, request.Op, ErrorCodes.PayloadInvalid, "载荷为空。");
-        }
-
+        var patch = RequirePayload(request, ZentwikJson.Default.SettingsPatch);
         var current = _server.Store.Current.Settings;
+
         if (!UserSettingsRules.TryApply(current, patch.Language, patch.Theme, patch.Accent, patch.UiScale, out var updated, out var error))
         {
-            return ResponseEnvelope.Failure(request.Id, request.Op, ErrorCodes.PayloadInvalid, error);
+            throw new CoreException(ErrorCodes.PayloadInvalid, error ?? "设置非法。");
         }
 
         var saved = await _server.Store.UpdateSettingsAsync(updated, ct).ConfigureAwait(false);
         var effective = saved?.Settings ?? updated;
         _log.Info($"设置已更新：语言={effective.Language} 主题={effective.Theme} 强调色={effective.Accent} 缩放={effective.UiScale}");
 
-        return ResponseEnvelope.Success(
-            request.Id,
-            request.Op,
-            JsonSerializer.SerializeToElement(ToDto(effective), ZentwikJson.Default.SettingsDto));
+        return Ok(request, JsonSerializer.SerializeToElement(Mapping.ToDto(effective), ZentwikJson.Default.SettingsDto));
     }
 
     private ResponseEnvelope StartTelemetry(RequestEnvelope request)
@@ -244,7 +428,6 @@ internal sealed class AgentSession : IAsyncDisposable
             }
             catch (JsonException)
             {
-                // 周期非法时退回默认值，而不是拒绝订阅：订阅本身是幂等操作。
             }
         }
 
@@ -261,7 +444,6 @@ internal sealed class AgentSession : IAsyncDisposable
                     interval,
                     sample =>
                     {
-                        // 客户端读得慢就丢最新采样，不回压采样源，也不阻塞其他客户端。
                         if (Volatile.Read(ref _backlog) > BacklogThreshold)
                         {
                             Interlocked.Increment(ref _droppedSamples);
@@ -292,10 +474,7 @@ internal sealed class AgentSession : IAsyncDisposable
             }
         }, CancellationToken.None);
 
-        return ResponseEnvelope.Success(
-            request.Id,
-            request.Op,
-            JsonSerializer.SerializeToElement(new SubscriptionAck(interval), ZentwikJson.Default.SubscriptionAck));
+        return Ok(request, JsonSerializer.SerializeToElement(new SubscriptionAck(interval), ZentwikJson.Default.SubscriptionAck));
     }
 
     private void StopTelemetry()
@@ -310,58 +489,205 @@ internal sealed class AgentSession : IAsyncDisposable
         cts.Dispose();
     }
 
+    private TuningSnapshotDto ReadTuning()
+    {
+        var status = _server.Tuning.Query();
+        var cores = _server.Tuning.TryReadOffsets(out var offsets, out var readError)
+            ? offsets.Select(static offset => new CoreOffsetDto(offset.Core, offset.Millivolts)).ToArray()
+            : [];
+
+        var availability = status.Availability switch
+        {
+            HardwareAvailability.Available => "available",
+            HardwareAvailability.NotSupported => "notSupported",
+            HardwareAvailability.DriverUnavailable => "driverUnavailable",
+            HardwareAvailability.ModuleMissing => "moduleMissing",
+            _ => "probeFailed",
+        };
+
+        return new TuningSnapshotDto(
+            availability,
+            readError ?? status.Detail,
+            status.Vendor,
+            status.Platform,
+            status.PersistsAcrossReboot,
+            status.Simulated,
+            cores);
+    }
+
     private AgentStatusDto BuildStatus() => new(
         Version: typeof(AgentServer).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
         ProtocolVersion: ProtocolInfo.Version,
         MachineName: _server.System.MachineName,
         Elevated: _server.System.IsElevated,
+        RunningAsService: _server.Options.ServiceMode,
+        Simulated: _server.Options.UseFake,
         ProcessorCount: _server.System.ProcessorCount,
         ProcessorGroups: _server.System.ProcessorGroups,
         StartedAt: _server.StartedAt,
+        UptimeSeconds: (long)(DateTimeOffset.UtcNow - _server.StartedAt.ToUniversalTime()).TotalSeconds,
         DataDirectory: _server.Options.DataDirectory,
+        ActiveSceneId: _server.Scenes.ActiveSceneId,
         PlanCount: _server.Store.Current.Plans.Count,
-        SceneCount: _server.Store.Current.Scenes.Count);
+        SceneCount: _server.Store.Current.Scenes.Count,
+        LedgerEntryCount: _server.Store.Current.Ledger.Count);
 
-    private static CapabilityDto ToDto(CapabilityDescriptor descriptor) => new(
-        descriptor.Id,
-        descriptor.State switch
+    private Plan FindPlan(string id) =>
+        _server.Store.Current.Plans.FirstOrDefault(plan => string.Equals(plan.Id, id, StringComparison.Ordinal))
+        ?? throw new CoreException(ErrorCodes.PlanNotFound, $"方案 {id} 不存在。");
+
+    private Scene FindScene(string id) =>
+        _server.Store.Current.Scenes.FirstOrDefault(scene => string.Equals(scene.Id, id, StringComparison.Ordinal))
+        ?? throw new CoreException(ErrorCodes.SceneNotFound, $"场景 {id} 不存在。");
+
+    private static void ValidatePlan(Plan plan)
+    {
+        if (string.IsNullOrWhiteSpace(plan.Id))
         {
-            CapabilityState.Running => CapabilityStates.Running,
-            CapabilityState.Degraded => CapabilityStates.Degraded,
-            CapabilityState.Failed => CapabilityStates.Failed,
-            CapabilityState.Loaded => CapabilityStates.Loaded,
-            CapabilityState.Enabled => CapabilityStates.Enabled,
-            CapabilityState.Installed => CapabilityStates.Installed,
-            _ => CapabilityStates.Unavailable,
-        },
-        descriptor.Detail,
-        descriptor.Requires);
+            throw new CoreException(ErrorCodes.PlanInvalid, "方案 ID 不能为空。");
+        }
 
-    private static PlanSummaryDto ToDto(Plan plan) => new(
-        plan.Id,
-        plan.Kind switch
+        if (string.IsNullOrWhiteSpace(plan.Name))
         {
-            PlanKind.CpuTuning => "cpuTuning",
-            PlanKind.Power => "power",
-            _ => "scheduling",
+            throw new CoreException(ErrorCodes.PlanInvalid, "方案名称不能为空。");
+        }
+
+        switch (plan)
+        {
+            case CpuTuningPlan cpu:
+            {
+                var duplicated = cpu.Cores
+                    .GroupBy(static core => core.CoreIndex)
+                    .FirstOrDefault(static group => group.Count() > 1);
+                if (duplicated is not null)
+                {
+                    throw new CoreException(ErrorCodes.PlanInvalid, $"核 {duplicated.Key} 重复配置。");
+                }
+
+                foreach (var core in cpu.Cores)
+                {
+                    if (core.VoltageOffsetMillivolts is { } offset && offset is < -50 or > 50)
+                    {
+                        throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 偏移 {offset} mV 超出 ±50。");
+                    }
+                }
+
+                break;
+            }
+
+            case PowerPlan power:
+            {
+                foreach (var setting in power.Settings)
+                {
+                    if (!Guid.TryParse(setting.SettingId, out _))
+                    {
+                        throw new CoreException(ErrorCodes.PlanInvalid, $"设置项 {setting.SettingId} 不是 GUID。");
+                    }
+
+                    if (setting.SubGroupId is not null && !Guid.TryParse(setting.SubGroupId, out _))
+                    {
+                        throw new CoreException(ErrorCodes.PlanInvalid, $"子组 {setting.SubGroupId} 不是 GUID。");
+                    }
+                }
+
+                break;
+            }
+
+            case SchedulingPlan scheduling:
+            {
+                foreach (var rule in scheduling.Rules)
+                {
+                    if (string.IsNullOrWhiteSpace(rule.ProcessMatch))
+                    {
+                        throw new CoreException(ErrorCodes.PlanInvalid, "调度规则缺少进程名。");
+                    }
+                }
+
+                break;
+            }
+        }
+    }
+
+    private void ValidateScene(Scene scene)
+    {
+        if (string.IsNullOrWhiteSpace(scene.Id) || string.IsNullOrWhiteSpace(scene.Name))
+        {
+            throw new CoreException(ErrorCodes.SceneInvalid, "场景 ID 与名称不能为空。");
+        }
+
+        foreach (var trigger in scene.Triggers)
+        {
+            if (trigger.Kind is not (SceneTriggerKinds.Manual or SceneTriggerKinds.Process or SceneTriggerKinds.PowerSource))
+            {
+                throw new CoreException(ErrorCodes.SceneInvalid, $"未知触发类型：{trigger.Kind}。");
+            }
+
+            if (trigger.Kind == SceneTriggerKinds.PowerSource && trigger.Argument is not ("ac" or "dc"))
+            {
+                throw new CoreException(ErrorCodes.SceneInvalid, "电源触发参数必须是 ac 或 dc。");
+            }
+        }
+
+        foreach (var action in scene.Actions)
+        {
+            if (_server.Store.Current.Plans.All(plan => !string.Equals(plan.Id, action.PlanId, StringComparison.Ordinal)))
+            {
+                throw new CoreException(ErrorCodes.SceneInvalid, $"场景引用的方案 {action.PlanId} 不存在。");
+            }
+        }
+    }
+
+    private static T RequirePayload<T>(RequestEnvelope request, JsonTypeInfo<T> info)
+    {
+        if (request.Payload is not { } element)
+        {
+            throw new CoreException(ErrorCodes.PayloadInvalid, "缺少载荷。");
+        }
+
+        return element.Deserialize(info) ?? throw new CoreException(ErrorCodes.PayloadInvalid, "载荷为空。");
+    }
+
+    private static ResponseEnvelope Ok(RequestEnvelope request, JsonElement? data) =>
+        ResponseEnvelope.Success(request.Id, request.Op, data);
+
+    private static PlanApplyResultDto ToDto(PlanApplyOutcome outcome) => new(
+        outcome.Plan.Id,
+        outcome.State switch
+        {
+            PlanApplyState.Applied => "applied",
+            PlanApplyState.Partial => "partial",
+            PlanApplyState.Failed => "failed",
+            _ => "notApplied",
         },
-        plan.Name,
-        plan.Revision,
-        "defined");
+        outcome.Plan.LastApply?.AppliedAt,
+        outcome.Plan.LastApply?.PersistsAcrossReboot ?? true,
+        outcome.Error ?? outcome.Plan.LastApply?.Outcome,
+        [.. outcome.Targets.Select(ToDto)]);
 
-    private static SceneSummaryDto ToDto(Zentwik.Domain.Scenes.Scene scene) => new(
-        scene.Id,
-        scene.Name,
-        scene.Priority,
-        scene.Enabled,
-        [.. scene.Actions.Select(static a => a.PlanId)],
-        scene.LastOutcome);
+    private static TargetOutcomeDto ToDto(TargetOutcome target) => new(
+        target.Target,
+        target.Previous,
+        target.Desired,
+        target.Actual,
+        target.Status switch
+        {
+            LedgerStatus.Applied => "applied",
+            LedgerStatus.Reverted => "reverted",
+            LedgerStatus.Failed => "failed",
+            _ => "skipped",
+        },
+        target.Failure);
 
-    private static SettingsDto ToDto(UserSettings settings) => new(
-        settings.Language,
-        settings.Theme,
-        settings.Accent,
-        settings.UiScale);
+    private static SceneActivationDto ToDto(SceneActivation activation) => new(
+        activation.SceneId,
+        activation.Active,
+        activation.Outcome,
+        activation.PlanIds);
+
+    private void OnSceneChanged(SceneActivation activation) =>
+        Enqueue(ResponseEnvelope.Event(
+            Events.SceneChanged,
+            JsonSerializer.SerializeToElement(ToDto(activation), ZentwikJson.Default.SceneActivationDto)));
 
     /// <summary>自行维护积压计数：无界通道的 Reader.Count 会抛 NotSupportedException。</summary>
     private void Enqueue(ResponseEnvelope envelope)
@@ -401,18 +727,6 @@ internal sealed class AgentSession : IAsyncDisposable
         }
     }
 
-    private string DescribePeer()
-    {
-        try
-        {
-            return _pipe.GetImpersonationUserName();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            return "unknown";
-        }
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -420,6 +734,7 @@ internal sealed class AgentSession : IAsyncDisposable
             return;
         }
 
+        _server.SceneChanged -= OnSceneChanged;
         StopTelemetry();
         _outbound.Writer.TryComplete();
         await _pipe.DisposeAsync().ConfigureAwait(false);

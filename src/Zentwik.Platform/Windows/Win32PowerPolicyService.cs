@@ -3,9 +3,13 @@ using System.Text;
 
 namespace Zentwik.Platform.Windows;
 
-/// <summary>读取无需管理员；切换失败返回 Win32 错误码由上层处理。</summary>
+/// <summary>读取无需管理员；写入失败返回 Win32 错误码由上层处理。</summary>
 public sealed class Win32PowerPolicyService : IPowerPolicyService
 {
+    private const uint ErrorMoreData = 234;
+    private const uint ErrorNoMoreItems = 259;
+    private const uint AccessScheme = 16;
+
     public PowerSchemeInfo? GetActiveScheme()
     {
         var result = Native.PowerGetActiveScheme(0, out var pointer);
@@ -25,14 +29,62 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
         }
     }
 
+    public IReadOnlyList<PowerSchemeInfo> ListSchemes()
+    {
+        var schemes = new List<PowerSchemeInfo>();
+        var buffer = new byte[16];
+
+        for (uint index = 0; ; index++)
+        {
+            uint size = (uint)buffer.Length;
+            var result = Native.PowerEnumerate(0, 0, 0, AccessScheme, index, buffer, ref size);
+            if (result == ErrorNoMoreItems)
+            {
+                break;
+            }
+
+            if (result != Native.ErrorSuccess || size < 16)
+            {
+                break;
+            }
+
+            var guid = new Guid(buffer.AsSpan(0, 16));
+            schemes.Add(new PowerSchemeInfo(guid, ReadFriendlyName(guid) ?? guid.ToString("D")));
+        }
+
+        return schemes;
+    }
+
     public bool TrySetActiveScheme(Guid scheme, out string? error)
     {
         var result = Native.PowerSetActiveScheme(0, in scheme);
-        error = result == Native.ErrorSuccess ? null : $"PowerSetActiveScheme 失败，Win32 错误码 {result}。";
+        error = result == Native.ErrorSuccess ? null : Describe("PowerSetActiveScheme", result);
         return result == Native.ErrorSuccess;
     }
 
-    private const uint ErrorMoreData = 234;
+    public bool TryReadValue(Guid scheme, Guid subGroup, Guid setting, bool ac, out uint value, out string? error)
+    {
+        var result = ac
+            ? Native.PowerReadACValueIndex(0, in scheme, in subGroup, in setting, out value)
+            : Native.PowerReadDCValueIndex(0, in scheme, in subGroup, in setting, out value);
+
+        error = result == Native.ErrorSuccess ? null : Describe("PowerReadValueIndex", result);
+        return result == Native.ErrorSuccess;
+    }
+
+    public bool TryWriteValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value, out string? error)
+    {
+        var result = ac
+            ? Native.PowerWriteACValueIndex(0, in scheme, in subGroup, in setting, value)
+            : Native.PowerWriteDCValueIndex(0, in scheme, in subGroup, in setting, value);
+
+        error = result == Native.ErrorSuccess ? null : Describe("PowerWriteValueIndex", result);
+        return result == Native.ErrorSuccess;
+    }
+
+    private static string Describe(string api, uint code) => code == 5
+        ? $"{api} 失败：拒绝访问（需要管理员权限）。"
+        : $"{api} 失败，Win32 错误码 {code}。";
 
     private static string? ReadFriendlyName(Guid scheme)
     {

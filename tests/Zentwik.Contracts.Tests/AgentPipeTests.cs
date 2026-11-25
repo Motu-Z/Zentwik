@@ -1,14 +1,20 @@
 using System.IO.Pipes;
+using System.Security.Principal;
 using System.Text.Json;
 using Xunit;
 using Zentwik.Agent;
-using Zentwik.Agent.Capabilities;
-using Zentwik.Agent.Diagnostics;
-using Zentwik.Agent.State;
-using Zentwik.Agent.Telemetry;
+using Zentwik.Agent.Security;
 using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Json;
 using Zentwik.Contracts.Protocol;
+using Zentwik.Core.Capabilities;
+using Zentwik.Core.Diagnostics;
+using Zentwik.Core.Plans;
+using Zentwik.Core.Scenes;
+using Zentwik.Core.State;
+using Zentwik.Core.Telemetry;
+using Zentwik.Domain.Plans;
+using Zentwik.Domain.Scenes;
 using Zentwik.Platform;
 using Zentwik.Platform.Fakes;
 
@@ -20,31 +26,42 @@ public sealed class AgentPipeTests : IAsyncLifetime
     private readonly string _pipeName = $"zentwik-test-{Guid.NewGuid():N}";
     private readonly string _dataDirectory = Path.Combine(Path.GetTempPath(), $"zentwik-test-{Guid.NewGuid():N}");
 
-    private AgentLog _log = null!;
+    private DiagnosticLog _log = null!;
     private CancellationTokenSource _cts = null!;
     private Task _serverTask = null!;
 
     public async Task InitializeAsync()
     {
-        _log = new AgentLog(_dataDirectory, echoToConsole: false);
+        _log = new DiagnosticLog(_dataDirectory, echoToConsole: false);
         var store = new StateStore(_dataDirectory, _log);
         await store.LoadAsync();
+
+        var ownerSid = WindowsIdentity.GetCurrent().User!.Value;
+        await store.UpdateAsync(document => document with { OwnerSid = ownerSid });
 
         var options = new AgentOptions
         {
             PipeName = _pipeName,
             DataDirectory = _dataDirectory,
-            UseFakeTelemetry = true,
+            ServiceName = "ZentwikTest",
+            Mode = AgentMode.Run,
+            UseFake = true,
             EchoLog = false,
         };
 
-        var server = new AgentServer(
-            options,
-            store,
-            new TelemetryHub(new FakeTelemetrySource(processorCount: 4)),
-            new CapabilityService([]),
-            new FakeSystemInfo(),
-            _log);
+        var system = new FakeSystemInfo();
+        var tuning = new FakeCpuTuningProvider(4);
+        var power = new FakePowerPolicyService();
+        var scheduler = new FakeProcessScheduler();
+        var hub = new TelemetryHub(new FakeTelemetrySource(processorCount: 4));
+        var capabilities = new CapabilityService([]);
+        var plans = new PlanCoordinator(store, tuning, power, scheduler, _log);
+        var scenes = new SceneEngine(store, plans, scheduler, new FakePowerStatus(), _log);
+        var runtime = new AgentRuntime("test", false, true, DateTimeOffset.Now);
+        var doctor = new DoctorService(store, capabilities, _log, runtime, system, () => scenes.ActiveSceneId);
+        var policy = new CallerPolicy(ownerSid, RequireInteractiveSession: true, IntegrityLevel.Medium);
+
+        var server = new AgentServer(options, store, hub, capabilities, system, _log, plans, scenes, doctor, tuning, policy);
 
         _cts = new CancellationTokenSource();
         _serverTask = server.RunAsync(_cts.Token);
@@ -80,6 +97,7 @@ public sealed class AgentPipeTests : IAsyncLifetime
         Assert.Equal(ProtocolInfo.Version, status.ProtocolVersion);
         Assert.Equal(4, status.ProcessorCount);
         Assert.False(status.Elevated);
+        Assert.True(status.Simulated);
         Assert.Equal(_dataDirectory, status.DataDirectory);
     }
 
@@ -91,6 +109,17 @@ public sealed class AgentPipeTests : IAsyncLifetime
         var capabilities = await connection.ListCapabilitiesAsync();
 
         Assert.Empty(capabilities);
+    }
+
+    [Fact]
+    public async Task Modules_Are_Described()
+    {
+        await using var connection = await ConnectAsync();
+
+        var modules = await connection.ListModulesAsync();
+
+        Assert.Contains(modules, static module => module.Id == "monitoring");
+        Assert.Contains(modules, static module => module.Id == "diagnostics" && module.State == "ready");
     }
 
     [Fact]
@@ -107,7 +136,7 @@ public sealed class AgentPipeTests : IAsyncLifetime
         var stateFile = Path.Combine(_dataDirectory, "state.json");
         Assert.True(File.Exists(stateFile));
         var json = await File.ReadAllTextAsync(stateFile);
-        Assert.Contains("\"language\": \"en-US\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"language\":\"en-US\"", json, StringComparison.Ordinal);
 
         await using var second = await ConnectAsync();
         var reloaded = await second.GetSettingsAsync();
@@ -124,6 +153,78 @@ public sealed class AgentPipeTests : IAsyncLifetime
 
         Assert.Equal(ErrorCodes.PayloadInvalid, error.Code);
         Assert.Contains("fr-FR", error.Detail ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Plan_Apply_And_Revert_Traverse_Ledger()
+    {
+        await using var connection = await ConnectAsync();
+
+        var saved = await connection.SavePlanAsync(CpuPlan());
+        Assert.Equal(1, saved.Revision);
+
+        var applied = await connection.ApplyPlanAsync(saved.Id);
+        Assert.Equal("applied", applied.State);
+        Assert.Single(applied.Targets);
+
+        var ledger = await connection.ListLedgerAsync();
+        var entry = Assert.Single(ledger);
+        Assert.Equal("cpu.co.0", entry.Target);
+        Assert.Equal("-20", entry.ActualValue);
+        Assert.True(entry.Restorable);
+
+        var reverted = await connection.RevertPlanAsync(saved.Id);
+        Assert.Equal("reverted", reverted.Targets[0].Status);
+
+        var after = await connection.ListLedgerAsync();
+        Assert.Equal("reverted", after[0].Status.ToString().ToLowerInvariant());
+    }
+
+    [Fact]
+    public async Task Scene_Activation_Applies_Plans_And_Exit_Restores_Them()
+    {
+        await using var connection = await ConnectAsync();
+
+        var plan = await connection.SavePlanAsync(CpuPlan());
+        await connection.SaveSceneAsync(new Scene
+        {
+            Id = "game",
+            Name = "Game",
+            Priority = 10,
+            Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Manual }],
+            Actions = [new SceneAction { PlanId = plan.Id, PlanRevision = plan.Revision }],
+        });
+
+        var activated = await connection.ActivateSceneAsync("game");
+        Assert.True(activated.Active);
+        Assert.Contains(plan.Id, activated.PlanIds);
+
+        var status = await connection.GetStatusAsync();
+        Assert.Equal("game", status.ActiveSceneId);
+
+        var deactivated = await connection.DeactivateSceneAsync();
+        Assert.False(deactivated.Active);
+
+        var after = await connection.GetStatusAsync();
+        Assert.Null(after.ActiveSceneId);
+
+        var ledger = await connection.ListLedgerAsync();
+        Assert.All(ledger, static entry => Assert.Equal("Reverted", entry.Status.ToString()));
+    }
+
+    [Fact]
+    public async Task Leader_Lists_Applied_State_After_Plan_Apply()
+    {
+        await using var connection = await ConnectAsync();
+
+        var plan = await connection.SavePlanAsync(CpuPlan());
+        await connection.ApplyPlanAsync(plan.Id);
+
+        var plans = await connection.ListPlansAsync();
+        var reloaded = Assert.Single(plans);
+
+        Assert.Equal(PlanApplyState.Applied, reloaded.LastApply?.State);
+        Assert.True(reloaded.LastApply?.PersistsAcrossReboot);
     }
 
     [Fact]
@@ -199,6 +300,15 @@ public sealed class AgentPipeTests : IAsyncLifetime
         Assert.Equal(99, response.Id);
     }
 
+    private static CpuTuningPlan CpuPlan() => new()
+    {
+        Id = "cpu-test",
+        Name = "CPU test",
+        Cores = [new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -20 }],
+        CreatedAt = DateTimeOffset.Now,
+        UpdatedAt = DateTimeOffset.Now,
+    };
+
     private async Task<AgentConnection> ConnectAsync()
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
@@ -259,5 +369,7 @@ public sealed class AgentPipeTests : IAsyncLifetime
         public string? CpuVendor => "TestVendor";
 
         public string? CpuName => "Test CPU";
+
+        public string? CpuIdentifier => "Test Family 0 Model 0";
     }
 }

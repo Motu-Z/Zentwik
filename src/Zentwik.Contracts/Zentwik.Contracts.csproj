@@ -5,4 +5,8 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Zentwik.Domain\Zentwik.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

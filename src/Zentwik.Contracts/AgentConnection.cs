@@ -4,6 +4,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Json;
+using Zentwik.Domain.Ownership;
+using Zentwik.Domain.Plans;
+using Zentwik.Domain.Scenes;
 
 namespace Zentwik.Contracts.Protocol;
 
@@ -26,7 +29,6 @@ public sealed class AgentConnection : IAsyncDisposable
     /// <summary>收到推送事件。事件可能在任意线程回调，UI 侧需自行切回同步上下文。</summary>
     public event Action<ResponseEnvelope>? EventReceived;
 
-    /// <summary>连接断开（对端退出或管道错误）后触发。</summary>
     public event Action<Exception?>? Closed;
 
     public bool IsConnected => _pipe.IsConnected && _disposed == 0;
@@ -113,79 +115,130 @@ public sealed class AgentConnection : IAsyncDisposable
     public Task<ResponseEnvelope> RequestAsync(string op, CancellationToken ct = default) =>
         RequestAsync(op, new EmptyPayload(), ZentwikJson.Default.EmptyPayload, null, ct);
 
-    /// <summary>发送请求并断言成功，返回 Data。</summary>
     public async Task<JsonElement> InvokeAsync(string op, CancellationToken ct = default)
     {
         var response = await RequestAsync(op, ct).ConfigureAwait(false);
+        return Unwrap(op, response);
+    }
+
+    public async Task<AgentStatusDto> GetStatusAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.Status, ZentwikJson.Default.AgentStatusDto, ct).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<CapabilityDto>> ListCapabilitiesAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.CapabilitiesList, ZentwikJson.Default.CapabilityDtoArray, ct).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<ModuleDto>> ListModulesAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ModulesList, ZentwikJson.Default.ModuleDtoArray, ct).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<Plan>> ListPlansAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PlansList, ZentwikJson.Default.PlanArray, ct).ConfigureAwait(false);
+
+    public async Task<Plan> GetPlanAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PlansGet, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.Plan, ct)
+            .ConfigureAwait(false);
+
+    public async Task<Plan> SavePlanAsync(Plan plan, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PlansSave, plan, ZentwikJson.Default.Plan, ZentwikJson.Default.Plan, ct)
+            .ConfigureAwait(false);
+
+    public async Task<bool> DeletePlanAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PlansDelete, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.Boolean, ct)
+            .ConfigureAwait(false);
+
+    public async Task<PlanApplyResultDto> ApplyPlanAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PlansApply, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.PlanApplyResultDto, ct)
+            .ConfigureAwait(false);
+
+    public async Task<PlanApplyResultDto> RevertPlanAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PlansRevert, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.PlanApplyResultDto, ct)
+            .ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<SceneSummaryDto>> ListScenesAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ScenesList, ZentwikJson.Default.SceneSummaryDtoArray, ct).ConfigureAwait(false);
+
+    public async Task<Scene> GetSceneAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ScenesGet, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.Scene, ct)
+            .ConfigureAwait(false);
+
+    public async Task<Scene> SaveSceneAsync(Scene scene, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ScenesSave, scene, ZentwikJson.Default.Scene, ZentwikJson.Default.Scene, ct)
+            .ConfigureAwait(false);
+
+    public async Task<bool> DeleteSceneAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ScenesDelete, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.Boolean, ct)
+            .ConfigureAwait(false);
+
+    public async Task<SceneActivationDto> ActivateSceneAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ScenesActivate, new IdRequest(id), ZentwikJson.Default.IdRequest, ZentwikJson.Default.SceneActivationDto, ct)
+            .ConfigureAwait(false);
+
+    public async Task<SceneActivationDto> DeactivateSceneAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.ScenesDeactivate, ZentwikJson.Default.SceneActivationDto, ct).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<LedgerEntry>> ListLedgerAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.LedgerList, ZentwikJson.Default.LedgerEntryArray, ct).ConfigureAwait(false);
+
+    public async Task<bool> ReleaseLedgerAsync(string target, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.LedgerRelease, new IdRequest(target), ZentwikJson.Default.IdRequest, ZentwikJson.Default.Boolean, ct)
+            .ConfigureAwait(false);
+
+    public async Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.SettingsGet, ZentwikJson.Default.SettingsDto, ct).ConfigureAwait(false);
+
+    public async Task<SettingsDto> SetSettingsAsync(SettingsPatch patch, CancellationToken ct = default) =>
+        await InvokeAsync(Ops.SettingsSet, patch, ZentwikJson.Default.SettingsPatch, ZentwikJson.Default.SettingsDto, ct)
+            .ConfigureAwait(false);
+
+    public async Task<TuningSnapshotDto> ReadTuningAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.TuningRead, ZentwikJson.Default.TuningSnapshotDto, ct).ConfigureAwait(false);
+
+    public async Task<DoctorDto> GetDoctorAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.DiagnosticsDoctor, ZentwikJson.Default.DoctorDto, ct).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<LogEntryDto>> GetLogAsync(int limit, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.DiagnosticsLog,
+                new LogRequest(limit),
+                ZentwikJson.Default.LogRequest,
+                ZentwikJson.Default.LogEntryDtoArray,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<SubscriptionAck> SubscribeTelemetryAsync(int intervalMs, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.TelemetrySubscribe,
+                new SubscriptionRequest(intervalMs),
+                ZentwikJson.Default.SubscriptionRequest,
+                ZentwikJson.Default.SubscriptionAck,
+                ct)
+            .ConfigureAwait(false);
+
+    private async Task<T> InvokeAsync<T>(string op, JsonTypeInfo<T> resultInfo, CancellationToken ct)
+    {
+        var data = await InvokeAsync(op, ct).ConfigureAwait(false);
+        return data.Deserialize(resultInfo) ?? throw new AgentRequestException(op, "response.empty", null);
+    }
+
+    private async Task<TResult> InvokeAsync<TPayload, TResult>(
+        string op,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadInfo,
+        JsonTypeInfo<TResult> resultInfo,
+        CancellationToken ct)
+    {
+        var response = await RequestAsync(op, payload, payloadInfo, null, ct).ConfigureAwait(false);
+        var data = Unwrap(op, response);
+        return data.Deserialize(resultInfo) ?? throw new AgentRequestException(op, "response.empty", null);
+    }
+
+    private static JsonElement Unwrap(string op, ResponseEnvelope response)
+    {
         if (!response.Ok)
         {
             throw new AgentRequestException(op, response.Error ?? "unknown", response.Detail);
         }
 
         return response.Data ?? default;
-    }
-
-    public async Task<AgentStatusDto> GetStatusAsync(CancellationToken ct = default)
-    {
-        var data = await InvokeAsync(Ops.Status, ct).ConfigureAwait(false);
-        return data.Deserialize(ZentwikJson.Default.AgentStatusDto)
-               ?? throw new AgentRequestException(Ops.Status, "response.empty", null);
-    }
-
-    public async Task<IReadOnlyList<CapabilityDto>> ListCapabilitiesAsync(CancellationToken ct = default)
-    {
-        var data = await InvokeAsync(Ops.CapabilitiesList, ct).ConfigureAwait(false);
-        return data.Deserialize(ZentwikJson.Default.CapabilityDtoArray) ?? [];
-    }
-
-    public async Task<IReadOnlyList<PlanSummaryDto>> ListPlansAsync(CancellationToken ct = default)
-    {
-        var data = await InvokeAsync(Ops.PlansList, ct).ConfigureAwait(false);
-        return data.Deserialize(ZentwikJson.Default.PlanSummaryDtoArray) ?? [];
-    }
-
-    public async Task<IReadOnlyList<SceneSummaryDto>> ListScenesAsync(CancellationToken ct = default)
-    {
-        var data = await InvokeAsync(Ops.ScenesList, ct).ConfigureAwait(false);
-        return data.Deserialize(ZentwikJson.Default.SceneSummaryDtoArray) ?? [];
-    }
-
-    public async Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default)
-    {
-        var data = await InvokeAsync(Ops.SettingsGet, ct).ConfigureAwait(false);
-        return data.Deserialize(ZentwikJson.Default.SettingsDto)
-               ?? throw new AgentRequestException(Ops.SettingsGet, "response.empty", null);
-    }
-
-    public async Task<SettingsDto> SetSettingsAsync(SettingsPatch patch, CancellationToken ct = default)
-    {
-        var response = await RequestAsync(Ops.SettingsSet, patch, ZentwikJson.Default.SettingsPatch, null, ct)
-            .ConfigureAwait(false);
-        if (!response.Ok)
-        {
-            throw new AgentRequestException(Ops.SettingsSet, response.Error ?? "unknown", response.Detail);
-        }
-
-        return (response.Data ?? default).Deserialize(ZentwikJson.Default.SettingsDto)
-               ?? throw new AgentRequestException(Ops.SettingsSet, "response.empty", null);
-    }
-
-    public async Task<SubscriptionAck> SubscribeTelemetryAsync(int intervalMs, CancellationToken ct = default)
-    {
-        var response = await RequestAsync(
-            Ops.TelemetrySubscribe,
-            new SubscriptionRequest(intervalMs),
-            ZentwikJson.Default.SubscriptionRequest,
-            null,
-            ct).ConfigureAwait(false);
-
-        if (!response.Ok)
-        {
-            throw new AgentRequestException(Ops.TelemetrySubscribe, response.Error ?? "unknown", response.Detail);
-        }
-
-        return (response.Data ?? default).Deserialize(ZentwikJson.Default.SubscriptionAck)
-               ?? throw new AgentRequestException(Ops.TelemetrySubscribe, "response.empty", null);
     }
 
     private async Task ReadLoopAsync()
@@ -251,7 +304,6 @@ public sealed class AgentConnection : IAsyncDisposable
         }
         catch (TimeoutException)
         {
-            // 对端无响应时不再等待，管道销毁会终止读取。
         }
 
         await _pipe.DisposeAsync().ConfigureAwait(false);

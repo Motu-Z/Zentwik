@@ -29,6 +29,8 @@ public sealed record LedgerEntry
 {
     public required string Target { get; init; }
 
+    public string? PlanId { get; init; }
+
     public string? PreviousValue { get; init; }
 
     public string? DesiredValue { get; init; }
@@ -63,9 +65,27 @@ public sealed class StateLedger
 
     public IReadOnlyCollection<LedgerEntry> Entries => _entries.Values;
 
+    public static StateLedger Restore(IEnumerable<LedgerEntry> entries, TimeProvider? clock = null)
+    {
+        var ledger = new StateLedger(clock);
+        foreach (var entry in entries)
+        {
+            ledger._entries[entry.Target] = entry;
+        }
+
+        return ledger;
+    }
+
     public LedgerEntry? Get(string target) => _entries.GetValueOrDefault(target);
 
-    public AcquireOutcome Acquire(string target, string source, int priority, string? currentValue, string desiredValue)
+    public AcquireOutcome Acquire(
+        string target,
+        string source,
+        int priority,
+        string? currentValue,
+        string desiredValue,
+        string? planId = null,
+        OwnerKind owner = OwnerKind.Scene)
     {
         var now = _clock.GetUtcNow();
 
@@ -76,7 +96,7 @@ public sealed class StateLedger
                 return AcquireOutcome.DeniedUserOwned;
             }
 
-            if (existing.Owner == OwnerKind.Scene
+            if (existing.Owner is OwnerKind.Scene or OwnerKind.Plan
                 && existing.Status == LedgerStatus.Applied
                 && existing.Priority > priority
                 && !string.Equals(existing.Source, source, StringComparison.Ordinal))
@@ -87,7 +107,7 @@ public sealed class StateLedger
             if (string.Equals(existing.Source, source, StringComparison.Ordinal)
                 && existing.Status == LedgerStatus.Applied)
             {
-                _entries[target] = existing with { DesiredValue = desiredValue, UpdatedAt = now };
+                _entries[target] = existing with { DesiredValue = desiredValue, PlanId = planId ?? existing.PlanId, UpdatedAt = now };
                 return AcquireOutcome.AlreadyOwned;
             }
 
@@ -95,11 +115,13 @@ public sealed class StateLedger
             _entries[target] = existing with
             {
                 DesiredValue = desiredValue,
+                PlanId = planId ?? existing.PlanId,
                 Source = source,
-                Owner = OwnerKind.Scene,
+                Owner = owner,
                 Priority = priority,
                 Status = LedgerStatus.Skipped,
                 Restorable = true,
+                Failure = null,
                 UpdatedAt = now,
             };
             return AcquireOutcome.Acquired;
@@ -108,10 +130,11 @@ public sealed class StateLedger
         _entries[target] = new LedgerEntry
         {
             Target = target,
+            PlanId = planId,
             PreviousValue = currentValue,
             DesiredValue = desiredValue,
             Source = source,
-            Owner = OwnerKind.Scene,
+            Owner = owner,
             Priority = priority,
             Status = LedgerStatus.Skipped,
             Restorable = true,
@@ -211,27 +234,20 @@ public sealed class StateLedger
         return true;
     }
 
-    public IReadOnlyList<LedgerEntry> PlanRevert(string source)
-    {
-        var candidates = new List<LedgerEntry>();
-        foreach (var entry in _entries.Values)
-        {
-            if (!string.Equals(entry.Source, source, StringComparison.Ordinal))
-            {
-                continue;
-            }
+    public IReadOnlyList<LedgerEntry> PlanRevert(string source) =>
+        Entries
+            .Where(entry => string.Equals(entry.Source, source, StringComparison.Ordinal))
+            .Where(static entry => entry.Owner is OwnerKind.Scene or OwnerKind.Plan && entry.Restorable && entry.Status == LedgerStatus.Applied)
+            .OrderBy(static entry => entry.Target, StringComparer.Ordinal)
+            .ToList();
 
-            if (entry.Owner != OwnerKind.Scene || !entry.Restorable || entry.Status != LedgerStatus.Applied)
-            {
-                continue;
-            }
-
-            candidates.Add(entry);
-        }
-
-        candidates.Sort(static (a, b) => string.CompareOrdinal(a.Target, b.Target));
-        return candidates;
-    }
+    public IReadOnlyList<LedgerEntry> PlanRevertForPlan(string planId, string source) =>
+        Entries
+            .Where(entry => string.Equals(entry.Source, source, StringComparison.Ordinal)
+                            && string.Equals(entry.PlanId, planId, StringComparison.Ordinal))
+            .Where(static entry => entry.Owner is OwnerKind.Scene or OwnerKind.Plan && entry.Restorable && entry.Status == LedgerStatus.Applied)
+            .OrderBy(static entry => entry.Target, StringComparer.Ordinal)
+            .ToList();
 
     public void MarkReverted(string target, string restoredValue, bool success, string? failure = null)
     {
@@ -253,7 +269,6 @@ public sealed class StateLedger
             }
             : entry with
             {
-                Owner = OwnerKind.Scene,
                 Status = LedgerStatus.Applied,
                 Failure = failure,
                 Restorable = true,

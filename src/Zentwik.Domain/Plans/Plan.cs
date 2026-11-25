@@ -2,6 +2,26 @@ using System.Text.Json.Serialization;
 
 namespace Zentwik.Domain.Plans;
 
+public enum PlanApplyState
+{
+    NotApplied,
+    Applied,
+    Partial,
+    Failed,
+}
+
+public sealed record PlanApplyRecord
+{
+    public PlanApplyState State { get; init; }
+
+    public DateTimeOffset? AppliedAt { get; init; }
+
+    // 由提供者能力决定：AMD CO 写入固件持久，Intel MSR 仅当前会话有效。
+    public bool PersistsAcrossReboot { get; init; } = true;
+
+    public string? Outcome { get; init; }
+}
+
 // 判别字段必须叫 planType：kind 已被 Kind 占用，同名会让序列化在首次写盘时抛元数据冲突。
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "planType")]
 [JsonDerivedType(typeof(CpuTuningPlan), "cpuTuning")]
@@ -18,6 +38,8 @@ public abstract record Plan
     public DateTimeOffset CreatedAt { get; init; }
 
     public DateTimeOffset UpdatedAt { get; init; }
+
+    public PlanApplyRecord? LastApply { get; init; }
 
     public abstract PlanKind Kind { get; }
 }

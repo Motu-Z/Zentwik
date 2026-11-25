@@ -31,19 +31,27 @@ public sealed record AgentStatusDto(
     int ProtocolVersion,
     string MachineName,
     bool Elevated,
+    bool RunningAsService,
+    bool Simulated,
     int ProcessorCount,
     int ProcessorGroups,
     DateTimeOffset StartedAt,
+    long UptimeSeconds,
     string DataDirectory,
+    string? ActiveSceneId,
     int PlanCount,
-    int SceneCount);
+    int SceneCount,
+    int LedgerEntryCount);
 
 public sealed record PlanSummaryDto(
     string Id,
     string Kind,
     string Name,
     int Revision,
-    string State);
+    string State,
+    DateTimeOffset? AppliedAt,
+    bool PersistsAcrossReboot,
+    string? Outcome);
 
 public sealed record SceneSummaryDto(
     string Id,
@@ -51,6 +59,8 @@ public sealed record SceneSummaryDto(
     int Priority,
     bool Enabled,
     IReadOnlyList<string> TargetPlanIds,
+    DateTimeOffset? LastActivatedAt,
+    bool Active,
     string? LastOutcome);
 
 public sealed record SettingsDto(
@@ -71,3 +81,72 @@ public sealed record SubscriptionRequest(int IntervalMs);
 public sealed record SubscriptionAck(int IntervalMs);
 
 public sealed record EmptyPayload;
+
+public sealed record IdRequest(string Id);
+
+public sealed record LogRequest(int Limit);
+
+public sealed record TargetOutcomeDto(
+    string Target,
+    string? Previous,
+    string? Desired,
+    string? Actual,
+    string Status,
+    string? Failure);
+
+public sealed record PlanApplyResultDto(
+    string PlanId,
+    string State,
+    DateTimeOffset? AppliedAt,
+    bool PersistsAcrossReboot,
+    string? Outcome,
+    IReadOnlyList<TargetOutcomeDto> Targets);
+
+public sealed record SceneActivationDto(
+    string SceneId,
+    bool Active,
+    string Outcome,
+    IReadOnlyList<string> PlanIds);
+
+public sealed record ModuleDto(
+    string Id,
+    string Name,
+    string State,
+    string? Detail,
+    IReadOnlyList<string> Capabilities);
+
+public sealed record LogEntryDto(
+    DateTimeOffset Timestamp,
+    string Level,
+    string Message);
+
+public sealed record DoctorDto(
+    string Version,
+    int ProtocolVersion,
+    string MachineName,
+    bool Elevated,
+    bool RunningAsService,
+    bool Simulated,
+    DateTimeOffset StartedAt,
+    long UptimeSeconds,
+    string DataDirectory,
+    string StatePath,
+    string LogDirectory,
+    int PlanCount,
+    int SceneCount,
+    int LedgerEntryCount,
+    string? ActiveSceneId,
+    IReadOnlyList<CapabilityDto> Capabilities,
+    IReadOnlyList<ModuleDto> Modules,
+    IReadOnlyList<LogEntryDto> RecentErrors);
+
+public sealed record CoreOffsetDto(int Core, int Millivolts);
+
+public sealed record TuningSnapshotDto(
+    string Availability,
+    string? Detail,
+    string? Vendor,
+    string? Platform,
+    bool PersistsAcrossReboot,
+    bool Simulated,
+    IReadOnlyList<CoreOffsetDto> Cores);

@@ -1,62 +1,17 @@
 using System.IO.Pipes;
-using Zentwik.Agent.Capabilities;
-using Zentwik.Agent.Diagnostics;
-using Zentwik.Agent.State;
-using Zentwik.Agent.Telemetry;
+using Zentwik.Agent.Security;
+using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Protocol;
+using Zentwik.Core.Capabilities;
+using Zentwik.Core.Diagnostics;
+using Zentwik.Core.Plans;
+using Zentwik.Core.Scenes;
+using Zentwik.Core.State;
+using Zentwik.Core.Telemetry;
 using Zentwik.Platform;
 
 namespace Zentwik.Agent;
 
-public sealed class AgentOptions
-{
-    public required string PipeName { get; init; }
-
-    public required string DataDirectory { get; init; }
-
-    public bool UseFakeTelemetry { get; init; }
-
-    public bool EchoLog { get; init; } = true;
-
-    public static AgentOptions Parse(string[] args)
-    {
-        var pipe = ProtocolInfo.PipeName;
-        var dataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ZentwikNext");
-        var fake = false;
-        var echo = true;
-
-        for (var i = 0; i < args.Length; i++)
-        {
-            switch (args[i])
-            {
-                case "--pipe" when i + 1 < args.Length:
-                    pipe = args[++i];
-                    break;
-                case "--data-dir" when i + 1 < args.Length:
-                    dataDirectory = args[++i];
-                    break;
-                case "--fake":
-                    fake = true;
-                    break;
-                case "--quiet":
-                    echo = false;
-                    break;
-            }
-        }
-
-        return new AgentOptions
-        {
-            PipeName = pipe,
-            DataDirectory = dataDirectory,
-            UseFakeTelemetry = fake,
-            EchoLog = echo,
-        };
-    }
-}
-
-/// <summary>每个连接一个管道实例：慢客户端不会阻塞其他人。</summary>
 public sealed class AgentServer
 {
     private readonly AgentOptions _options;
@@ -64,7 +19,12 @@ public sealed class AgentServer
     private readonly TelemetryHub _hub;
     private readonly CapabilityService _capabilities;
     private readonly ISystemInfo _system;
-    private readonly AgentLog _log;
+    private readonly DiagnosticLog _log;
+    private readonly PlanCoordinator _plans;
+    private readonly SceneEngine _scenes;
+    private readonly DoctorService _doctor;
+    private readonly ICpuTuningProvider _tuning;
+    private readonly CallerPolicy _policy;
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly List<AgentSession> _sessions = [];
     private readonly Lock _sessionsGate = new();
@@ -75,7 +35,12 @@ public sealed class AgentServer
         TelemetryHub hub,
         CapabilityService capabilities,
         ISystemInfo system,
-        AgentLog log)
+        DiagnosticLog log,
+        PlanCoordinator plans,
+        SceneEngine scenes,
+        DoctorService doctor,
+        ICpuTuningProvider tuning,
+        CallerPolicy policy)
     {
         _options = options;
         _store = store;
@@ -83,11 +48,21 @@ public sealed class AgentServer
         _capabilities = capabilities;
         _system = system;
         _log = log;
+        _plans = plans;
+        _scenes = scenes;
+        _doctor = doctor;
+        _tuning = tuning;
+        _policy = policy;
     }
+
+    public event Action<SceneActivation>? SceneChanged;
 
     public async Task RunAsync(CancellationToken ct)
     {
-        _log.Info($"代理启动：管道 {_options.PipeName}，数据目录 {_options.DataDirectory}，协议 v{ProtocolInfo.Version}。");
+        _log.Info($"代理启动：管道 {_options.PipeName}，数据目录 {_options.DataDirectory}，协议 v{ProtocolInfo.Version}，服务模式 {_options.ServiceMode}。");
+
+        var sceneLoop = Task.Run(() => SceneLoopAsync(ct), CancellationToken.None);
+        _scenes.Changed += OnSceneChanged;
 
         try
         {
@@ -96,12 +71,15 @@ public sealed class AgentServer
                 NamedPipeServerStream pipe;
                 try
                 {
-                    pipe = new NamedPipeServerStream(
+                    pipe = NamedPipeServerStreamAcl.Create(
                         _options.PipeName,
                         PipeDirection.InOut,
                         NamedPipeServerStream.MaxAllowedServerInstances,
                         PipeTransmissionMode.Byte,
-                        PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                        PipeOptions.Asynchronous,
+                        0,
+                        0,
+                        PipeSecurityFactory.Create());
                 }
                 catch (IOException ex)
                 {
@@ -120,7 +98,22 @@ public sealed class AgentServer
                     break;
                 }
 
-                var session = new AgentSession(pipe, this, _log);
+                var caller = PipeCaller.Read(pipe);
+                if (caller is null)
+                {
+                    _log.Warn("拒绝连接：无法读取调用方身份。");
+                    await pipe.DisposeAsync().ConfigureAwait(false);
+                    continue;
+                }
+
+                if (!PipeCaller.Validate(caller, _policy, out var reason))
+                {
+                    _log.Warn($"拒绝连接：{reason}（pid {caller.ProcessId}）");
+                    await pipe.DisposeAsync().ConfigureAwait(false);
+                    continue;
+                }
+
+                var session = new AgentSession(pipe, this, _log, caller);
                 Track(session);
                 _ = session.RunAsync(ct).ContinueWith(
                     _ => Untrack(session),
@@ -131,6 +124,7 @@ public sealed class AgentServer
         }
         finally
         {
+            _scenes.Changed -= OnSceneChanged;
             await ShutdownSessionsAsync().ConfigureAwait(false);
             _log.Info("代理已停止。");
         }
@@ -146,7 +140,46 @@ public sealed class AgentServer
 
     internal AgentOptions Options => _options;
 
+    internal DiagnosticLog Log => _log;
+
+    internal PlanCoordinator Plans => _plans;
+
+    internal SceneEngine Scenes => _scenes;
+
+    internal DoctorService Doctor => _doctor;
+
+    internal ICpuTuningProvider Tuning => _tuning;
+
     internal DateTimeOffset StartedAt => _startedAt;
+
+    private async Task SceneLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                try
+                {
+                    await _scenes.EvaluateAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _log.Error($"场景评估失败：{ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void OnSceneChanged(SceneActivation activation) =>
+        SceneChanged?.Invoke(activation);
 
     private void Track(AgentSession session)
     {

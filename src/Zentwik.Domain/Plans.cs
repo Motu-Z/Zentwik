@@ -33,6 +33,8 @@ public sealed record PowerSettingEntry
 {
     public required string SettingId { get; init; }
 
+    public string? SubGroupId { get; init; }
+
     public string? AcValue { get; init; }
 
     public string? DcValue { get; init; }

@@ -1,27 +1,31 @@
 using System.Text.Json;
-using Zentwik.Agent.Diagnostics;
+using Zentwik.Contracts.Json;
+using Zentwik.Core.Diagnostics;
 using Zentwik.Domain.Persistence;
 using Zentwik.Domain.Settings;
 
-namespace Zentwik.Agent.State;
+namespace Zentwik.Core.State;
 
 /// <summary>临时文件 + 原子替换；读取失败时保留原文件。</summary>
 public sealed class StateStore
 {
     private readonly string _path;
     private readonly string _tempPath;
-    private readonly AgentLog _log;
+    private readonly DiagnosticLog _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public StateStore(string dataDirectory, AgentLog log)
+    public StateStore(string dataDirectory, DiagnosticLog log)
     {
         Directory.CreateDirectory(dataDirectory);
+        DataDirectory = dataDirectory;
         _path = Path.Combine(dataDirectory, "state.json");
         _tempPath = _path + ".tmp";
         _log = log;
     }
 
     public StateDocument Current { get; private set; } = new();
+
+    public string DataDirectory { get; }
 
     public string FilePath => _path;
 
@@ -39,7 +43,7 @@ public sealed class StateStore
 
             await using var stream = File.OpenRead(_path);
             var document = await JsonSerializer
-                .DeserializeAsync(stream, DomainJson.Default.StateDocument, ct)
+                .DeserializeAsync(stream, ZentwikJson.Default.StateDocument, ct)
                 .ConfigureAwait(false);
 
             if (document is null)
@@ -96,7 +100,7 @@ public sealed class StateStore
 
     private async Task WriteAtomicAsync(StateDocument document, CancellationToken ct)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, DomainJson.Default.StateDocument);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, ZentwikJson.Default.StateDocument);
         await File.WriteAllBytesAsync(_tempPath, bytes, ct).ConfigureAwait(false);
         File.Move(_tempPath, _path, overwrite: true);
     }

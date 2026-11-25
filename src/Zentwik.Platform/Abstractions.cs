@@ -23,11 +23,61 @@ public interface IPowerPolicyService
 {
     PowerSchemeInfo? GetActiveScheme();
 
+    IReadOnlyList<PowerSchemeInfo> ListSchemes();
+
     /// <summary>切换活动电源方案。需要管理员权限；失败返回 false 并给出原因。</summary>
     bool TrySetActiveScheme(Guid scheme, out string? error);
+
+    bool TryReadValue(Guid scheme, Guid subGroup, Guid setting, bool ac, out uint value, out string? error);
+
+    bool TryWriteValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value, out string? error);
 }
 
-/// <summary>能力探测。探测只读，不产生写入副作用。</summary>
+public enum HardwareAvailability
+{
+    Available,
+    NotSupported,
+    DriverUnavailable,
+    ModuleMissing,
+    ProbeFailed,
+}
+
+public sealed record CpuTuningStatus(
+    HardwareAvailability Availability,
+    string? Detail,
+    string? Vendor,
+    string? Platform,
+    bool PersistsAcrossReboot,
+    bool Simulated);
+
+public sealed record CoreOffset(int Core, int Millivolts);
+
+public interface ICpuTuningProvider
+{
+    CpuTuningStatus Query();
+
+    bool TryReadOffsets(out IReadOnlyList<CoreOffset> offsets, out string? error);
+
+    bool TryWriteOffset(int core, int millivolts, out string? error);
+}
+
+public sealed record ProcessTarget(int ProcessId, string Name);
+
+public interface IProcessScheduler
+{
+    IReadOnlyList<ProcessTarget> Find(string name);
+
+    bool TryRead(int processId, out string? cpuMask, out string? priority, out string? error);
+
+    bool TryApply(int processId, string? cpuMask, string? priority, out string? error);
+}
+
+public interface IPowerStatus
+{
+    /// <summary>null 表示无法判定（例如台式机无电池且状态未知）。</summary>
+    bool? OnAcPower { get; }
+}
+
 public interface ICapabilityProbe
 {
     string CapabilityId { get; }
@@ -48,4 +98,7 @@ public interface ISystemInfo
     string? CpuVendor { get; }
 
     string? CpuName { get; }
+
+    /// <summary>形如 AMD64 Family 25 Model 97 Stepping 2，用于判定 SMU 命令族。</summary>
+    string? CpuIdentifier { get; }
 }
