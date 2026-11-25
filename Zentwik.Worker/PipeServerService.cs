@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Zentwik.Core.Capabilities;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
@@ -23,7 +24,10 @@ namespace Zentwik.Worker
         private readonly IWorkerLifetime _lifetime;
         private readonly AutoStartService _autoStart;
         private readonly TuningApplyService _tuningApply;
-        private readonly ISmuReader _smu;
+        private readonly IAmdTuningChannel _amd;
+        private readonly IIntelTuningChannel _intel;
+        private readonly ICoreGroupHintProvider _coreGroupHint;
+        private readonly ICapabilityCatalog _capabilities;
         private readonly ITuningStore _tuningStore;
         private readonly PlanService _plans;
         private readonly IProcessWatcher _watcher;
@@ -48,7 +52,10 @@ namespace Zentwik.Worker
             IWorkerLifetime lifetime,
             AutoStartService autoStart,
             TuningApplyService tuningApply,
-            ISmuReader smu,
+            IAmdTuningChannel amd,
+            IIntelTuningChannel intel,
+            ICoreGroupHintProvider coreGroupHint,
+            ICapabilityCatalog capabilities,
             ITuningStore tuningStore,
             PlanService plans,
             IProcessWatcher watcher,
@@ -74,8 +81,17 @@ namespace Zentwik.Worker
             ArgumentNullException.ThrowIfNull(tuningApply);
             _tuningApply = tuningApply;
 
-            ArgumentNullException.ThrowIfNull(smu);
-            _smu = smu;
+            ArgumentNullException.ThrowIfNull(amd);
+            _amd = amd;
+
+            ArgumentNullException.ThrowIfNull(intel);
+            _intel = intel;
+
+            ArgumentNullException.ThrowIfNull(coreGroupHint);
+            _coreGroupHint = coreGroupHint;
+
+            ArgumentNullException.ThrowIfNull(capabilities);
+            _capabilities = capabilities;
 
             ArgumentNullException.ThrowIfNull(tuningStore);
             _tuningStore = tuningStore;
@@ -316,7 +332,10 @@ namespace Zentwik.Worker
                     return await RunApplyTuningAsync(request.Payload, token);
 
                 case WorkerPipeContract.CommandQuerySmuStatus:
-                    return BuildSmuStatusResponse(_smu);
+                    return BuildSmuStatusResponse(_amd, _intel);
+
+                case WorkerPipeContract.CommandQueryCapabilities:
+                    return RunQueryCapabilities();
 
                 case WorkerPipeContract.CommandQuerySmuSnapshot:
                     return await RunQuerySmuSnapshotAsync(token);
@@ -1788,7 +1807,7 @@ namespace Zentwik.Worker
             CpuVendor vendor = CpuVendorProbe.Detect();
 
             // CCD 宽度只有 AMD 的 SMU 能直给；其他厂商拿处理器组数冒充会得到一个假 CCD。
-            int coresPerCcd = vendor == CpuVendor.Amd ? (int)_smu.PeekCoresPerCcdRaw() : 0;
+            int coresPerCcd = _coreGroupHint.TryGetCoresPerGroup(out int hintCores) ? hintCores : 0;
 
             if (coresPerCcd <= 0)
             {
@@ -2757,7 +2776,7 @@ namespace Zentwik.Worker
             try
             {
                 IntelTuningSnapshot snapshot = await Task.Run(
-                    () => _smu.ReadIntelTuning(),
+                    () => _intel.ReadIntelTuning(),
                     token).ConfigureAwait(false);
 
                 return BuildIntelTuningResponse(snapshot);
@@ -2813,7 +2832,7 @@ namespace Zentwik.Worker
             try
             {
                 IntelTuningResult result = await Task.Run(
-                    () => _smu.ApplyIntelTuning(new IntelTuningRequest
+                    () => _intel.ApplyIntelTuning(new IntelTuningRequest
                     {
                         CoreMilliVolts = request.CoreMilliVolts,
                         GpuMilliVolts = request.GpuMilliVolts,
@@ -2824,7 +2843,7 @@ namespace Zentwik.Worker
                     token).ConfigureAwait(false);
 
                 IntelTuningSnapshot after = await Task.Run(
-                    () => _smu.ReadIntelTuning(),
+                    () => _intel.ReadIntelTuning(),
                     token).ConfigureAwait(false);
 
                 PipeResponse response = BuildIntelTuningResponse(after);
@@ -2856,15 +2875,16 @@ namespace Zentwik.Worker
             }
         }
 
-        /// <summary>查询 SMU 可用性；查询是否成功与是否可用分开表达。</summary>
-        internal static PipeResponse BuildSmuStatusResponse(ISmuReader smu)
+        /// <summary>查询两条调校通道的就绪状态；查询成功与通道可用分开表达。</summary>
+        internal static PipeResponse BuildSmuStatusResponse(IAmdTuningChannel amd, IIntelTuningChannel intel)
         {
             SmuStatusPayload status = new()
             {
-                Available = smu.IsAvailable,
-                Error = smu.IsAvailable ? null : smu.LastError,
+                Available = amd.IsAvailable,
+                Error = amd.IsAvailable ? null : amd.LastError,
                 Vendor = CpuVendorNames.ToName(CpuVendorProbe.Detect()),
-                IntelTuning = smu.IsIntelTuningAvailable
+                IntelTuning = intel.IsAvailable,
+                Elevated = ProcessElevation.IsElevated()
             };
 
             return new PipeResponse
@@ -2877,13 +2897,34 @@ namespace Zentwik.Worker
             };
         }
 
+        /// <summary>query-capabilities：模块清单与能力快照。只读内存，不碰硬件。</summary>
+        internal PipeResponse RunQueryCapabilities()
+        {
+            CapabilitySnapshotPayload payload = CapabilitySnapshotPayload.From(_capabilities.CreateSnapshot());
+
+            int usable = 0;
+            foreach (CapabilityInfoPayload capability in payload.Capabilities)
+            {
+                if (capability.Usable)
+                    usable++;
+            }
+
+            return new PipeResponse
+            {
+                Version = WorkerPipeContract.ProtocolVersion,
+                Success = true,
+                Message = $"{payload.Modules.Count} 个模块，{usable} 项能力可用",
+                Payload = JsonSerializer.Serialize(payload, IpcJsonContext.Default.CapabilitySnapshotPayload)
+            };
+        }
+
         /// <summary>从硬件读回当前调校值；只读，不写 SMU。</summary>
         private async Task<PipeResponse> RunQuerySmuSnapshotAsync(CancellationToken token)
         {
             try
             {
                 SmuSnapshot snapshot = await Task.Run(
-                    () => _smu.ReadSnapshot(),
+                    () => _amd.ReadSnapshot(),
                     token).ConfigureAwait(false);
 
                 return BuildSmuSnapshotResponse(snapshot);

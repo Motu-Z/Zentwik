@@ -46,14 +46,14 @@ namespace Zentwik.Core.Services
         private readonly ILogService _log;
         private readonly IUiSettingsStore _settings;
         private readonly ITuningStore _tuning;
-        private readonly ISmuReader _smu;
+        private readonly IAmdTuningChannel _smu;
         private readonly IBootGuard? _bootGuard;
 
         public TuningApplyService(
             ILogService log,
             IUiSettingsStore settings,
             ITuningStore tuning,
-            ISmuReader smu,
+            IAmdTuningChannel smu,
             IBootGuard? bootGuard = null)
         {
             ArgumentNullException.ThrowIfNull(log);
@@ -92,6 +92,11 @@ namespace Zentwik.Core.Services
 
             bool hasCo = margins.Length > 0 && margins.Any(v => v != int.MinValue);
             bool hasFMax = fMax > 0;
+
+            // 平台不匹配不是失败，也不是「没配置」；单独给出原因，避免日志把 Intel 机器报成写入失败。
+            if (_smu.Status == TuningChannelStatus.NotSupported)
+                return Skip(_smu.LastError ?? "当前平台的调校通道不适用");
+
             // 跳过也算一次结果：调校页要靠它显示「本次启动未应用 + 原因」，
             // 否则用户无从区别「应用失败」和「压根没尝试」。
             if (!ignoreStartupGate && !_settings.Settings.ApplyTuningOnStartup)
@@ -130,12 +135,13 @@ namespace Zentwik.Core.Services
             // 一键打哑所有 Cpu 的 SMU 通道。SmuReader.Dispose 本身已是 no-op。
             if (!_smu.WaitForAvailability(60))
             {
-                outcome.Errors.Add("PawnIO 未加载（60 秒内未就绪），跳过调校写入");
-                _log.Error("启动应用调校：PawnIO 未加载，跳过写入");
+                string reason = _smu.LastError ?? "PawnIO 未加载（60 秒内未就绪）";
+                outcome.Errors.Add($"{reason}，跳过调校写入");
+                _log.Error($"应用调校：{reason}，跳过写入");
                 return;
             }
 
-            ISmuReader reader = _smu;
+            IAmdTuningChannel reader = _smu;
 
             _log.Info(
                 $"启动应用调校：读取到已保存配置，CO {margins.Length} 核" +

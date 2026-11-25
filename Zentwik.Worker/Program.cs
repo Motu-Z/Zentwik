@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Zentwik.Core.Capabilities;
 using Zentwik.Core.DependencyInjection;
 using Zentwik.Core.Helpers;
 using Zentwik.Core.Ipc;
@@ -63,7 +64,11 @@ namespace Zentwik.Worker
                 ILogService bootLog = provider.GetRequiredService<ILogService>();
                 bootLog.Info(
                     $"===== 后台服务启动 {AppVersion.Current} · PID {Environment.ProcessId} · " +
-                    $"{(IsElevated() ? "管理员权限" : "普通权限")} =====");
+                    $"{(ProcessElevation.IsElevated() ? "管理员权限" : "普通权限")} =====");
+
+                // 模块注册阶段被隔离的异常在这里一次性露面，不阻断启动。
+                foreach (string failure in provider.GetRequiredService<ModuleHost>().Failures)
+                    bootLog.Error($"模块注册失败：{failure}");
 
                 BackendHostService backend = provider.GetRequiredService<BackendHostService>();
                 PipeServerService pipe = provider.GetRequiredService<PipeServerService>();
@@ -391,23 +396,6 @@ namespace Zentwik.Worker
             catch
             {
                 // 兜底路径不允许再抛。
-            }
-        }
-
-        /// <summary>是否以管理员身份运行。没提权时 SMU 与部分调度功能是降级状态，日志里要能看出来。</summary>
-        private static bool IsElevated()
-        {
-            try
-            {
-                using System.Security.Principal.WindowsIdentity identity =
-                    System.Security.Principal.WindowsIdentity.GetCurrent();
-
-                return new System.Security.Principal.WindowsPrincipal(identity)
-                    .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-            }
-            catch (Exception)
-            {
-                return false;
             }
         }
 

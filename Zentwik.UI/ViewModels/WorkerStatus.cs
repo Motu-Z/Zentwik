@@ -1,4 +1,7 @@
+﻿using System.Collections.Generic;
 using System.ComponentModel;
+using Zentwik.Core.Capabilities;
+using Zentwik.Core.Ipc;
 using Zentwik.Core.Services;
 
 namespace Zentwik.UI.ViewModels;
@@ -96,8 +99,49 @@ public sealed class WorkerStatus : ViewModelBase
     /// <summary>调校页在 AMD（SMU）与 Intel（MSR）上都存在；通道是否就绪交给页面内遮罩，没装驱动时也要能进页看到提示。</summary>
     public bool IsTuningSupported => true;
 
-    /// <summary>调校方案、场景动作与启动异常拦截只对 SMU 生效；Intel 直接写 MSR，不经过方案。</summary>
-    public bool IsTuningPlanSupported => !IsIntel;
+    private IReadOnlyList<CapabilityInfoPayload>? _capabilities;
+
+    /// <summary>
+    /// 应用能力快照。传 null 表示对端不支持能力查询（旧版 Worker），调用方退回厂商判断。
+    /// </summary>
+    public void ApplyCapabilities(IReadOnlyList<CapabilityInfoPayload>? capabilities)
+    {
+        _capabilities = capabilities;
+        OnPropertyChanged(nameof(IsTuningPlanSupported));
+    }
+
+    /// <summary>
+    /// 调校方案是否可用。以 Worker 的能力快照为准：Intel 模块不提供该能力。
+    ///
+    /// 只看「安装 / 启用 / 硬件支持」三项，不看运行可用性：驱动晚就绪时方案页不该闪一下再出现，
+    /// 通道是否就绪由页面内的遮罩单独表达。
+    /// </summary>
+    public bool IsTuningPlanSupported
+    {
+        get
+        {
+            if (_capabilities is not null)
+            {
+                foreach (CapabilityInfoPayload capability in _capabilities)
+                {
+                    if (capability.Id != CapabilityIds.TuningPlan)
+                        continue;
+
+                    if (capability.States.Contains("installed")
+                        && capability.States.Contains("enabled")
+                        && capability.States.Contains("hardwareSupported"))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            // 旧版 Worker 没有能力查询：Intel 不经过方案，其余按支持处理。
+            return !IsIntel;
+        }
+    }
 
     public string StatusText => IsConnected ? "Worker 已连接" : "Worker 未连接";
 

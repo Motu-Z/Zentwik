@@ -9,18 +9,16 @@ using Zentwik.Core.Smu;
 namespace Zentwik.Core.Services
 {
     /// <summary>
-    /// SMU 服务：只读探测 + 受控写入。
+    /// AMD SMU 通道：只读探测 + 受控写入。
     /// 写入后立即回读校验；SMU 未就绪时所有读写短路返回，不抛异常。
+    ///
+    /// 只服务 AMD。Intel 走 <see cref="IIntelTuningChannel"/>，两者不共用会话、不共用数据结构。
     /// </summary>
-    public sealed class SmuReader : ISmuReader
+    public sealed class SmuReader : IAmdTuningChannel
     {
         private readonly ILogService _log;
 
         private SmuSession? _session;
-
-        private readonly CpuVendor _vendor;
-        private IntelTuningSession? _intel;
-        private IntelTuningSnapshot? _intelBaseline;
 
         private uint _coresPerCcd;
         private int _coreCount;
@@ -28,8 +26,11 @@ namespace Zentwik.Core.Services
         /// <summary>SMU 邮箱是进程级硬件资源，锁不随实例走。</summary>
         private static readonly object _syncRoot = new();
 
-        /// <summary>PawnIO 驱动与管理员权限是否就绪。</summary>
-        public bool IsAvailable { get; private set; }
+        /// <summary>首次访问才打开设备：解析容器不等于碰硬件。</summary>
+        private readonly Lazy<bool> _initialized;
+
+        private bool _available;
+        private TuningChannelStatus _status = TuningChannelStatus.Unknown;
 
         /// <summary>初始化或读取失败的原因。</summary>
         public string? LastError { get; private set; }
@@ -40,72 +41,80 @@ namespace Zentwik.Core.Services
         /// <summary>每 CCD 的核心数（未探测时回退为 8，安全默认值）。</summary>
         public uint CoresPerCcd => _coresPerCcd == 0 ? 8u : _coresPerCcd;
 
-        /// <summary>
-        /// 每 CCD 核心数的 **原始探测值**：0 表示还没探测到。
-        /// 需要区分「真的读到 8 核/CCD」和「没读到所以兜底 8」时必须用这个，
-        /// 否则任何拓扑推断都会把兜底值当成事实。
-        /// </summary>
-        public uint CoresPerCcdRaw => _coresPerCcd;
-
         /// <summary>本进程累计创建的会话数，正常为 1。</summary>
         private static int _createdCount;
 
         internal static int CreatedCount => Volatile.Read(ref _createdCount);
 
-        /// <summary>上一次探测失败的时间戳（Environment.TickCount64）。</summary>
-        private long _lastFailureTick = long.MinValue / 2;
+        public CpuVendor Vendor => CpuVendor.Amd;
 
-        /// <summary>失败后的重试冷却（毫秒）。避免每次访问都发一遍 SMU 测试消息。</summary>
-        private const int RetryCooldownMs = 2000;
+        public TuningChannelStatus Status
+        {
+            get
+            {
+                EnsureInitialized();
+                return _status;
+            }
+        }
+
+        /// <summary>PawnIO 驱动与管理员权限是否就绪。首次读取触发一次探测。</summary>
+        public bool IsAvailable
+        {
+            get
+            {
+                EnsureInitialized();
+                return _available;
+            }
+        }
 
         /// <summary>
         /// 只读取已探测到的每 CCD 核心数，不触发探测。
         /// 供拓扑推断这类「拿不到也能自己兜底」的场景使用。
         /// </summary>
-        public uint PeekCoresPerCcdRaw()
-        {
-            lock (_syncRoot)
-            {
-                return IsAvailable ? _coresPerCcd : 0u;
-            }
-        }
+        public uint PeekCoresPerCcdRaw() => _coresPerCcd;
 
         /// <summary>
-        /// 创建实例并立即探测。PawnIO 驱动缺失或未提权时不抛异常，
-        /// 实例以 <see cref="IsAvailable"/> = false 返回，原因在 <see cref="LastError"/>。
+        /// 创建实例。构造不碰硬件：PawnIO 驱动缺失或未提权时，
+        /// 首次访问 <see cref="IsAvailable"/> 以 false 返回，原因在 <see cref="LastError"/>。
         /// </summary>
         public SmuReader(ILogService log)
         {
             ArgumentNullException.ThrowIfNull(log);
 
             _log = log;
-            _vendor = CpuVendorProbe.Detect();
-
-            if (_vendor == CpuVendor.Intel)
-            {
-                InitializeIntel();
-                return;
-            }
-
-            Initialize();
+            _initialized = new Lazy<bool>(Initialize, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         private static string ModulePath => Path.Combine(AppContext.BaseDirectory, "PawnIO", "RyzenSMU.bin");
 
-        private static string IntelModulePath => Path.Combine(AppContext.BaseDirectory, "PawnIO", "IntelMSR.bin");
+        private void EnsureInitialized()
+        {
+            _ = _initialized.Value;
+        }
 
-        private void Initialize()
+        /// <summary>打开设备并验证 SMU 应答。返回值无含义，用 <see cref="Lazy{T}"/> 保证只跑一次。</summary>
+        private bool Initialize()
         {
             try
             {
+                if (!File.Exists(ModulePath))
+                {
+                    _available = false;
+                    _status = TuningChannelStatus.DriverUnavailable;
+                    LastError = "RyzenSMU 模块文件缺失（PawnIO\\RyzenSMU.bin）";
+                    _log.Warn(LastError);
+                    return false;
+                }
+
                 _session = SmuSession.TryOpen(ModulePath);
                 Interlocked.Increment(ref _createdCount);
 
                 if (_session is null)
                 {
-                    IsAvailable = false;
+                    _available = false;
+                    _status = TuningChannelStatus.DriverUnavailable;
                     LastError = "PawnIO 设备不可用（驱动未安装或无管理员权限）";
-                    return;
+                    return false;
                 }
 
                 bool responding;
@@ -121,133 +130,27 @@ namespace Zentwik.Core.Services
 
                 if (!responding)
                 {
-                    IsAvailable = false;
+                    _available = false;
+                    _status = TuningChannelStatus.ProbeFailed;
                     LastError ??= "SMU 未应答测试消息（驱动可能尚未就绪）";
                     _log.Warn(LastError);
-                    return;
+                    return false;
                 }
 
-                IsAvailable = true;
+                _available = true;
+                _status = TuningChannelStatus.Ready;
                 LastError = null;
                 _log.Info($"SMU 初始化成功：{_session.Cpu.Name} ({_session.Cpu.CodeName})");
+                return true;
             }
             catch (Exception ex)
             {
-                IsAvailable = false;
+                _available = false;
+                _status = TuningChannelStatus.ProbeFailed;
                 LastError = ex.Message;
                 _log.Error($"SMU 初始化失败：{ex}");
+                return false;
             }
-        }
-
-        /// <summary>Intel 平台：跳过 SMU，建立 MSR 通道并记录原始值。</summary>
-        private void InitializeIntel()
-        {
-            try
-            {
-                _intel = IntelTuningSession.TryOpen(IntelModulePath);
-                if (_intel is null)
-                {
-                    LastError = "Intel MSR 模块不可用（PawnIO 驱动未安装或模块缺失）";
-                    _log.Warn(LastError);
-                    return;
-                }
-
-                IntelTuningSnapshot snapshot = _intel.Read();
-                if (!snapshot.Success)
-                {
-                    LastError = snapshot.Error ?? "Intel MSR 读取失败";
-                    _log.Warn($"Intel 调校通道不可用：{LastError}");
-                    _intel.Dispose();
-                    _intel = null;
-                    return;
-                }
-
-                _intelBaseline = snapshot;
-                _coreCount = CpuIdentity.Read().PhysicalCores;
-                LastError = null;
-                _log.Info(
-                    $"Intel 调校通道就绪：核心 {VoltageText(snapshot.CoreMilliVolts)} · " +
-                    $"核显 {VoltageText(snapshot.GpuMilliVolts)} · 缓存 {VoltageText(snapshot.CacheMilliVolts)}");
-            }
-            catch (Exception ex)
-            {
-                _intel = null;
-                LastError = ex.Message;
-                _log.Error($"Intel 调校通道初始化失败：{ex}");
-            }
-        }
-
-        private static string VoltageText(int? milliVolts)
-            => milliVolts.HasValue ? $"{milliVolts.Value} mV" : "读取失败";
-
-        public bool IsIntel => _vendor == CpuVendor.Intel;
-
-        public bool IsIntelTuningAvailable => _intel is not null;
-
-        public IntelTuningSnapshot ReadIntelTuning()
-        {
-            if (_intel is null)
-                return new IntelTuningSnapshot { Success = false, Error = LastError ?? "Intel 调校通道不可用" };
-
-            return _intel.Read();
-        }
-
-        public IntelTuningResult ApplyIntelTuning(IntelTuningRequest request)
-        {
-            ArgumentNullException.ThrowIfNull(request);
-
-            if (_intel is null)
-                return new IntelTuningResult { Fatal = LastError ?? "Intel 调校通道不可用" };
-
-            if (request.RestoreBaseline)
-            {
-                if (_intelBaseline is null)
-                    return new IntelTuningResult { Fatal = "缺少原始值快照" };
-
-                IntelTuningResult restored = _intel.Restore(_intelBaseline);
-                LogIntelWrite("恢复原始值", restored);
-                return restored;
-            }
-
-            Dictionary<IntelVoltagePlane, int> planes = new();
-            if (request.CoreMilliVolts.HasValue)
-                planes[IntelVoltagePlane.Core] = request.CoreMilliVolts.Value;
-            if (request.GpuMilliVolts.HasValue)
-                planes[IntelVoltagePlane.Gpu] = request.GpuMilliVolts.Value;
-            if (request.CacheMilliVolts.HasValue)
-                planes[IntelVoltagePlane.Cache] = request.CacheMilliVolts.Value;
-
-            IntelTuningResult result = new();
-
-            if (planes.Count > 0)
-            {
-                IntelTuningResult voltage = _intel.ApplyVoltage(planes);
-                result.Failures.AddRange(voltage.Failures);
-                foreach (KeyValuePair<string, int> pair in voltage.Applied)
-                    result.Applied[pair.Key] = pair.Value;
-            }
-
-            if (request.Ratios is { Length: IntelTuningCodec.RatioSlots })
-            {
-                IntelTuningResult ratios = _intel.ApplyRatios(request.Ratios);
-                result.Failures.AddRange(ratios.Failures);
-            }
-
-            result.AllSucceeded = result.Failures.Count == 0;
-            LogIntelWrite("写入", result);
-            return result;
-        }
-
-        private void LogIntelWrite(string action, IntelTuningResult result)
-        {
-            if (result.Failures.Count == 0)
-            {
-                _log.Info($"Intel 调校{action}完成");
-                return;
-            }
-
-            foreach (string failure in result.Failures)
-                _log.Error($"Intel 调校{action}：{failure}");
         }
 
         /// <summary>等待 PawnIO 驱动就绪（自启 / 静默场景专用）。</summary>
@@ -255,11 +158,12 @@ namespace Zentwik.Core.Services
         /// <param name="token">取消令牌：关机或用户放弃时可中断等待，不拖住后台线程。</param>
         public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default)
         {
-            if (IsIntel)
-                return _intel is not null;
-
             if (IsAvailable)
                 return true;
+
+            // 通道不适用或模块文件缺失时重试没有意义，直接返回。
+            if (_status == TuningChannelStatus.NotSupported)
+                return false;
 
             var sw = Stopwatch.StartNew();
             while (sw.Elapsed.TotalSeconds < maxSeconds)
@@ -267,9 +171,7 @@ namespace Zentwik.Core.Services
                 if (token.IsCancellationRequested)
                     return false;
 
-                // 清掉冷却时间戳，立刻重发一次测试消息。
                 // 只是重新探测，不重建 Cpu、不 Dispose 任何东西。
-                Interlocked.Exchange(ref _lastFailureTick, long.MinValue / 2);
                 RetryAvailabilityProbe();
 
                 if (IsAvailable)
@@ -298,6 +200,7 @@ namespace Zentwik.Core.Services
 
                 if (_session is null)
                 {
+                    _status = TuningChannelStatus.DriverUnavailable;
                     LastError = "PawnIO 设备不可用";
                     return;
                 }
@@ -307,15 +210,18 @@ namespace Zentwik.Core.Services
             {
                 if (_session.TryTestMessage())
                 {
-                    IsAvailable = true;
+                    _available = true;
+                    _status = TuningChannelStatus.Ready;
                     LastError = null;
                     return;
                 }
 
+                _status = TuningChannelStatus.ProbeFailed;
                 LastError = "SMU 未应答测试消息";
             }
             catch (Exception ex)
             {
+                _status = TuningChannelStatus.ProbeFailed;
                 LastError = ex.Message;
             }
         }
@@ -579,7 +485,6 @@ namespace Zentwik.Core.Services
         ///
         /// 掩码编码必须交给库的 MakeCoreMask —— 它按 SMU 型号区分 APU / 桌面 /
         /// EPYC 的分支，自己按「标准公式」手搓会漏掉这些分支，导致 SMU 直接拒收。
-        /// （0.6.x 就是这么写的：读能读到值，写全被拒，16 核无一例外。）
         ///
         /// ccx 取 0：Zen 3 之后消费级平台是 CCD 内含单个 CCX，
         /// corners 全部落在 ccd 维度；EPYC 那种一 CCD 多 CCX 的形态不在本工具范围。
@@ -600,7 +505,6 @@ namespace Zentwik.Core.Services
         /// <summary>DI 单例，实例生命周期等于进程；退出期不关闭设备，避免并发访问抛异常。</summary>
         public void Dispose()
         {
-            _intel?.Dispose();
         }
     }
 

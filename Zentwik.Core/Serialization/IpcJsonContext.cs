@@ -27,6 +27,7 @@ namespace Zentwik.Core.Serialization
     [JsonSerializable(typeof(PipeRequest))]
     [JsonSerializable(typeof(PipeResponse))]
     [JsonSerializable(typeof(SmuStatusPayload))]
+    [JsonSerializable(typeof(CapabilitySnapshotPayload))]
     [JsonSerializable(typeof(TuningSnapshotPayload))]
     [JsonSerializable(typeof(IntelTuningPayload))]
     [JsonSerializable(typeof(ApplyIntelTuningPayload))]

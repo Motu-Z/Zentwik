@@ -33,9 +33,10 @@ namespace Zentwik.Core.Ipc
         /// 20 Intel 调校：query-intel-tuning / apply-intel-tuning，query-smu-status 增 intelTuning。
         /// 21 AMD 功耗限制：query-power-limit / apply-power-limit。
         /// 22 移除功耗限制（AMD 与 Intel）：删 query-power-limit / apply-power-limit。
+        /// 23 能力查询：query-capabilities；query-smu-status 增 elevated。
         /// 两端一律调用 <see cref="ValidateVersion"/>，不得自行比较整数。
         /// </summary>
-        public const int ProtocolVersion = 22;
+        public const int ProtocolVersion = 23;
 
         /// <summary>
         /// 版本不一致时返回给对端的固定文案。用户看到的第一句话，不随上下文变化。
@@ -146,12 +147,24 @@ namespace Zentwik.Core.Ipc
         /// 参数：无（<c>Payload</c> 忽略）。
         /// 返回：<c>Success = true</c> 表示**查询本身**成功，不代表 SMU 可用；
         /// <c>Payload</c> = JSON <c>{"available":bool,"error":string?}</c>，
-        /// <c>error</c> 是 <c>ISmuReader.LastError</c> 原文，可用时为 null。
+        /// <c>error</c> 是 AMD 通道 <c>LastError</c> 原文，可用时为 null。
         ///
         /// 「查询失败」与「查到了，SMU 不可用」是两件事：前者 UI 要显示「无法检测」，
         /// 后者要显示「不可用 + 原因」。混进 Success 会让这两种状态再次不可区分。
         /// </summary>
         public const string CommandQuerySmuStatus = "query-smu-status";
+
+        /// <summary>
+        /// 查询模块与能力快照。
+        ///
+        /// 参数：无（<c>Payload</c> 忽略）。
+        /// 返回：<c>Payload</c> = JSON <see cref="CapabilitySnapshotPayload"/>，
+        /// 每项能力给出安装 / 启用 / 硬件支持 / 运行可用 / 活动五个独立状态与合并后的 <c>usable</c>。
+        ///
+        /// 界面用它决定导航与按钮可用性；不得按处理器厂商名推断功能是否存在。
+        /// 厂商不匹配、驱动缺失、未提权是三种不同的原因，都在 <c>reason</c> 里如实给出。
+        /// </summary>
+        public const string CommandQueryCapabilities = "query-capabilities";
 
         /// <summary>
         /// 从硬件读回当前调校值（只读，绝不写 SMU）。

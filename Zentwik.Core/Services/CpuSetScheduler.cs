@@ -65,19 +65,20 @@ namespace Zentwik.Core.Services
     /// 本类只做“把进程的默认 CPU 集合限制到某个 CCD”这一件事：
     ///   - 只读当前系统 CpuSet 拓扑（GetSystemCpuSetInformation）
     ///   - 写目标进程的默认 CpuSet（SetProcessDefaultCpuSets）
-    /// 不涉及任何 SMU / 电源 / VBIOS 逻辑。
+    /// 不涉及任何 SMU / 电源 / VBIOS 逻辑；核心组宽度来自可选的提示接口。
     /// </summary>
     public partial class CpuSetScheduler : ICpuSetScheduler
     {
         private readonly ILogService _log;
-        private readonly ISmuReader _smu;
+        private readonly ICoreGroupHintProvider _hint;
 
-        public CpuSetScheduler(ILogService log, ISmuReader smu)
+        public CpuSetScheduler(ILogService log, ICoreGroupHintProvider hint)
         {
             ArgumentNullException.ThrowIfNull(log);
             _log = log;
-            ArgumentNullException.ThrowIfNull(smu);
-            _smu = smu;
+
+            ArgumentNullException.ThrowIfNull(hint);
+            _hint = hint;
         }
 
         // ---------------- P/Invoke ----------------
@@ -1176,17 +1177,15 @@ namespace Zentwik.Core.Services
         /// <summary>
         /// 推断核心组数，只在缓存索引不可信时用。
         ///
-        /// SMU 的每 CCX 核数与写入掩码同源，是唯一可靠依据；拿不到就按 1 组——
+        /// 提示接口给出的每组核数与写入掩码同源，是唯一可靠依据；拿不到就按 1 组——
         /// 按「物理核 / 8」猜在非 AMD 上必然算错（24 核 32 线程的 i9 会被判成 3 组）。
         /// </summary>
         private int InferGroupCount(int logicalProcessors)
         {
             int physical = logicalProcessors / 2 > 0 ? logicalProcessors / 2 : logicalProcessors;
 
-            // Peek 而不是 Shared：Shared 会触发创建实例，启动早期 PawnIO 往往没就绪，
-            // 逼着此刻建实例会占住一个 SMU 不应答的单例，之后所有读取都失败。
-            int perGroup = (int)_smu.PeekCoresPerCcdRaw();
-            if (perGroup > 0 && physical >= perGroup)
+            // 提示接口是 peek 语义：不触发硬件探测，未就绪时返回 false。
+            if (_hint.TryGetCoresPerGroup(out int perGroup) && perGroup > 0 && physical >= perGroup)
                 return Math.Max(1, physical / perGroup);
 
             return 1;

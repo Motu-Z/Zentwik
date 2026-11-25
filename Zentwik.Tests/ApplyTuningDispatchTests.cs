@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using Xunit;
 using Zentwik.Core.Helpers;
+using Zentwik.Core.Capabilities;
 using Zentwik.Core.Ipc;
 using Zentwik.Core.Serialization;
 using Zentwik.Core.Services;
@@ -120,7 +121,7 @@ namespace Zentwik.Tests
         [Fact]
         public void QuerySmuStatus_Available_ReportsAvailableTrue()
         {
-            PipeResponse response = PipeServerService.BuildSmuStatusResponse(new StubSmuReader(true));
+            PipeResponse response = Status(new StubSmuReader(true));
 
             // Success 只表示「查询成功」，可用性在 Payload 里 —— 两者不能合并。
             Assert.True(response.Success);
@@ -133,7 +134,7 @@ namespace Zentwik.Tests
         [Fact]
         public void QuerySmuStatus_Unavailable_ReportsFalseWithReason()
         {
-            PipeResponse response = PipeServerService.BuildSmuStatusResponse(new StubSmuReader(false));
+            PipeResponse response = Status(new StubSmuReader(false));
 
             Assert.True(response.Success);
             Assert.Contains("\"available\":false", response.Payload!, StringComparison.Ordinal);
@@ -144,11 +145,11 @@ namespace Zentwik.Tests
         [Fact]
         public void QuerySmuStatus_IntelTuning_FlagFollowsChannel()
         {
-            PipeResponse ready = PipeServerService.BuildSmuStatusResponse(new StubSmuReader(false, intelTuning: true));
+            PipeResponse ready = Status(new StubSmuReader(false), intelTuning: true);
             Assert.Contains("\"intelTuning\":true", ready.Payload!, StringComparison.Ordinal);
 
             // AMD 与老态：通道未就绪时必须报 false，界面据此隐藏调校页。
-            PipeResponse missing = PipeServerService.BuildSmuStatusResponse(new StubSmuReader(false));
+            PipeResponse missing = Status(new StubSmuReader(false));
             Assert.Contains("\"intelTuning\":false", missing.Payload!, StringComparison.Ordinal);
         }
 
@@ -229,7 +230,7 @@ namespace Zentwik.Tests
 
         private static PipeServerService BuildServer(
             TuningApplyService apply,
-            ISmuReader smu,
+            StubSmuReader smu,
             ITuningStore tuning,
             PlanService plans,
             IProcessWatcher? watcher = null,
@@ -245,6 +246,9 @@ namespace Zentwik.Tests
                 new AutoStartService(new FakeLogService()),
                 apply,
                 smu,
+                new StubIntelChannel(true),
+                NullCoreGroupHintProvider.Instance,
+                new CapabilityCatalog(CpuVendor.Amd),
                 tuning,
                 plans,
                 watcher ?? new FakeProcessWatcher(),
@@ -1311,24 +1315,29 @@ namespace Zentwik.Tests
                 new StubSmuReader(true));
         }
 
-        /// <summary>可切换可用性的 ISmuReader：可用时两个写入都成功，不可用时 WaitForAvailability 返回 false。</summary>
-        private sealed class StubSmuReader : ISmuReader
+        private static PipeResponse Status(StubSmuReader amd, bool intelTuning = false)
+            => PipeServerService.BuildSmuStatusResponse(amd, new StubIntelChannel(intelTuning));
+
+        /// <summary>可切换可用性的 AMD 通道：可用时两个写入都成功，不可用时 WaitForAvailability 返回 false。</summary>
+        private sealed class StubSmuReader : IAmdTuningChannel
         {
             private readonly bool _available;
-            private readonly bool _intelTuning;
 
-            public StubSmuReader(bool available, bool intelTuning = false)
+            public StubSmuReader(bool available)
             {
                 _available = available;
-                _intelTuning = intelTuning;
             }
 
             public bool IsAvailable => _available;
+
+            public TuningChannelStatus Status => _available
+                ? TuningChannelStatus.Ready
+                : TuningChannelStatus.DriverUnavailable;
+
+            public CpuVendor Vendor => CpuVendor.Amd;
+
             public string? LastError => _available ? null : "StubSmuReader：模拟 PawnIO 未就绪";
             public int CoreCount => 2;
-            public uint CoresPerCcd => 2;
-            public uint CoresPerCcdRaw => 2;
-            public uint PeekCoresPerCcdRaw() => 2;
 
             public SmuSnapshot ReadSnapshot() => new() { Success = true };
 
@@ -1338,15 +1347,36 @@ namespace Zentwik.Tests
 
             public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default) => _available;
 
-            public bool IsIntel => false;
+            public void Dispose() { }
+        }
 
-            public bool IsIntelTuningAvailable => _intelTuning;
+        /// <summary>Intel 通道桩；本组用例只验证状态位是否随通道就绪下发。</summary>
+        private sealed class StubIntelChannel : IIntelTuningChannel
+        {
+            private readonly bool _available;
+
+            public StubIntelChannel(bool available)
+            {
+                _available = available;
+            }
+
+            public bool IsAvailable => _available;
+
+            public TuningChannelStatus Status => _available
+                ? TuningChannelStatus.Ready
+                : TuningChannelStatus.NotSupported;
+
+            public CpuVendor Vendor => CpuVendor.Intel;
+
+            public string? LastError => _available ? null : "StubIntelChannel：不提供 Intel 通道";
+
+            public bool WaitForAvailability(int maxSeconds = 60, CancellationToken token = default) => _available;
 
             public IntelTuningSnapshot ReadIntelTuning()
-                => new() { Success = false, Error = "StubSmuReader：不提供 Intel 通道" };
+                => new() { Success = false, Error = "StubIntelChannel：不提供 Intel 通道" };
 
             public IntelTuningResult ApplyIntelTuning(IntelTuningRequest request)
-                => new() { Fatal = "StubSmuReader：不提供 Intel 通道" };
+                => new() { Fatal = "StubIntelChannel：不提供 Intel 通道" };
 
             public void Dispose() { }
         }

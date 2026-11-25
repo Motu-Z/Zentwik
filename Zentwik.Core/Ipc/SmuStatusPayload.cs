@@ -31,5 +31,9 @@ namespace Zentwik.Core.Ipc
         /// <summary>Intel MSR 调校通道是否就绪。</summary>
         [JsonPropertyName("intelTuning")]
         public bool IntelTuning { get; set; }
+
+        /// <summary>后台服务是否以管理员令牌运行。与通道可用性分开，缺驱动时仍可能为 true。</summary>
+        [JsonPropertyName("elevated")]
+        public bool Elevated { get; set; }
     }
 }

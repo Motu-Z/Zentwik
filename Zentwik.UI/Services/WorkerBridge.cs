@@ -175,12 +175,33 @@ public sealed class WorkerBridge
 
         IpcOutcome<SmuStatusPayload> smu = await QuerySmuStatusAsync().ConfigureAwait(true);
 
-        status.IsElevated = smu is { TransportFailed: false, Success: true, Value.Available: true };
+        // 提权状态与通道可用性是两件事：缺驱动时进程仍可能以管理员运行。
+        status.IsElevated = smu is { TransportFailed: false, Success: true, Value.Elevated: true };
         status.Vendor = smu is { TransportFailed: false, Success: true } ? smu.Value?.Vendor : null;
         status.IntelTuning = smu is { TransportFailed: false, Success: true, Value.IntelTuning: true };
+
+        IpcOutcome<CapabilitySnapshotPayload> capabilities = await QueryCapabilitiesAsync().ConfigureAwait(true);
+        status.ApplyCapabilities(
+            capabilities is { TransportFailed: false, Success: true, Value: not null }
+                ? capabilities.Value!.Capabilities
+                : null);
     }
 
     // 调校页的三条命令（强类型出口）
+
+    /// <summary>模块与能力快照。老版本 Worker 不认这条命令，返回传输失败，调用方按老逻辑降级。</summary>
+    public async Task<IpcOutcome<CapabilitySnapshotPayload>> QueryCapabilitiesAsync(
+        int timeoutMs = 2_000,
+        CancellationToken cancellationToken = default)
+    {
+        PipeResponse? response = await SendAsync(
+            WorkerPipeContract.CommandQueryCapabilities,
+            null,
+            timeoutMs,
+            cancellationToken).ConfigureAwait(false);
+
+        return ToOutcome(response, IpcJsonContext.Default.CapabilitySnapshotPayload);
+    }
 
     /// <summary>Success = true 只代表查询本身成功，SMU 是否可写看 SmuStatusPayload.Available。</summary>
     public async Task<IpcOutcome<SmuStatusPayload>> QuerySmuStatusAsync(

@@ -17,9 +17,10 @@ namespace Zentwik.Tests
             // 20：Intel 调校新增 query-intel-tuning / apply-intel-tuning。
             // 21：AMD 功耗限制新增 query-power-limit / apply-power-limit。
             // 22：移除功耗限制（AMD 与 Intel），删上述两条命令。
+            // 23：新增 query-capabilities；query-smu-status 增加 elevated。
             // 这里写死字面量是有意的 —— 改版本号必须同时改这条断言，
             // 否则「顺手把版本号往上加」这种改动没人会注意到。
-            Assert.Equal(22, WorkerPipeContract.ProtocolVersion);
+            Assert.Equal(23, WorkerPipeContract.ProtocolVersion);
             Assert.False(string.IsNullOrWhiteSpace(WorkerPipeContract.PipeName));
             Assert.StartsWith(@"Global\", WorkerPipeContract.WorkerMutexName);
         }
@@ -90,6 +91,61 @@ namespace Zentwik.Tests
             Assert.Equal("query-intel-tuning", WorkerPipeContract.CommandQueryIntelTuning);
             Assert.Equal("apply-intel-tuning", WorkerPipeContract.CommandApplyIntelTuning);
 
+        }
+
+        [Fact]
+        public void CapabilityCommand_matches_contract_strings()
+        {
+            Assert.Equal("query-capabilities", WorkerPipeContract.CommandQueryCapabilities);
+        }
+
+        [Fact]
+        public void Capability_payload_roundtrips_states_and_usable()
+        {
+            CapabilitySnapshotPayload payload = new()
+            {
+                Vendor = CpuVendorNames.Amd,
+                Modules =
+                {
+                    new ModuleInfoPayload
+                    {
+                        Id = "amd.cpu",
+                        Name = "AMD 处理器调校",
+                        Version = "1.0",
+                        States = { "installed", "enabled", "hardwareSupported" },
+                        Requires = { "core.runtime" },
+                        Provides = { "tuning.apply" },
+                        Reason = "驱动未安装"
+                    }
+                },
+                Capabilities =
+                {
+                    new CapabilityInfoPayload
+                    {
+                        Id = "tuning.apply",
+                        Provider = "amd.cpu",
+                        States = { "installed", "enabled", "hardwareSupported" },
+                        Usable = false,
+                        Reason = "驱动未安装"
+                    }
+                }
+            };
+
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                payload, Zentwik.Core.Serialization.IpcJsonContext.Default.CapabilitySnapshotPayload);
+
+            CapabilitySnapshotPayload? back = System.Text.Json.JsonSerializer.Deserialize(
+                json, Zentwik.Core.Serialization.IpcJsonContext.Default.CapabilitySnapshotPayload);
+
+            Assert.NotNull(back);
+            Assert.Equal("amd", back!.Vendor);
+            Assert.Single(back.Modules);
+            Assert.Equal("amd.cpu", back.Modules[0].Id);
+            Assert.Equal(new[] { "installed", "enabled", "hardwareSupported" }, back.Modules[0].States);
+            Assert.Equal(new[] { "core.runtime" }, back.Modules[0].Requires);
+            Assert.Single(back.Capabilities);
+            Assert.False(back.Capabilities[0].Usable);
+            Assert.Equal("tuning.apply", back.Capabilities[0].Id);
         }
 
         [Fact]
