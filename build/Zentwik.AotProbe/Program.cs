@@ -284,12 +284,26 @@ internal static class Program
         _ = provider.GetRequiredService<AutoStartService>();
         Check("di.autoStart", true, "已构造（控制台代码页探测完成）");
 
-        // SmuReader 放在最后：它的构造会真的去开 PawnIO 驱动。
-        // 若 SMU 通道被裁剪或内部用了动态代码生成，异常就在这里冒出来。
+        // 两条通道在任意平台都必须可解析：一条是真实现，另一条是不支持桩。
+        // 不能按具体类型取 —— 厂商模块只注册自己那一个，CI 跑在 Intel 机器上。
+        try
+        {
+            IAmdTuningChannel amd = provider.GetRequiredService<IAmdTuningChannel>();
+            IIntelTuningChannel intel = provider.GetRequiredService<IIntelTuningChannel>();
+
+            Check("tuning.channels", true, $"amd={amd.Status}, intel={intel.Status}");
+        }
+        catch (Exception ex)
+        {
+            Check("tuning.channels", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // SMU 放在最后：构造后读状态会真的去开 PawnIO 驱动。
+        // 直接 new 而不是解析容器，才能在非 AMD 机器上也走一遍真实类型。
         // 注意这不是「被裁剪」的证明 —— 没装驱动时它也返回 false。
         try
         {
-            SmuReader smu = provider.GetRequiredService<SmuReader>();
+            using SmuReader smu = new(log);
             Check("smu.construct", true,
                 $"IsAvailable={smu.IsAvailable}, CreatedCount={SmuReader.CreatedCount}, LastError={smu.LastError ?? "无"}");
         }
