@@ -170,7 +170,14 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             return new CpuTuningStatus(HardwareAvailability.NotSupported, error, vendor, PlatformName(family, model), true, false);
         }
 
-        var open = PawnIoSession.Open(ResolveModulePath());
+        var modulePath = ResolveModulePath(out var searched);
+        if (modulePath is null)
+        {
+            var detail = $"未找到 PawnIO 模块，已查找：{searched}。可用 ZENTWIK_PAWNIO_MODULE 指定。";
+            return new CpuTuningStatus(HardwareAvailability.ModuleMissing, detail, vendor, PlatformName(family, model), true, false);
+        }
+
+        var open = PawnIoSession.Open(modulePath);
         if (open.Session is null)
         {
             error = open.Detail;
@@ -315,23 +322,40 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         return raw >= 0x8000 ? raw - 0x10000 : raw;
     }
 
-    private static string? ResolveModulePath()
+    private static string? ResolveModulePath(out string searched)
     {
+        var candidates = new List<string>();
+
         var configured = Environment.GetEnvironmentVariable("ZENTWIK_PAWNIO_MODULE");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+        if (!string.IsNullOrWhiteSpace(configured))
         {
-            return configured;
+            candidates.Add(configured);
+            if (File.Exists(configured))
+            {
+                searched = configured;
+                return configured;
+            }
         }
 
         var local = Path.Combine(AppContext.BaseDirectory, "PawnIO", "RyzenSMU.bin");
+        candidates.Add(local);
         if (File.Exists(local))
         {
+            searched = local;
             return local;
         }
 
         var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
         var installed = Path.Combine(programFiles, "Zentwik", "PawnIO", "RyzenSMU.bin");
-        return File.Exists(installed) ? installed : null;
+        candidates.Add(installed);
+        if (File.Exists(installed))
+        {
+            searched = installed;
+            return installed;
+        }
+
+        searched = string.Join("、", candidates);
+        return null;
     }
 
     private void DisposeSession()

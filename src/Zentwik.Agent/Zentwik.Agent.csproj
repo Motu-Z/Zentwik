@@ -18,4 +18,11 @@
     <ProjectReference Include="..\Zentwik.Platform\Zentwik.Platform.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\modules\PawnIO\*.bin"
+          Link="PawnIO\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
