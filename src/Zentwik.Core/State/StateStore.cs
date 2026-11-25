@@ -41,10 +41,14 @@ public sealed class StateStore
                 return;
             }
 
-            await using var stream = File.OpenRead(_path);
-            var document = await JsonSerializer
-                .DeserializeAsync(stream, ZentwikJson.Default.StateDocument, ct)
-                .ConfigureAwait(false);
+            var json = await File.ReadAllTextAsync(_path, ct).ConfigureAwait(false);
+            if (json.Contains("\"voltageOffsetMillivolts\"", StringComparison.Ordinal))
+            {
+                json = json.Replace("\"voltageOffsetMillivolts\"", "\"offset\"", StringComparison.Ordinal);
+                _log.Info("状态文件含旧字段 voltageOffsetMillivolts，按 offset 读入。");
+            }
+
+            var document = JsonSerializer.Deserialize(json, ZentwikJson.Default.StateDocument);
 
             if (document is null)
             {

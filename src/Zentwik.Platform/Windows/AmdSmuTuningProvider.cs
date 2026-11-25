@@ -78,11 +78,11 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         }
     }
 
-    public bool TryWriteOffset(int core, int millivolts, out string? error)
+    public bool TryWriteOffset(int core, int offset, out string? error)
     {
-        if (millivolts is < MinOffset or > MaxOffset)
+        if (offset is < MinOffset or > MaxOffset)
         {
-            error = $"偏移量 {millivolts} mV 超出允许范围 {MinOffset}..{MaxOffset}。";
+            error = $"CO 值 {offset} 超出允许范围 {MinOffset}..{MaxOffset}。";
             return false;
         }
 
@@ -95,7 +95,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             }
 
             var mask = EncodeMask((uint)core);
-            var payload = (mask & 0xFFF0_0000u) | (unchecked((uint)millivolts) & 0xFFFFu);
+            var payload = (mask & 0xFFF0_0000u) | (unchecked((uint)offset) & 0xFFFFu);
             var scratch = new long[MaxArgs];
             if (!TrySend(_commands.Set, [payload], scratch, out error))
             {
@@ -109,9 +109,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             }
 
             var actual = SignExtend16(scratch[0]);
-            if (actual != millivolts)
+            if (actual != offset)
             {
-                error = $"核 {core} 回读 {actual} mV，与写入 {millivolts} mV 不一致。";
+                error = $"核 {core} 回读 {actual}，与写入 {offset} 不一致。";
                 return false;
             }
 

@@ -43,7 +43,7 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
         return true;
     }
 
-    public bool TryWriteOffset(int core, int millivolts, out string? error)
+    public bool TryWriteOffset(int core, int offset, out string? error)
     {
         if (FailWrites)
         {
@@ -57,13 +57,13 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
             return false;
         }
 
-        if (millivolts is < -50 or > 50)
+        if (offset is < -50 or > 50)
         {
-            error = $"偏移量 {millivolts} mV 超出范围。";
+            error = $"CO 值 {offset} 超出范围。";
             return false;
         }
 
-        _offsets[core] = millivolts;
+        _offsets[core] = offset;
         error = null;
         return true;
     }

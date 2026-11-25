@@ -278,12 +278,12 @@ public sealed class PlanCoordinator
             return (Array.Empty<TargetOutcome>(), readError ?? "读取当前偏移失败。");
         }
 
-        var byCore = offsets.ToDictionary(static offset => offset.Core, static offset => offset.Millivolts);
+        var byCore = offsets.ToDictionary(static offset => offset.Core, static offset => offset.Offset);
         var outcomes = new List<TargetOutcome>();
 
         foreach (var core in plan.Cores)
         {
-            if (core.VoltageOffsetMillivolts is not { } desired)
+            if (core.Offset is not { } desired)
             {
                 continue;
             }
@@ -675,7 +675,7 @@ public sealed class PlanCoordinator
             }
 
             var match = offsets.FirstOrDefault(offset => offset.Core == core);
-            return match is null ? null : match.Millivolts.ToString(CultureInfo.InvariantCulture);
+            return match is null ? null : match.Offset.ToString(CultureInfo.InvariantCulture);
         }
 
         if (string.Equals(target, "power.active", StringComparison.Ordinal))
@@ -701,7 +701,7 @@ public sealed class PlanCoordinator
         }
 
         var match = offsets.FirstOrDefault(offset => offset.Core == core);
-        return match is null ? null : match.Millivolts.ToString(CultureInfo.InvariantCulture);
+        return match is null ? null : match.Offset.ToString(CultureInfo.InvariantCulture);
     }
 
     private Plan FindPlan(string planId) =>

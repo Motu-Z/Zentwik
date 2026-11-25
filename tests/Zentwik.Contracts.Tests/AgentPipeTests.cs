@@ -304,7 +304,7 @@ public sealed class AgentPipeTests : IAsyncLifetime
     {
         Id = "cpu-test",
         Name = "CPU test",
-        Cores = [new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -20 }],
+        Cores = [new CoreTuning { CoreIndex = 0, Offset = -20 }],
         CreatedAt = DateTimeOffset.Now,
         UpdatedAt = DateTimeOffset.Now,
     };

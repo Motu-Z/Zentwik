@@ -206,10 +206,10 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         if (snapshot.Cores.Count > 0)
         {
             Console.WriteLine();
-            Console.WriteLine("core offset(mV)");
+            Console.WriteLine("core    co");
             foreach (var core in snapshot.Cores)
             {
-                Console.WriteLine($"  {core.Core,4}  {core.Millivolts,4}");
+                Console.WriteLine($"  {core.Core,4}  {core.Offset,4}");
             }
         }
 
@@ -373,12 +373,12 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             var parts = entry.Split('=', 2);
             if (parts.Length != 2
                 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var core)
-                || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var millivolts))
+                || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
             {
-                throw new CliUsageException($"无法解析 --core {entry}，格式为 核=毫伏。");
+                throw new CliUsageException($"无法解析 --core {entry}，格式为 核=CO 值。");
             }
 
-            cores.Add(new CoreTuning { CoreIndex = core, VoltageOffsetMillivolts = millivolts });
+            cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
         }
 
         if (cores.Count == 0)
@@ -822,7 +822,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         switch (plan)
         {
             case CpuTuningPlan cpu:
-                Console.WriteLine($"cores     {string.Join(", ", cpu.Cores.Select(static core => $"{core.CoreIndex}:{core.VoltageOffsetMillivolts?.ToString(CultureInfo.InvariantCulture) ?? "-"}"))}");
+                Console.WriteLine($"cores     {string.Join(", ", cpu.Cores.Select(static core => $"{core.CoreIndex}:{core.Offset?.ToString(CultureInfo.InvariantCulture) ?? "-"}"))}");
                 Console.WriteLine($"fmax      {cpu.FMaxLimitMhz?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
                 break;
             case PowerPlan power:

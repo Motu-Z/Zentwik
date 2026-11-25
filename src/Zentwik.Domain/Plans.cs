@@ -11,8 +11,8 @@ public sealed record CoreTuning
 {
     public required int CoreIndex { get; init; }
 
-    // null 表示该核不参与本次应用。
-    public int? VoltageOffsetMillivolts { get; init; }
+    // Curve Optimizer 值：有符号整数步进，负值降压，没有物理单位。null 表示该核不参与本次应用。
+    public int? Offset { get; init; }
 
     public int? MaxFrequencyMhz { get; init; }
 }

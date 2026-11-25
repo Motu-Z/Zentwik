@@ -54,7 +54,8 @@ public sealed record CpuTuningStatus(
     bool PersistsAcrossReboot,
     bool Simulated);
 
-public sealed record CoreOffset(int Core, int Millivolts);
+/// <summary>AMD Curve Optimizer 值：有符号整数步进，负值降压，没有物理单位。</summary>
+public sealed record CoreOffset(int Core, int Offset);
 
 public interface ICpuTuningProvider
 {

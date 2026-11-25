@@ -53,7 +53,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
 
         Assert.Equal(PlanApplyState.Applied, outcome.State);
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
-        Assert.Equal(-25, offsets.Single(static offset => offset.Core == 0).Millivolts);
+        Assert.Equal(-25, offsets.Single(static offset => offset.Core == 0).Offset);
 
         var reloaded = await ReloadAsync();
         Assert.Equal(PlanApplyState.Applied, reloaded.Plans[0].LastApply?.State);
@@ -111,7 +111,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
 
         Assert.Equal(PlanApplyState.NotApplied, outcome.State);
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
-        Assert.Equal(0, offsets.Single(static offset => offset.Core == 0).Millivolts);
+        Assert.Equal(0, offsets.Single(static offset => offset.Core == 0).Offset);
         Assert.Equal("用户已接管。", outcome.Targets[0].Failure);
     }
 
@@ -197,8 +197,8 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             Revision = 1,
             Cores =
             [
-                new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -25 },
-                new CoreTuning { CoreIndex = 1, VoltageOffsetMillivolts = -20 },
+                new CoreTuning { CoreIndex = 0, Offset = -25 },
+                new CoreTuning { CoreIndex = 1, Offset = -20 },
             ],
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
@@ -222,7 +222,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
-        return offsets.Single(offset => offset.Core == core).Millivolts;
+        return offsets.Single(offset => offset.Core == core).Offset;
     }
 
     private async Task<Plan> SeedPlanAsync()
@@ -232,7 +232,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             Id = "cpu",
             Name = "CPU",
             Revision = 1,
-            Cores = [new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -25 }],
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -25 }],
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };
@@ -248,7 +248,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             Id = "cpu-battery",
             Name = "CPU battery",
             Revision = 1,
-            Cores = [new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -10 }],
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -10 }],
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };

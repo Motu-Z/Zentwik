@@ -119,7 +119,7 @@ public sealed class SceneRecoveryTests : IAsyncLifetime
     }
 
     private int ReadOffset() =>
-        _tuning.TryReadOffsets(out var offsets, out _) ? offsets[0].Millivolts : int.MinValue;
+        _tuning.TryReadOffsets(out var offsets, out _) ? offsets[0].Offset : int.MinValue;
 
     /// <summary>模拟进程重启：重新读盘、重建协调器与引擎，硬件状态由同一个提供者实例延续。</summary>
     private async Task<SceneEngine> RestartAsync()
@@ -151,7 +151,7 @@ public sealed class SceneRecoveryTests : IAsyncLifetime
             Id = "cpu",
             Name = "CPU",
             Revision = 1,
-            Cores = [new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -25 }],
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -25 }],
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };

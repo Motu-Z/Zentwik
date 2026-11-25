@@ -500,7 +500,7 @@ internal sealed class AgentSession : IAsyncDisposable
         var status = _server.Tuning.Query();
         var readable = _server.Tuning.TryReadOffsets(out var offsets, out var readError);
         var cores = readable
-            ? offsets.Select(static offset => new CoreOffsetDto(offset.Core, offset.Millivolts)).ToArray()
+            ? offsets.Select(static offset => new CoreOffsetDto(offset.Core, offset.Offset)).ToArray()
             : [];
 
         var availability = status.Availability switch
@@ -604,9 +604,9 @@ internal sealed class AgentSession : IAsyncDisposable
 
                 foreach (var core in cpu.Cores)
                 {
-                    if (core.VoltageOffsetMillivolts is { } offset && offset is < -50 or > 50)
+                    if (core.Offset is { } offset && offset is < -50 or > 50)
                     {
-                        throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 偏移 {offset} mV 超出 ±50。");
+                        throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 的 CO 值 {offset} 超出 ±50。");
                     }
                 }
 

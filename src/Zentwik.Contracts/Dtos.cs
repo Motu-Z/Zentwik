@@ -141,7 +141,7 @@ public sealed record DoctorDto(
     IReadOnlyList<ModuleDto> Modules,
     IReadOnlyList<LogEntryDto> RecentErrors);
 
-public sealed record CoreOffsetDto(int Core, int Millivolts);
+public sealed record CoreOffsetDto(int Core, int Offset);
 
 public sealed record IntelTuningSnapshotDto(
     string Availability,
