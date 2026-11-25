@@ -186,6 +186,39 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal(0, ReadOffset(0));
     }
 
+    [Fact]
+    public async Task Unreadable_Core_Is_Skipped_Without_Writing()
+    {
+        _tuning.UnreadableCores.Add(1);
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu",
+            Name = "CPU",
+            Revision = 1,
+            Cores =
+            [
+                new CoreTuning { CoreIndex = 0, VoltageOffsetMillivolts = -25 },
+                new CoreTuning { CoreIndex = 1, VoltageOffsetMillivolts = -20 },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(target => target.Target == "cpu.co.0").Status);
+        Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(target => target.Target == "cpu.co.1").Status);
+
+        _tuning.UnreadableCores.Clear();
+        Assert.Equal(-25, ReadOffset(0));
+        Assert.Equal(0, ReadOffset(1));
+
+        var reloaded = await ReloadAsync();
+        Assert.Equal("cpu.co.0", Assert.Single(reloaded.Ledger).Target);
+    }
+
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));

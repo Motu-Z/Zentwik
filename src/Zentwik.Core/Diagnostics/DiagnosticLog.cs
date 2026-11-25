@@ -63,6 +63,11 @@ public sealed class DiagnosticLog : IDisposable
 
         lock (_gate)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
             _recent.Enqueue(new LogEntryDto(timestamp, level, message));
             while (_recent.Count > RecentCapacity)
             {

@@ -60,6 +60,7 @@ public interface ICpuTuningProvider
 {
     CpuTuningStatus Query();
 
+    /// <summary>部分核读不到时仍返回已读到的核，失败明细走 error；全部失败才返回 false。</summary>
     bool TryReadOffsets(out IReadOnlyList<CoreOffset> offsets, out string? error);
 
     bool TryWriteOffset(int core, int millivolts, out string? error);

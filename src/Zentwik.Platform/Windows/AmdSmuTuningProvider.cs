@@ -64,13 +64,16 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
                 values.Add(new CoreOffset(core, SignExtend16(result[0])));
             }
 
-            if (failed.Count > 0)
+            if (values.Count == 0)
             {
-                error = $"{failed.Count}/{_info.PhysicalCoreCount} 个核读取失败：{string.Join("；", failed)}";
+                error = $"{failed.Count} 个核全部读取失败：{string.Join("；", failed)}";
                 return false;
             }
 
             offsets = values;
+            error = failed.Count == 0
+                ? null
+                : $"{failed.Count}/{_info.PhysicalCoreCount} 个核读取失败：{string.Join("；", failed)}";
             return true;
         }
     }

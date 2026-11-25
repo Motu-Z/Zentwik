@@ -289,13 +289,24 @@ public sealed class PlanCoordinator
             }
 
             var target = $"cpu.co.{core.CoreIndex}";
-            var current = byCore.TryGetValue(core.CoreIndex, out var value) ? value : (int?)null;
+            if (!byCore.TryGetValue(core.CoreIndex, out var current))
+            {
+                outcomes.Add(new TargetOutcome(
+                    target,
+                    null,
+                    desired.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    LedgerStatus.Skipped,
+                    "读取该核当前偏移失败，未写入。"));
+                continue;
+            }
+
             outcomes.Add(ApplyTarget(
                 target,
                 plan.Id,
                 source,
                 priority,
-                current?.ToString(CultureInfo.InvariantCulture),
+                current.ToString(CultureInfo.InvariantCulture),
                 desired.ToString(CultureInfo.InvariantCulture),
                 () => _tuning.TryWriteOffset(core.CoreIndex, desired, out var writeError) ? null : writeError,
                 () => ReadCoreOffset(core.CoreIndex)));

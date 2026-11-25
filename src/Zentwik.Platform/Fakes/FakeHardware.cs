@@ -27,10 +27,19 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
     /// <summary>置为 true 后所有写入返回失败，用于验证失败保留与重试路径。</summary>
     public bool FailWrites { get; set; }
 
+    /// <summary>模拟部分核读不到：读取时跳过这些核，仍返回其余核。</summary>
+    public HashSet<int> UnreadableCores { get; } = [];
+
     public bool TryReadOffsets(out IReadOnlyList<CoreOffset> offsets, out string? error)
     {
-        offsets = _offsets.OrderBy(static pair => pair.Key).Select(static pair => new CoreOffset(pair.Key, pair.Value)).ToArray();
-        error = null;
+        offsets = _offsets
+            .Where(pair => !UnreadableCores.Contains(pair.Key))
+            .OrderBy(static pair => pair.Key)
+            .Select(static pair => new CoreOffset(pair.Key, pair.Value))
+            .ToArray();
+        error = UnreadableCores.Count == 0
+            ? null
+            : $"{UnreadableCores.Count} 个核读取失败：{string.Join("、", UnreadableCores.Order())}。";
         return true;
     }
 
