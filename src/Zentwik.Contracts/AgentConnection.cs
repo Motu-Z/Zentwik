@@ -38,11 +38,7 @@ public sealed class AgentConnection : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken ct = default)
     {
-        var pipe = new NamedPipeClientStream(
-            ".",
-            pipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
 
         try
         {
@@ -55,10 +51,23 @@ public sealed class AgentConnection : IAsyncDisposable
             await pipe.DisposeAsync().ConfigureAwait(false);
             throw new TimeoutException($"连接 {pipeName} 超时（{timeout.TotalSeconds:0.#}s）。");
         }
+        catch (IOException ex) when (ex.InnerException is not null)
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+            throw new IpcTransportException($"连接 {pipeName} 失败：{ex.InnerException.Message}", ex);
+        }
         catch
         {
             await pipe.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+
+        var serverSid = PipeIdentity.ReadServerSid(pipe.SafePipeHandle.DangerousGetHandle());
+        if (!PipeIdentity.IsTrustedServer(serverSid, PipeIdentity.ReadCurrentSid()))
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+            throw new UnauthorizedAccessException(
+                $"管道 {pipeName} 的创建者是 {serverSid ?? "未知账户"}，既不是 SYSTEM 也不是当前用户，已拒绝连接。");
         }
 
         return new AgentConnection(pipe);

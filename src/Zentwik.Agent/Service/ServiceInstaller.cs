@@ -189,7 +189,7 @@ internal static partial class NativeService
             CloseServiceHandle(manager);
         }
 
-        var started = Start(options.ServiceName);
+        var started = Start(options.ServiceName, announce: false);
         Console.WriteLine(started == 0
             ? $"服务 {options.ServiceName} 已安装并启动。"
             : $"服务 {options.ServiceName} 已安装，但启动失败。");
@@ -248,7 +248,7 @@ internal static partial class NativeService
         }
     }
 
-    public static int Start(string serviceName)
+    public static int Start(string serviceName, bool announce = true)
     {
         var service = OpenForControl(serviceName, ServiceStart | ServiceQueryStatus);
         if (service == 0)
@@ -270,7 +270,11 @@ internal static partial class NativeService
 
             if (WaitForState(service, ServiceRunState))
             {
-                Console.WriteLine($"服务 {serviceName} 已启动。");
+                if (announce)
+                {
+                    Console.WriteLine($"服务 {serviceName} 已启动。");
+                }
+
                 return 0;
             }
 

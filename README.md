@@ -43,7 +43,7 @@ Zentwik.Agent.exe --stop-service
 Zentwik.Agent.exe --uninstall-service
 ```
 
-服务启动参数为 `--service --name --data-dir`；安装时把当前用户 SID 写入 `owner.sid`，服务内的管道只接受该用户的中完整性交互会话。`--service` 在交互会话中直接启动时退回控制台模式，便于调试。代理自身退出码：`0` 成功、`3` 失败。
+服务启动参数为 `--service --name --data-dir`；安装时把当前用户 SID 写入 `owner.sid`，服务内的管道只接受该用户的中完整性交互会话。客户端连接后校验对端进程属于 SYSTEM 或当前用户，因此服务以 SYSTEM 运行时普通用户也能连上。`--service` 在交互会话中直接启动时退回控制台模式，便于调试。代理自身退出码：`0` 成功、`3` 失败。
 
 CLI：
 

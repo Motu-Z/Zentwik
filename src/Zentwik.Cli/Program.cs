@@ -70,3 +70,18 @@ catch (AgentRequestException ex)
     output.Error(ex.Code, ex.Detail ?? ex.Message);
     return ex.Code == ErrorCodes.HardwareUnavailable ? ExitCodes.Unavailable : ExitCodes.Failed;
 }
+catch (UnauthorizedAccessException ex)
+{
+    output.Error("agent.rejected", ex.Message);
+    return ExitCodes.Failed;
+}
+catch (IOException ex)
+{
+    output.Error("agent.unavailable", $"与代理的管道中断：{ex.Message}");
+    return ExitCodes.AgentUnavailable;
+}
+catch (Exception ex)
+{
+    output.Error("cli.failure", $"{ex.GetType().Name}: {ex.Message}");
+    return ExitCodes.Failed;
+}
