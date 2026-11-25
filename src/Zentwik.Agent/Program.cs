@@ -42,7 +42,7 @@ ICpuTuningProvider tuning = options.UseFake ? new FakeCpuTuningProvider() : new 
 IPowerPolicyService power = options.UseFake ? new FakePowerPolicyService() : new Win32PowerPolicyService();
 IProcessScheduler scheduler = options.UseFake ? new FakeProcessScheduler() : new AffinityScheduler();
 IPowerStatus powerStatus = options.UseFake ? new FakePowerStatus() : new Win32PowerStatus();
-ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource() : new Win32TelemetrySource();
+ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource(system.ProcessorCount) : new Win32TelemetrySource();
 
 var hub = new TelemetryHub(telemetry);
 var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, scheduler, power));

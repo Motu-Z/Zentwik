@@ -33,7 +33,7 @@ public sealed class WindowsSystemInfo : ISystemInfo
         try
         {
             using var key = Registry.LocalMachine.OpenSubKey(ProcessorKey);
-            return key?.GetValue(name) as string;
+            return (key?.GetValue(name) as string)?.Trim();
         }
         catch (System.Security.SecurityException)
         {
