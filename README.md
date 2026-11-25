@@ -64,7 +64,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `caps` | 能力清单与状态 |
 | `modules` | 内置模块与聚合状态 |
 | `monitor [--count N] [--interval MS]` | CPU/内存持续采样 |
-| `tuning` | CPU 调校通道状态与逐核电压偏移 |
+| `tuning` | AMD：通道状态与逐核 CO 偏移；`--intel`：电压偏移与睿频上限 |
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理与手动执行 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |
@@ -76,13 +76,16 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 方案应用语义：写前记录前值 → 写入 → 回读 → 期望与实际不一致即判定失败；结果落在状态账本，`Owner` 区分 Scene/Plan/User。硬件不可用时返回失败原因，不伪造成功。
 
-调校通道可用性：`available` / `notSupported` / `driverUnavailable` / `moduleMissing` / `privilegeMissing`（PawnIO 拒绝访问，需要管理员运行代理）/ `probeFailed`。
+调校通道可用性：`available` / `notSupported` / `driverUnavailable` / `moduleMissing` / `privilegeMissing`（PawnIO 拒绝访问，需要管理员运行代理）/ `probeFailed` / `rejected`（通道可用但平台拒绝该操作，例如固件锁定 CO）。
+
+核地址编码在探测阶段确定：先按独热位 `bit[20+核]` 读物理核 0，失败再试序号编码 `bit[23:20]`；两种都被拒绝才报 `rejected` 并附上每次尝试的掩码与错误码。
 
 场景恢复：场景退出且 `RestoreOnExit` 为真时回退自己的写入；代理停止时同样回退；上次异常退出遗留的写入在下次启动（同一启动周期内）补回退，整机重启后不擅自改写。
 
 ## 当前未实现
 
-- Intel MSR 调校通道、FMax 写入、CPU Sets 写入、GPU 遥测、进程调度持续 enforce。
-- 服务安装/卸载只在代码层完成，未在管理员会话上机验证；Session 0 → 用户会话实际通信同样待验证。
-- AMD CO 写入闭环需要管理员运行代理才能触达 PawnIO；当前只在 fake 提供者上验证过写入-回读-账本路径，真实设备只验证到"权限不足被明确报出"。
+- AMD FMax 写入、CPU Sets 写入、GPU 遥测、进程调度持续 enforce。
+- Intel 通道只做了 MSR 读取与电压偏移写入；睿频上限仅读，且没有在 Intel 机器上实测。
+- 服务安装/卸载与 Session 0 → 用户会话通信已在管理员会话验证通过（含伪造 owner.sid 的拒绝路径）；服务异常终止后的 SCM 恢复动作尚未实测。
+- AMD CO 在物理机上仍读不到：SMU 对 `0xD5` 返回 0xFF（命令执行失败）。已改为按物理核寻址并自动协商掩码编码，等待实机复验；写入同样未验证。
 - 休眠唤醒后的实际值复核未做。

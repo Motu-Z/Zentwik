@@ -44,7 +44,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
         Console.WriteLine($"agent       {status.Version}  protocol v{status.ProtocolVersion}");
         Console.WriteLine($"machine     {status.MachineName}  elevated={Output.Status(status.Elevated)}  service={Output.Status(status.RunningAsService)}  simulated={Output.Status(status.Simulated)}");
-        Console.WriteLine($"processors  {status.ProcessorCount} logical  groups={status.ProcessorGroups}");
+        Console.WriteLine($"processors  {status.PhysicalCoreCount} cores / {status.ProcessorCount} threads  groups={status.ProcessorGroups}");
         Console.WriteLine($"uptime      {TimeSpan.FromSeconds(status.UptimeSeconds):hh\\:mm\\:ss}");
         Console.WriteLine($"data        {status.DataDirectory}");
         Console.WriteLine($"plans       {status.PlanCount}  scenes {status.SceneCount}  ledger {status.LedgerEntryCount}");
@@ -157,7 +157,39 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> TuningAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe");
+        args.EnsureOnly("--pipe", "--intel");
+        return args.Flag("--intel")
+            ? await IntelTuningAsync(ct)
+            : await AmdTuningAsync(ct);
+    }
+
+    private async Task<int> IntelTuningAsync(CancellationToken ct)
+    {
+        var snapshot = await connection.ReadIntelTuningAsync(ct);
+        output.JsonValue(snapshot, ZentwikJson.Default.IntelTuningSnapshotDto);
+
+        if (output.Json)
+        {
+            return snapshot.Availability == "available" ? ExitCodes.Ok : ExitCodes.Unavailable;
+        }
+
+        Console.WriteLine($"availability  {snapshot.Availability}");
+        Console.WriteLine($"platform      {snapshot.Platform ?? "-"}  vendor={snapshot.Vendor ?? "-"}  simulated={Output.Status(snapshot.Simulated)}");
+        Console.WriteLine($"reboot        {(snapshot.PersistsAcrossReboot ? "写入在重启后保持" : "仅当前会话有效")}");
+        Console.WriteLine($"detail        {snapshot.Detail}");
+
+        if (snapshot.VoltageOffsetMillivolts is { } offset)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"voltage offset   {offset,4} mV");
+            Console.WriteLine($"turbo ratio      1C {snapshot.TurboRatio1Core}x / 8C {snapshot.TurboRatio8Cores}x");
+        }
+
+        return snapshot.Availability == "available" ? ExitCodes.Ok : ExitCodes.Unavailable;
+    }
+
+    private async Task<int> AmdTuningAsync(CancellationToken ct)
+    {
         var snapshot = await connection.ReadTuningAsync(ct);
         output.JsonValue(snapshot, ZentwikJson.Default.TuningSnapshotDto);
 

@@ -34,6 +34,7 @@ public sealed record AgentStatusDto(
     bool RunningAsService,
     bool Simulated,
     int ProcessorCount,
+    int PhysicalCoreCount,
     int ProcessorGroups,
     DateTimeOffset StartedAt,
     long UptimeSeconds,
@@ -141,6 +142,17 @@ public sealed record DoctorDto(
     IReadOnlyList<LogEntryDto> RecentErrors);
 
 public sealed record CoreOffsetDto(int Core, int Millivolts);
+
+public sealed record IntelTuningSnapshotDto(
+    string Availability,
+    string? Detail,
+    string? Vendor,
+    string? Platform,
+    bool PersistsAcrossReboot,
+    bool Simulated,
+    int? VoltageOffsetMillivolts,
+    int? TurboRatio1Core,
+    int? TurboRatio8Cores);
 
 public sealed record TuningSnapshotDto(
     string Availability,

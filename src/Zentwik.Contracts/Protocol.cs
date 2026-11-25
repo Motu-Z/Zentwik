@@ -47,6 +47,7 @@ public static class Ops
     public const string SettingsSet = "settings.set";
 
     public const string TuningRead = "hardware.tuning.read";
+    public const string IntelTuningRead = "hardware.tuning.intel";
 
     public const string DiagnosticsDoctor = "diagnostics.doctor";
     public const string DiagnosticsLog = "diagnostics.log";

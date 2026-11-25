@@ -93,6 +93,7 @@ public sealed class AccessControlTests
             scenes,
             doctor,
             tuning,
+            new FakeIntelTuningProvider(),
             Policy);
 
         using var cts = new CancellationTokenSource();

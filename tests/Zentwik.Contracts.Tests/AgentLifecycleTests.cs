@@ -88,6 +88,7 @@ public sealed class AgentLifecycleTests
             scenes,
             doctor,
             tuning,
+            new FakeIntelTuningProvider(),
             new CallerPolicy(ownerSid, RequireInteractiveSession: true, IntegrityLevel.Medium));
 
         using var cts = new CancellationTokenSource();

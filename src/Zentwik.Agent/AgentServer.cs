@@ -26,6 +26,7 @@ public sealed class AgentServer
     private readonly SceneEngine _scenes;
     private readonly DoctorService _doctor;
     private readonly ICpuTuningProvider _tuning;
+    private readonly IIntelTuningProvider _intel;
     private readonly CallerPolicy _policy;
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly List<AgentSession> _sessions = [];
@@ -42,6 +43,7 @@ public sealed class AgentServer
         SceneEngine scenes,
         DoctorService doctor,
         ICpuTuningProvider tuning,
+        IIntelTuningProvider intel,
         CallerPolicy policy)
     {
         _options = options;
@@ -54,6 +56,7 @@ public sealed class AgentServer
         _scenes = scenes;
         _doctor = doctor;
         _tuning = tuning;
+        _intel = intel;
         _policy = policy;
     }
 
@@ -140,6 +143,8 @@ public sealed class AgentServer
     internal CapabilityService Capabilities => _capabilities;
 
     internal ISystemInfo System => _system;
+
+    internal IIntelTuningProvider Intel => _intel;
 
     internal AgentOptions Options => _options;
 

@@ -201,6 +201,9 @@ public sealed class AgentConnection : IAsyncDisposable
     public async Task<TuningSnapshotDto> ReadTuningAsync(CancellationToken ct = default) =>
         await InvokeAsync(Ops.TuningRead, ZentwikJson.Default.TuningSnapshotDto, ct).ConfigureAwait(false);
 
+    public async Task<IntelTuningSnapshotDto> ReadIntelTuningAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.IntelTuningRead, ZentwikJson.Default.IntelTuningSnapshotDto, ct).ConfigureAwait(false);
+
     public async Task<DoctorDto> GetDoctorAsync(CancellationToken ct = default) =>
         await InvokeAsync(Ops.DiagnosticsDoctor, ZentwikJson.Default.DoctorDto, ct).ConfigureAwait(false);
 

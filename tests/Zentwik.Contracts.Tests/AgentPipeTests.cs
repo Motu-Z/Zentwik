@@ -61,7 +61,7 @@ public sealed class AgentPipeTests : IAsyncLifetime
         var doctor = new DoctorService(store, capabilities, _log, runtime, system, () => scenes.ActiveSceneId);
         var policy = new CallerPolicy(ownerSid, RequireInteractiveSession: true, IntegrityLevel.Medium);
 
-        var server = new AgentServer(options, store, hub, capabilities, system, _log, plans, scenes, doctor, tuning, policy);
+        var server = new AgentServer(options, store, hub, capabilities, system, _log, plans, scenes, doctor, tuning, new FakeIntelTuningProvider(), policy);
 
         _cts = new CancellationTokenSource();
         _serverTask = server.RunAsync(_cts.Token);

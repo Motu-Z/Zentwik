@@ -47,6 +47,15 @@ internal static partial class Native
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetActiveProcessorGroupCount();
 
+    internal const int RelationProcessorCore = 0;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetLogicalProcessorInformationEx(
+        int relationshipType,
+        nint buffer,
+        ref uint length);
+
     internal static readonly nint InvalidHandleValue = -1;
 
     [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]

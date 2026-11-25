@@ -41,6 +41,9 @@ public enum HardwareAvailability
     ModuleMissing,
     PrivilegeMissing,
     ProbeFailed,
+
+    /// <summary>通道可用，但平台拒绝了这项具体操作（例如固件锁定 Curve Optimizer）。</summary>
+    Rejected,
 }
 
 public sealed record CpuTuningStatus(
@@ -62,9 +65,23 @@ public interface ICpuTuningProvider
     bool TryWriteOffset(int core, int millivolts, out string? error);
 }
 
-public sealed record ProcessTarget(int ProcessId, string Name);
+/// <summary>Intel 调校是会话级的：写入只改 MSR，重启后由固件恢复。</summary>
+public sealed record IntelTuningState(
+    int VoltageOffsetMillivolts,
+    int TurboRatio1Core,
+    int TurboRatio8Cores);
 
-public interface IProcessScheduler
+public interface IIntelTuningProvider
+{
+    CpuTuningStatus Query();
+
+    bool TryRead(out IntelTuningState state, out string? error);
+
+    /// <summary>写入核心电压偏移（负值为降压）。写入后必须回读一致。</summary>
+    bool TryWriteVoltageOffset(int millivolts, out string? error);
+}
+
+public sealed record ProcessTarget(int ProcessId, string Name);public interface IProcessScheduler
 {
     IReadOnlyList<ProcessTarget> Find(string name);
 
@@ -99,6 +116,9 @@ public interface ISystemInfo
     bool IsElevated { get; }
 
     int ProcessorCount { get; }
+
+    /// <summary>物理核数（不含 SMT 兄弟线程）。SMU 的 CO 与核掩码按物理核编号。</summary>
+    int PhysicalCoreCount { get; }
 
     int ProcessorGroups { get; }
 

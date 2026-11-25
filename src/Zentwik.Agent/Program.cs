@@ -50,13 +50,14 @@ if (!string.IsNullOrEmpty(ownerSid) && !string.Equals(store.Current.OwnerSid, ow
 
 ISystemInfo system = new WindowsSystemInfo();
 ICpuTuningProvider tuning = options.UseFake ? new FakeCpuTuningProvider() : new AmdSmuTuningProvider(system);
+IIntelTuningProvider intel = options.UseFake ? new FakeIntelTuningProvider() : new IntelMsrTuningProvider(system);
 IPowerPolicyService power = options.UseFake ? new FakePowerPolicyService() : new Win32PowerPolicyService();
 IProcessScheduler scheduler = options.UseFake ? new FakeProcessScheduler() : new AffinityScheduler();
 IPowerStatus powerStatus = options.UseFake ? new FakePowerStatus() : new Win32PowerStatus();
 ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource(system.ProcessorCount) : new Win32TelemetrySource();
 
 var hub = new TelemetryHub(telemetry);
-var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, scheduler, power));
+var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, intel, scheduler, power));
 var plans = new PlanCoordinator(store, tuning, power, scheduler, log);
 var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
 
@@ -71,7 +72,7 @@ var runtime = new AgentRuntime(version, options.ServiceMode, options.UseFake, Da
 var doctor = new DoctorService(store, capabilities, log, runtime, system, () => scenes.ActiveSceneId);
 
 var policy = new CallerPolicy(store.Current.OwnerSid, RequireInteractiveSession: true, IntegrityLevel.Medium);
-var server = new AgentServer(options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, policy);
+var server = new AgentServer(options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, intel, policy);
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>

@@ -60,9 +60,9 @@ public static class Help
                 break;
             case "tuning":
                 Console.WriteLine("""
-                    zentwik tuning
+                    zentwik tuning [--intel]
 
-                    读取 CPU 调校通道状态与逐核电压偏移。不可用时给出原因。
+                    读取 CPU 调校通道状态与逐核电压偏移；--intel 读取 Intel 的电压偏移与睿频上限。不可用时给出原因。
                     """);
                 break;
             case "doctor":

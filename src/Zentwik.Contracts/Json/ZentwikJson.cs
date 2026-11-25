@@ -45,6 +45,7 @@ namespace Zentwik.Contracts.Json;
 [JsonSerializable(typeof(CoreOffsetDto))]
 [JsonSerializable(typeof(CoreOffsetDto[]))]
 [JsonSerializable(typeof(TuningSnapshotDto))]
+[JsonSerializable(typeof(IntelTuningSnapshotDto))]
 [JsonSerializable(typeof(Plan))]
 [JsonSerializable(typeof(CpuTuningPlan))]
 [JsonSerializable(typeof(PowerPlan))]

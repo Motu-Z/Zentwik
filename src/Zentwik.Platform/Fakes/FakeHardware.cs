@@ -1,4 +1,5 @@
 using Zentwik.Platform;
+using Zentwik.Platform.Windows;
 
 namespace Zentwik.Platform.Fakes;
 
@@ -63,8 +64,44 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
     }
 }
 
-public sealed class FakePowerPolicyService : IPowerPolicyService
+public sealed class FakeIntelTuningProvider : IIntelTuningProvider
 {
+    private long _voltage;
+    private long _turbo = 0x002A_0026;   // 8 核 42x / 单核 38x
+
+    public CpuTuningStatus Query() => new(
+        HardwareAvailability.Available,
+        "模拟提供者，未接触硬件。",
+        "Fake",
+        "simulated",
+        false,
+        true);
+
+    public bool TryRead(out IntelTuningState state, out string? error)
+    {
+        error = null;
+        state = new IntelTuningState(
+            IntelMsrBits.DecodeVoltageOffset(_voltage),
+            IntelMsrBits.DecodeTurboRatio(_turbo, 1),
+            IntelMsrBits.DecodeTurboRatio(_turbo, 8));
+        return true;
+    }
+
+    public bool TryWriteVoltageOffset(int millivolts, out string? error)
+    {
+        if (millivolts is < -150 or > 100)
+        {
+            error = $"电压偏移 {millivolts} mV 超出范围。";
+            return false;
+        }
+
+        _voltage = IntelMsrBits.EncodeVoltageOffset(_voltage, millivolts);
+        error = null;
+        return true;
+    }
+}
+
+public sealed class FakePowerPolicyService : IPowerPolicyService{
     private static readonly Guid Balanced = new("381b4222-f694-41f0-9685-ff5bb260df2e");
     private static readonly Guid HighPerformance = new("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
 

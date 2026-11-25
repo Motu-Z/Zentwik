@@ -23,6 +23,8 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
     private DateTimeOffset _lastFailureAt = DateTimeOffset.MinValue;
     private CpuTuningStatus? _lastFailure;
     private CoCommands _commands;
+    private CoreAddressing _addressing = CoreAddressing.Bitmask;
+    private uint _smuVersion;
     private bool _probed;
 
     public AmdSmuTuningProvider(ISystemInfo info) => _info = info;
@@ -46,9 +48,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
                 return false;
             }
 
-            var values = new List<CoreOffset>(_info.ProcessorCount);
+            var values = new List<CoreOffset>(_info.PhysicalCoreCount);
             var result = new long[MaxArgs];
-            for (var core = 0; core < _info.ProcessorCount; core++)
+            for (var core = 0; core < _info.PhysicalCoreCount; core++)
             {
                 Array.Clear(result);
                 if (!TrySend(_commands.Get, [EncodeMask((uint)core)], result, out error))
@@ -150,6 +152,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         _session?.Dispose();
         _session = null;
         _probed = false;
+        _addressing = CoreAddressing.Bitmask;
 
         var vendor = _info.CpuVendor;
         if (!string.Equals(vendor, "AuthenticAMD", StringComparison.OrdinalIgnoreCase))
@@ -170,7 +173,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             return new CpuTuningStatus(HardwareAvailability.NotSupported, error, vendor, PlatformName(family, model), true, false);
         }
 
-        var modulePath = ResolveModulePath(out var searched);
+        var modulePath = PawnIoModules.Resolve("RyzenSMU.bin", out var searched);
         if (modulePath is null)
         {
             var detail = $"未找到 PawnIO 模块，已查找：{searched}。可用 ZENTWIK_PAWNIO_MODULE 指定。";
@@ -186,12 +189,15 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
 
         _session = open.Session;
 
-        if (!_session.Execute(FunctionGetVersion, [], new long[1], out var versionError))
+        var version = new long[1];
+        if (!_session.Execute(FunctionGetVersion, [], version, out var versionError))
         {
             error = $"读取 SMU 版本失败，Win32 错误码 {versionError}。";
             DisposeSession();
             return new CpuTuningStatus(HardwareAvailability.ProbeFailed, error, vendor, PlatformName(family, model), true, false);
         }
+
+        _smuVersion = (uint)version[0];
 
         var probe = new long[MaxArgs];
         if (!TrySend(MessageTest, [1], probe, out error) || probe[0] != 2)
@@ -201,13 +207,47 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
             return new CpuTuningStatus(HardwareAvailability.ProbeFailed, error, vendor, PlatformName(family, model), true, false);
         }
 
+        if (!ProbeCoreAccess(out error))
+        {
+            DisposeSession();
+            return new CpuTuningStatus(HardwareAvailability.Rejected, error, vendor, PlatformName(family, model), true, false);
+        }
+
         _probed = true;
         return Available();
     }
 
+    /// <summary>
+    /// 各代固件对核地址的编码并不一致：有的把核序号放在 bit[23:20]，有的用独热位 bit[20+核]。
+    /// 用只读命令试出可用的那一种，避免把「掩码 0」当成有效核地址发给固件。
+    /// </summary>
+    private bool ProbeCoreAccess(out string? error)
+    {
+        var attempts = new List<string>(2);
+
+        foreach (var addressing in (ReadOnlySpan<CoreAddressing>)[CoreAddressing.Bitmask, CoreAddressing.Index])
+        {
+            var previous = _addressing;
+            _addressing = addressing;
+            var mask = EncodeMask(0);
+
+            if (TrySend(_commands.Get, [mask], new long[MaxArgs], out var failure))
+            {
+                error = null;
+                return true;
+            }
+
+            _addressing = previous;
+            attempts.Add($"0x{mask:X8} → {failure}");
+        }
+
+        error = $"物理核 0 的 CO 读取被平台拒绝（{string.Join("；", attempts)}）";
+        return false;
+    }
+
     private CpuTuningStatus Available() => new(
         HardwareAvailability.Available,
-        $"SMU 就绪，{_info.ProcessorCount} 个逻辑核。写入后逐核回读校验。",
+        $"SMU 0x{_smuVersion:X8}，{_info.PhysicalCoreCount} 个物理核 / {_info.ProcessorCount} 线程。写入后逐核回读校验。",
         _info.CpuVendor,
         PlatformName(_commands.Family, _commands.Model),
         true,
@@ -232,7 +272,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         var output = new long[MaxArgs];
         if (!_session.Execute(FunctionSendCommand, input, output, out var code))
         {
-            error = $"SMU 命令 0x{message:X2} 失败，Win32 错误码 {code}。";
+            error = DescribeFailure(message, code);
             return false;
         }
 
@@ -247,10 +287,31 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
     private uint EncodeMask(uint core)
     {
         var ccd = core / 8;
-        var ccx = core / 4;
+        var localCore = core % 8;
+
+        if (_addressing == CoreAddressing.Bitmask)
+        {
+            return _commands.Family > 0x17
+                ? (ccd << 28) | (1u << (int)(20 + localCore))
+                : (ccd << 28) | (1u << (int)(24 + ((core / 4) % 2))) | (1u << (int)(20 + (core % 4)));
+        }
+
         return _commands.Family > 0x17
-            ? (ccd << 28) | ((core % 8) << 20)
-            : (ccd << 28) | ((ccx % 2) << 24) | ((core % 4) << 20);
+            ? (ccd << 28) | (localCore << 20)
+            : (ccd << 28) | (((core / 4) % 2) << 24) | ((core % 4) << 20);
+    }
+
+    private static string DescribeFailure(uint message, int code)
+    {
+        var meaning = code switch
+        {
+            31 => "模块转述 SMU 返回 0xFF（命令执行失败）",
+            170 => "模块转述 SMU 返回 0xFC（暂忙）",
+            121 => "SMU 未在超时内应答",
+            _ => "驱动返回错误",
+        };
+
+        return $"SMU 命令 0x{message:X2} 失败：{meaning}（Win32 {code}）。";
     }
 
     private bool TryParseFamilyModel(out uint family, out uint model)
@@ -322,47 +383,17 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         return raw >= 0x8000 ? raw - 0x10000 : raw;
     }
 
-    private static string? ResolveModulePath(out string searched)
-    {
-        var candidates = new List<string>();
-
-        var configured = Environment.GetEnvironmentVariable("ZENTWIK_PAWNIO_MODULE");
-        if (!string.IsNullOrWhiteSpace(configured))
-        {
-            candidates.Add(configured);
-            if (File.Exists(configured))
-            {
-                searched = configured;
-                return configured;
-            }
-        }
-
-        var local = Path.Combine(AppContext.BaseDirectory, "PawnIO", "RyzenSMU.bin");
-        candidates.Add(local);
-        if (File.Exists(local))
-        {
-            searched = local;
-            return local;
-        }
-
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var installed = Path.Combine(programFiles, "Zentwik", "PawnIO", "RyzenSMU.bin");
-        candidates.Add(installed);
-        if (File.Exists(installed))
-        {
-            searched = installed;
-            return installed;
-        }
-
-        searched = string.Join("、", candidates);
-        return null;
-    }
-
     private void DisposeSession()
     {
         _session?.Dispose();
         _session = null;
         _probed = false;
+    }
+
+    private enum CoreAddressing
+    {
+        Bitmask,
+        Index,
     }
 
     private readonly record struct CoCommands(uint Family, uint Model, uint Set, uint Get);

@@ -9,6 +9,7 @@ public static class WindowsCapabilityProbes
         ISystemInfo info,
         ITelemetrySource telemetry,
         ICpuTuningProvider tuning,
+        IIntelTuningProvider intel,
         IProcessScheduler scheduler,
         IPowerPolicyService power) =>
     [
@@ -16,7 +17,7 @@ public static class WindowsCapabilityProbes
         new TelemetryProbe(telemetry),
         new CpuTuningProbe(tuning),
         new SchedulingProbe(),
-        new IntelMsrProbe(info),
+        new IntelMsrProbe(intel),
         new SceneEngineProbe(),
     ];
 }
@@ -77,7 +78,7 @@ internal sealed class CpuTuningProbe(ICpuTuningProvider tuning) : ICapabilityPro
         var state = status.Availability switch
         {
             HardwareAvailability.Available => CapabilityState.Degraded,
-            HardwareAvailability.ProbeFailed => CapabilityState.Failed,
+            HardwareAvailability.ProbeFailed or HardwareAvailability.Rejected => CapabilityState.Failed,
             HardwareAvailability.DriverUnavailable
                 or HardwareAvailability.ModuleMissing
                 or HardwareAvailability.PrivilegeMissing => CapabilityState.Installed,
@@ -105,28 +106,28 @@ internal sealed class SchedulingProbe : ICapabilityProbe
     };
 }
 
-internal sealed class IntelMsrProbe(ISystemInfo info) : ICapabilityProbe
+internal sealed class IntelMsrProbe(IIntelTuningProvider intel) : ICapabilityProbe
 {
     public string CapabilityId => CapabilityIds.IntelMsr;
 
     public CapabilityDescriptor Probe()
     {
-        var vendor = info.CpuVendor ?? string.Empty;
-        if (!vendor.Contains("Intel", StringComparison.OrdinalIgnoreCase))
+        var status = intel.Query();
+        var state = status.Availability switch
         {
-            return new CapabilityDescriptor
-            {
-                Id = CapabilityId,
-                State = CapabilityState.Unavailable,
-                Detail = $"当前处理器不是 Intel（{info.CpuName ?? vendor}）。",
-            };
-        }
+            HardwareAvailability.Available => CapabilityState.Enabled,
+            HardwareAvailability.ProbeFailed or HardwareAvailability.Rejected => CapabilityState.Failed,
+            HardwareAvailability.DriverUnavailable
+                or HardwareAvailability.ModuleMissing
+                or HardwareAvailability.PrivilegeMissing => CapabilityState.Installed,
+            _ => CapabilityState.Unavailable,
+        };
 
         return new CapabilityDescriptor
         {
             Id = CapabilityId,
-            State = CapabilityState.Unavailable,
-            Detail = "Intel MSR 通道尚未实现；需要 PawnIO IntelMSR 白名单模块与独立的会话级方案语义。",
+            State = state,
+            Detail = status.Simulated ? $"模拟：{status.Detail}" : status.Detail,
         };
     }
 }

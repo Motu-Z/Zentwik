@@ -10,6 +10,8 @@ internal sealed class TestSystemInfo : ISystemInfo
 
     public int ProcessorCount => 4;
 
+    public int PhysicalCoreCount => 4;
+
     public int ProcessorGroups => 1;
 
     public string? CpuVendor => "TestVendor";

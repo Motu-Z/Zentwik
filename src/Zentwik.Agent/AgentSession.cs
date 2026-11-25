@@ -266,6 +266,12 @@ internal sealed class AgentSession : IAsyncDisposable
                 return Ok(request, JsonSerializer.SerializeToElement(snapshot, ZentwikJson.Default.TuningSnapshotDto));
             }
 
+            case Ops.IntelTuningRead:
+            {
+                var snapshot = ReadIntelTuning();
+                return Ok(request, JsonSerializer.SerializeToElement(snapshot, ZentwikJson.Default.IntelTuningSnapshotDto));
+            }
+
             case Ops.DiagnosticsDoctor:
                 return Ok(request, JsonSerializer.SerializeToElement(_server.Doctor.Build(), ZentwikJson.Default.DoctorDto));
 
@@ -492,17 +498,19 @@ internal sealed class AgentSession : IAsyncDisposable
     private TuningSnapshotDto ReadTuning()
     {
         var status = _server.Tuning.Query();
-        var cores = _server.Tuning.TryReadOffsets(out var offsets, out var readError)
+        var readable = _server.Tuning.TryReadOffsets(out var offsets, out var readError);
+        var cores = readable
             ? offsets.Select(static offset => new CoreOffsetDto(offset.Core, offset.Millivolts)).ToArray()
             : [];
 
         var availability = status.Availability switch
         {
-            HardwareAvailability.Available => "available",
+            HardwareAvailability.Available => readable ? "available" : "rejected",
             HardwareAvailability.NotSupported => "notSupported",
             HardwareAvailability.DriverUnavailable => "driverUnavailable",
             HardwareAvailability.ModuleMissing => "moduleMissing",
             HardwareAvailability.PrivilegeMissing => "privilegeMissing",
+            HardwareAvailability.Rejected => "rejected",
             _ => "probeFailed",
         };
 
@@ -516,6 +524,34 @@ internal sealed class AgentSession : IAsyncDisposable
             cores);
     }
 
+    private IntelTuningSnapshotDto ReadIntelTuning()
+    {
+        var status = _server.Intel.Query();
+        var readable = _server.Intel.TryRead(out var state, out var readError);
+
+        var availability = status.Availability switch
+        {
+            HardwareAvailability.Available => readable ? "available" : "rejected",
+            HardwareAvailability.NotSupported => "notSupported",
+            HardwareAvailability.DriverUnavailable => "driverUnavailable",
+            HardwareAvailability.ModuleMissing => "moduleMissing",
+            HardwareAvailability.PrivilegeMissing => "privilegeMissing",
+            HardwareAvailability.Rejected => "rejected",
+            _ => "probeFailed",
+        };
+
+        return new IntelTuningSnapshotDto(
+            availability,
+            readError ?? status.Detail,
+            status.Vendor,
+            status.Platform,
+            status.PersistsAcrossReboot,
+            status.Simulated,
+            readable ? state.VoltageOffsetMillivolts : null,
+            readable ? state.TurboRatio1Core : null,
+            readable ? state.TurboRatio8Cores : null);
+    }
+
     private AgentStatusDto BuildStatus() => new(
         Version: typeof(AgentServer).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
         ProtocolVersion: ProtocolInfo.Version,
@@ -524,6 +560,7 @@ internal sealed class AgentSession : IAsyncDisposable
         RunningAsService: _server.Options.ServiceMode,
         Simulated: _server.Options.UseFake,
         ProcessorCount: _server.System.ProcessorCount,
+        PhysicalCoreCount: _server.System.PhysicalCoreCount,
         ProcessorGroups: _server.System.ProcessorGroups,
         StartedAt: _server.StartedAt,
         UptimeSeconds: (long)(DateTimeOffset.UtcNow - _server.StartedAt.ToUniversalTime()).TotalSeconds,
