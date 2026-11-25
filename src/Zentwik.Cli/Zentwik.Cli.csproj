@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>zentwik</AssemblyName>
+    <RootNamespace>Zentwik.Cli</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zentwik.Contracts\Zentwik.Contracts.csproj" />
+    <ProjectReference Include="..\Zentwik.Localization\Zentwik.Localization.csproj" />
+  </ItemGroup>
+
+</Project>

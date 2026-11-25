@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>Zentwik.Agent</AssemblyName>
+    <RootNamespace>Zentwik.Agent</RootNamespace>
+    <PublishAot>false</PublishAot>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zentwik.Contracts\Zentwik.Contracts.csproj" />
+    <ProjectReference Include="..\Zentwik.Domain\Zentwik.Domain.csproj" />
+    <ProjectReference Include="..\Zentwik.Platform\Zentwik.Platform.csproj" />
+  </ItemGroup>
+
+</Project>

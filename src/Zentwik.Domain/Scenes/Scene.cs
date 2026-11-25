@@ -1,0 +1,87 @@
+namespace Zentwik.Domain.Scenes;
+
+public sealed record SceneAction
+{
+    public required string PlanId { get; init; }
+
+    // 方案被改写后场景不静默套用新版本，需重新确认。
+    public int PlanRevision { get; init; }
+}
+
+public sealed record SceneTrigger
+{
+    public required string Kind { get; init; }
+
+    public string? Argument { get; init; }
+}
+
+/// <summary>场景是跨方案协调机制，不是第四种方案。</summary>
+public sealed record Scene
+{
+    public required string Id { get; init; }
+
+    public required string Name { get; init; }
+
+    // 数值越大越优先；同优先级由进入时间决定，后来者不抢占。
+    public int Priority { get; init; }
+
+    public bool Enabled { get; init; } = true;
+
+    public IReadOnlyList<SceneTrigger> Triggers { get; init; } = [];
+
+    public IReadOnlyList<SceneAction> Actions { get; init; } = [];
+
+    // 仅回退本场景写入且仍归本场景所有的对象。
+    public bool RestoreOnExit { get; init; } = true;
+
+    public DateTimeOffset? LastActivatedAt { get; init; }
+
+    public string? LastOutcome { get; init; }
+}
+
+public sealed record SceneCandidate(string SceneId, int Priority, DateTimeOffset ActivatedAt);
+
+public enum ArbitrationReason
+{
+    Selected,
+    LowerPriority,
+    LaterActivation,
+}
+
+public sealed record ArbitrationDecision(string SceneId, bool Selected, ArbitrationReason Reason);
+
+/// <summary>同一对象同一时刻只允许一个场景持有写权，不做部分应用的折中。</summary>
+public static class SceneArbitration
+{
+    public static IReadOnlyList<ArbitrationDecision> Resolve(IEnumerable<SceneCandidate> candidates)
+    {
+        var ordered = candidates
+            .OrderByDescending(static c => c.Priority)
+            .ThenBy(static c => c.ActivatedAt)
+            .ThenBy(static c => c.SceneId, StringComparer.Ordinal)
+            .ToList();
+
+        var decisions = new List<ArbitrationDecision>(ordered.Count);
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var candidate = ordered[i];
+            decisions.Add(i == 0
+                ? new ArbitrationDecision(candidate.SceneId, true, ArbitrationReason.Selected)
+                : new ArbitrationDecision(
+                    candidate.SceneId,
+                    false,
+                    candidate.Priority < ordered[0].Priority
+                        ? ArbitrationReason.LowerPriority
+                        : ArbitrationReason.LaterActivation));
+        }
+
+        return decisions;
+    }
+
+    public static SceneCandidate? Winner(IEnumerable<SceneCandidate> candidates) =>
+        candidates
+            .OrderByDescending(static c => c.Priority)
+            .ThenBy(static c => c.ActivatedAt)
+            .ThenBy(static c => c.SceneId, StringComparer.Ordinal)
+            .FirstOrDefault();
+}
