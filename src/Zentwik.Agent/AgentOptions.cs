@@ -7,6 +7,8 @@ public enum AgentMode
     Run,
     InstallService,
     UninstallService,
+    StartService,
+    StopService,
 }
 
 public sealed class AgentOptions
@@ -47,6 +49,12 @@ public sealed class AgentOptions
                     break;
                 case "--uninstall-service":
                     mode = AgentMode.UninstallService;
+                    break;
+                case "--start-service":
+                    mode = AgentMode.StartService;
+                    break;
+                case "--stop-service":
+                    mode = AgentMode.StopService;
                     break;
                 case "--pipe" when i + 1 < args.Length:
                     pipe = args[++i];

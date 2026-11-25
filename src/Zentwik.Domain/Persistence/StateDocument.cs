@@ -21,4 +21,6 @@ public sealed record StateDocument
     public IReadOnlyList<Scene> Scenes { get; init; } = [];
 
     public IReadOnlyList<LedgerEntry> Ledger { get; init; } = [];
+
+    public DateTimeOffset? LastBootTimeUtc { get; init; }
 }

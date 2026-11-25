@@ -78,7 +78,9 @@ internal sealed class CpuTuningProbe(ICpuTuningProvider tuning) : ICapabilityPro
         {
             HardwareAvailability.Available => CapabilityState.Degraded,
             HardwareAvailability.ProbeFailed => CapabilityState.Failed,
-            HardwareAvailability.DriverUnavailable or HardwareAvailability.ModuleMissing => CapabilityState.Installed,
+            HardwareAvailability.DriverUnavailable
+                or HardwareAvailability.ModuleMissing
+                or HardwareAvailability.PrivilegeMissing => CapabilityState.Installed,
             _ => CapabilityState.Unavailable,
         };
 

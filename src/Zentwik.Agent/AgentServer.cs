@@ -1,6 +1,8 @@
 using System.IO.Pipes;
+using System.Text.Json;
 using Zentwik.Agent.Security;
 using Zentwik.Contracts.Dto;
+using Zentwik.Contracts.Json;
 using Zentwik.Contracts.Protocol;
 using Zentwik.Core.Capabilities;
 using Zentwik.Core.Diagnostics;
@@ -102,14 +104,14 @@ public sealed class AgentServer
                 if (caller is null)
                 {
                     _log.Warn("拒绝连接：无法读取调用方身份。");
-                    await pipe.DisposeAsync().ConfigureAwait(false);
+                    await RejectAsync(pipe, "无法确定调用方身份。").ConfigureAwait(false);
                     continue;
                 }
 
                 if (!PipeCaller.Validate(caller, _policy, out var reason))
                 {
                     _log.Warn($"拒绝连接：{reason}（pid {caller.ProcessId}）");
-                    await pipe.DisposeAsync().ConfigureAwait(false);
+                    await RejectAsync(pipe, reason).ConfigureAwait(false);
                     continue;
                 }
 
@@ -125,6 +127,7 @@ public sealed class AgentServer
         finally
         {
             _scenes.Changed -= OnSceneChanged;
+            await RestoreActiveSceneAsync().ConfigureAwait(false);
             await ShutdownSessionsAsync().ConfigureAwait(false);
             _log.Info("代理已停止。");
         }
@@ -194,6 +197,71 @@ public sealed class AgentServer
         lock (_sessionsGate)
         {
             _sessions.Remove(session);
+        }
+    }
+
+    /// <summary>
+    /// 拒绝时必须回一帧 Unauthorized 再断开：直接关管道的客户端只能看到"管道已结束"，无法区分权限拒绝与代理崩溃。
+    /// </summary>
+    private static async Task RejectAsync(NamedPipeServerStream pipe, string reason)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var body = await Frames.ReadAsync(pipe, cts.Token).ConfigureAwait(false);
+
+            long id = 0;
+            var op = string.Empty;
+            if (body is not null)
+            {
+                try
+                {
+                    var request = JsonSerializer.Deserialize(body, ZentwikJson.Default.RequestEnvelope);
+                    id = request?.Id ?? 0;
+                    op = request?.Op ?? string.Empty;
+                }
+                catch (JsonException)
+                {
+                }
+            }
+
+            var response = ResponseEnvelope.Failure(id, op, ErrorCodes.Unauthorized, reason);
+            await Frames.WriteAsync(
+                pipe,
+                JsonSerializer.SerializeToUtf8Bytes(response, ZentwikJson.Default.ResponseEnvelope),
+                cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException)
+        {
+        }
+        finally
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// 停止时传入的取消令牌已经取消，回退必须换一个带超时的令牌，否则写入路径会在第一步就抛取消。
+    /// </summary>
+    private async Task RestoreActiveSceneAsync()
+    {
+        if (_scenes.ActiveSceneId is null)
+        {
+            return;
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            var result = await _scenes.ShutdownAsync(cts.Token).ConfigureAwait(false);
+            if (result is not null)
+            {
+                _log.Info($"退出回退：{result.Outcome}");
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or CoreException)
+        {
+            _log.Warn($"退出回退失败：{ex.Message}");
         }
     }
 

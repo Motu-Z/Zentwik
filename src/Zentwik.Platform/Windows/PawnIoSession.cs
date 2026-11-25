@@ -51,10 +51,14 @@ internal sealed class PawnIoSession : IDisposable
         if (handle == Native.InvalidHandleValue || handle == 0)
         {
             var error = Marshal.GetLastWin32Error();
-            var detail = error == 5
-                ? "打开 PawnIO 设备被拒绝（需要管理员权限）。"
-                : $"打开 PawnIO 设备失败，Win32 错误码 {error}。";
-            return new PawnIoOpenResult(null, HardwareAvailability.DriverUnavailable, detail);
+            if (error == 5)
+            {
+                return new PawnIoOpenResult(null, HardwareAvailability.PrivilegeMissing,
+                    "PawnIO 设备拒绝访问：需要以管理员身份运行代理。");
+            }
+
+            return new PawnIoOpenResult(null, HardwareAvailability.DriverUnavailable,
+                $"打开 PawnIO 设备失败，Win32 错误码 {error}。");
         }
 
         var session = new PawnIoSession(handle);

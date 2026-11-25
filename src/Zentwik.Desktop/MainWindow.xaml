@@ -82,6 +82,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="{DynamicResource String.PlansTitle}" Style="{StaticResource Text.Title}" Margin="0,0,0,18" />
                 <ListBox Grid.Row="1"
+                         AutomationProperties.Name="{DynamicResource String.PlansTitle}"
                          ItemsSource="{Binding Plans}"
                          Background="Transparent"
                          BorderThickness="0"
@@ -110,6 +111,7 @@
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="{DynamicResource String.ScenesTitle}" Style="{StaticResource Text.Title}" Margin="0,0,0,18" />
                 <ListBox Grid.Row="1"
+                         AutomationProperties.Name="{DynamicResource String.ScenesTitle}"
                          ItemsSource="{Binding Scenes}"
                          Background="Transparent"
                          BorderThickness="0"
@@ -144,6 +146,7 @@
 
                         <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsLanguage}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsLanguage}"
                                   Style="{StaticResource FlatCombo}"
                                   ItemsSource="{Binding Languages}"
                                   SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}" />
@@ -160,6 +163,7 @@
 
                         <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsTheme}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsTheme}"
                                   Style="{StaticResource FlatCombo}"
                                   ItemsSource="{Binding Themes}"
                                   SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" />
@@ -176,6 +180,7 @@
 
                         <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsAccent}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsAccent}"
                                   Style="{StaticResource FlatCombo}"
                                   ItemsSource="{Binding Accents}"
                                   SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" />
@@ -184,7 +189,8 @@
 
                 <TextBlock Text="{DynamicResource String.CapsTitle}" Style="{StaticResource Text.Primary}" Margin="0,22,0,10" />
 
-                <ListBox ItemsSource="{Binding Capabilities}"
+                <ListBox AutomationProperties.Name="{DynamicResource String.CapsTitle}"
+                         ItemsSource="{Binding Capabilities}"
                          Background="Transparent"
                          BorderThickness="0"
                          ItemContainerStyle="{StaticResource RowItem}">

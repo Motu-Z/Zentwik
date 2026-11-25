@@ -5,6 +5,7 @@ using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Plans;
 using Zentwik.Domain.Scenes;
 using Zentwik.Platform;
+using Zentwik.Platform.Windows;
 
 namespace Zentwik.Core.Scenes;
 
@@ -20,11 +21,14 @@ public sealed record SceneActivation(
 /// </summary>
 public sealed class SceneEngine
 {
+    private static readonly TimeSpan BootTolerance = TimeSpan.FromMinutes(2);
+
     private readonly StateStore _store;
     private readonly PlanCoordinator _plans;
     private readonly IProcessScheduler _scheduler;
     private readonly IPowerStatus _powerStatus;
     private readonly DiagnosticLog _log;
+    private readonly IBootInfo _boot;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _firstMatch = new(StringComparer.Ordinal);
 
@@ -35,13 +39,15 @@ public sealed class SceneEngine
         PlanCoordinator plans,
         IProcessScheduler scheduler,
         IPowerStatus powerStatus,
-        DiagnosticLog log)
+        DiagnosticLog log,
+        IBootInfo? boot = null)
     {
         _store = store;
         _plans = plans;
         _scheduler = scheduler;
         _powerStatus = powerStatus;
         _log = log;
+        _boot = boot ?? new SystemBootInfo();
     }
 
     public string? ActiveSceneId => Volatile.Read(ref _activeSceneId);
@@ -125,6 +131,78 @@ public sealed class SceneEngine
             return ActiveSceneId is null
                 ? null
                 : await DeactivateCoreAsync("手动停用", ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 上次退出没有走到停用流程时，账本里会留着属于场景的写入。只在同一启动周期内回退：
+    /// 整机重启后固件里的值可能是用户有意保留的，此时按"未知"处理，不擅自改写。
+    /// </summary>
+    public async Task<IReadOnlyList<TargetOutcome>> RecoverAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var boot = _boot.BootTimeUtc;
+            var previous = _store.Current.LastBootTimeUtc;
+            await _store.UpdateAsync(document => document with { LastBootTimeUtc = boot }, ct).ConfigureAwait(false);
+
+            var orphans = _plans.Entries
+                .Where(static entry => entry.Owner == OwnerKind.Scene
+                                       && entry.Restorable
+                                       && entry.Status == LedgerStatus.Applied)
+                .ToArray();
+
+            if (orphans.Length == 0)
+            {
+                return [];
+            }
+
+            if (previous is null || (boot - previous.Value).Duration() > BootTolerance)
+            {
+                _log.Warn($"检测到整机重启，{orphans.Length} 项遗留写入保持原样，等待场景重新评估。");
+                return [];
+            }
+
+            var outcomes = new List<TargetOutcome>();
+            foreach (var source in orphans.Select(static entry => entry.Source).Distinct(StringComparer.Ordinal))
+            {
+                var sceneId = source.StartsWith("scene:", StringComparison.Ordinal) ? source["scene:".Length..] : null;
+                var scene = sceneId is null
+                    ? null
+                    : _store.Current.Scenes.FirstOrDefault(candidate =>
+                        string.Equals(candidate.Id, sceneId, StringComparison.Ordinal));
+
+                if (scene is { RestoreOnExit: false })
+                {
+                    _log.Info($"场景 {sceneId} 要求保留写入，跳过启动回退。");
+                    continue;
+                }
+
+                outcomes.AddRange(await _plans.RevertSourceAsync(source, ct).ConfigureAwait(false));
+                _log.Info($"启动补回退：{source}（{(scene is null ? "场景已删除" : "上次退出未回退")}）。");
+            }
+
+            return outcomes;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<SceneActivation?> ShutdownAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return ActiveSceneId is null
+                ? null
+                : await DeactivateCoreAsync("代理退出", ct).ConfigureAwait(false);
         }
         finally
         {

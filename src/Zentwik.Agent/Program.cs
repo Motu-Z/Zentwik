@@ -9,6 +9,7 @@ using Zentwik.Core.Plans;
 using Zentwik.Core.Scenes;
 using Zentwik.Core.State;
 using Zentwik.Core.Telemetry;
+using Zentwik.Domain.Ownership;
 using Zentwik.Platform;
 using Zentwik.Platform.Fakes;
 using Zentwik.Platform.Windows;
@@ -23,6 +24,16 @@ if (options.Mode == AgentMode.InstallService)
 if (options.Mode == AgentMode.UninstallService)
 {
     return NativeService.Uninstall(options);
+}
+
+if (options.Mode == AgentMode.StartService)
+{
+    return NativeService.Start(options.ServiceName);
+}
+
+if (options.Mode == AgentMode.StopService)
+{
+    return NativeService.Stop(options.ServiceName);
 }
 
 using var log = new DiagnosticLog(options.DataDirectory, options.EchoLog);
@@ -47,7 +58,13 @@ ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource(system.Pr
 var hub = new TelemetryHub(telemetry);
 var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, scheduler, power));
 var plans = new PlanCoordinator(store, tuning, power, scheduler, log);
-var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log);
+var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
+
+var recovered = await scenes.RecoverAsync().ConfigureAwait(false);
+if (recovered.Count > 0)
+{
+    log.Info($"启动补回退 {recovered.Count} 项，成功 {recovered.Count(static outcome => outcome.Status == LedgerStatus.Reverted)} 项。");
+}
 
 var version = typeof(AgentServer).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
 var runtime = new AgentRuntime(version, options.ServiceMode, options.UseFake, DateTimeOffset.Now);

@@ -39,6 +39,7 @@ public enum HardwareAvailability
     NotSupported,
     DriverUnavailable,
     ModuleMissing,
+    PrivilegeMissing,
     ProbeFailed,
 }
 
@@ -76,6 +77,12 @@ public interface IPowerStatus
 {
     /// <summary>null 表示无法判定（例如台式机无电池且状态未知）。</summary>
     bool? OnAcPower { get; }
+}
+
+/// <summary>系统启动时刻。用来区分"服务重启"与"整机重启"：固件持久化的写入在后者之后仍然有效。</summary>
+public interface IBootInfo
+{
+    DateTimeOffset BootTimeUtc { get; }
 }
 
 public interface ICapabilityProbe

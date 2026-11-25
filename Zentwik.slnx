@@ -13,5 +13,6 @@
     <Project Path="tests/Zentwik.Core.Tests/Zentwik.Core.Tests.csproj" />
     <Project Path="tests/Zentwik.Domain.Tests/Zentwik.Domain.Tests.csproj" />
     <Project Path="tests/Zentwik.Contracts.Tests/Zentwik.Contracts.Tests.csproj" />
+    <Project Path="tests/Zentwik.Desktop.Tests/Zentwik.Desktop.Tests.csproj" />
   </Folder>
 </Solution>

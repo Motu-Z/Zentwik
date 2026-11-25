@@ -23,6 +23,9 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
         true,
         true);
 
+    /// <summary>置为 true 后所有写入返回失败，用于验证失败保留与重试路径。</summary>
+    public bool FailWrites { get; set; }
+
     public bool TryReadOffsets(out IReadOnlyList<CoreOffset> offsets, out string? error)
     {
         offsets = _offsets.OrderBy(static pair => pair.Key).Select(static pair => new CoreOffset(pair.Key, pair.Value)).ToArray();
@@ -32,6 +35,12 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
 
     public bool TryWriteOffset(int core, int millivolts, out string? error)
     {
+        if (FailWrites)
+        {
+            error = "模拟写入失败。";
+            return false;
+        }
+
         if (!_offsets.ContainsKey(core))
         {
             error = $"核 {core} 不存在。";

@@ -105,22 +105,28 @@ internal static partial class WindowsServiceHost
             return;
         }
 
-        ReportState(StateStartPending, 0);
-
+        ReportState(StateStartPending, 0, waitHint: 30_000);
         _cts = new CancellationTokenSource();
-        ReportState(StateRunning, ServiceAcceptStop | ServiceAcceptShutdown);
 
         try
         {
+            ReportState(StateRunning, ServiceAcceptStop | ServiceAcceptShutdown);
             _run?.Invoke(_cts.Token).GetAwaiter().GetResult();
+            ReportState(StateStopped, 0);
         }
         catch (OperationCanceledException)
         {
+            ReportState(StateStopped, 0);
+        }
+        catch (Exception ex)
+        {
+            // 只有把失败写进服务状态，SCM 才会按恢复动作重启；静默退出会被当成正常停止。
+            Console.Error.WriteLine($"服务异常终止：{ex}");
+            ReportState(StateStopped, 0, exitCode: 1066);
         }
         finally
         {
-            ReportState(StateStopped, 0);
-            _cts.Dispose();
+            _cts?.Dispose();
             _cts = null;
         }
     }
@@ -133,14 +139,14 @@ internal static partial class WindowsServiceHost
 
         if (control is ControlStop or ControlShutdown)
         {
-            ReportState(StateStopPending, 0);
+            ReportState(StateStopPending, 0, waitHint: 30_000);
             _cts?.Cancel();
         }
 
         return 0;
     }
 
-    private static void ReportState(uint state, uint accepted)
+    private static void ReportState(uint state, uint accepted, uint exitCode = 0, uint waitHint = 0)
     {
         if (_statusHandle == 0)
         {
@@ -152,10 +158,10 @@ internal static partial class WindowsServiceHost
             ServiceType = ServiceWin32OwnProcess,
             CurrentState = state,
             ControlsAccepted = accepted,
-            Win32ExitCode = 0,
+            Win32ExitCode = exitCode,
             ServiceSpecificExitCode = 0,
             CheckPoint = 0,
-            WaitHint = 0,
+            WaitHint = waitHint,
         };
 
         SetServiceStatus(_statusHandle, ref status);

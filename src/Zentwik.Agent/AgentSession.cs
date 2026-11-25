@@ -502,6 +502,7 @@ internal sealed class AgentSession : IAsyncDisposable
             HardwareAvailability.NotSupported => "notSupported",
             HardwareAvailability.DriverUnavailable => "driverUnavailable",
             HardwareAvailability.ModuleMissing => "moduleMissing",
+            HardwareAvailability.PrivilegeMissing => "privilegeMissing",
             _ => "probeFailed",
         };
 
