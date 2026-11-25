@@ -1,6 +1,0 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-
-    <!-- 强调色字典：刻意不定义画刷实例（XAML 加载会被冻结，改色抛异常），画刷由 AppThemeService 在代码里 new 并注入，全界面用 DynamicResource 引用 -->
-
-</ResourceDictionary>
