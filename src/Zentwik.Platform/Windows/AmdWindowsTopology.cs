@@ -244,6 +244,15 @@ internal static class AmdWindowsTopology
             }
         }
 
+        // 核数不一致的域通常意味着同一 die 上有多个大小不同的 CCX（混合布局），
+        // 此时"L3 域 = CCD"不成立，不能按域序号当 CCD 索引。
+        var domainSizes = order.GroupBy(static key => key.Slot).Select(static group => group.Count()).Distinct().ToArray();
+        if (domainSizes.Length > 1)
+        {
+            error = $"各 L3 域的核数不一致（{string.Join("/", domainSizes.Order())}），属异构布局，暂不能确定 CCD 索引。";
+            return AmdCoreMap.Empty;
+        }
+
         if (order.Count * threadsPerCore != processorCount)
         {
             error = $"拓扑共 {order.Count} 核 × {threadsPerCore} 线程，与 {processorCount} 个逻辑处理器不一致。";

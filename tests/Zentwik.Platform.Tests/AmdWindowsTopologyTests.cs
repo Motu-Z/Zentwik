@@ -134,6 +134,29 @@ public sealed class AmdWindowsTopologyTests
     }
 
     [Fact]
+    public void Heterogeneous_domain_sizes_are_rejected()
+    {
+        // 4 核域 + 8 核域：同一 die 上大小不同的两个 CCX，不能按域序号当 CCD 索引。
+        var processors = new List<AmdLogicalProcessorObservation>();
+        for (var processor = 0; processor < 4; processor++)
+        {
+            processors.Add(new AmdLogicalProcessorObservation(processor, 0, processor));
+        }
+
+        for (var processor = 4; processor < 12; processor++)
+        {
+            processors.Add(new AmdLogicalProcessorObservation(processor, 0, processor - 4));
+        }
+
+        var snapshot = new AmdTopologySnapshot([0x0000_000FUL, 0x0000_0FF0UL], processors);
+
+        var map = AmdWindowsTopology.Build(snapshot, 0x1A, 12, 12, out var error);
+
+        Assert.False(map.IsUsable);
+        Assert.Contains("异构", error);
+    }
+
+    [Fact]
     public void Single_thread_cores_are_supported()
     {
         var snapshot = new AmdTopologySnapshot(
