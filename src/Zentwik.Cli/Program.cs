@@ -68,7 +68,9 @@ catch (IpcTransportException ex)
 catch (AgentRequestException ex)
 {
     output.Error(ex.Code, ex.Detail ?? ex.Message);
-    return ex.Code == ErrorCodes.HardwareUnavailable ? ExitCodes.Unavailable : ExitCodes.Failed;
+    return ex.Code is ErrorCodes.HardwareUnavailable or ErrorCodes.ModuleDisabled or ErrorCodes.PowerLimitUnsupported
+        ? ExitCodes.Unavailable
+        : ExitCodes.Failed;
 }
 catch (UnauthorizedAccessException ex)
 {
