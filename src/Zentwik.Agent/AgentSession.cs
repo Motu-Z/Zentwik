@@ -629,7 +629,11 @@ internal sealed class AgentSession : IAsyncDisposable
                             sample.ProcessorCount,
                             sample.TemperatureCelsius,
                             sample.PackagePowerWatts,
-                            sample.SensorDetail);
+                            sample.SensorDetail,
+                            sample.CoreClocks?.Select(static clock => new TelemetryCoreClockDto(
+                                clock.Ccd,
+                                clock.Core,
+                                Math.Round(clock.Megahertz))).ToArray());
 
                         Enqueue(ResponseEnvelope.Event(
                             Events.TelemetrySample,

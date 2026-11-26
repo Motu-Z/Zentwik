@@ -134,8 +134,9 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> MonitorAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval");
+        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval", "--clocks");
         var count = ParseInt(args.Value("--count"), 5, 1, 100000);
+        var showClocks = args.Flag("--clocks");
 
         // 不传就用设置里的默认值：间隔是用户偏好，不该在每个命令上都重复指定。
         var interval = args.Value("--interval") is null
@@ -173,8 +174,19 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                     : (1d - (double)sample.MemoryAvailableBytes / sample.MemoryTotalBytes) * 100d;
                 var temperature = sample.TemperatureCelsius is { } celsius ? $"  temp {celsius,5:0.0}C" : string.Empty;
                 var power = sample.PackagePowerWatts is { } watts ? $"  pkg {watts,6:0.0}W" : string.Empty;
+                var clock = DescribeClocks(sample.CoreClocks);
                 Console.WriteLine(
-                    $"{sample.Timestamp:HH:mm:ss.fff}  cpu {sample.CpuTotalPercent,5:0.0}%  mem {memoryUsed,5:0.0}%  proc {sample.ProcessCount,4}  cores {sample.ProcessorCount}{temperature}{power}");
+                    $"{sample.Timestamp:HH:mm:ss.fff}  cpu {sample.CpuTotalPercent,5:0.0}%  mem {memoryUsed,5:0.0}%  proc {sample.ProcessCount,4}  cores {sample.ProcessorCount}{temperature}{power}{clock}");
+
+                if (showClocks && sample.CoreClocks is { Count: > 0 } clocks)
+                {
+                    foreach (var group in clocks.GroupBy(static item => item.Ccd).OrderBy(static item => item.Key))
+                    {
+                        var values = string.Join(' ', group.OrderBy(static item => item.Core)
+                            .Select(static item => $"c{item.Core}:{item.Megahertz:0}"));
+                        Console.WriteLine($"  ccd{group.Key} {values}");
+                    }
+                }
 
                 // 传感器不可用与首帧缺基线都走这里，同一句只提示一次。
                 if (!string.IsNullOrWhiteSpace(sample.SensorDetail)
@@ -1166,6 +1178,21 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
     }
 
     private static string DescribeSensorInterval(int milliseconds) => $"{milliseconds}ms";
+
+    /// <summary>
+    /// 单行摘要只放"窗口内最高一核的平均频率"：平均值会被睡眠核拉低到接近 0，
+    /// 放在监控行里只会让人以为频率掉光了；逐核明细由 --clocks 给。
+    /// </summary>
+    private static string DescribeClocks(IReadOnlyList<TelemetryCoreClockDto>? clocks)
+    {
+        if (clocks is not { Count: > 0 })
+        {
+            return string.Empty;
+        }
+
+        var high = clocks.Max(static item => item.Megahertz) / 1000d;
+        return $"  clk {high:0.00}G";
+    }
 
     private async Task<int> DoctorAsync(CancellationToken ct)
     {

@@ -37,4 +37,23 @@ internal static class AmdSensorDecoder
         var joules = delta * Math.Pow(0.5, exponent);
         return joules / elapsed.TotalSeconds;
     }
+
+    /// <summary>高于此值只可能是计数器回绕或跨核读数，不是真实频率。</summary>
+    public const double MaxPlausibleMegahertz = 20000d;
+
+    /// <summary>
+    /// APERF 随核心实际时钟累加，差值 ÷ 经过时间 = 窗口内平均频率（MHz）。
+    /// 这是唯一不依赖 P-state 读数的口径：P-state 会在读取瞬间被自己唤醒抬高，比值法实测经常 &gt;1。
+    /// </summary>
+    /// <param name="awake">窗口内 MPERF 是否增长。整窗睡眠的核两个计数器都不动，没有频率可报。</param>
+    public static double? AverageMegahertz(ulong aperfDelta, bool awake, TimeSpan elapsed)
+    {
+        if (!awake || elapsed <= TimeSpan.Zero || aperfDelta == 0)
+        {
+            return null;
+        }
+
+        var megahertz = aperfDelta / (elapsed.TotalSeconds * 1_000_000d);
+        return megahertz is > 0 and <= MaxPlausibleMegahertz ? megahertz : null;
+    }
 }

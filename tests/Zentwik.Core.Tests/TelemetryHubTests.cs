@@ -56,8 +56,37 @@ public sealed class TelemetryHubTests
     }
 
     [Fact]
-    public async Task Sensor_Failure_Leaves_System_Sample_Intact()
+    public async Task Subscription_Reads_Sensors_On_Every_Tick_When_Intervals_Match()
     {
+        // 回归：按时间戳判断时，定时器抖动几毫秒会被判成"未到点"，传感器实际变成两拍一读。
+        var sensors = new CountingSensorSource();
+        var hub = new TelemetryHub(new StubSystemSource(), sensors);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var samples = 0;
+
+        await hub.RunSubscriptionAsync(20, 20, _ => ++samples < 4, cts.Token);
+
+        Assert.Equal(4, samples);
+        Assert.Equal(4, sensors.Reads);
+    }
+
+    [Fact]
+    public async Task Subscription_Reads_Sensors_Every_Nth_Tick()
+    {
+        var sensors = new CountingSensorSource();
+        var hub = new TelemetryHub(new StubSystemSource(), sensors);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var samples = 0;
+
+        // 20ms 推送、40ms 传感器：第 1、3、5 拍读，共 3 次。
+        await hub.RunSubscriptionAsync(20, 40, _ => ++samples < 6, cts.Token);
+
+        Assert.Equal(6, samples);
+        Assert.Equal(3, sensors.Reads);
+    }
+
+    [Fact]
+    public async Task Sensor_Failure_Leaves_System_Sample_Intact()    {
         var hub = new TelemetryHub(new StubSystemSource(), new FailingSensorSource());
         var sample = await hub.SampleAsync(CancellationToken.None, readSensors: true);
 

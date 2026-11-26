@@ -55,15 +55,21 @@ public sealed class TelemetryHub(ITelemetrySource source, ICpuSensorSource? sens
         CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(intervalMs));
-        var sensorInterval = TimeSpan.FromMilliseconds(Math.Max(sensorIntervalMs, 0));
-        var lastSensorAt = DateTimeOffset.MinValue;
+
+        // 按拍数而不是时间戳决定是否读传感器：定时器每拍的实际间隔会在 1000 ms 上下抖几毫秒，
+        // 用"距上次读取是否已满 sensorInterval"判断时，994 ms 的那一拍会被判成未到点，
+        // 于是每隔一拍才读一次，传感器实际刷新率被悄悄砍半。
+        var ticksPerSensor = Math.Max(
+            1,
+            (int)Math.Round(sensorIntervalMs / (double)Math.Max(intervalMs, 1), MidpointRounding.AwayFromZero));
+        var tick = 0;
 
         while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
         {
-            var now = DateTimeOffset.UtcNow;
+            tick++;
             var readSensors = sensors is not null
                               && sensorIntervalMs > 0
-                              && (lastSensorAt == DateTimeOffset.MinValue || now - lastSensorAt >= sensorInterval);
+                              && (tick - 1) % ticksPerSensor == 0;
 
             TelemetrySample sample;
             try
@@ -77,11 +83,6 @@ public sealed class TelemetryHub(ITelemetrySource source, ICpuSensorSource? sens
             catch (Exception)
             {
                 continue;
-            }
-
-            if (readSensors)
-            {
-                lastSensorAt = now;
             }
 
             if (!sink(sample))
@@ -118,6 +119,7 @@ public sealed class TelemetryHub(ITelemetrySource source, ICpuSensorSource? sens
     {
         TemperatureCelsius = _sensorReading.TemperatureCelsius,
         PackagePowerWatts = _sensorReading.PackagePowerWatts,
+        CoreClocks = _sensorReading.CoreClocks,
         SensorDetail = _sensorError ?? _sensorReading.Detail,
     };
 }

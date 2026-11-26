@@ -27,7 +27,14 @@ public sealed record TelemetryDto(
     int ProcessorCount,
     double? TemperatureCelsius = null,
     double? PackagePowerWatts = null,
-    string? SensorDetail = null);
+    string? SensorDetail = null,
+    IReadOnlyList<TelemetryCoreClockDto>? CoreClocks = null);
+
+/// <summary>
+/// 一个物理核在采样窗口内的平均频率。Ccd 与 Core 是 SMU 核掩码字段，与 CO 的核编号同源。
+/// 睡眠核不出现在列表里，客户端不能把它当作 0 MHz。
+/// </summary>
+public sealed record TelemetryCoreClockDto(int Ccd, int Core, double Megahertz);
 
 public sealed record AgentStatusDto(
     string Version,

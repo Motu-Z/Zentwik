@@ -69,4 +69,35 @@ public sealed class AmdSensorDecoderTests
         Assert.False(AmdCpuIdentifier.TryParse("AMD64 Processor", out _, out _));
         Assert.False(AmdCpuIdentifier.TryParse(null, out _, out _));
     }
+
+    [Fact]
+    public void Average_Clock_Divides_Aperf_By_Window()
+    {
+        // APERF 随核心实际时钟累加：1 秒涨 45 亿即在 4.5 GHz 上跑满 1 秒。
+        Assert.Equal(4500d, AmdSensorDecoder.AverageMegahertz(4_500_000_000, true, TimeSpan.FromSeconds(1))!.Value, 3);
+        Assert.Equal(4500d, AmdSensorDecoder.AverageMegahertz(900_000_000, true, TimeSpan.FromMilliseconds(200))!.Value, 3);
+    }
+
+    [Fact]
+    public void Average_Clock_Counts_Sleep_Time()
+    {
+        // 同一窗口里只醒了一半时间：读数就是一半，不按"醒着时"外推。
+        Assert.Equal(2000d, AmdSensorDecoder.AverageMegahertz(2_000_000_000, true, TimeSpan.FromSeconds(1))!.Value, 3);
+    }
+
+    [Fact]
+    public void Sleeping_Core_Has_No_Clock()
+    {
+        // MPERF 未增长 = 整窗睡眠；此时 APERF 也不动，没有频率可报。
+        Assert.Null(AmdSensorDecoder.AverageMegahertz(0, false, TimeSpan.FromSeconds(1)));
+        Assert.Null(AmdSensorDecoder.AverageMegahertz(123, false, TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void Average_Clock_Rejects_Implausible_Counts()
+    {
+        // 30 GHz 只可能是计数器回绕或跨核读数。
+        Assert.Null(AmdSensorDecoder.AverageMegahertz(30_000_000_000, true, TimeSpan.FromSeconds(1)));
+        Assert.Null(AmdSensorDecoder.AverageMegahertz(1000, true, TimeSpan.Zero));
+    }
 }

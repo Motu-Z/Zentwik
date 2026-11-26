@@ -4,17 +4,20 @@ using Zentwik.Platform;
 namespace Zentwik.Platform.Windows;
 
 /// <summary>
-/// AMD 封装温度与封装功耗。走 AMDFamily17 模块的 <c>ioctl_read_smn</c> / <c>ioctl_read_msr</c>：
-/// 温度读 <c>THM_TCON_CUR_TMP</c>，功耗来自 RAPL 封装能量计数器的相邻两帧差分。
+/// AMD 封装温度、封装功耗与逐核频率。走 AMDFamily17 模块的 <c>ioctl_read_smn</c> / <c>ioctl_read_msr</c>：
+/// 温度读 <c>THM_TCON_CUR_TMP</c>，功耗来自 RAPL 封装能量计数器的相邻两帧差分，频率来自逐核 APERF 差分。
 /// </summary>
 /// <remarks>
 /// 与 SMU 邮箱是两条独立通道，各自持有 PawnIO 句柄，共用 <c>Global\Access_PCI</c> 互斥（只有 SMN 读需要）。
 /// 不用 PM 表：每次读它要先触发一次传输并等 20–30 ms，且字段口径未经交叉验证。
+/// 频率报的是窗口内平均频率，不做 P-state 换算——理由见研究仓库 amd-power-limit.md §8.6。
 /// </remarks>
 public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
 {
     private const uint MsrPowerUnit = 0xC0010299;
     private const uint MsrPackageEnergyStat = 0xC001029B;
+    private const uint MsrMperf = 0xC00000E7;
+    private const uint MsrAperf = 0xC00000E8;
     private const uint SmnThmTconCurTmp = 0x00059800;
 
     private const string FunctionReadSmn = "ioctl_read_smn";
@@ -43,6 +46,13 @@ public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
     private double? _lastWatts;
     private DateTimeOffset _lastFailureAt = DateTimeOffset.MinValue;
     private (HardwareAvailability Availability, string? Detail)? _lastFailure;
+
+    private ClockTarget[] _clockTargets = [];
+    private ClockCounter?[] _clockBaseline = [];
+    private long _clockBaselineTicks;
+    private IReadOnlyList<CpuCoreClock>? _lastClocks;
+    private string? _clockError;
+    private bool _clockNoteShown;
 
     public AmdSensorSource(ISystemInfo info) => _info = info;
 
@@ -82,7 +92,7 @@ public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
             if (!TryReadMsr(MsrPackageEnergyStat, out var energy, out var energyError))
             {
                 error = energyError;
-                reading = new CpuSensorReading(temperature, _lastWatts, JoinNotes(notes));
+                reading = new CpuSensorReading(temperature, _lastWatts, _lastClocks, JoinNotes(notes));
                 return false;
             }
 
@@ -92,7 +102,14 @@ public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
                 notes.Add("首帧没有能耗基线，下一帧起给出封装功耗。");
             }
 
-            reading = new CpuSensorReading(temperature, _lastWatts, JoinNotes(notes));
+            var clocks = SampleClocks();
+            if (_clockError is not null && !_clockNoteShown)
+            {
+                notes.Add(_clockError);
+                _clockNoteShown = true;
+            }
+
+            reading = new CpuSensorReading(temperature, _lastWatts, clocks, JoinNotes(notes));
             return true;
         }
     }
@@ -124,6 +141,137 @@ public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
         _lastEnergy = current;
         _lastEnergyTicks = ticks;
         _hasEnergyBaseline = true;
+    }
+
+    /// <summary>
+    /// 一个物理核只需绑到一个逻辑处理器：SMT 兄弟线程共享同一核心时钟。
+    /// 掩码按操作系统处理器编号，与 CO 的方案核编号同源（都来自 <see cref="AmdCoreMap"/>）。
+    /// </summary>
+    internal static ClockTarget[] BuildClockTargets(AmdCoreMap map)
+    {
+        var targets = new List<ClockTarget>(map.Cores.Count);
+        var seen = new HashSet<(int Ccd, int Ccx, int Core)>();
+        foreach (var core in map.Cores.OrderBy(static item => item.LogicalIndex))
+        {
+            if (core.LogicalIndex >= 64)
+            {
+                continue;
+            }
+
+            if (!seen.Add((core.Ccd, core.Ccx, core.Core)))
+            {
+                continue;
+            }
+
+            targets.Add(new ClockTarget(
+                core.LogicalIndex,
+                core.Ccd,
+                core.Core,
+                (UIntPtr)(1UL << core.LogicalIndex)));
+        }
+
+        return [.. targets.OrderBy(static item => item.Ccd).ThenBy(static item => item.Core)];
+    }
+
+    /// <summary>
+    /// 逐核读 APERF 计数器，给出窗口内的平均频率。绑核是必需步骤：
+    /// 不绑核时每拍落在不同核，差值没有意义。读取失败不影响本帧的温度与功耗，只让频率沿用上一次结果。
+    /// </summary>
+    private IReadOnlyList<CpuCoreClock>? SampleClocks()
+    {
+        if (_session is null || _clockTargets.Length == 0 || _clockError is not null)
+        {
+            return _lastClocks;
+        }
+
+        var start = Stopwatch.GetTimestamp();
+        var counters = new ClockCounter?[_clockTargets.Length];
+        var thread = Native.GetCurrentThread();
+        var original = UIntPtr.Zero;
+
+        // 绑到忙核上要等一个时间片：全核满载时单帧会从 2 ms 涨到 150 ms。
+        // 临时提到 Highest 只占每个核几微秒，换掉这段等待。
+        var originalPriority = Native.GetThreadPriority(thread);
+        var raised = originalPriority != 0x7FFFFFFF && Native.SetThreadPriority(thread, Native.ThreadPriorityHighest);
+        var read = 0;
+
+        try
+        {
+            for (var index = 0; index < _clockTargets.Length; index++)
+            {
+                // 绑定失败说明该处理器不在本进程亲和性内；后面的核可能仍在，不整体放弃。
+                var previous = Native.SetThreadAffinityMask(thread, _clockTargets[index].Mask);
+                if (previous == UIntPtr.Zero)
+                {
+                    continue;
+                }
+
+                if (original == UIntPtr.Zero)
+                {
+                    original = previous;
+                }
+
+                if (!TryReadMsr(MsrMperf, out var mperf, out _) || !TryReadMsr(MsrAperf, out var aperf, out _))
+                {
+                    continue;
+                }
+
+                counters[index] = new ClockCounter(mperf, aperf);
+                read++;
+            }
+        }
+        finally
+        {
+            if (original != UIntPtr.Zero)
+            {
+                _ = Native.SetThreadAffinityMask(thread, original);
+            }
+
+            if (raised)
+            {
+                _ = Native.SetThreadPriority(thread, originalPriority);
+            }
+        }
+
+        if (read == 0)
+        {
+            // 全核读不到就停用这条通道，避免每秒重复尝试并反复提示。
+            _clockError = "逐核频率不可用：绑核后读不到 APERF/MPERF 计数器。";
+            _clockTargets = [];
+            return _lastClocks;
+        }
+
+        if (_clockBaseline.Length == counters.Length && _clockBaselineTicks != 0)
+        {
+            var elapsed = Stopwatch.GetElapsedTime(_clockBaselineTicks, start);
+            var clocks = new List<CpuCoreClock>(counters.Length);
+            for (var index = 0; index < counters.Length; index++)
+            {
+                if (counters[index] is not { } current || _clockBaseline[index] is not { } previous)
+                {
+                    continue;
+                }
+
+                // MPERF 整窗未动说明核心一直在睡眠，没有频率可报。
+                var megahertz = AmdSensorDecoder.AverageMegahertz(
+                    unchecked(current.Aperf - previous.Aperf),
+                    current.Mperf != previous.Mperf,
+                    elapsed);
+                if (megahertz is { } value)
+                {
+                    clocks.Add(new CpuCoreClock(_clockTargets[index].Ccd, _clockTargets[index].Core, value));
+                }
+            }
+
+            if (clocks.Count > 0)
+            {
+                _lastClocks = clocks;
+            }
+        }
+
+        _clockBaseline = counters;
+        _clockBaselineTicks = start;
+        return _lastClocks;
     }
 
     private (HardwareAvailability Availability, string? Detail) EnsureSession()
@@ -199,6 +347,18 @@ public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
         {
             DisposeSession();
             return (HardwareAvailability.ProbeFailed, $"读取温度失败：{temperatureError}");
+        }
+
+        // 逐核频率要按核绑定线程，核位置取自与 CO 同一套映射；映射不可用只影响频率，不影响温度与功耗。
+        var map = AmdCoreMapResolver.Resolve(_info, family, out var mapError);
+        if (map.IsUsable)
+        {
+            _clockTargets = BuildClockTargets(map);
+        }
+        else
+        {
+            _clockTargets = [];
+            _clockError = $"逐核频率不可用：{mapError ?? map.Detail}";
         }
 
         _probed = true;
@@ -318,8 +478,20 @@ public sealed class AmdSensorSource : ICpuSensorSource, IDisposable
         _probed = false;
         _hasEnergyBaseline = false;
         _lastWatts = null;
+
+        // 频率基线属于会话：重开会话后旧的计数器快照没有意义。
+        _clockTargets = [];
+        _clockBaseline = [];
+        _clockBaselineTicks = 0;
+        _lastClocks = null;
+        _clockError = null;
+        _clockNoteShown = false;
     }
 
     private static string? JoinNotes(List<string> notes) =>
         notes.Count == 0 ? null : string.Join("；", notes);
+
+    internal readonly record struct ClockTarget(int Processor, int Ccd, int Core, UIntPtr Mask);
+
+    internal readonly record struct ClockCounter(ulong Mperf, ulong Aperf);
 }
