@@ -23,6 +23,15 @@
           Link="PawnIO\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
+    <!-- LGPL-2.1 要求随二进制分发许可证全文与来源说明 -->
+    <None Include="..\..\licenses\LGPL-2.1.txt"
+          Link="licenses\LGPL-2.1.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md"
+          Link="THIRD-PARTY-NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
