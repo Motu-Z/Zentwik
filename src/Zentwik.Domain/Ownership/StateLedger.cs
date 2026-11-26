@@ -78,6 +78,8 @@ public sealed class StateLedger
 
     public LedgerEntry? Get(string target) => _entries.GetValueOrDefault(target);
 
+    public bool Remove(string target) => _entries.Remove(target);
+
     public AcquireOutcome Acquire(
         string target,
         string source,

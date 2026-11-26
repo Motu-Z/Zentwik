@@ -156,24 +156,71 @@ public sealed class FakePowerStatus(bool onAc = true) : IPowerStatus
 public sealed class FakeProcessScheduler : IProcessScheduler
 {
     private readonly List<ProcessTarget> _targets;
+    private readonly Dictionary<int, (string CpuMask, string Priority)> _states = new();
+    private readonly HashSet<int> _exited = [];
 
     public FakeProcessScheduler(params ProcessTarget[] targets) => _targets = [.. targets];
 
     public List<(int ProcessId, string? CpuMask, string? Priority)> Applied { get; } = [];
+
+    public void AddProcess(ProcessTarget target, string initialMask = "0x3", string initialPriority = "Normal")
+    {
+        _exited.Remove(target.ProcessId);
+        if (_targets.All(t => t.ProcessId != target.ProcessId))
+        {
+            _targets.Add(target);
+        }
+
+        _states[target.ProcessId] = (initialMask, initialPriority);
+    }
+
+    public void RemoveProcess(int processId)
+    {
+        _targets.RemoveAll(t => t.ProcessId == processId);
+        _states.Remove(processId);
+        _exited.Add(processId);
+    }
+
+    public void SetProcessState(int processId, string? cpuMask = null, string? priority = null)
+    {
+        var (currentMask, currentPriority) = _states.TryGetValue(processId, out var state)
+            ? state
+            : ("0x3", "Normal");
+        _states[processId] = (cpuMask ?? currentMask, priority ?? currentPriority);
+    }
 
     public IReadOnlyList<ProcessTarget> Find(string name) =>
         _targets.Where(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)).ToArray();
 
     public bool TryRead(int processId, out string? cpuMask, out string? priority, out string? error)
     {
-        cpuMask = "0x3";
-        priority = "Normal";
+        if (_exited.Contains(processId))
+        {
+            cpuMask = null;
+            priority = null;
+            error = $"进程 {processId} 已退出。";
+            return false;
+        }
+
+        var (mask, prio) = _states.TryGetValue(processId, out var state) ? state : ("0x3", "Normal");
+        cpuMask = mask;
+        priority = prio;
         error = null;
         return true;
     }
 
     public bool TryApply(int processId, string? cpuMask, string? priority, out string? error)
     {
+        if (_exited.Contains(processId))
+        {
+            error = $"进程 {processId} 已退出。";
+            return false;
+        }
+
+        var (currentMask, currentPriority) = _states.TryGetValue(processId, out var state)
+            ? state
+            : ("0x3", "Normal");
+        _states[processId] = (cpuMask ?? currentMask, priority ?? currentPriority);
         Applied.Add((processId, cpuMask, priority));
         error = null;
         return true;

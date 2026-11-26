@@ -170,6 +170,7 @@ public sealed class AgentServer
                 try
                 {
                     await _scenes.EvaluateAsync(ct).ConfigureAwait(false);
+                    await _plans.EnforceSchedulingAsync(_scenes.ActiveSceneId, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
