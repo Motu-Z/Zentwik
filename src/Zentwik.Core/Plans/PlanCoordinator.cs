@@ -429,7 +429,7 @@ public sealed class PlanCoordinator
                     {
                         var plan = _store.Current.Plans.FirstOrDefault(candidate =>
                             string.Equals(candidate.Id, action.PlanId, StringComparison.Ordinal));
-                        if (plan is null || (action.PlanRevision != 0 && action.PlanRevision != plan.Revision))
+                        if (plan is null)
                         {
                             continue;
                         }

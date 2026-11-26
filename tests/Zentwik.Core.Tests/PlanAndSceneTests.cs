@@ -162,7 +162,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Scene_Skips_Plan_Whose_Revision_Changed()
+    public async Task Scene_Reapplies_Edited_Plan_While_Active()
     {
         var plan = await SeedPlanAsync();
         await _store.UpdateAsync(document => document with
@@ -171,19 +171,56 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             [
                 new Scene
                 {
-                    Id = "broken",
-                    Name = "Broken",
+                    Id = "edited",
+                    Name = "Edited",
                     Priority = 1,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Manual }],
-                    Actions = [new SceneAction { PlanId = plan.Id, PlanRevision = plan.Revision + 1 }],
+                    Actions = [new SceneAction { PlanId = plan.Id }],
                 },
             ],
         });
 
-        var activation = await _scenes.ActivateAsync("broken");
+        await _scenes.ActivateAsync("edited");
+        Assert.Equal(-25, ReadOffset(0));
 
-        Assert.True(activation.Active);
-        Assert.Empty(activation.PlanIds);
+        var edited = plan with
+        {
+            Revision = plan.Revision + 1,
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -15 }],
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [edited] });
+
+        var outcome = await _scenes.ReapplyIfActiveAsync(plan.Id);
+
+        Assert.NotNull(outcome);
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        Assert.Equal(-15, ReadOffset(0));
+        Assert.Equal(OwnerKind.Scene, _plans.Entries.Single(e => e.Target == "cpu.co.0").Owner);
+    }
+
+    [Fact]
+    public async Task ReapplyIfActive_Does_Not_Touch_Plans_Outside_The_Active_Scene()
+    {
+        var plan = await SeedPlanAsync();
+        await _store.UpdateAsync(document => document with
+        {
+            Scenes =
+            [
+                new Scene
+                {
+                    Id = "other",
+                    Name = "Other",
+                    Priority = 1,
+                    Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Manual }],
+                    Actions = [new SceneAction { PlanId = plan.Id }],
+                },
+            ],
+        });
+
+        var outcome = await _scenes.ReapplyIfActiveAsync(plan.Id);
+
+        Assert.Null(outcome);
         Assert.Equal(0, ReadOffset(0));
     }
 
@@ -797,7 +834,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             Name = "Sched Scene",
             Priority = scenePriority,
             Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Process, Argument = processMatch }],
-            Actions = [new SceneAction { PlanId = plan.Id, PlanRevision = 1 }],
+            Actions = [new SceneAction { PlanId = plan.Id }],
         };
 
         await _store.UpdateAsync(document => document with
@@ -1059,7 +1096,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
                     Name = "AC",
                     Priority = 10,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.PowerSource, Argument = "ac" }],
-                    Actions = [new SceneAction { PlanId = "cpu-ac", PlanRevision = 1 }],
+                    Actions = [new SceneAction { PlanId = "cpu-ac" }],
                 },
                 new Scene
                 {
@@ -1067,7 +1104,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
                     Name = "Battery",
                     Priority = 20,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.PowerSource, Argument = "dc" }],
-                    Actions = [new SceneAction { PlanId = "cpu-bat", PlanRevision = 1 }],
+                    Actions = [new SceneAction { PlanId = "cpu-bat" }],
                 },
             ],
         });

@@ -17,7 +17,7 @@ public sealed record SceneActivation(
 
 /// <summary>
 /// 场景协调：同一对象同一时刻只允许一个场景持有写权；切换时只回退仍归本方所有的对象。
-/// 自动评估不会覆盖用户接管，也不会套用版本已变更的方案。
+/// 自动评估不会覆盖用户接管；场景始终应用方案的最新内容。
 /// </summary>
 public sealed class SceneEngine
 {
@@ -116,6 +116,42 @@ public sealed class SceneEngine
             }
 
             return await ActivateCoreAsync(sceneId, "手动激活", ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 方案被改写后立即生效：若当前活动场景正在使用该方案，按场景优先级重新应用，
+    /// 不等下一次触发评估。用户接管与更高优先级仍由账本拦截。
+    /// </summary>
+    public async Task<PlanApplyOutcome?> ReapplyIfActiveAsync(string planId, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (ActiveSceneId is not { } sceneId)
+            {
+                return null;
+            }
+
+            var scene = _store.Current.Scenes.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, sceneId, StringComparison.Ordinal));
+            if (scene is null || !scene.Actions.Any(action => string.Equals(action.PlanId, planId, StringComparison.Ordinal)))
+            {
+                return null;
+            }
+
+            if (!_store.Current.Plans.Any(plan => string.Equals(plan.Id, planId, StringComparison.Ordinal)))
+            {
+                return null;
+            }
+
+            var outcome = await _plans.ApplyAsync(planId, $"scene:{sceneId}", scene.Priority, ct).ConfigureAwait(false);
+            _log.Info($"场景 {sceneId} 的方案 {planId} 内容已更新，按最新内容重新应用：{outcome.State}。");
+            return outcome;
         }
         finally
         {
@@ -233,13 +269,6 @@ public sealed class SceneEngine
             {
                 failed++;
                 _log.Warn($"场景 {sceneId} 引用的方案 {action.PlanId} 不存在。");
-                continue;
-            }
-
-            if (action.PlanRevision != 0 && action.PlanRevision != plan.Revision)
-            {
-                skipped++;
-                _log.Warn($"场景 {sceneId} 跳过方案 {plan.Id}：期望版本 {action.PlanRevision}，当前 {plan.Revision}。");
                 continue;
             }
 

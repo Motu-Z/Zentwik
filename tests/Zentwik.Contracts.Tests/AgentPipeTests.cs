@@ -192,7 +192,7 @@ public sealed class AgentPipeTests : IAsyncLifetime
             Name = "Game",
             Priority = 10,
             Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Manual }],
-            Actions = [new SceneAction { PlanId = plan.Id, PlanRevision = plan.Revision }],
+            Actions = [new SceneAction { PlanId = plan.Id }],
         });
 
         var activated = await connection.ActivateSceneAsync("game");

@@ -620,7 +620,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             Console.WriteLine($"name      {scene.Name}");
             Console.WriteLine($"priority  {scene.Priority}  enabled={Output.Status(scene.Enabled)}  restoreOnExit={Output.Status(scene.RestoreOnExit)}");
             Console.WriteLine($"trigger   {string.Join(", ", scene.Triggers.Select(static trigger => trigger.Argument is null ? trigger.Kind : $"{trigger.Kind}:{trigger.Argument}"))}");
-            Console.WriteLine($"actions   {string.Join(", ", scene.Actions.Select(static action => $"{action.PlanId}@{action.PlanRevision}"))}");
+            Console.WriteLine($"actions   {string.Join(", ", scene.Actions.Select(static action => action.PlanId))}");
             Console.WriteLine($"last      {scene.LastOutcome ?? "-"}");
         }
 
@@ -697,14 +697,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             throw new CliUsageException("至少需要一个 --plan。");
         }
 
-        var actions = plans.Select(static entry =>
-        {
-            var parts = entry.Split('@', 2);
-            var revision = parts.Length == 2 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-                ? parsed
-                : 0;
-            return new SceneAction { PlanId = parts[0], PlanRevision = revision };
-        }).ToArray();
+        var actions = plans.Select(static entry => new SceneAction { PlanId = entry }).ToArray();
 
         var triggers = args.Repeated("--trigger").Select(static entry =>
         {

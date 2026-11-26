@@ -70,7 +70,6 @@ public static class ErrorCodes
 
     public const string PlanNotFound = "plan.not_found";
     public const string PlanInvalid = "plan.invalid";
-    public const string PlanRevisionMismatch = "plan.revision_mismatch";
     public const string SceneNotFound = "scene.not_found";
     public const string SceneInvalid = "scene.invalid";
     public const string LedgerEntryMissing = "ledger.entry_missing";

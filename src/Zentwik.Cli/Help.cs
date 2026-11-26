@@ -33,7 +33,7 @@ public static class Help
                       enable <id> | disable <id>  启用或停用场景
                       delete <id>                 删除场景
                       save --file <path|->        从 JSON 保存场景
-                      create --id <id> --name <name> --plan ID[@rev] ... [--priority N] [--trigger 类型[:参数] ...]
+                      create --id <id> --name <name> --plan ID ... [--priority N] [--trigger 类型[:参数] ...]
                     """);
                 break;
             case "monitor":

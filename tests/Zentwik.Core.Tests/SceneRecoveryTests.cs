@@ -168,7 +168,7 @@ public sealed class SceneRecoveryTests : IAsyncLifetime
                     Priority = 5,
                     RestoreOnExit = restoreOnExit,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.PowerSource, Argument = "ac" }],
-                    Actions = [new SceneAction { PlanId = plan.Id, PlanRevision = 1 }],
+                    Actions = [new SceneAction { PlanId = plan.Id }],
                 },
             ],
         });

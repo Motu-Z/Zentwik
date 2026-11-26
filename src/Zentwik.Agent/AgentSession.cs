@@ -327,6 +327,7 @@ internal sealed class AgentSession : IAsyncDisposable
             ct).ConfigureAwait(false);
 
         _server.Watcher.NotifyConfigChanged();
+        await _server.Scenes.ReapplyIfActiveAsync(saved.Id, ct).ConfigureAwait(false);
         _log.Info($"方案已保存：{saved.Id} rev {saved.Revision}");
         return Ok(request, JsonSerializer.SerializeToElement(saved, ZentwikJson.Default.Plan));
     }

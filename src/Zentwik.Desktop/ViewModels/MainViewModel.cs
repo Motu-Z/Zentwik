@@ -797,7 +797,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Priority = priority,
                 RestoreOnExit = NewSceneRestoreOnExit,
                 Triggers = [new SceneTrigger { Kind = NewSceneTriggerKind, Argument = triggerArg }],
-                Actions = [new SceneAction { PlanId = planId, PlanRevision = 0 }],
+                Actions = [new SceneAction { PlanId = planId }],
             };
 
             var saved = await connection.SaveSceneAsync(scene, _cts.Token).ConfigureAwait(false);

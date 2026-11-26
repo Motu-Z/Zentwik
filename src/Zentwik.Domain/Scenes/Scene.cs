@@ -9,10 +9,8 @@ public static class SceneTriggerKinds
 
 public sealed record SceneAction
 {
+    // 场景始终应用方案的最新内容：用户改方案就是要让引用它的场景跟着变。
     public required string PlanId { get; init; }
-
-    // 方案被改写后场景不静默套用新版本，需重新确认。
-    public int PlanRevision { get; init; }
 }
 
 public sealed record SceneTrigger

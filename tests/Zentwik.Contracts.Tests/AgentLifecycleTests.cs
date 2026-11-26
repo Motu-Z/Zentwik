@@ -53,7 +53,7 @@ public sealed class AgentLifecycleTests
                     Name = "Manual",
                     Priority = 1,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Manual }],
-                    Actions = [new SceneAction { PlanId = "cpu", PlanRevision = 1 }],
+                    Actions = [new SceneAction { PlanId = "cpu" }],
                 },
             ],
         });
