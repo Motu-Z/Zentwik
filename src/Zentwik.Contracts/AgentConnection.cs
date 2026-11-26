@@ -191,6 +191,36 @@ public sealed class AgentConnection : IAsyncDisposable
         await InvokeAsync(Ops.LedgerRelease, new IdRequest(target), ZentwikJson.Default.IdRequest, ZentwikJson.Default.Boolean, ct)
             .ConfigureAwait(false);
 
+    public async Task<IReadOnlyList<PowerSchemeDto>> ListPowerSchemesAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PowerSchemesList, ZentwikJson.Default.PowerSchemeDtoArray, ct).ConfigureAwait(false);
+
+    public async Task<PowerSchemeDto> CreatePowerSchemeAsync(Guid template, string name, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.PowerSchemeCreate,
+                new PowerSchemeCreateRequest(template, name),
+                ZentwikJson.Default.PowerSchemeCreateRequest,
+                ZentwikJson.Default.PowerSchemeDto,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<PowerSchemeDto> RenamePowerSchemeAsync(Guid scheme, string name, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.PowerSchemeRename,
+                new PowerSchemeNameRequest(scheme, name),
+                ZentwikJson.Default.PowerSchemeNameRequest,
+                ZentwikJson.Default.PowerSchemeDto,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<bool> DeletePowerSchemeAsync(Guid scheme, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.PowerSchemeDelete,
+                new PowerSchemeTarget(scheme),
+                ZentwikJson.Default.PowerSchemeTarget,
+                ZentwikJson.Default.Boolean,
+                ct)
+            .ConfigureAwait(false);
+
     public async Task<SettingsDto> GetSettingsAsync(CancellationToken ct = default) =>
         await InvokeAsync(Ops.SettingsGet, ZentwikJson.Default.SettingsDto, ct).ConfigureAwait(false);
 

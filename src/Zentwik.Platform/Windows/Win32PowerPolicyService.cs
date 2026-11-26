@@ -82,6 +82,59 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
         return result == Native.ErrorSuccess;
     }
 
+    public Guid? DuplicateScheme(Guid template, out string? error)
+    {
+        var result = Native.PowerDuplicateScheme(0, in template, out var created);
+        if (result != Native.ErrorSuccess || created == 0)
+        {
+            if (created != 0)
+            {
+                Native.LocalFree(created);
+            }
+
+            error = Describe("PowerDuplicateScheme", result);
+            return null;
+        }
+
+        try
+        {
+            error = null;
+            return Marshal.PtrToStructure<Guid>(created);
+        }
+        finally
+        {
+            Native.LocalFree(created);
+        }
+    }
+
+    public bool RenameScheme(Guid scheme, string name, out string? error)
+    {
+        // 长度按字节计且含结尾符：少 2 字节会丢最后一个字符，返回值仍是 0。
+        var bytes = Encoding.Unicode.GetByteCount(name) + sizeof(char);
+        var buffer = Marshal.AllocHGlobal(bytes);
+
+        try
+        {
+            var encoded = Encoding.Unicode.GetBytes(name + '\0');
+            Marshal.Copy(encoded, 0, buffer, bytes);
+
+            var result = Native.PowerWriteFriendlyName(0, in scheme, 0, 0, buffer, (uint)bytes);
+            error = result == Native.ErrorSuccess ? null : Describe("PowerWriteFriendlyName", result);
+            return result == Native.ErrorSuccess;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    public bool DeleteScheme(Guid scheme, out string? error)
+    {
+        var result = Native.PowerDeleteScheme(0, in scheme);
+        error = result == Native.ErrorSuccess ? null : Describe("PowerDeleteScheme", result);
+        return result == Native.ErrorSuccess;
+    }
+
     private static string Describe(string api, uint code) => code == 5
         ? $"{api} 失败：拒绝访问（需要管理员权限）。"
         : $"{api} 失败，Win32 错误码 {code}。";

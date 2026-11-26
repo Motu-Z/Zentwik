@@ -7,6 +7,7 @@ using Zentwik.Contracts.Protocol;
 using Zentwik.Core.Capabilities;
 using Zentwik.Core.Diagnostics;
 using Zentwik.Core.Plans;
+using Zentwik.Core.Power;
 using Zentwik.Core.Scenes;
 using Zentwik.Core.State;
 using Zentwik.Core.Telemetry;
@@ -23,6 +24,7 @@ public sealed class AgentServer
     private readonly ISystemInfo _system;
     private readonly DiagnosticLog _log;
     private readonly PlanCoordinator _plans;
+    private readonly PowerSchemeService? _powerSchemes;
     private readonly SceneEngine _scenes;
     private readonly DoctorService _doctor;
     private readonly ICpuTuningProvider _tuning;
@@ -47,7 +49,8 @@ public sealed class AgentServer
         ICpuTuningProvider tuning,
         IIntelTuningProvider intel,
         CallerPolicy policy,
-        IPowerNotificationSource? powerNotifications = null)
+        IPowerNotificationSource? powerNotifications = null,
+        PowerSchemeService? powerSchemes = null)
     {
         _options = options;
         _store = store;
@@ -56,6 +59,7 @@ public sealed class AgentServer
         _system = system;
         _log = log;
         _plans = plans;
+        _powerSchemes = powerSchemes;
         _scenes = scenes;
         _doctor = doctor;
         _tuning = tuning;
@@ -159,6 +163,8 @@ public sealed class AgentServer
     internal DiagnosticLog Log => _log;
 
     internal PlanCoordinator Plans => _plans;
+
+    internal PowerSchemeService? PowerSchemes => _powerSchemes;
 
     internal SceneEngine Scenes => _scenes;
 

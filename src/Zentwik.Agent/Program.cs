@@ -6,6 +6,7 @@ using Zentwik.Contracts.Protocol;
 using Zentwik.Core.Capabilities;
 using Zentwik.Core.Diagnostics;
 using Zentwik.Core.Plans;
+using Zentwik.Core.Power;
 using Zentwik.Core.Scenes;
 using Zentwik.Core.State;
 using Zentwik.Core.Telemetry;
@@ -60,6 +61,7 @@ IPowerNotificationSource powerNotifications = options.UseFake ? new NoPowerNotif
 var hub = new TelemetryHub(telemetry);
 var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, intel, scheduler, power).Append(new CpuSetsCapabilityProbe(scheduler)));
 var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel, powerStatus);
+var powerSchemes = new PowerSchemeService(power);
 var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
 
 var recovered = await scenes.RecoverAsync().ConfigureAwait(false);
@@ -73,7 +75,7 @@ var runtime = new AgentRuntime(version, options.ServiceMode, options.UseFake, Da
 var doctor = new DoctorService(store, capabilities, log, runtime, system, () => scenes.ActiveSceneId);
 
 var policy = new CallerPolicy(store.Current.OwnerSid, RequireInteractiveSession: true, IntegrityLevel.Medium);
-var server = new AgentServer(options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, intel, policy, powerNotifications);
+var server = new AgentServer(options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, intel, policy, powerNotifications, powerSchemes);
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>

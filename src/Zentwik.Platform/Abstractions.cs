@@ -31,6 +31,15 @@ public interface IPowerPolicyService
     bool TryReadValue(Guid scheme, Guid subGroup, Guid setting, bool ac, out uint value, out string? error);
 
     bool TryWriteValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value, out string? error);
+
+    /// <summary>以现有方案为模板派生新方案，返回新 GUID；失败返回 null 并给出原因。</summary>
+    Guid? DuplicateScheme(Guid template, out string? error);
+
+    /// <summary>改方案显示名。缓冲区按 UTF-16 字节计且含结尾符。</summary>
+    bool RenameScheme(Guid scheme, string name, out string? error);
+
+    /// <summary>删除方案。活动方案须由上层先切走；内置方案由上层拒绝。</summary>
+    bool DeleteScheme(Guid scheme, out string? error);
 }
 
 public enum HardwareAvailability

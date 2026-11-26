@@ -1307,5 +1307,23 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             error = null;
             return true;
         }
+
+        public Guid? DuplicateScheme(Guid template, out string? error)
+        {
+            error = "模拟不支持派生方案。";
+            return null;
+        }
+
+        public bool RenameScheme(Guid scheme, string name, out string? error)
+        {
+            error = "模拟不支持改名。";
+            return false;
+        }
+
+        public bool DeleteScheme(Guid scheme, out string? error)
+        {
+            error = "模拟不支持删除。";
+            return false;
+        }
     }
 }

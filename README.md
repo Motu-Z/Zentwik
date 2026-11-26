@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 62 个用例
+dotnet test  Zentwik.slnx          # 174 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
@@ -68,6 +68,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理与手动执行 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |
+| `power list\|create\|rename\|delete` | Windows 电源方案：列出/派生/改名/删除（内置拒删、活动方案先切走） |
 | `settings` | 读取或修改语言、主题、强调色、缩放 |
 | `doctor` | 运行模式、路径、模块状态、最近错误 |
 | `logs [--limit N] [--level error]` | 最近日志 |
@@ -84,8 +85,10 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 ## 当前未实现
 
-- AMD FMax 写入、CPU Sets 写入、GPU 遥测、进程调度持续 enforce。
-- Intel 通道只做了 MSR 读取与电压偏移写入；睿频上限仅读，且没有在 Intel 机器上实测。
-- 服务安装/卸载与 Session 0 → 用户会话通信已在管理员会话验证通过（含伪造 owner.sid 的拒绝路径）；服务异常终止后的 SCM 恢复动作尚未实测。
-- AMD CO 的读写未在真机验证：当前会话非管理员，PawnIO 拒绝访问，通道停在 `privilegeMissing`。此前"SMU 对 `0xD5` 返回 0xFF"的记录是在错误的独热位掩码下得到的，已不能作为平台限制的证据。
-- 休眠唤醒后的实际值复核未做。
+- 硬件功耗限制（AMD STAPM/PPT FAST/SLOW/TDC/EDC、Intel PL1/PL2/Tau）尚未实现；HX 平台默认不展示常规入口，仅允许用户主动选择受控尝试。
+- Intel 通道已实现 OC Mailbox 写协议（命令字、bit63 忙位轮询、全局互斥、写后回读），但无 Intel 真机验证，仅位域单测。
+- GPU 遥测、托盘、WPF 界面与安装器未实现（界面阶段暂停）。
+- 服务异常终止后的 SCM 恢复动作尚未实测。
+- 真实休眠/唤醒回调、重启后保持、多处理器组绑定未验证。
+
+已实现并真机验证（不再列为未实现）：AMD 逐核 CO 读写与回退、FMax 写入闭环、CPU Sets/亲和性/优先级三路径、调度持续 enforce、场景接管与回退、Session 0 服务连接。

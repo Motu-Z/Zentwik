@@ -58,6 +58,18 @@ public static class Help
                     不带参数时读取当前设置。
                     """);
                 break;
+            case "power":
+                Console.WriteLine("""
+                    zentwik power <subcommand>
+
+                      list                        列出 Windows 电源方案
+                      create --template <GUID|balanced|saver|performance|ultimate> --name <name>
+                                                  以模板派生新方案
+                      rename --id <GUID> --name <name>
+                                                  改方案显示名
+                      delete --id <GUID>          删除方案（内置拒删；活动方案先切走）
+                    """);
+                break;
             case "tuning":
                 Console.WriteLine("""
                     zentwik tuning [--intel]
@@ -95,6 +107,7 @@ public static class Help
               plans                     方案管理
               scenes                    场景管理
               ledger                    状态账本
+              power                     Windows 电源方案管理
               settings                  界面与语言设置
               doctor                    诊断信息
               logs                      最近日志

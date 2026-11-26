@@ -4,6 +4,7 @@ using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Json;
 using Zentwik.Contracts.Protocol;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Power;
 using Zentwik.Domain.Scenes;
 
 namespace Zentwik.Cli;
@@ -23,6 +24,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             "plans" => await PlansAsync(ct),
             "scenes" => await ScenesAsync(ct),
             "ledger" => await LedgerAsync(ct),
+            "power" => await PowerAsync(ct),
             "settings" => await SettingsAsync(ct),
             "doctor" => await DoctorAsync(ct),
             "logs" => await LogsAsync(ct),
@@ -215,6 +217,112 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
         return snapshot.Availability == "available" ? ExitCodes.Ok : ExitCodes.Unavailable;
     }
+
+    private async Task<int> PowerAsync(CancellationToken ct)
+    {
+        var sub = args.Positionals.Count > 1 ? args.Positionals[1] : "list";
+        return sub switch
+        {
+            "list" or "schemes" => await PowerListAsync(ct),
+            "create" => await PowerCreateAsync(ct),
+            "rename" => await PowerRenameAsync(ct),
+            "delete" => await PowerDeleteAsync(ct),
+            _ => throw new CliUsageException($"未知子命令：power {sub}"),
+        };
+    }
+
+    private async Task<int> PowerListAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe");
+        var schemes = await connection.ListPowerSchemesAsync(ct);
+        output.JsonValue(schemes.ToArray(), ZentwikJson.Default.PowerSchemeDtoArray);
+
+        if (!output.Json)
+        {
+            foreach (var scheme in schemes)
+            {
+                var flags = string.Join(' ', new[]
+                {
+                    scheme.Active ? "active" : string.Empty,
+                    scheme.BuiltIn ? "builtin" : string.Empty,
+                }.Where(static flag => flag.Length > 0));
+                Console.WriteLine($"{scheme.Guid:D}  {scheme.Name,-24} {flags}");
+            }
+        }
+
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> PowerCreateAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--template", "--name");
+        var templateText = args.Value("--template")
+            ?? throw new CliUsageException("power create 需要 --template <GUID|balanced|saver|performance|ultimate>。");
+        var name = args.Value("--name")
+            ?? throw new CliUsageException("power create 需要 --name <名称>。");
+
+        var created = await connection.CreatePowerSchemeAsync(ResolveTemplate(templateText), name, ct);
+        output.JsonValue(created, ZentwikJson.Default.PowerSchemeDto);
+
+        if (!output.Json)
+        {
+            Console.WriteLine($"created {created.Guid:D} {created.Name}");
+        }
+
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> PowerRenameAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--id", "--name");
+        var id = RequireGuid("--id");
+        var name = args.Value("--name")
+            ?? throw new CliUsageException("power rename 需要 --name <名称>。");
+
+        var renamed = await connection.RenamePowerSchemeAsync(id, name, ct);
+        output.JsonValue(renamed, ZentwikJson.Default.PowerSchemeDto);
+
+        if (!output.Json)
+        {
+            Console.WriteLine($"renamed {renamed.Guid:D} {renamed.Name}");
+        }
+
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> PowerDeleteAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--id");
+        var id = RequireGuid("--id");
+        var deleted = await connection.DeletePowerSchemeAsync(id, ct);
+        output.JsonValue(deleted, ZentwikJson.Default.Boolean);
+
+        if (!output.Json)
+        {
+            Console.WriteLine(deleted ? $"deleted {id:D}" : $"未删除 {id:D}");
+        }
+
+        return deleted ? ExitCodes.Ok : ExitCodes.Failed;
+    }
+
+    private Guid RequireGuid(string option)
+    {
+        var text = args.Value(option) ?? throw new CliUsageException($"需要 {option} <GUID>。");
+        return Guid.TryParse(text, out var guid)
+            ? guid
+            : throw new CliUsageException($"{option} 需要合法 GUID。");
+    }
+
+    private static Guid ResolveTemplate(string text) => text.ToLowerInvariant() switch
+    {
+        "balanced" or "平衡" => PowerSchemePresets.Balanced.Guid,
+        "saver" or "powersaver" or "节能" => PowerSchemePresets.PowerSaver.Guid,
+        "performance" or "high" or "高性能" => PowerSchemePresets.HighPerformance.Guid,
+        "ultimate" or "卓越性能" => PowerSchemePresets.UltimatePerformance.Guid,
+        _ => Guid.TryParse(text, out var guid)
+            ? guid
+            : throw new CliUsageException($"无法识别的模板：{text}。"),
+    };
 
     private async Task<int> PlansAsync(CancellationToken ct)
     {

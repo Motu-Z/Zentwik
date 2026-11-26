@@ -198,15 +198,26 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
     private static readonly Guid CoreParking = new("0cc5b647-c1df-4637-891a-dec35c318583");
 
     private readonly Dictionary<(Guid Scheme, Guid Sub, Guid Setting, bool Ac), uint> _values = new();
+    private readonly Dictionary<Guid, string> _schemes = new()
+    {
+        [Balanced] = "平衡（模拟）",
+        [HighPerformance] = "高性能（模拟）",
+    };
+
     private Guid _active = Balanced;
+    private int _nextCreated;
 
     /// <summary>核心停泊最小核心数，100 = 不停泊。</summary>
     public uint CoreParkingMinPercent { get; set; } = 100;
 
-    public PowerSchemeInfo? GetActiveScheme() => new(_active, Name(_active));
+    /// <summary>模拟派生失败（模板不存在或系统拒绝）。</summary>
+    public bool DuplicateFails { get; set; }
+
+    public PowerSchemeInfo? GetActiveScheme() =>
+        new(_active, _schemes.TryGetValue(_active, out var name) ? name : _active.ToString("D"));
 
     public IReadOnlyList<PowerSchemeInfo> ListSchemes() =>
-        [new(Balanced, Name(Balanced)), new(HighPerformance, Name(HighPerformance))];
+        _schemes.Select(pair => new PowerSchemeInfo(pair.Key, pair.Value)).ToArray();
 
     public bool TrySetActiveScheme(Guid scheme, out string? error)
     {
@@ -236,7 +247,45 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
         return true;
     }
 
-    private static string Name(Guid scheme) => scheme == HighPerformance ? "高性能（模拟）" : "平衡（模拟）";
+    public Guid? DuplicateScheme(Guid template, out string? error)
+    {
+        if (DuplicateFails || !_schemes.ContainsKey(template))
+        {
+            error = "派生失败。";
+            return null;
+        }
+
+        var created = new Guid($"00000000-0000-0000-0000-{++_nextCreated:D12}");
+        _schemes[created] = _schemes[template] + "（副本）";
+        error = null;
+        return created;
+    }
+
+    public bool RenameScheme(Guid scheme, string name, out string? error)
+    {
+        if (!_schemes.ContainsKey(scheme))
+        {
+            error = "方案不存在。";
+            return false;
+        }
+
+        _schemes[scheme] = name;
+        error = null;
+        return true;
+    }
+
+    public bool DeleteScheme(Guid scheme, out string? error)
+    {
+        if (!_schemes.ContainsKey(scheme) || scheme == _active)
+        {
+            error = "删除失败。";
+            return false;
+        }
+
+        _schemes.Remove(scheme);
+        error = null;
+        return true;
+    }
 }
 
 public sealed class FakePowerStatus(bool onAc = true) : IPowerStatus

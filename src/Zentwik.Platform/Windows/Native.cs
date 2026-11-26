@@ -173,4 +173,31 @@ internal static partial class Native
         in Guid subGroupGuid,
         in Guid settingGuid,
         uint value);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerDuplicateScheme(
+        nint rootPowerKey,
+        in Guid sourceSchemeGuid,
+        out nint destinationSchemeGuid);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerWriteFriendlyName(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        nint subGroupOfPowerSettingsGuid,
+        nint powerSettingGuid,
+        nint buffer,
+        uint bufferSize);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerWriteDescription(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        nint subGroupOfPowerSettingsGuid,
+        nint powerSettingGuid,
+        nint buffer,
+        uint bufferSize);
+
+    [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerDeleteScheme(nint rootPowerKey, in Guid schemeGuid);
 }

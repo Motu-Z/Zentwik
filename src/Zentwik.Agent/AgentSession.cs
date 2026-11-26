@@ -10,6 +10,7 @@ using Zentwik.Contracts.Protocol;
 using Zentwik.Core.Diagnostics;
 using Zentwik.Core.Modules;
 using Zentwik.Core.Plans;
+using Zentwik.Core.Power;
 using Zentwik.Core.Scenes;
 using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Plans;
@@ -250,6 +251,33 @@ internal sealed class AgentSession : IAsyncDisposable
                 var target = RequirePayload(request, ZentwikJson.Default.IdRequest).Id;
                 var released = await _server.Plans.ReleaseTakeoverAsync(target, ct).ConfigureAwait(false);
                 return Ok(request, JsonSerializer.SerializeToElement(released, ZentwikJson.Default.Boolean));
+            }
+
+            case Ops.PowerSchemesList:
+            {
+                var schemes = PowerSchemes().List().Select(ToDto).ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(schemes, ZentwikJson.Default.PowerSchemeDtoArray));
+            }
+
+            case Ops.PowerSchemeCreate:
+            {
+                var payload = RequirePayload(request, ZentwikJson.Default.PowerSchemeCreateRequest);
+                var created = PowerSchemes().Create(payload.Template, payload.Name);
+                return Ok(request, JsonSerializer.SerializeToElement(ToDto(created), ZentwikJson.Default.PowerSchemeDto));
+            }
+
+            case Ops.PowerSchemeRename:
+            {
+                var payload = RequirePayload(request, ZentwikJson.Default.PowerSchemeNameRequest);
+                var renamed = PowerSchemes().Rename(payload.Guid, payload.Name);
+                return Ok(request, JsonSerializer.SerializeToElement(ToDto(renamed), ZentwikJson.Default.PowerSchemeDto));
+            }
+
+            case Ops.PowerSchemeDelete:
+            {
+                var payload = RequirePayload(request, ZentwikJson.Default.PowerSchemeTarget);
+                PowerSchemes().Delete(payload.Guid);
+                return Ok(request, JsonSerializer.SerializeToElement(true, ZentwikJson.Default.Boolean));
             }
 
             case Ops.SettingsGet:
@@ -744,6 +772,13 @@ internal sealed class AgentSession : IAsyncDisposable
 
     private static ResponseEnvelope Ok(RequestEnvelope request, JsonElement? data) =>
         ResponseEnvelope.Success(request.Id, request.Op, data);
+
+    private PowerSchemeService PowerSchemes() =>
+        _server.PowerSchemes
+        ?? throw new CoreException(ErrorCodes.HardwareUnavailable, "电源方案服务未装配。");
+
+    private static PowerSchemeDto ToDto(PowerSchemeState state) =>
+        new(state.Guid, state.Name, state.Active, state.BuiltIn);
 
     private static PlanApplyResultDto ToDto(PlanApplyOutcome outcome) => new(
         outcome.Plan.Id,

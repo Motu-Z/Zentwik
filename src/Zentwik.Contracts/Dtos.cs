@@ -87,6 +87,18 @@ public sealed record IdRequest(string Id);
 
 public sealed record LogRequest(int Limit);
 
+/// <summary>一个 Windows 电源方案。Guid 是系统标识，Name 是显示名。</summary>
+public sealed record PowerSchemeDto(Guid Guid, string Name, bool Active, bool BuiltIn);
+
+/// <summary>以模板派生新方案：Template 可为内置 GUID 或现有方案 GUID。</summary>
+public sealed record PowerSchemeCreateRequest(Guid Template, string Name);
+
+/// <summary>改名：Guid 定位方案，Name 是新显示名。</summary>
+public sealed record PowerSchemeNameRequest(Guid Guid, string Name);
+
+/// <summary>按 GUID 定位一个电源方案。</summary>
+public sealed record PowerSchemeTarget(Guid Guid);
+
 public sealed record TargetOutcomeDto(
     string Target,
     string? Previous,

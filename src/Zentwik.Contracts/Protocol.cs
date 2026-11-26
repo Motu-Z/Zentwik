@@ -43,6 +43,11 @@ public static class Ops
     public const string LedgerList = "ledger.list";
     public const string LedgerRelease = "ledger.release";
 
+    public const string PowerSchemesList = "power.scheme.list";
+    public const string PowerSchemeCreate = "power.scheme.create";
+    public const string PowerSchemeRename = "power.scheme.rename";
+    public const string PowerSchemeDelete = "power.scheme.delete";
+
     public const string SettingsGet = "settings.get";
     public const string SettingsSet = "settings.set";
 
@@ -77,6 +82,12 @@ public static class ErrorCodes
     public const string HardwareUnavailable = "hardware.unavailable";
     public const string HardwareWriteFailed = "hardware.write_failed";
     public const string HardwareVerifyFailed = "hardware.verify_failed";
+
+    public const string PowerSchemeNotFound = "power.scheme_not_found";
+    public const string PowerSchemeBuiltIn = "power.scheme_builtin";
+    public const string PowerSchemeNameConflict = "power.scheme_name_conflict";
+    public const string PowerSchemeCreateFailed = "power.scheme_create_failed";
+    public const string PowerSchemeDeleteFailed = "power.scheme_delete_failed";
 }
 
 public sealed class RequestEnvelope
