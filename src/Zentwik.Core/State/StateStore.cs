@@ -74,6 +74,7 @@ public sealed class StateStore
         catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
         {
             _log.Error($"读取状态失败，保留原文件：{ex.Message}");
+            BackupCorruptFile();
             Current = new StateDocument();
         }
         finally
@@ -112,7 +113,30 @@ public sealed class StateStore
     private async Task WriteAtomicAsync(StateDocument document, CancellationToken ct)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(document, ZentwikJson.Default.StateDocument);
-        await File.WriteAllBytesAsync(_tempPath, bytes, ct).ConfigureAwait(false);
+
+        // 落盘后再替换：断电时要么是旧文件，要么是新文件，不能留下半截内容。
+        await using (var stream = new FileStream(_tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
+            await stream.FlushAsync(ct).ConfigureAwait(false);
+            stream.Flush(flushToDisk: true);
+        }
+
         File.Move(_tempPath, _path, overwrite: true);
+    }
+
+    /// <summary>状态文件损坏时留一份副本：后续保存会覆盖原文件，没有副本就无法人工恢复。</summary>
+    private void BackupCorruptFile()
+    {
+        var backup = $"{_path}.corrupt";
+        try
+        {
+            File.Copy(_path, backup, overwrite: true);
+            _log.Warn($"原状态文件已备份为 {backup}。");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.Warn($"备份损坏的状态文件失败：{ex.Message}");
+        }
     }
 }

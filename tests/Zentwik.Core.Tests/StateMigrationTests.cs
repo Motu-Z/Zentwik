@@ -79,6 +79,22 @@ public sealed class StateMigrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Corrupt_State_Is_Backed_Up_Before_Being_Overwritten()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "state.json");
+        await File.WriteAllTextAsync(path, "{ not json");
+
+        using var log = new DiagnosticLog(_directory, echoToConsole: false);
+        var store = new StateStore(_directory, log);
+        await store.LoadAsync();
+
+        Assert.Empty(store.Current.Plans);
+        Assert.True(File.Exists(path + ".corrupt"));
+        Assert.Equal("{ not json", await File.ReadAllTextAsync(path + ".corrupt"));
+    }
+
+    [Fact]
     public void Offset_Round_Trips_Through_Json()
     {
         CpuTuningPlan plan = new()
