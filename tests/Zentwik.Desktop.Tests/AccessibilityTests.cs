@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -22,12 +21,6 @@ public sealed class AccessibilityTests
         UiThread.Run(() =>
         {
             using var host = TestWindow.Create();
-            var app = Application.Current;
-            var resRefresh = app?.Resources["String.CommonRefresh"];
-            var resDismiss = app?.Resources["String.CommonDismiss"];
-            var resNav = app?.Resources["String.NavMonitor"];
-            var catRefresh = host.Catalog.Get("common.refresh");
-
             foreach (var element in host.Descendants())
             {
                 // 页签的容器 peer 读不到标题，Narrator 走的是 TabControlAutomationPeer 的子项。
@@ -40,15 +33,7 @@ public sealed class AccessibilityTests
                            ?? new FrameworkElementAutomationPeer(element);
                 if (string.IsNullOrWhiteSpace(peer.GetName()))
                 {
-                    var parent = VisualTreeHelper.GetParent(element);
-                    var templatedParent = element.TemplatedParent;
-                    var autoName = AutomationProperties.GetName(element);
-                    var content = (element as ContentControl)?.Content;
-                    missing.Add(
-                        $"{element.GetType().Name}({element.Name}) " +
-                        $"Parent={parent?.GetType().Name} TemplatedParent={templatedParent?.GetType().Name} " +
-                        $"AutoName='{autoName}' Content='{content}' Visible={element.IsVisible} Loaded={element.IsLoaded} " +
-                        $"App={app is not null} ResCount={app?.Resources.Count} ResNav='{resNav}' ResRefresh='{resRefresh}' ResDismiss='{resDismiss}' CatRefresh='{catRefresh}'");
+                    missing.Add($"{element.GetType().Name}({element.Name})");
                 }
             }
 
@@ -67,7 +52,7 @@ public sealed class AccessibilityTests
             }
         });
 
-        Assert.True(missing.Count == 0, string.Join(Environment.NewLine, missing));
+        Assert.Empty(missing);
     }
 
     [Fact]
@@ -104,18 +89,15 @@ public sealed class AccessibilityTests
 
     private sealed class TestWindow : IDisposable
     {
-        private TestWindow(MainWindow window, MainViewModel viewModel, LocalizationCatalog catalog)
+        private TestWindow(MainWindow window, MainViewModel viewModel)
         {
             Window = window;
             ViewModel = viewModel;
-            Catalog = catalog;
         }
 
         public MainWindow Window { get; }
 
         public MainViewModel ViewModel { get; }
-
-        public LocalizationCatalog Catalog { get; }
 
         public static TestWindow Create()
         {
@@ -131,7 +113,7 @@ public sealed class AccessibilityTests
             window.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
             window.UpdateLayout();
 
-            return new TestWindow(window, viewModel, catalog);
+            return new TestWindow(window, viewModel);
         }
 
         public TabControl Tabs => Descendants().OfType<TabControl>().First();
