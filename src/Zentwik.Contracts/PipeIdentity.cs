@@ -66,8 +66,12 @@ internal static partial class PipeIdentity
     [LibraryImport("kernel32.dll")]
     private static partial nint LocalFree(nint memory);
 
+    /// <summary>
+    /// 先读对端进程令牌（同一用户时最精确）；普通用户无权对 SYSTEM 进程 OpenProcess（错误 5），
+    /// 此时退回管道安全描述符所有者，服务进程的该值为 S-1-5-32-544。
+    /// </summary>
     public static string? ReadServerSid(nint pipeHandle) =>
-        ReadPipeOwnerSid(pipeHandle) ?? ReadServerProcessSid(pipeHandle);
+        ReadServerProcessSid(pipeHandle) ?? ReadPipeOwnerSid(pipeHandle);
 
     public static string? ReadCurrentSid()
     {
