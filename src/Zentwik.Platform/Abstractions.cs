@@ -64,7 +64,13 @@ public interface ICpuTuningProvider
     /// <summary>部分核读不到时仍返回已读到的核，失败明细走 error；全部失败才返回 false。</summary>
     bool TryReadOffsets(out IReadOnlyList<CoreOffset> offsets, out string? error);
 
-    bool TryWriteOffset(int core, int millivolts, out string? error);
+    bool TryWriteOffset(int core, int offset, out string? error);
+}
+
+/// <summary>可选 CCD 拓扑查询接口，用于按 CCD 分层解析 Curve Optimizer。</summary>
+public interface ICpuCcdTopologyProvider
+{
+    bool TryGetCoreCcd(int coreIndex, out int ccdIndex);
 }
 
 /// <summary>Intel 调校是会话级的：写入只改 MSR，重启后由固件恢复。</summary>
