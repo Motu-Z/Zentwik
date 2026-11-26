@@ -58,5 +58,7 @@ public static class Mapping
         settings.Language,
         settings.Theme,
         settings.Accent,
-        settings.UiScale);
+        settings.UiScale,
+        settings.MonitorIntervalMs,
+        settings.SensorIntervalMs);
 }

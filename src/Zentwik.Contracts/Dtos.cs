@@ -24,7 +24,10 @@ public sealed record TelemetryDto(
     ulong MemoryTotalBytes,
     ulong MemoryAvailableBytes,
     int ProcessCount,
-    int ProcessorCount);
+    int ProcessorCount,
+    double? TemperatureCelsius = null,
+    double? PackagePowerWatts = null,
+    string? SensorDetail = null);
 
 public sealed record AgentStatusDto(
     string Version,
@@ -68,18 +71,24 @@ public sealed record SettingsDto(
     string Language,
     string Theme,
     string Accent,
-    double UiScale);
+    double UiScale,
+    int MonitorIntervalMs,
+    int SensorIntervalMs);
 
 /// <summary>部分更新：null 字段表示不修改。</summary>
 public sealed record SettingsPatch(
     string? Language,
     string? Theme,
     string? Accent,
-    double? UiScale);
+    double? UiScale,
+    int? MonitorIntervalMs = null,
+    int? SensorIntervalMs = null);
 
-public sealed record SubscriptionRequest(int IntervalMs);
+/// <summary>SensorIntervalMs 为 null 时用设置里的值。</summary>
+public sealed record SubscriptionRequest(int IntervalMs, int? SensorIntervalMs = null);
 
-public sealed record SubscriptionAck(int IntervalMs);
+/// <summary>返回实际生效的间隔：请求值可能被抬到下限，客户端须按这里算超时。</summary>
+public sealed record SubscriptionAck(int IntervalMs, int SensorIntervalMs = 0);
 
 public sealed record EmptyPayload;
 

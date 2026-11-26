@@ -423,7 +423,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 _connection = connection;
 
                 var settings = await connection.GetSettingsAsync(_cts.Token).ConfigureAwait(false);
-                await connection.SubscribeTelemetryAsync(SampleIntervalMs, _cts.Token).ConfigureAwait(false);
+                await connection.SubscribeTelemetryAsync(SampleIntervalMs, null, _cts.Token).ConfigureAwait(false);
 
                 _ui.Post(_ =>
                 {

@@ -6,6 +6,7 @@ using Zentwik.Contracts.Protocol;
 using Zentwik.Domain.Plans;
 using Zentwik.Domain.Power;
 using Zentwik.Domain.Scenes;
+using Zentwik.Domain.Settings;
 
 namespace Zentwik.Cli;
 
@@ -133,11 +134,19 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> MonitorAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--count", "--interval");
+        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval");
         var count = ParseInt(args.Value("--count"), 5, 1, 100000);
-        var interval = ParseInt(args.Value("--interval"), 500, 500, 5000);
+
+        // 不传就用设置里的默认值：间隔是用户偏好，不该在每个命令上都重复指定。
+        var interval = args.Value("--interval") is null
+            ? (int?)null
+            : ParseInt(args.Value("--interval"), 1000, UserSettingsRules.MinMonitorIntervalMs, UserSettingsRules.MaxMonitorIntervalMs);
+        var sensorInterval = args.Value("--sensor-interval") is null
+            ? (int?)null
+            : ParseInt(args.Value("--sensor-interval"), 1000, UserSettingsRules.MinSensorIntervalMs, UserSettingsRules.MaxSensorIntervalMs);
 
         var received = 0;
+        var lastSensorNote = string.Empty;
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         connection.EventReceived += envelope =>
@@ -162,8 +171,18 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                 var memoryUsed = sample.MemoryTotalBytes == 0
                     ? 0d
                     : (1d - (double)sample.MemoryAvailableBytes / sample.MemoryTotalBytes) * 100d;
+                var temperature = sample.TemperatureCelsius is { } celsius ? $"  temp {celsius,5:0.0}C" : string.Empty;
+                var power = sample.PackagePowerWatts is { } watts ? $"  pkg {watts,6:0.0}W" : string.Empty;
                 Console.WriteLine(
-                    $"{sample.Timestamp:HH:mm:ss.fff}  cpu {sample.CpuTotalPercent,5:0.0}%  mem {memoryUsed,5:0.0}%  proc {sample.ProcessCount,4}  cores {sample.ProcessorCount}");
+                    $"{sample.Timestamp:HH:mm:ss.fff}  cpu {sample.CpuTotalPercent,5:0.0}%  mem {memoryUsed,5:0.0}%  proc {sample.ProcessCount,4}  cores {sample.ProcessorCount}{temperature}{power}");
+
+                // 传感器不可用与首帧缺基线都走这里，同一句只提示一次。
+                if (!string.IsNullOrWhiteSpace(sample.SensorDetail)
+                    && !string.Equals(sample.SensorDetail, lastSensorNote, StringComparison.Ordinal))
+                {
+                    Console.WriteLine($"  sensors: {sample.SensorDetail}");
+                    lastSensorNote = sample.SensorDetail;
+                }
             }
 
             if (Interlocked.Increment(ref received) >= count)
@@ -172,8 +191,8 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             }
         };
 
-        var ack = await connection.SubscribeTelemetryAsync(interval, ct);
-        output.Line($"subscribed interval={ack.IntervalMs}ms, expecting {count} samples");
+        var ack = await connection.SubscribeTelemetryAsync(interval, sensorInterval, ct);
+        output.Line($"subscribed interval={ack.IntervalMs}ms sensors={ack.SensorIntervalMs}ms, expecting {count} samples");
 
         // 按服务端实际生效的间隔算超时：请求的间隔可能被抬到下限，用请求值会误报超时。
         var completed = await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(count * (ack.IntervalMs / 1000d) + 5), ct));
@@ -1102,18 +1121,20 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> SettingsAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--language", "--theme", "--accent", "--scale");
+        args.EnsureOnly("--pipe", "--language", "--theme", "--accent", "--scale", "--monitor-interval", "--sensor-interval");
 
         var hasPatch = args.Value("--language") is not null
                        || args.Value("--theme") is not null
                        || args.Value("--accent") is not null
-                       || args.Value("--scale") is not null;
+                       || args.Value("--scale") is not null
+                       || args.Value("--monitor-interval") is not null
+                       || args.Value("--sensor-interval") is not null;
 
         if (!hasPatch)
         {
             var current = await connection.GetSettingsAsync(ct);
             output.JsonValue(current, ZentwikJson.Default.SettingsDto);
-            output.Line($"language={current.Language} theme={current.Theme} accent={current.Accent} scale={current.UiScale:0.##}");
+            output.Line($"language={current.Language} theme={current.Theme} accent={current.Accent} scale={current.UiScale:0.##} monitor={current.MonitorIntervalMs}ms sensor={DescribeSensorInterval(current.SensorIntervalMs)}");
             return ExitCodes.Ok;
         }
 
@@ -1128,14 +1149,23 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             scale = parsed;
         }
 
+        int? monitorInterval = args.Value("--monitor-interval") is { } monitorText
+            ? ParseInt(monitorText, 1000, UserSettingsRules.MinMonitorIntervalMs, UserSettingsRules.MaxMonitorIntervalMs)
+            : null;
+        int? sensorInterval = args.Value("--sensor-interval") is { } sensorText
+            ? ParseInt(sensorText, 1000, UserSettingsRules.MinSensorIntervalMs, UserSettingsRules.MaxSensorIntervalMs)
+            : null;
+
         var saved = await connection.SetSettingsAsync(
-            new SettingsPatch(args.Value("--language"), args.Value("--theme"), args.Value("--accent"), scale),
+            new SettingsPatch(args.Value("--language"), args.Value("--theme"), args.Value("--accent"), scale, monitorInterval, sensorInterval),
             ct);
 
         output.JsonValue(saved, ZentwikJson.Default.SettingsDto);
-        output.Line($"saved language={saved.Language} theme={saved.Theme} accent={saved.Accent} scale={saved.UiScale:0.##}");
+        output.Line($"saved language={saved.Language} theme={saved.Theme} accent={saved.Accent} scale={saved.UiScale:0.##} monitor={saved.MonitorIntervalMs}ms sensor={DescribeSensorInterval(saved.SensorIntervalMs)}");
         return ExitCodes.Ok;
     }
+
+    private static string DescribeSensorInterval(int milliseconds) => $"{milliseconds}ms";
 
     private async Task<int> DoctorAsync(CancellationToken ct)
     {

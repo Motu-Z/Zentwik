@@ -25,7 +25,8 @@ public static class ModuleCatalog
 {
     public static IReadOnlyList<ModuleDefinition> Definitions { get; } =
     [
-        new("monitoring", "监控", [CapabilityIds.TelemetryBasic], "CPU、内存与进程计数采样"),
+        // 系统遥测与 CPU 传感器是两条通道：传感器缺席（非 AMD、无模块、未提权）时监控仍可用。
+        new("monitoring", "监控", [CapabilityIds.TelemetryBasic, CapabilityIds.TelemetryCpuSensors], "CPU、内存与进程计数采样；CPU 温度与封装功耗", AnyOf: true),
         new("power", "电源", [CapabilityIds.PowerPolicy], "电源方案切换与策略参数写入"),
         // CPU 调校同时列 AMD 与 Intel 两套实现，同一时刻只有一方适用；另一厂商缺席不是降级。
         new("cpu-tuning", "CPU 调校", [CapabilityIds.AmdSmu, CapabilityIds.IntelMsr], "Curve Optimizer 与 MSR 调校", AnyOf: true),

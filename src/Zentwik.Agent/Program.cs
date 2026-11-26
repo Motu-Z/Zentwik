@@ -62,8 +62,11 @@ IPowerNotificationSource powerNotifications = options.UseFake ? new NoPowerNotif
 // AMD 的 CO 与功耗墙共用同一个 PawnIO 会话与 PCI 互斥，实际是同一实例。
 IPowerLimitProvider powerLimits = options.UseFake ? new FakePowerLimitProvider() : (AmdSmuTuningProvider)tuning;
 
+// 温度/功耗走独立模块（AMDFamily17.bin），与会话化的 SMU 邮箱互不影响。
+ICpuSensorSource cpuSensors = options.UseFake ? new FakeCpuSensorSource() : new AmdSensorSource(system);
+
 var modules = new ModuleService(store, log);
-var hub = new TelemetryHub(telemetry);
+var hub = new TelemetryHub(telemetry, cpuSensors);
 var capabilities = new CapabilityService(
     WindowsCapabilityProbes.Create(
             system,
@@ -73,7 +76,8 @@ var capabilities = new CapabilityService(
             scheduler,
             power,
             powerLimits,
-            () => modules.IsEnabled(ModuleIds.PowerLimits))
+            () => modules.IsEnabled(ModuleIds.PowerLimits),
+            cpuSensors)
         .Append(new CpuSetsCapabilityProbe(scheduler)));
 var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel, powerStatus);
 var powerSchemes = new PowerSchemeService(power, new PowerSchemeBackupStore(options.DataDirectory, log), log);

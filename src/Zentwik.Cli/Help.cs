@@ -46,9 +46,14 @@ public static class Help
                 break;
             case "monitor":
                 Console.WriteLine("""
-                    zentwik monitor [--count N] [--interval MS]
+                    zentwik monitor [--count N] [--interval MS] [--sensor-interval MS]
 
-                    订阅遥测。间隔 500–5000 ms，默认 500。
+                    订阅遥测。不带间隔参数时用 zentwik settings 里的值。
+                      推送间隔    500–5000 ms
+                      传感器间隔  500–30000 ms；两次读取之间沿用上一次温度与功耗
+
+                    温度是封装 Tctl，功耗是封装能量计数器在相邻两次读取之间的平均值。
+                    响应行里的 interval/sensors 是服务端实际生效的值，请求值可能被夹到上下限。
                     """);
                 break;
             case "ledger":
@@ -62,8 +67,11 @@ public static class Help
                 Console.WriteLine("""
                     zentwik settings [--language zh-CN|zh-TW|en-US] [--theme dark|light]
                                      [--accent blue|violet|teal|amber] [--scale 0.8..1.6]
+                                     [--monitor-interval MS] [--sensor-interval MS]
 
                     不带参数时读取当前设置。
+                    监控间隔 500–5000 ms；传感器间隔 500–30000 ms。两个间隔只在这里持久化，
+                    zentwik monitor 不带参数时按它们采样。
                     """);
                 break;
             case "power":

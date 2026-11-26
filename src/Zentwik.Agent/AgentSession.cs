@@ -551,21 +551,28 @@ internal sealed class AgentSession : IAsyncDisposable
         var patch = RequirePayload(request, ZentwikJson.Default.SettingsPatch);
         var current = _server.Store.Current.Settings;
 
-        if (!UserSettingsRules.TryApply(current, patch.Language, patch.Theme, patch.Accent, patch.UiScale, out var updated, out var error))
+        if (!UserSettingsRules.TryApply(current, patch.Language, patch.Theme, patch.Accent, patch.UiScale, out var updated, out var error, patch.MonitorIntervalMs, patch.SensorIntervalMs))
         {
             throw new CoreException(ErrorCodes.PayloadInvalid, error ?? "设置非法。");
         }
 
         var saved = await _server.Store.UpdateSettingsAsync(updated, ct).ConfigureAwait(false);
         var effective = saved?.Settings ?? updated;
-        _log.Info($"设置已更新：语言={effective.Language} 主题={effective.Theme} 强调色={effective.Accent} 缩放={effective.UiScale}");
+        _log.Info($"设置已更新：语言={effective.Language} 主题={effective.Theme} 强调色={effective.Accent} 缩放={effective.UiScale} 推送={effective.MonitorIntervalMs}ms 传感器={effective.SensorIntervalMs}ms");
 
         return Ok(request, JsonSerializer.SerializeToElement(Mapping.ToDto(effective), ZentwikJson.Default.SettingsDto));
     }
 
     private ResponseEnvelope StartTelemetry(RequestEnvelope request)
     {
-        var interval = 1000;
+        // 没在请求里指定的间隔取用户设置：这是「多久读一次」的唯一持久化入口。
+        var settings = _server.Store.Current.Settings;
+        var interval = Math.Clamp(
+            settings.MonitorIntervalMs,
+            UserSettingsRules.MinMonitorIntervalMs,
+            UserSettingsRules.MaxMonitorIntervalMs);
+        var sensorInterval = ClampSensorInterval(settings.SensorIntervalMs);
+
         if (request.Payload is { } payload)
         {
             try
@@ -573,8 +580,19 @@ internal sealed class AgentSession : IAsyncDisposable
                 var subscription = payload.Deserialize(ZentwikJson.Default.SubscriptionRequest);
                 if (subscription is not null)
                 {
-                    // 下限 500ms：2Hz 已超出界面可辨范围，再快只是按倍数烧采样与 IPC 成本。
-                    interval = Math.Clamp(subscription.IntervalMs, 500, 5000);
+                    // 0 表示「未指定」，回落设置值：客户端不传时不应把间隔压到下限。
+                    if (subscription.IntervalMs > 0)
+                    {
+                        interval = Math.Clamp(
+                            subscription.IntervalMs,
+                            UserSettingsRules.MinMonitorIntervalMs,
+                            UserSettingsRules.MaxMonitorIntervalMs);
+                    }
+
+                    if (subscription.SensorIntervalMs is { } requested)
+                    {
+                        sensorInterval = ClampSensorInterval(requested);
+                    }
                 }
             }
             catch (JsonException)
@@ -593,6 +611,7 @@ internal sealed class AgentSession : IAsyncDisposable
             {
                 await _server.Hub.RunSubscriptionAsync(
                     interval,
+                    sensorInterval,
                     sample =>
                     {
                         if (Volatile.Read(ref _backlog) > BacklogThreshold)
@@ -607,7 +626,10 @@ internal sealed class AgentSession : IAsyncDisposable
                             sample.MemoryTotalBytes,
                             sample.MemoryAvailableBytes,
                             sample.ProcessCount,
-                            sample.ProcessorCount);
+                            sample.ProcessorCount,
+                            sample.TemperatureCelsius,
+                            sample.PackagePowerWatts,
+                            sample.SensorDetail);
 
                         Enqueue(ResponseEnvelope.Event(
                             Events.TelemetrySample,
@@ -625,8 +647,12 @@ internal sealed class AgentSession : IAsyncDisposable
             }
         }, CancellationToken.None);
 
-        return Ok(request, JsonSerializer.SerializeToElement(new SubscriptionAck(interval), ZentwikJson.Default.SubscriptionAck));
+        return Ok(request, JsonSerializer.SerializeToElement(new SubscriptionAck(interval, sensorInterval), ZentwikJson.Default.SubscriptionAck));
     }
+
+    /// <summary>按上下限夹取，避免请求值把硬件读取频率抬到失控。</summary>
+    private static int ClampSensorInterval(int value) =>
+        Math.Clamp(value, UserSettingsRules.MinSensorIntervalMs, UserSettingsRules.MaxSensorIntervalMs);
 
     private void StopTelemetry()
     {

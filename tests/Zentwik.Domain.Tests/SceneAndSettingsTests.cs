@@ -104,6 +104,78 @@ public sealed class UserSettingsRulesTests
         Assert.NotNull(error);
         Assert.Same(current, updated);
     }
+
+    [Fact]
+    public void Default_Intervals_Are_Both_One_Second()
+    {
+        var settings = new UserSettings();
+
+        Assert.Equal(1000, settings.MonitorIntervalMs);
+        Assert.Equal(1000, settings.SensorIntervalMs);
+    }
+
+    [Theory]
+    [InlineData(500, 500)]
+    [InlineData(5000, 30000)]
+    public void Interval_Edges_Are_Accepted(int monitor, int sensor)
+    {
+        var ok = UserSettingsRules.TryApply(
+            new UserSettings(), null, null, null, null, out var updated, out var error,
+            monitorIntervalMs: monitor, sensorIntervalMs: sensor);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(monitor, updated.MonitorIntervalMs);
+        Assert.Equal(sensor, updated.SensorIntervalMs);
+    }
+
+    [Fact]
+    public void Zero_Sensor_Interval_Is_Rejected()
+    {
+        var ok = UserSettingsRules.TryApply(
+            new UserSettings(), null, null, null, null, out var updated, out var error,
+            sensorIntervalMs: 0);
+
+        Assert.False(ok);
+        Assert.NotNull(error);
+        Assert.Equal(1000, updated.SensorIntervalMs);
+    }
+
+    [Fact]
+    public void Normalize_Falls_Back_For_Missing_Values()
+    {
+        // STJ 对缺失的数值字段填 0；加载时不能把它当成用户的选择。
+        var normalized = UserSettingsRules.Normalize(new UserSettings { MonitorIntervalMs = 0, SensorIntervalMs = 0 });
+
+        Assert.Equal(UserSettingsRules.DefaultMonitorIntervalMs, normalized.MonitorIntervalMs);
+        Assert.Equal(UserSettingsRules.DefaultSensorIntervalMs, normalized.SensorIntervalMs);
+    }
+
+    [Fact]
+    public void Normalize_Keeps_Valid_Values()
+    {
+        var normalized = UserSettingsRules.Normalize(new UserSettings { MonitorIntervalMs = 2000, SensorIntervalMs = 5000 });
+
+        Assert.Equal(2000, normalized.MonitorIntervalMs);
+        Assert.Equal(5000, normalized.SensorIntervalMs);
+    }
+
+    [Theory]
+    [InlineData(499, null)]
+    [InlineData(5001, null)]
+    [InlineData(null, 100)]
+    [InlineData(null, 30001)]
+    public void Out_Of_Range_Intervals_Are_Rejected(int? monitor, int? sensor)
+    {
+        var current = new UserSettings();
+        var ok = UserSettingsRules.TryApply(
+            current, null, null, null, null, out var updated, out var error,
+            monitorIntervalMs: monitor, sensorIntervalMs: sensor);
+
+        Assert.False(ok);
+        Assert.NotNull(error);
+        Assert.Same(current, updated);
+    }
 }
 
 public sealed class LocalizationCatalogTests

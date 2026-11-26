@@ -36,5 +36,8 @@ public static class CapabilityIds
     public const string CpuSets = "system.scheduling.cpusets";
     public const string AffinityMask = "system.scheduling.affinity";
     public const string TelemetryBasic = "monitor.telemetry.system";
+
+    /// <summary>CPU 封装温度与封装功耗。只读通道，不需要额外授权。</summary>
+    public const string TelemetryCpuSensors = "monitor.telemetry.cpu.sensors";
     public const string SceneEngine = "automation.scene.engine";
 }
