@@ -567,6 +567,77 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.False(entry.Restorable);
     }
 
+    [Fact]
+    public async Task ApplyCpu_Writes_Verifies_And_Reverts_Intel_Voltage_With_SessionOnly_Persistence()
+    {
+        var intel = new FakeIntelTuningProvider();
+        var coordinator = new PlanCoordinator(_store, new UnavailableTuningProvider(), new FakePowerPolicyService(), new FakeProcessScheduler(), _log, intel);
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-intel-uv",
+            Name = "CPU Intel UV",
+            Revision = 1,
+            IntelVoltageOffsetMillivolts = -50,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        Assert.False(outcome.Plan.LastApply?.PersistsAcrossReboot);
+        var target = Assert.Single(outcome.Targets);
+        Assert.Equal("cpu.intel.voltage", target.Target);
+        Assert.Equal("0", target.Previous);
+        Assert.Equal("-50", target.Actual);
+        Assert.True(intel.TryRead(out var state, out _));
+        Assert.Equal(-50, state.VoltageOffsetMillivolts);
+
+        var reverted = await coordinator.RevertPlanAsync(plan.Id);
+        Assert.Equal(LedgerStatus.Reverted, Assert.Single(reverted).Status);
+        Assert.True(intel.TryRead(out var afterRevert, out _));
+        Assert.Equal(0, afterRevert.VoltageOffsetMillivolts);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Skips_OutOfRange_Intel_Voltage_And_Detects_Drift()
+    {
+        var intel = new FakeIntelTuningProvider();
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), new FakeProcessScheduler(), _log, intel);
+
+        var invalidPlan = new CpuTuningPlan
+        {
+            Id = "cpu-intel-oob",
+            Name = "CPU Intel OOB",
+            Revision = 1,
+            IntelVoltageOffsetMillivolts = -200,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        var validPlan = new CpuTuningPlan
+        {
+            Id = "cpu-intel-valid",
+            Name = "CPU Intel Valid",
+            Revision = 1,
+            IntelVoltageOffsetMillivolts = -25,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [invalidPlan, validPlan] });
+
+        var invalidOutcome = await coordinator.ApplyAsync(invalidPlan.Id, "plan:" + invalidPlan.Id, 0);
+        Assert.Equal(PlanApplyState.NotApplied, invalidOutcome.State);
+        Assert.Equal(LedgerStatus.Skipped, Assert.Single(invalidOutcome.Targets).Status);
+
+        await coordinator.ApplyAsync(validPlan.Id, "scene:intel", 10);
+        intel.TryWriteVoltageOffset(-10, out _);
+        var taken = await coordinator.DetectDriftAsync();
+
+        Assert.Single(taken, "cpu.intel.voltage");
+        Assert.Equal(OwnerKind.User, coordinator.Entries.Single(e => e.Target == "cpu.intel.voltage").Owner);
+    }
+
     private async Task SeedSchedulingSceneAsync(
         string processMatch,
         string? cpuMask,

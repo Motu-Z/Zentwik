@@ -35,6 +35,7 @@ public sealed class PlanCoordinator
 {
     private readonly StateStore _store;
     private readonly ICpuTuningProvider _tuning;
+    private readonly IIntelTuningProvider? _intel;
     private readonly IPowerPolicyService _power;
     private readonly IProcessScheduler _scheduler;
     private readonly DiagnosticLog _log;
@@ -46,10 +47,12 @@ public sealed class PlanCoordinator
         ICpuTuningProvider tuning,
         IPowerPolicyService power,
         IProcessScheduler scheduler,
-        DiagnosticLog log)
+        DiagnosticLog log,
+        IIntelTuningProvider? intel = null)
     {
         _store = store;
         _tuning = tuning;
+        _intel = intel;
         _power = power;
         _scheduler = scheduler;
         _log = log;
@@ -495,14 +498,30 @@ public sealed class PlanCoordinator
         string source,
         int priority)
     {
-        var status = _tuning.Query();
-        if (status.Availability != HardwareAvailability.Available)
+        var outcomes = new List<TargetOutcome>();
+        var needsAmd = plan.Cores.Any(static core => core.Offset is not null) || plan.FMaxLimitMhz is not null;
+        if (needsAmd)
         {
-            return (Array.Empty<TargetOutcome>(), status.Detail ?? status.Availability.ToString());
+            var status = _tuning.Query();
+            if (status.Availability != HardwareAvailability.Available)
+            {
+                if (plan.IntelVoltageOffsetMillivolts is null)
+                {
+                    return (Array.Empty<TargetOutcome>(), status.Detail ?? status.Availability.ToString());
+                }
+
+                outcomes.Add(new TargetOutcome(
+                    "cpu.amd",
+                    null,
+                    null,
+                    null,
+                    LedgerStatus.Skipped,
+                    status.Detail ?? status.Availability.ToString()));
+                needsAmd = false;
+            }
         }
 
-        var outcomes = new List<TargetOutcome>();
-        if (plan.Cores.Any(static core => core.Offset is not null))
+        if (needsAmd && plan.Cores.Any(static core => core.Offset is not null))
         {
             if (!_tuning.TryReadOffsets(out var offsets, out var readError))
             {
@@ -554,7 +573,7 @@ public sealed class PlanCoordinator
             }
         }
 
-        if (plan.FMaxLimitMhz is { } desiredFMax)
+        if (needsAmd && plan.FMaxLimitMhz is { } desiredFMax)
         {
             if (_tuning is not IFMaxTuningProvider fmax)
             {
@@ -601,7 +620,74 @@ public sealed class PlanCoordinator
             }
         }
 
-        return (outcomes, outcomes.Count == 0 ? "方案没有核或 FMax 配置。" : null);
+        if (plan.IntelVoltageOffsetMillivolts is { } desiredMv)
+        {
+            if (!IntelVoltageOffsetBounds.IsWithinRange(desiredMv))
+            {
+                outcomes.Add(new TargetOutcome(
+                    "cpu.intel.voltage",
+                    null,
+                    desiredMv.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    LedgerStatus.Skipped,
+                    IntelVoltageOffsetBounds.FormatRejection(desiredMv)));
+            }
+            else if (_intel is null)
+            {
+                outcomes.Add(new TargetOutcome(
+                    "cpu.intel.voltage",
+                    null,
+                    desiredMv.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    LedgerStatus.Skipped,
+                    "未装配 Intel MSR 调校通道。"));
+            }
+            else
+            {
+                var intelStatus = _intel.Query();
+                if (intelStatus.Availability != HardwareAvailability.Available)
+                {
+                    if (outcomes.Count == 0)
+                    {
+                        return (Array.Empty<TargetOutcome>(), intelStatus.Detail ?? intelStatus.Availability.ToString());
+                    }
+
+                    outcomes.Add(new TargetOutcome(
+                        "cpu.intel.voltage",
+                        null,
+                        desiredMv.ToString(CultureInfo.InvariantCulture),
+                        null,
+                        LedgerStatus.Failed,
+                        intelStatus.Detail ?? intelStatus.Availability.ToString()));
+                }
+                else if (!_intel.TryRead(out var intelState, out var intelReadError))
+                {
+                    outcomes.Add(new TargetOutcome(
+                        "cpu.intel.voltage",
+                        null,
+                        desiredMv.ToString(CultureInfo.InvariantCulture),
+                        null,
+                        LedgerStatus.Skipped,
+                        intelReadError ?? "读取 Intel MSR 失败，未写入。"));
+                }
+                else
+                {
+                    outcomes.Add(ApplyTarget(
+                        "cpu.intel.voltage",
+                        plan.Id,
+                        source,
+                        priority,
+                        intelState.VoltageOffsetMillivolts.ToString(CultureInfo.InvariantCulture),
+                        desiredMv.ToString(CultureInfo.InvariantCulture),
+                        () => _intel.TryWriteVoltageOffset(desiredMv, out var writeError) ? null : writeError,
+                        () => _intel.TryRead(out var actual, out _)
+                            ? actual.VoltageOffsetMillivolts.ToString(CultureInfo.InvariantCulture)
+                            : null));
+                }
+            }
+        }
+
+        return (outcomes, outcomes.Count == 0 ? "方案没有核、FMax 或 Intel 电压偏移配置。" : null);
     }
 
     private (IReadOnlyList<TargetOutcome> Targets, string? Error) ApplyPower(
@@ -905,6 +991,28 @@ public sealed class PlanCoordinator
             return (null, "缺少前值，无法回退。");
         }
 
+        if (string.Equals(entry.Target, "cpu.intel.voltage", StringComparison.Ordinal))
+        {
+            if (_intel is null)
+            {
+                return (null, "未装配 Intel MSR 调校通道。");
+            }
+
+            if (!int.TryParse(entry.PreviousValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var prevMv))
+            {
+                return (null, "前值不是整数电压偏移。");
+            }
+
+            if (!_intel.TryWriteVoltageOffset(prevMv, out var error))
+            {
+                return (null, error);
+            }
+
+            return _intel.TryRead(out var actual, out _)
+                ? (actual.VoltageOffsetMillivolts.ToString(CultureInfo.InvariantCulture), null)
+                : (null, "回读失败。");
+        }
+
         if (string.Equals(entry.Target, "cpu.fmax", StringComparison.Ordinal))
         {
             if (_tuning is not IFMaxTuningProvider fmax)
@@ -991,6 +1099,13 @@ public sealed class PlanCoordinator
 
     private string? ReadTarget(string target, IReadOnlyList<CoreOffset>? offsets)
     {
+        if (string.Equals(target, "cpu.intel.voltage", StringComparison.Ordinal))
+        {
+            return _intel is not null && _intel.TryRead(out var actual, out _)
+                ? actual.VoltageOffsetMillivolts.ToString(CultureInfo.InvariantCulture)
+                : null;
+        }
+
         if (string.Equals(target, "cpu.fmax", StringComparison.Ordinal))
         {
             return _tuning is IFMaxTuningProvider fmax && fmax.TryReadFMax(out var actual, out _)
@@ -1040,9 +1155,15 @@ public sealed class PlanCoordinator
         _store.Current.Plans.FirstOrDefault(plan => string.Equals(plan.Id, planId, StringComparison.Ordinal))
         ?? throw new CoreException(ErrorCodes.PlanNotFound, $"方案 {planId} 不存在。");
 
-    private bool PersistsAcrossReboot(Plan plan) => plan.Kind switch
+    private bool PersistsAcrossReboot(Plan plan) => plan switch
     {
-        PlanKind.CpuTuning => _tuning.Query().PersistsAcrossReboot,
+        CpuTuningPlan cpu when cpu.IntelVoltageOffsetMillivolts is not null
+                               && !cpu.Cores.Any(static core => core.Offset is not null)
+                               && cpu.FMaxLimitMhz is null
+            => _intel?.Query().PersistsAcrossReboot ?? false,
+        CpuTuningPlan cpu when cpu.IntelVoltageOffsetMillivolts is not null
+            => _tuning.Query().PersistsAcrossReboot && (_intel?.Query().PersistsAcrossReboot ?? false),
+        CpuTuningPlan => _tuning.Query().PersistsAcrossReboot,
         _ => true,
     };
 
