@@ -490,84 +490,6 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ApplyCpu_Writes_Verifies_And_Reverts_FMax_With_FakeProvider()
-    {
-        var plan = new CpuTuningPlan
-        {
-            Id = "cpu-fmax",
-            Name = "CPU FMax",
-            Revision = 1,
-            FMaxLimitMhz = 5400,
-            CreatedAt = DateTimeOffset.Now,
-            UpdatedAt = DateTimeOffset.Now,
-        };
-        await _store.UpdateAsync(document => document with { Plans = [plan] });
-
-        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
-
-        Assert.Equal(PlanApplyState.Applied, outcome.State);
-        var target = Assert.Single(outcome.Targets);
-        Assert.Equal("cpu.fmax", target.Target);
-        Assert.Equal("5700", target.Previous);
-        Assert.Equal("5400", target.Actual);
-        Assert.Equal(5400, _tuning.FMaxMhz);
-
-        var reverted = await _plans.RevertPlanAsync(plan.Id);
-        Assert.Equal(LedgerStatus.Reverted, Assert.Single(reverted).Status);
-        Assert.Equal(5700, _tuning.FMaxMhz);
-    }
-
-    [Fact]
-    public async Task ApplyCpu_Skips_Unconfigured_FMax_Write_Without_Blocking_CO()
-    {
-        _tuning.FMaxWriteSupported = false;
-        var plan = new CpuTuningPlan
-        {
-            Id = "cpu-fmax-unconfigured",
-            Name = "CPU FMax Unconfigured",
-            Revision = 1,
-            Cores = [new CoreTuning { CoreIndex = 0, Offset = -15 }],
-            FMaxLimitMhz = 5400,
-            CreatedAt = DateTimeOffset.Now,
-            UpdatedAt = DateTimeOffset.Now,
-        };
-        await _store.UpdateAsync(document => document with { Plans = [plan] });
-
-        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
-
-        Assert.Equal(PlanApplyState.Partial, outcome.State);
-        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "cpu.co.0").Status);
-        Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(t => t.Target == "cpu.fmax").Status);
-        Assert.Equal(-15, ReadOffset(0));
-        Assert.Equal(5700, _tuning.FMaxMhz);
-    }
-
-    [Fact]
-    public async Task DetectDrift_Detects_External_FMax_Change_And_Marks_User_Takeover()
-    {
-        var plan = new CpuTuningPlan
-        {
-            Id = "cpu-fmax-drift",
-            Name = "CPU FMax Drift",
-            Revision = 1,
-            FMaxLimitMhz = 5500,
-            CreatedAt = DateTimeOffset.Now,
-            UpdatedAt = DateTimeOffset.Now,
-        };
-        await _store.UpdateAsync(document => document with { Plans = [plan] });
-
-        await _plans.ApplyAsync(plan.Id, "scene:test", 10);
-        _tuning.TryWriteFMax(5600, out _);
-
-        var taken = await _plans.DetectDriftAsync();
-
-        Assert.Single(taken, "cpu.fmax");
-        var entry = _plans.Entries.Single(e => e.Target == "cpu.fmax");
-        Assert.Equal(OwnerKind.User, entry.Owner);
-        Assert.False(entry.Restorable);
-    }
-
-    [Fact]
     public async Task ApplyCpu_Writes_Verifies_And_Reverts_Intel_Voltage_With_SessionOnly_Persistence()
     {
         var intel = new FakeIntelTuningProvider();
@@ -638,6 +560,85 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal(OwnerKind.User, coordinator.Entries.Single(e => e.Target == "cpu.intel.voltage").Owner);
     }
 
+    [Fact]
+    public async Task ApplyCpu_Resolves_Layered_Default_Ccd_PerCore_And_Auto_Overrides()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-layered-co",
+            Name = "Layered CO",
+            Revision = 1,
+            DefaultOffset = -10,
+            CcdOffsets = new Dictionary<int, int>
+            {
+                [0] = -20,
+            },
+            Cores =
+            [
+                new CoreTuning { CoreIndex = 0, Offset = -25 },
+                new CoreTuning { CoreIndex = 1, Auto = true },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
+        var map = offsets.ToDictionary(static o => o.Core, static o => o.Offset);
+
+        // Core 0: PerCore (-25), Core 1: Auto (remains 0), Cores 2..3: CCD0 (-20), Cores 4..7: Default (-10)
+        Assert.Equal(-25, map[0]);
+        Assert.Equal(0, map[1]);
+        Assert.Equal(-20, map[2]);
+        Assert.Equal(-20, map[3]);
+        Assert.Equal(-10, map[4]);
+        Assert.Equal(-10, map[7]);
+        Assert.Contains(outcome.Targets, t => t.Target == "cpu.co.1" && t.Status == LedgerStatus.Skipped && t.Desired == "auto");
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Safely_Degrades_On_PlatformMismatch_And_Missing_Ccd_Topology()
+    {
+        _tuning.PlatformName = "Family 19h Model 61h";
+        var mismatchPlan = new CpuTuningPlan
+        {
+            Id = "cpu-platform-mismatch",
+            Name = "Mismatch",
+            Revision = 1,
+            PlatformId = "Family 1Ah Model 44h",
+            DefaultOffset = -15,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+
+        _tuning.TopologyAvailable = false;
+        var noTopoPlan = new CpuTuningPlan
+        {
+            Id = "cpu-no-topo",
+            Name = "No Topo",
+            Revision = 1,
+            DefaultOffset = -15,
+            CcdOffsets = new Dictionary<int, int> { [0] = -20 },
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+
+        await _store.UpdateAsync(document => document with { Plans = [mismatchPlan, noTopoPlan] });
+
+        var mismatchOutcome = await _plans.ApplyAsync(mismatchPlan.Id, "plan:" + mismatchPlan.Id, 0);
+        Assert.Equal(PlanApplyState.NotApplied, mismatchOutcome.State);
+        Assert.Contains("不匹配", mismatchOutcome.Outcome);
+
+        var noTopoOutcome = await _plans.ApplyAsync(noTopoPlan.Id, "plan:" + noTopoPlan.Id, 0);
+        Assert.Equal(PlanApplyState.Partial, noTopoOutcome.State);
+        Assert.Contains(noTopoOutcome.Targets, t => t.Target == "cpu.co.ccd.0" && t.Status == LedgerStatus.Skipped);
+        Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
+        Assert.All(offsets, o => Assert.Equal(-15, o.Offset));
+    }
+
     private async Task SeedSchedulingSceneAsync(
         string processMatch,
         string? cpuMask,
@@ -680,41 +681,117 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task ApplyCpu_Writes_Verifies_And_Reverts_FMax_With_FakeProvider()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax",
+            Name = "CPU FMax",
+            Revision = 1,
+            FMaxLimitMhz = 5400,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        var target = Assert.Single(outcome.Targets);
+        Assert.Equal("cpu.fmax", target.Target);
+        Assert.Equal("5700", target.Previous);
+        Assert.Equal("5400", target.Actual);
+        Assert.Equal(5400, _tuning.FMaxMhz);
+
+        var reverted = await _plans.RevertPlanAsync(plan.Id);
+        Assert.Equal(LedgerStatus.Reverted, Assert.Single(reverted).Status);
+        Assert.Equal(5700, _tuning.FMaxMhz);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Skips_Unconfigured_FMax_Write_Without_Blocking_CO()
+    {
+        _tuning.FMaxWriteSupported = false;
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-unconfigured",
+            Name = "CPU FMax Unconfigured",
+            Revision = 1,
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -15 }],
+            FMaxLimitMhz = 5400,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "cpu.co.0").Status);
+        Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(t => t.Target == "cpu.fmax").Status);
+        Assert.Equal(-15, ReadOffset(0));
+        Assert.Equal(5700, _tuning.FMaxMhz);
+    }
+
+    [Fact]
+    public async Task DetectDrift_Detects_External_FMax_Change_And_Marks_User_Takeover()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-drift",
+            Name = "CPU FMax Drift",
+            Revision = 1,
+            FMaxLimitMhz = 5500,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        await _plans.ApplyAsync(plan.Id, "scene:fmax", 10);
+        _tuning.TryWriteFMax(5200, out _);
+        var taken = await _plans.DetectDriftAsync();
+
+        Assert.Single(taken, "cpu.fmax");
+        var entry = _plans.Entries.Single(e => e.Target == "cpu.fmax");
+        Assert.Equal(OwnerKind.User, entry.Owner);
+        Assert.False(entry.Restorable);
+    }
+
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
         return offsets.Single(offset => offset.Core == core).Offset;
     }
 
-    private async Task<Plan> SeedPlanAsync()
+    private async Task<CpuTuningPlan> SeedPlanAsync()
     {
         var plan = new CpuTuningPlan
         {
-            Id = "cpu",
-            Name = "CPU",
+            Id = "cpu-ac",
+            Name = "CPU AC",
             Revision = 1,
             Cores = [new CoreTuning { CoreIndex = 0, Offset = -25 }],
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };
-
         await _store.UpdateAsync(document => document with { Plans = [plan] });
         return plan;
     }
 
-    private async Task SeedBatteryPlanAsync()
+    private async Task<CpuTuningPlan> SeedBatteryPlanAsync()
     {
         var plan = new CpuTuningPlan
         {
-            Id = "cpu-battery",
-            Name = "CPU battery",
+            Id = "cpu-bat",
+            Name = "CPU Battery",
             Revision = 1,
             Cores = [new CoreTuning { CoreIndex = 0, Offset = -10 }],
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };
-
         await _store.UpdateAsync(document => document with { Plans = [.. document.Plans, plan] });
+        return plan;
     }
 
     private async Task SeedScenesAsync()
@@ -727,23 +804,23 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
                 {
                     Id = "ac",
                     Name = "AC",
-                    Priority = 5,
+                    Priority = 10,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.PowerSource, Argument = "ac" }],
-                    Actions = [new SceneAction { PlanId = "cpu", PlanRevision = 1 }],
+                    Actions = [new SceneAction { PlanId = "cpu-ac", PlanRevision = 1 }],
                 },
                 new Scene
                 {
                     Id = "battery",
                     Name = "Battery",
-                    Priority = 10,
+                    Priority = 20,
                     Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.PowerSource, Argument = "dc" }],
-                    Actions = [new SceneAction { PlanId = "cpu-battery", PlanRevision = 1 }],
+                    Actions = [new SceneAction { PlanId = "cpu-bat", PlanRevision = 1 }],
                 },
             ],
         });
     }
 
-    private async Task<Zentwik.Domain.Persistence.StateDocument> ReloadAsync()
+    private async Task<StateDocument> ReloadAsync()
     {
         var store = new StateStore(_directory, _log);
         await store.LoadAsync();

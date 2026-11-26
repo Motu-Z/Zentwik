@@ -499,7 +499,8 @@ public sealed class PlanCoordinator
         int priority)
     {
         var outcomes = new List<TargetOutcome>();
-        var needsAmd = plan.Cores.Any(static core => core.Offset is not null) || plan.FMaxLimitMhz is not null;
+        var hasCo = CurveOptimizerConfig.HasAnyCo(plan);
+        var needsAmd = hasCo || plan.FMaxLimitMhz is not null;
         if (needsAmd)
         {
             var status = _tuning.Query();
@@ -519,57 +520,131 @@ public sealed class PlanCoordinator
                     status.Detail ?? status.Availability.ToString()));
                 needsAmd = false;
             }
+            else if (!string.IsNullOrWhiteSpace(plan.PlatformId)
+                     && !string.IsNullOrWhiteSpace(status.Platform)
+                     && !string.Equals(plan.PlatformId, status.Platform, StringComparison.OrdinalIgnoreCase))
+            {
+                var mismatch = $"方案绑定平台 {plan.PlatformId} 与当前平台 {status.Platform} 不匹配，已安全跳过 AMD 调校。";
+                if (plan.IntelVoltageOffsetMillivolts is null)
+                {
+                    return (Array.Empty<TargetOutcome>(), mismatch);
+                }
+
+                outcomes.Add(new TargetOutcome(
+                    "cpu.amd",
+                    null,
+                    plan.PlatformId,
+                    status.Platform,
+                    LedgerStatus.Skipped,
+                    mismatch));
+                needsAmd = false;
+            }
         }
 
-        if (needsAmd && plan.Cores.Any(static core => core.Offset is not null))
+        if (needsAmd && hasCo)
         {
             if (!_tuning.TryReadOffsets(out var offsets, out var readError))
             {
-                return (Array.Empty<TargetOutcome>(), readError ?? "读取当前偏移失败。");
+                if (plan.FMaxLimitMhz is null && plan.IntelVoltageOffsetMillivolts is null)
+                {
+                    return (Array.Empty<TargetOutcome>(), readError ?? "读取当前偏移失败。");
+                }
+
+                outcomes.Add(new TargetOutcome(
+                    "cpu.co",
+                    null,
+                    null,
+                    null,
+                    LedgerStatus.Skipped,
+                    readError ?? "读取当前偏移失败，已跳过 CO 写入。"));
             }
-
-            var byCore = offsets.ToDictionary(static offset => offset.Core, static offset => offset.Offset);
-            foreach (var core in plan.Cores)
+            else
             {
-                if (core.Offset is not { } desired)
+                var byCore = offsets.ToDictionary(static offset => offset.Core, static offset => offset.Offset);
+                var hasLayerDefaults = plan.DefaultOffset is not null || plan.CcdOffsets is { Count: > 0 };
+                var candidateCores = hasLayerDefaults
+                    ? byCore.Keys.Concat(plan.Cores.Select(static c => c.CoreIndex)).Distinct().Order().ToArray()
+                    : plan.Cores.Select(static c => c.CoreIndex).Distinct().Order().ToArray();
+
+                var topology = _tuning as ICpuCcdTopologyProvider;
+                var resolved = CurveOptimizerConfig.Resolve(
+                    plan,
+                    candidateCores,
+                    core => topology is not null && topology.TryGetCoreCcd(core, out var ccd) ? ccd : null);
+
+                if (plan.CcdOffsets is { Count: > 0 })
                 {
-                    continue;
+                    foreach (var ccdPair in plan.CcdOffsets.OrderBy(static p => p.Key))
+                    {
+                        if (!resolved.Any(r => r.CcdIndex == ccdPair.Key))
+                        {
+                            outcomes.Add(new TargetOutcome(
+                                $"cpu.co.ccd.{ccdPair.Key}",
+                                null,
+                                ccdPair.Value.ToString(CultureInfo.InvariantCulture),
+                                null,
+                                LedgerStatus.Skipped,
+                                topology is null
+                                    ? $"当前调校通道不支持 CCD 拓扑映射，已跳过 CCD {ccdPair.Key} 配置。"
+                                    : $"当前平台未映射 CCD {ccdPair.Key} 核心，已跳过该 CCD 配置。"));
+                        }
+                    }
                 }
 
-                var target = $"cpu.co.{core.CoreIndex}";
-                if (!CurveOptimizerBounds.IsWithinL2(desired))
+                foreach (var item in resolved)
                 {
-                    outcomes.Add(new TargetOutcome(
+                    var target = $"cpu.co.{item.CoreIndex}";
+                    if (item.Source == CoValueSource.AutoOverride)
+                    {
+                        outcomes.Add(new TargetOutcome(
+                            target,
+                            null,
+                            "auto",
+                            null,
+                            LedgerStatus.Skipped,
+                            "该核已显式设为 auto，跳过写入以保留默认/当前行为。"));
+                        continue;
+                    }
+
+                    if (item.EffectiveOffset is not { } desired)
+                    {
+                        continue;
+                    }
+
+                    if (!CurveOptimizerBounds.IsWithinL2(desired))
+                    {
+                        outcomes.Add(new TargetOutcome(
+                            target,
+                            null,
+                            desired.ToString(CultureInfo.InvariantCulture),
+                            null,
+                            LedgerStatus.Skipped,
+                            CurveOptimizerBounds.FormatL2Rejection(desired)));
+                        continue;
+                    }
+
+                    if (!byCore.TryGetValue(item.CoreIndex, out var current))
+                    {
+                        outcomes.Add(new TargetOutcome(
+                            target,
+                            null,
+                            desired.ToString(CultureInfo.InvariantCulture),
+                            null,
+                            LedgerStatus.Skipped,
+                            "读取该核当前偏移失败，未写入。"));
+                        continue;
+                    }
+
+                    outcomes.Add(ApplyTarget(
                         target,
-                        null,
+                        plan.Id,
+                        source,
+                        priority,
+                        current.ToString(CultureInfo.InvariantCulture),
                         desired.ToString(CultureInfo.InvariantCulture),
-                        null,
-                        LedgerStatus.Skipped,
-                        CurveOptimizerBounds.FormatL2Rejection(desired)));
-                    continue;
+                        () => _tuning.TryWriteOffset(item.CoreIndex, desired, out var writeError) ? null : writeError,
+                        () => ReadCoreOffset(item.CoreIndex)));
                 }
-
-                if (!byCore.TryGetValue(core.CoreIndex, out var current))
-                {
-                    outcomes.Add(new TargetOutcome(
-                        target,
-                        null,
-                        desired.ToString(CultureInfo.InvariantCulture),
-                        null,
-                        LedgerStatus.Skipped,
-                        "读取该核当前偏移失败，未写入。"));
-                    continue;
-                }
-
-                outcomes.Add(ApplyTarget(
-                    target,
-                    plan.Id,
-                    source,
-                    priority,
-                    current.ToString(CultureInfo.InvariantCulture),
-                    desired.ToString(CultureInfo.InvariantCulture),
-                    () => _tuning.TryWriteOffset(core.CoreIndex, desired, out var writeError) ? null : writeError,
-                    () => ReadCoreOffset(core.CoreIndex)));
             }
         }
 
@@ -1158,7 +1233,7 @@ public sealed class PlanCoordinator
     private bool PersistsAcrossReboot(Plan plan) => plan switch
     {
         CpuTuningPlan cpu when cpu.IntelVoltageOffsetMillivolts is not null
-                               && !cpu.Cores.Any(static core => core.Offset is not null)
+                               && !CurveOptimizerConfig.HasAnyCo(cpu)
                                && cpu.FMaxLimitMhz is null
             => _intel?.Query().PersistsAcrossReboot ?? false,
         CpuTuningPlan cpu when cpu.IntelVoltageOffsetMillivolts is not null

@@ -346,7 +346,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> PlanCreateAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--kind", "--id", "--name", "--core", "--fmax", "--scheme", "--set", "--rule");
+        args.EnsureOnly("--pipe", "--kind", "--id", "--name", "--default-co", "--ccd-co", "--core", "--fmax", "--intel-voltage", "--scheme", "--set", "--rule");
         var kind = args.Require("--kind");
         var id = args.Require("--id");
         var name = args.Require("--name");
@@ -367,23 +367,53 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private CpuTuningPlan BuildCpuPlan(string id, string name)
     {
+        int? defaultCo = null;
+        if (args.Value("--default-co") is { } defaultCoText)
+        {
+            if (!int.TryParse(defaultCoText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            {
+                throw new CliUsageException("--default-co 需要一个整数。");
+            }
+
+            defaultCo = parsed;
+        }
+
+        var ccdOffsets = new Dictionary<int, int>();
+        foreach (var entry in args.Repeated("--ccd-co"))
+        {
+            var parts = entry.Split('=', 2);
+            if (parts.Length != 2
+                || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ccd)
+                || ccd < 0
+                || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
+            {
+                throw new CliUsageException($"无法解析 --ccd-co {entry}，格式为 CCD编号=CO 值（如 0=-20）。");
+            }
+
+            ccdOffsets[ccd] = offset;
+        }
+
         var cores = new List<CoreTuning>();
         foreach (var entry in args.Repeated("--core"))
         {
             var parts = entry.Split('=', 2);
-            if (parts.Length != 2
-                || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var core)
-                || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
+            if (parts.Length != 2 || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var core))
             {
-                throw new CliUsageException($"无法解析 --core {entry}，格式为 核=CO 值。");
+                throw new CliUsageException($"无法解析 --core {entry}，格式为 核=CO 值 或 核=auto。");
+            }
+
+            if (string.Equals(parts[1], "auto", StringComparison.OrdinalIgnoreCase))
+            {
+                cores.Add(new CoreTuning { CoreIndex = core, Auto = true });
+                continue;
+            }
+
+            if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
+            {
+                throw new CliUsageException($"无法解析 --core {entry}，格式为 核=CO 值 或 核=auto。");
             }
 
             cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
-        }
-
-        if (cores.Count == 0)
-        {
-            throw new CliUsageException("至少需要一个 --core。");
         }
 
         int? fmax = null;
@@ -397,12 +427,31 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             fmax = parsed;
         }
 
+        int? intelVoltage = null;
+        if (args.Value("--intel-voltage") is { } mvText)
+        {
+            if (!int.TryParse(mvText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            {
+                throw new CliUsageException("--intel-voltage 需要一个整数。");
+            }
+
+            intelVoltage = parsed;
+        }
+
+        if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0 && fmax is null && intelVoltage is null)
+        {
+            throw new CliUsageException("至少需要 --default-co、--ccd-co、--core、--fmax 或 --intel-voltage 之一。");
+        }
+
         return new CpuTuningPlan
         {
             Id = id,
             Name = name,
+            DefaultOffset = defaultCo,
+            CcdOffsets = ccdOffsets.Count == 0 ? null : ccdOffsets,
             Cores = cores,
             FMaxLimitMhz = fmax,
+            IntelVoltageOffsetMillivolts = intelVoltage,
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };
@@ -825,8 +874,13 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         switch (plan)
         {
             case CpuTuningPlan cpu:
-                Console.WriteLine($"cores     {string.Join(", ", cpu.Cores.Select(static core => $"{core.CoreIndex}:{core.Offset?.ToString(CultureInfo.InvariantCulture) ?? "-"}"))}");
+                var asym = CurveOptimizerConfig.AnalyzeAsymmetry(cpu);
+                Console.WriteLine($"default   {cpu.DefaultOffset?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
+                Console.WriteLine($"ccds      {(cpu.CcdOffsets is { Count: > 0 } ? string.Join(", ", cpu.CcdOffsets.OrderBy(static p => p.Key).Select(static p => $"ccd{p.Key}:{p.Value}")) : "-")}");
+                Console.WriteLine($"cores     {(cpu.Cores.Count > 0 ? string.Join(", ", cpu.Cores.Select(static core => core.Auto ? $"{core.CoreIndex}:auto" : $"{core.CoreIndex}:{core.Offset?.ToString(CultureInfo.InvariantCulture) ?? "-"}")) : "-")}");
+                Console.WriteLine($"asymmetry {(asym.IsAsymmetric ? $"yes ({asym.MinOffset}..{asym.MaxOffset})" : "no")}");
                 Console.WriteLine($"fmax      {cpu.FMaxLimitMhz?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
+                Console.WriteLine($"intelMv   {cpu.IntelVoltageOffsetMillivolts?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
                 break;
             case PowerPlan power:
                 Console.WriteLine($"scheme    {power.BaseSchemeGuid?.ToString("D") ?? "(active)"}");

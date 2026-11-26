@@ -580,29 +580,73 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             case "cpuTuning":
             {
+                int? defaultCo = null;
+                var ccdOffsets = new Dictionary<int, int>();
                 var cores = new List<CoreTuning>();
                 foreach (var token in spec.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries))
                 {
                     var parts = token.Split('=', 2);
-                    if (parts.Length != 2
-                        || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var core)
-                        || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
+                    if (parts.Length != 2)
                     {
-                        throw new FormatException($"无法解析核配置 \"{token}\"，请使用 核=CO值（如 0=-20,1=-15）。");
+                        throw new FormatException($"无法解析 CO 配置 \"{token}\"，请使用 default=-15, ccd0=-20, 0=-10 或 1=auto。");
+                    }
+
+                    var key = parts[0].Trim();
+                    var val = parts[1].Trim();
+                    if (string.Equals(key, "default", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var def))
+                        {
+                            throw new FormatException($"无法解析 default CO 值 \"{val}\"。");
+                        }
+
+                        defaultCo = def;
+                        continue;
+                    }
+
+                    if (key.StartsWith("ccd", StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(key.AsSpan(3), NumberStyles.Integer, CultureInfo.InvariantCulture, out var ccd)
+                        && ccd >= 0)
+                    {
+                        if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ccdVal))
+                        {
+                            throw new FormatException($"无法解析 {key} 的 CO 值 \"{val}\"。");
+                        }
+
+                        ccdOffsets[ccd] = ccdVal;
+                        continue;
+                    }
+
+                    if (!int.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var core))
+                    {
+                        throw new FormatException($"无法解析核配置 \"{token}\"，请使用 default=-15, ccd0=-20, 0=-10 或 1=auto。");
+                    }
+
+                    if (string.Equals(val, "auto", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cores.Add(new CoreTuning { CoreIndex = core, Auto = true });
+                        continue;
+                    }
+
+                    if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
+                    {
+                        throw new FormatException($"无法解析核 {core} 的 CO 值 \"{val}\"。");
                     }
 
                     cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
                 }
 
-                if (cores.Count == 0)
+                if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0)
                 {
-                    throw new ArgumentException("CPU 调校方案至少需要一个核配置（如 0=-20）。");
+                    throw new ArgumentException("CPU 调校方案至少需要一个 CO 配置（如 default=-15, ccd0=-20, 0=-10 或 1=auto）。");
                 }
 
                 return new CpuTuningPlan
                 {
                     Id = id,
                     Name = name,
+                    DefaultOffset = defaultCo,
+                    CcdOffsets = ccdOffsets.Count == 0 ? null : ccdOffsets,
                     Cores = cores,
                     CreatedAt = now,
                     UpdatedAt = now,
@@ -930,17 +974,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _suppressPersist = true;
         try
         {
-            _catalog.CurrentCulture = LocalizationCatalog.Normalize(settings.Language);
-            _selectedLanguage = _catalog.CurrentCulture;
-            _selectedTheme = settings.Theme;
-            _selectedAccent = settings.Accent;
-            _uiScale = Math.Clamp(settings.UiScale, 0.8, 1.6);
-            _themes.Apply(settings.Theme, settings.Accent);
-
-            Raise(nameof(SelectedLanguage));
-            Raise(nameof(SelectedTheme));
-            Raise(nameof(SelectedAccent));
-            Raise(nameof(UiScale));
+            SelectedLanguage = settings.Language;
+            SelectedTheme = settings.Theme;
+            SelectedAccent = settings.Accent;
+            UiScale = settings.UiScale;
         }
         finally
         {
@@ -1069,7 +1106,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         };
         var detail = plan switch
         {
-            CpuTuningPlan cpu => string.Join(", ", cpu.Cores.Select(static c => $"C{c.CoreIndex}:{c.Offset}")),
+            CpuTuningPlan cpu => CurveOptimizerConfig.FormatPlanSummary(cpu),
             PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? $"设置 {power.Settings.Count} 项",
             SchedulingPlan sched => string.Join(", ", sched.Rules.Select(static r => $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"})")),
             _ => string.Empty,
