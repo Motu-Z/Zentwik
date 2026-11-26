@@ -563,6 +563,8 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     [Fact]
     public async Task ApplyCpu_Resolves_Layered_Default_Ccd_PerCore_And_Auto_Overrides()
     {
+        var tuning = new FakeCpuTuningProvider(8, coresPerCcd: 4);
+        var coordinator = new PlanCoordinator(_store, tuning, new FakePowerPolicyService(), new FakeProcessScheduler(), _log);
         var plan = new CpuTuningPlan
         {
             Id = "cpu-layered-co",
@@ -583,10 +585,10 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         };
         await _store.UpdateAsync(document => document with { Plans = [plan] });
 
-        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
 
         Assert.Equal(PlanApplyState.Partial, outcome.State);
-        Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
+        Assert.True(tuning.TryReadOffsets(out var offsets, out _));
         var map = offsets.ToDictionary(static o => o.Core, static o => o.Offset);
 
         // Core 0: PerCore (-25), Core 1: Auto (remains 0), Cores 2..3: CCD0 (-20), Cores 4..7: Default (-10)
@@ -630,7 +632,7 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
 
         var mismatchOutcome = await _plans.ApplyAsync(mismatchPlan.Id, "plan:" + mismatchPlan.Id, 0);
         Assert.Equal(PlanApplyState.NotApplied, mismatchOutcome.State);
-        Assert.Contains("不匹配", mismatchOutcome.Outcome);
+        Assert.Contains("不匹配", mismatchOutcome.Error ?? string.Empty);
 
         var noTopoOutcome = await _plans.ApplyAsync(noTopoPlan.Id, "plan:" + noTopoPlan.Id, 0);
         Assert.Equal(PlanApplyState.Partial, noTopoOutcome.State);

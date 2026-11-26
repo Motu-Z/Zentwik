@@ -1,3 +1,4 @@
+using Xunit;
 using Zentwik.Domain.Plans;
 
 namespace Zentwik.Domain.Tests;
@@ -29,7 +30,7 @@ public sealed class CurveOptimizerConfigTests
         var resolved = CurveOptimizerConfig.Resolve(
             plan,
             [0, 1, 2, 3, 4, 5],
-            core => core < 4 ? 0 : (core < 6 ? 1 : null));
+            core => core < 4 ? 0 : (core < 6 ? 1 : (int?)null));
 
         Assert.Equal(-25, resolved[0].EffectiveOffset);
         Assert.Equal(CoValueSource.PerCore, resolved[0].Source);

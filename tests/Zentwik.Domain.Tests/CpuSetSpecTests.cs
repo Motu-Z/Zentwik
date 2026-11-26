@@ -1,3 +1,4 @@
+using Xunit;
 using Zentwik.Domain.Plans;
 
 namespace Zentwik.Domain.Tests;
@@ -8,7 +9,7 @@ public sealed class CpuSetSpecTests
     public void TryParse_And_Format_Normalize_Ranges_And_Lists()
     {
         Assert.True(CpuSetSpec.TryParse("6, 0-3, 8-9, 2", out var indices, out var error), error);
-        Assert.Equal([0, 1, 2, 3, 6, 8, 9], indices);
+        Assert.Equal(new[] { 0, 1, 2, 3, 6, 8, 9 }, indices);
         Assert.Equal("0,1,2,3,6,8,9", CpuSetSpec.Format(indices));
     }
 
@@ -37,9 +38,9 @@ public sealed class CpuSetSpecTests
         };
 
         Assert.True(CpuSetSpec.ValidateAndResolve([0, 2, 3], map, out var ids, out var error), error);
-        Assert.Equal([256u, 258u, 259u], ids);
+        Assert.Equal(new uint[] { 256u, 258u, 259u }, ids);
 
         Assert.False(CpuSetSpec.ValidateAndResolve([0, 7], map, out _, out var missingError));
-        Assert.Contains("7", missingError);
+        Assert.Contains("7", missingError ?? string.Empty);
     }
 }
