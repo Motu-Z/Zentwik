@@ -302,7 +302,8 @@ internal sealed class AgentSession : IAsyncDisposable
                     ToDto(restored.Scheme),
                     restored.Applied,
                     restored.Failed,
-                    restored.Failures.ToArray());
+                    restored.Failures.ToArray(),
+                    restored.SourceVisible);
                 return Ok(request, JsonSerializer.SerializeToElement(dto, ZentwikJson.Default.PowerSchemeRestoreResultDto));
             }
 

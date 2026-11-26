@@ -379,6 +379,20 @@ public sealed class PowerSchemeServiceTests : IDisposable
     }
 
     [Fact]
+    public void Restore_Reports_Source_Visibility_And_Measured_Result()
+    {
+        // 备份里记着「原方案是隐藏的」，恢复出来却是可见的——这层落差必须在结果里说清。
+        var hidden = CreateHiddenScheme("隐藏来源");
+        var backup = _service.Backup(hidden);
+        Assert.False(backup.Visible);
+
+        var restored = _service.Restore(backup.Id);
+
+        Assert.False(restored.SourceVisible);
+        Assert.True(restored.Scheme.Visible);
+    }
+
+    [Fact]
     public void Restore_Rejects_Unknown_Backup()
     {
         var ex = Assert.Throws<CoreException>(() => _service.Restore("不存在的备份"));

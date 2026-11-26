@@ -108,13 +108,16 @@ public sealed record PowerSchemeDeleteRequest(Guid Guid, bool NoBackup = false);
 /// <summary>删除结果：Backup 为删除前自动生成的备份，--no-backup 时为 null。</summary>
 public sealed record PowerSchemeDeleteResultDto(Guid Guid, bool Deleted, PowerSchemeBackupDto? Backup);
 
-/// <summary>一份方案备份。Id 即备份文件名，用它恢复；PortablePath 是附带的 .pow 原件，可能为 null。</summary>
+/// <summary>
+/// 一份方案备份。Id 即备份文件名，用它恢复；PortablePath 是附带的 .pow 原件，可能为 null。
+/// Visible 为 null 表示备份未记录原方案的可见性。
+/// </summary>
 public sealed record PowerSchemeBackupDto(
     string Id,
     string Path,
     Guid SourceGuid,
     string Name,
-    bool Visible,
+    bool? Visible,
     DateTimeOffset CreatedAt,
     int SettingCount,
     int UnreadableCount,
@@ -123,12 +126,16 @@ public sealed record PowerSchemeBackupDto(
 /// <summary>从备份恢复：Backup 可为备份 ID，也可为备份文件路径。</summary>
 public sealed record PowerSchemeRestoreRequest(string Backup);
 
-/// <summary>恢复结果：新建的方案 GUID 与写入统计。Failures 只列前若干条原因。</summary>
+/// <summary>
+/// 恢复结果：新建的方案与写入统计。Failures 只列前若干条原因。
+/// SourceVisible 是备份记录的原方案可见性，Scheme.Visible 是恢复后实测值。
+/// </summary>
 public sealed record PowerSchemeRestoreResultDto(
     PowerSchemeDto Scheme,
     int Applied,
     int Failed,
-    string[] Failures);
+    string[] Failures,
+    bool? SourceVisible);
 
 public sealed record TargetOutcomeDto(
     string Target,

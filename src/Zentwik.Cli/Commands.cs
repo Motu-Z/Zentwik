@@ -351,7 +351,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             {
                 var flags = string.Join(' ', new[]
                 {
-                    backup.Visible ? string.Empty : "hidden",
+                    backup.Visible is false ? "hidden" : string.Empty,
                     backup.PortablePath is null ? "no-pow" : string.Empty,
                 }.Where(static flag => flag.Length > 0));
 
@@ -375,6 +375,15 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         {
             Console.WriteLine($"restored {result.Scheme.Guid:D} {result.Scheme.Name}");
             Console.WriteLine($"  settings  {result.Applied} 项写入成功，{result.Failed} 项失败");
+
+            // 只有原方案是隐藏的才有歧义：可见方案恢复出来必然可见，不必赘述。
+            if (result.SourceVisible is false)
+            {
+                Console.WriteLine(result.Scheme.Visible
+                    ? "  visible   原方案为隐藏方案；恢复结果为可见方案（可见性由系统决定，无法还原）"
+                    : "  visible   原方案为隐藏方案；恢复结果同为隐藏方案");
+            }
+
             foreach (var failure in result.Failures)
             {
                 Console.WriteLine($"  ! {failure}");

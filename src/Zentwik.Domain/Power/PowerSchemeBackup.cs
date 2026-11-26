@@ -23,8 +23,11 @@ public sealed record PowerSchemeBackupDocument
 
     public string? Description { get; init; }
 
-    /// <summary>备份时该方案是否出现在枚举结果里（false = 隐藏）。仅供说明，不参与恢复。</summary>
-    public bool Visible { get; init; }
+    /// <summary>
+    /// 备份时该方案是否出现在枚举结果里。null 表示备份文件未记录该项（旧文件或手工编辑），
+    /// 此时不作任何可见性推断。仅供说明，不参与恢复。
+    /// </summary>
+    public bool? Visible { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; }
 

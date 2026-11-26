@@ -13,12 +13,13 @@ namespace Zentwik.Core.Power;
 public sealed record PowerSchemeState(Guid Guid, string Name, bool Active, bool BuiltIn, bool Visible);
 
 /// <summary>一份已落盘的备份。UnreadableCount 是「两侧都读不到」的设置项数，它们没进备份。</summary>
+/// <remarks>Visible 为 null 表示备份文件未记录该状态，不作推断。</remarks>
 public sealed record PowerSchemeBackup(
     string Id,
     string Path,
     Guid SourceGuid,
     string Name,
-    bool Visible,
+    bool? Visible,
     DateTimeOffset CreatedAt,
     int SettingCount,
     int UnreadableCount,
@@ -27,12 +28,16 @@ public sealed record PowerSchemeBackup(
 /// <summary>删除结果。Backup 为空表示这次删除没有留备份（--no-backup）。</summary>
 public sealed record PowerSchemeDeleteResult(Guid Guid, PowerSchemeBackup? Backup);
 
-/// <summary>恢复结果。Failures 只列前几条原因，Failed 是完整失败数。</summary>
+/// <summary>
+/// 恢复结果。Failures 只列前几条原因，Failed 是完整失败数。
+/// SourceVisible 是备份里记录的原方案可见性（null = 未记录）；Scheme.Visible 是恢复后实测值。
+/// </summary>
 public sealed record PowerSchemeRestoreResult(
     PowerSchemeState Scheme,
     int Applied,
     int Failed,
-    IReadOnlyList<string> Failures);
+    IReadOnlyList<string> Failures,
+    bool? SourceVisible);
 
 /// <summary>
 /// Windows 电源方案的增删改查与备份恢复。只操作系统方案本身；Zentwik 的 PowerPlan 方案对象另在 PlanCoordinator。
@@ -279,7 +284,9 @@ public sealed class PowerSchemeService(
         }
 
         log?.Info($"已从备份 {entry.Id} 恢复方案「{name}」（{created.Guid:D}）：写入 {applied} 项，失败 {failed} 项。");
-        return new PowerSchemeRestoreResult(created, applied, failed, failures);
+
+        // 可见性在这里重新查一次：返回值要说明「恢复完到底露没露脸」，不能沿用派生时的推断。
+        return new PowerSchemeRestoreResult(State(created.Guid, name), applied, failed, failures, document.Visible);
     }
 
     /// <summary>导出一份 .pow 原件。powrprof 无导入导出接口，只能调 powercfg；失败只记日志。</summary>
