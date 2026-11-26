@@ -27,6 +27,9 @@ public sealed record CpuTuningPlan : Plan
     public IReadOnlyList<CoreTuning> Cores { get; init; } = [];
 
     public int? FMaxLimitMhz { get; init; }
+
+    // Intel MSR 0x150 核心电压偏移（mV，负值为降压，仅当前会话有效）。
+    public int? IntelVoltageOffsetMillivolts { get; init; }
 }
 
 public sealed record PowerSettingEntry
@@ -83,4 +86,18 @@ public static class CurveOptimizerBounds
 
     public static string FormatL2Rejection(int offset) =>
         $"CO 值 {offset} 超出 L2 软件输入钳制范围 [{L2MinOffset}, +{L2MaxOffset}]（不对称软限制；AMD 未公开 L1 固件/AGESA 范围）。";
+}
+
+/// <summary>
+/// Intel MSR 0x150 电压偏移输入范围（仅当前会话有效，重启由固件恢复）。
+/// </summary>
+public static class IntelVoltageOffsetBounds
+{
+    public const int MinMillivolts = -150;
+    public const int MaxMillivolts = 100;
+
+    public static bool IsWithinRange(int millivolts) => millivolts is >= MinMillivolts and <= MaxMillivolts;
+
+    public static string FormatRejection(int millivolts) =>
+        $"Intel 电压偏移 {millivolts} mV 超出允许范围 [{MinMillivolts}, +{MaxMillivolts}] mV。";
 }

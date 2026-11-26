@@ -615,6 +615,11 @@ internal sealed class AgentSession : IAsyncDisposable
                     throw new CoreException(ErrorCodes.PlanInvalid, $"FMax 频率 {fmax} MHz 超出有效范围 [1000, 7000]。");
                 }
 
+                if (cpu.IntelVoltageOffsetMillivolts is { } mv && !IntelVoltageOffsetBounds.IsWithinRange(mv))
+                {
+                    throw new CoreException(ErrorCodes.PlanInvalid, IntelVoltageOffsetBounds.FormatRejection(mv));
+                }
+
                 break;
             }
 

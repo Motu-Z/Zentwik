@@ -58,7 +58,7 @@ ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource(system.Pr
 
 var hub = new TelemetryHub(telemetry);
 var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, intel, scheduler, power));
-var plans = new PlanCoordinator(store, tuning, power, scheduler, log);
+var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel);
 var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
 
 var recovered = await scenes.RecoverAsync().ConfigureAwait(false);
