@@ -46,6 +46,39 @@ public sealed class StateMigrationTests : IDisposable
     }
 
     [Fact]
+    public async Task Legacy_Scene_PlanRevision_Is_Ignored()
+    {
+        Directory.CreateDirectory(_directory);
+
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "scenes": [
+                {
+                  "id": "game",
+                  "name": "Game",
+                  "priority": 10,
+                  "enabled": true,
+                  "actions": [ { "planId": "cpu", "planRevision": 7 } ],
+                  "triggers": [ { "kind": "manual" } ]
+                }
+              ]
+            }
+            """;
+
+        await File.WriteAllTextAsync(Path.Combine(_directory, "state.json"), json);
+
+        using var log = new DiagnosticLog(_directory, echoToConsole: false);
+        var store = new StateStore(_directory, log);
+        await store.LoadAsync();
+
+        var scene = Assert.Single(store.Current.Scenes);
+        Assert.Equal("cpu", Assert.Single(scene.Actions).PlanId);
+        Assert.Empty(store.Current.Plans);
+        Assert.Empty(store.Current.Ledger);
+    }
+
+    [Fact]
     public void Offset_Round_Trips_Through_Json()
     {
         CpuTuningPlan plan = new()

@@ -61,7 +61,14 @@ public sealed class StateStore
                     $"状态文件版本 {document.SchemaVersion} 高于当前支持 {StateDocument.CurrentSchemaVersion}，拒绝加载。");
             }
 
-            Current = document;
+            // 旧文件可能缺少后加的集合字段，反序列化会得到 null；缺失按空集合处理，不当作损坏。
+            Current = document with
+            {
+                Settings = document.Settings ?? new UserSettings(),
+                Plans = document.Plans ?? [],
+                Scenes = document.Scenes ?? [],
+                Ledger = document.Ledger ?? [],
+            };
             _log.Info($"已加载状态：方案 {Current.Plans.Count}，场景 {Current.Scenes.Count}，账本 {Current.Ledger.Count}。");
         }
         catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
