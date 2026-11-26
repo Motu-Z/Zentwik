@@ -38,6 +38,7 @@ public sealed class PlanCoordinator
     private readonly IIntelTuningProvider? _intel;
     private readonly IPowerPolicyService _power;
     private readonly IProcessScheduler _scheduler;
+    private readonly IPowerStatus? _powerStatus;
     private readonly DiagnosticLog _log;
     private readonly StateLedger _ledger;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -49,13 +50,15 @@ public sealed class PlanCoordinator
         IPowerPolicyService power,
         IProcessScheduler scheduler,
         DiagnosticLog log,
-        IIntelTuningProvider? intel = null)
+        IIntelTuningProvider? intel = null,
+        IPowerStatus? powerStatus = null)
     {
         _store = store;
         _tuning = tuning;
         _intel = intel;
         _power = power;
         _scheduler = scheduler;
+        _powerStatus = powerStatus;
         _log = log;
         _ledger = StateLedger.Restore(store.Current.Ledger);
     }
@@ -736,18 +739,14 @@ public sealed class PlanCoordinator
             return null;
         }
 
-        int? lowest = null;
-        foreach (var ac in new[] { true, false })
-        {
-            if (_power.TryReadValue(scheme.Guid, SubProcessorGroup, CoreParkingSetting, ac, out var value, out _)
-                && value is >= 0 and <= 100)
-            {
-                lowest = lowest is int current ? Math.Min(current, (int)value) : (int)value;
-            }
-        }
+        // 按当前供电侧取值：AC 与 DC 的停泊策略本就不同，混用会让插电用户天天看到电池策略的提示。
+        var ac = _powerStatus?.OnAcPower ?? true;
+        _parkingValue = _power.TryReadValue(scheme.Guid, SubProcessorGroup, CoreParkingSetting, ac, out var value, out _)
+                        && value is >= 0 and <= 100
+            ? (int)value
+            : null;
 
-        _parkingValue = lowest;
-        return lowest;
+        return _parkingValue;
     }
 
     private static readonly Guid SubProcessorGroup = new("54533251-82be-4824-96c1-47b60b740d00");

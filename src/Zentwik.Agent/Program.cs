@@ -59,7 +59,7 @@ IPowerNotificationSource powerNotifications = options.UseFake ? new NoPowerNotif
 
 var hub = new TelemetryHub(telemetry);
 var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, intel, scheduler, power).Append(new CpuSetsCapabilityProbe(scheduler)));
-var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel);
+var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel, powerStatus);
 var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
 
 var recovered = await scenes.RecoverAsync().ConfigureAwait(false);
