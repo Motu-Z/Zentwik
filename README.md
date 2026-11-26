@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 196 个用例
+dotnet test  Zentwik.slnx          # 197 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
