@@ -77,7 +77,7 @@ internal sealed class CpuTuningProbe(ICpuTuningProvider tuning) : ICapabilityPro
         var status = tuning.Query();
         var state = status.Availability switch
         {
-            HardwareAvailability.Available => CapabilityState.Degraded,
+            HardwareAvailability.Available => CapabilityState.Running,
             HardwareAvailability.ProbeFailed or HardwareAvailability.Rejected => CapabilityState.Failed,
             HardwareAvailability.DriverUnavailable
                 or HardwareAvailability.ModuleMissing
