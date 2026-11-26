@@ -1,0 +1,144 @@
+<UserControl x:Class="Zentwik.Desktop.Views.PlansView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Style="{StaticResource FlatButton}"
+                        Content="{DynamicResource String.PlansCreate_toggle}"
+                        AutomationProperties.Name="{DynamicResource String.PlansCreate_toggle}"
+                        Command="{Binding ToggleCreatePlanCommand}"
+                        Margin="0,0,8,0" />
+                <Button Style="{StaticResource FlatButton}"
+                        Content="{DynamicResource String.CommonRefresh}"
+                        AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
+                        Command="{Binding RefreshCommand}" />
+            </StackPanel>
+            <TextBlock Text="{DynamicResource String.PlansTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <Border Grid.Row="1"
+                Visibility="{Binding IsCreatePlanOpen, Converter={StaticResource BoolToVisibility}}"
+                Style="{StaticResource Card}"
+                Margin="0,0,0,12"
+                Padding="14,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="180" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource String.PlansKind}" Style="{StaticResource Text.Secondary}" Margin="0,0,8,4" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{DynamicResource String.PlansId}" Style="{StaticResource Text.Secondary}" Margin="0,0,8,4" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="{DynamicResource String.PlansName}" Style="{StaticResource Text.Secondary}" Margin="0,0,8,4" />
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="{DynamicResource String.PlansSpec}" Style="{StaticResource Text.Secondary}" Margin="0,0,8,4" />
+
+                <ComboBox Grid.Row="1" Grid.Column="0"
+                          AutomationProperties.Name="{DynamicResource String.PlansKind}"
+                          Style="{StaticResource FlatCombo}"
+                          ItemsSource="{Binding PlanKinds}"
+                          SelectedItem="{Binding NewPlanKind, Mode=TwoWay}"
+                          Margin="0,0,8,0" />
+                <TextBox Grid.Row="1" Grid.Column="1"
+                         AutomationProperties.Name="{DynamicResource String.PlansId}"
+                         Style="{StaticResource FlatTextBox}"
+                         Text="{Binding NewPlanId, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,8,0" />
+                <TextBox Grid.Row="1" Grid.Column="2"
+                         AutomationProperties.Name="{DynamicResource String.PlansName}"
+                         Style="{StaticResource FlatTextBox}"
+                         Text="{Binding NewPlanName, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,8,0" />
+                <TextBox Grid.Row="1" Grid.Column="3"
+                         AutomationProperties.Name="{DynamicResource String.PlansSpec}"
+                         Style="{StaticResource FlatTextBox}"
+                         Text="{Binding NewPlanSpec, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,8,0" />
+                <Button Grid.Row="1" Grid.Column="4"
+                        Style="{StaticResource AccentButton}"
+                        Content="{DynamicResource String.PlansSave}"
+                        AutomationProperties.Name="{DynamicResource String.PlansSave}"
+                        Command="{Binding CreatePlanCommand}" />
+            </Grid>
+        </Border>
+
+        <ListBox Grid.Row="2"
+                 AutomationProperties.Name="{DynamicResource String.PlansTitle}"
+                 ItemsSource="{Binding Plans}"
+                 SelectedItem="{Binding SelectedPlan, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ItemContainerStyle="{StaticResource RowItem}">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Grid Margin="14,11">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                                <Border Background="{DynamicResource Brush.Hover}"
+                                        CornerRadius="4"
+                                        Padding="6,1"
+                                        Margin="10,0,0,0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Kind}" Style="{StaticResource Text.Secondary}" FontSize="11" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <TextBlock Text="{Binding Caption}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
+                            <TextBlock Text="{Binding Outcome}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Border Grid.Row="3"
+                BorderBrush="{DynamicResource Brush.Border}"
+                BorderThickness="0,1,0,0"
+                Margin="0,8,0,0"
+                Padding="4,12,4,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource AccentButton}"
+                            Content="{DynamicResource String.PlansApply}"
+                            AutomationProperties.Name="{DynamicResource String.PlansApply}"
+                            Command="{Binding ApplyPlanCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Style="{StaticResource FlatButton}"
+                            Content="{DynamicResource String.PlansRevert}"
+                            AutomationProperties.Name="{DynamicResource String.PlansRevert}"
+                            Command="{Binding RevertPlanCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Style="{StaticResource FlatButton}"
+                            Content="{DynamicResource String.PlansDelete}"
+                            AutomationProperties.Name="{DynamicResource String.PlansDelete}"
+                            Command="{Binding DeletePlanCommand}" />
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SelectedPlan.Name, FallbackValue='—'}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding SelectedPlan.Outcome, FallbackValue=''}" Style="{StaticResource Text.Secondary}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>
