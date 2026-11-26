@@ -50,7 +50,15 @@ public enum PowerLimitWriteState
     Rejected,
 }
 
-public sealed record PowerLimitWrite(string Item, int Requested, PowerLimitWriteState State, string? Detail);
+/// <summary>
+/// 单项写入结果。Requested 是请求值，Actual 是 PM 表回读到值；Actual 为 null 表示该项没有回读通道。
+/// </summary>
+public sealed record PowerLimitWrite(
+    string Item,
+    int Requested,
+    int? Actual,
+    PowerLimitWriteState State,
+    string? Detail);
 
 /// <summary>写入汇总。RejectedReason 非空表示通道层面就不可用，此时 Items 为空。</summary>
 public sealed record PowerLimitApplyResult(
@@ -132,5 +140,34 @@ public static class PowerLimitReadBack
         return previous.HasValue && previous.Value == actual.Value
             ? PowerLimitWriteState.Rejected
             : PowerLimitWriteState.Diverged;
+    }
+
+    /// <summary>
+    /// 用这次观察到的比例解释「已改变但与请求不符」。只报实测，不假设机型常数；没有 Diverged 项时返回 null。
+    /// </summary>
+    public static string? DescribeFirmwareScaling(IReadOnlyList<PowerLimitWrite> items)
+    {
+        var ratios = new List<double>(items.Count);
+        foreach (var item in items)
+        {
+            if (item.State == PowerLimitWriteState.Diverged && item.Actual is int actual && actual > 0)
+            {
+                ratios.Add((double)actual / item.Requested);
+            }
+        }
+
+        if (ratios.Count == 0)
+        {
+            return null;
+        }
+
+        if (ratios.Max() - ratios.Min() > 0.02)
+        {
+            return "固件对各项按不同比例折算，没有统一系数；以回读值为准。";
+        }
+
+        var percent = Math.Round(ratios.Average() * 100);
+        return $"固件把写入值折算到约 {percent:0}% 后作为 CPU 上限生效。推测写入值是封装总功耗，CPU 只占其中一部分；"
+            + "比例由固件决定，本工具不代为换算——同型号也可能因固件版本而变，换算会掩盖真实上限。";
     }
 }

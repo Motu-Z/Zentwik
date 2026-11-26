@@ -378,6 +378,7 @@ internal sealed class AgentSession : IAsyncDisposable
                     [.. applied.Items.Select(static item => new PowerLimitWriteDto(
                         item.Item,
                         item.Requested,
+                        item.Actual,
                         item.State switch
                         {
                             PowerLimitWriteState.Applied => "applied",
@@ -391,7 +392,8 @@ internal sealed class AgentSession : IAsyncDisposable
                     applied.After?.FastWatts,
                     applied.After?.SlowWatts,
                     null,
-                    applied.Simulated);
+                    applied.Simulated,
+                    PowerLimitReadBack.DescribeFirmwareScaling(applied.Items));
 
                 return Ok(request, JsonSerializer.SerializeToElement(dto, ZentwikJson.Default.PowerLimitApplyDto));
             }

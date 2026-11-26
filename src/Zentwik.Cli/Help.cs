@@ -94,6 +94,7 @@ public static class Help
                           [--tdc <A>] [--edc <A>]
 
                     当前值来自 PM 表；FAST/SLOW 写入后回读校验，TDC/EDC 无回读通道，只表示 SMU 已接受。
+                    请求值与回读值不符时两个数都会列出：固件可能把写入值折算成 CPU 份额，以回读值为准。
                     需先启用可选组件：zentwik modules enable power-limits
                     """);
                 break;

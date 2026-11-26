@@ -65,7 +65,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `modules` | 模块状态；`enable <id>` / `disable <id>` 切换可选组件 |
 | `monitor [--count N] [--interval MS]` | CPU/内存持续采样；间隔 500–5000 ms，服务端按此下限收敛 |
 | `tuning` | AMD：通道状态与逐核 CO 偏移；`--intel`：电压偏移与睿频上限 |
-| `powerlimit get\|set` | 硬件功耗墙：读 PM 表当前值与 SMU 熔断值；`set --fast/--slow/--tdc/--edc` 写入。须先启用可选组件 |
+| `powerlimit get\|set` | 硬件功耗墙：读 PM 表当前值与 SMU 熔断值；`set --fast/--slow/--tdc/--edc` 写入。须先启用可选组件；回读与请求不符时两个数都列出，以回读值为准 |
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理。自动触发四类：进程运行、进程退出、交流供电、电池供电；进程退出属于一次性切换，触发后保持不自动回退 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |

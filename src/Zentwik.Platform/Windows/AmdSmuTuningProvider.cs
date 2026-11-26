@@ -406,11 +406,11 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     {
         if (TrySend(message, [wireValue], new long[MaxArgs], out var error))
         {
-            items.Add(new PowerLimitWrite(key, requested, PowerLimitWriteState.Accepted, $"{label} 命令已接受，等待回读。"));
+            items.Add(new PowerLimitWrite(key, requested, null, PowerLimitWriteState.Accepted, $"{label} 命令已接受，等待回读。"));
             return;
         }
 
-        items.Add(new PowerLimitWrite(key, requested, PowerLimitWriteState.Rejected, error));
+        items.Add(new PowerLimitWrite(key, requested, null, PowerLimitWriteState.Rejected, error));
     }
 
     /// <summary>
@@ -449,12 +449,13 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             var state = PowerLimitReadBack.Classify(item.Requested, actual, previous);
             items[i] = item with
             {
+                Actual = actual,
                 State = state,
                 Detail = state switch
                 {
-                    PowerLimitWriteState.Applied => $"回读 {actual} W。",
-                    PowerLimitWriteState.Rejected => $"回读仍为 {actual} W，写入未生效。",
-                    _ => $"回读 {actual} W，与请求 {item.Requested} W 不一致；固件按自身策略折算，实际按回读值生效。",
+                    PowerLimitWriteState.Applied => "回读一致。",
+                    PowerLimitWriteState.Rejected => "回读未变化，写入未生效。",
+                    _ => "回读与请求不符，按固件折算后的值生效。",
                 },
             };
         }

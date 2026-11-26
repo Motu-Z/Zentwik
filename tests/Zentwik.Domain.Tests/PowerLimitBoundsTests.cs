@@ -83,3 +83,49 @@ public sealed class PowerLimitReadBackTests
         Assert.Equal(PowerLimitWriteState.Diverged, PowerLimitReadBack.Classify(95, 76, null));
     }
 }
+
+public sealed class PowerLimitScalingTests
+{
+    [Fact]
+    public void Uniform_Ratio_Is_Reported_As_Percentage()
+    {
+        var note = PowerLimitReadBack.DescribeFirmwareScaling(
+        [
+            new PowerLimitWrite("fast", 95, 76, PowerLimitWriteState.Diverged, null),
+            new PowerLimitWrite("slow", 65, 52, PowerLimitWriteState.Diverged, null),
+        ]);
+
+        Assert.NotNull(note);
+        Assert.Contains("80%", note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Mixed_Ratio_Is_Not_Collapsed_Into_One_Number()
+    {
+        var note = PowerLimitReadBack.DescribeFirmwareScaling(
+        [
+            new PowerLimitWrite("fast", 100, 90, PowerLimitWriteState.Diverged, null),
+            new PowerLimitWrite("slow", 100, 50, PowerLimitWriteState.Diverged, null),
+        ]);
+
+        Assert.NotNull(note);
+        Assert.Contains("不同比例", note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void No_Diverged_Item_Produces_No_Note()
+    {
+        Assert.Null(PowerLimitReadBack.DescribeFirmwareScaling(
+        [
+            new PowerLimitWrite("fast", 100, 100, PowerLimitWriteState.Applied, null),
+            new PowerLimitWrite("tdc", 180, null, PowerLimitWriteState.Accepted, null),
+        ]));
+    }
+
+    [Fact]
+    public void Diverged_Without_Readback_Produces_No_Note()
+    {
+        Assert.Null(PowerLimitReadBack.DescribeFirmwareScaling(
+            [new PowerLimitWrite("fast", 100, null, PowerLimitWriteState.Diverged, null)]));
+    }
+}

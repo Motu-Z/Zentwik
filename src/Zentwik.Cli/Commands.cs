@@ -316,13 +316,20 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         foreach (var item in result.Items)
         {
             var unit = item.Item is "tdc" or "edc" ? "A" : "W";
-            Console.WriteLine($"{item.Item,-5} {item.State,-9} {item.Requested} {unit}  {item.Detail}");
+            var readback = item.Actual is int actual ? $"实际 {actual} {unit}" : "无回读通道";
+            Console.WriteLine($"{item.Item,-5} {item.State,-9} 请求 {item.Requested} {unit}  {readback,-14} {item.Detail}");
         }
 
         var rejected = result.Items.Count(static item => item.State == "rejected");
         var diverged = result.Items.Count(static item => item.State == "diverged");
         Console.WriteLine($"result       applied {result.Items.Count(static item => item.State == "applied")}，"
             + $"diverged {diverged}，accepted {result.Items.Count(static item => item.State == "accepted")}，rejected {rejected}");
+
+        if (result.Note is { } note)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"note         {note}");
+        }
 
         return rejected > 0 ? ExitCodes.Failed : diverged > 0 ? ExitCodes.Partial : ExitCodes.Ok;
     }

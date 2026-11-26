@@ -187,8 +187,9 @@ public sealed record PowerLimitStateDto(
 /// <summary>功耗墙写入请求，null 表示该项不改；功率 W、电流 A。</summary>
 public sealed record PowerLimitApplyRequest(int? FastWatts, int? SlowWatts, int? TdcAmps, int? EdcAmps);
 
-public sealed record PowerLimitWriteDto(string Item, int Requested, string State, string? Detail);
+public sealed record PowerLimitWriteDto(string Item, int Requested, int? Actual, string State, string? Detail);
 
+/// <summary>Note 是对「写入被接受但回读不符」的解释，只描述回读比例，不代替用户换算。</summary>
 public sealed record PowerLimitApplyDto(
     IReadOnlyList<PowerLimitWriteDto> Items,
     int? BeforeFastWatts,
@@ -196,7 +197,8 @@ public sealed record PowerLimitApplyDto(
     int? AfterFastWatts,
     int? AfterSlowWatts,
     string? RejectedReason,
-    bool Simulated);
+    bool Simulated,
+    string? Note = null);
 
 public sealed record LogEntryDto(
     DateTimeOffset Timestamp,

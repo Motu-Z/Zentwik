@@ -585,6 +585,9 @@ public sealed class FakePowerLimitProvider : IPowerLimitProvider
 
     public bool RejectWrites { get; set; }
 
+    /// <summary>模拟固件的折算比例。1 表示原样生效，0.8 表示回读为请求值的八成。</summary>
+    public double WriteScale { get; set; } = 1;
+
     public (HardwareAvailability Availability, string? Detail) ProbePowerLimit() =>
         (HardwareAvailability.Available, "模拟提供者，功耗表读数非真实硬件值。");
 
@@ -619,26 +622,35 @@ public sealed class FakePowerLimitProvider : IPowerLimitProvider
 
         if (request.FastWatts is int fast)
         {
-            _fast = fast;
-            items.Add(new PowerLimitWrite("fast", fast, PowerLimitWriteState.Applied, "模拟回读一致。"));
+            var actual = (int)Math.Round(fast * WriteScale);
+            _fast = actual;
+            items.Add(Simulated("fast", fast, actual));
         }
 
         if (request.SlowWatts is int slow)
         {
-            _slow = slow;
-            items.Add(new PowerLimitWrite("slow", slow, PowerLimitWriteState.Applied, "模拟回读一致。"));
+            var actual = (int)Math.Round(slow * WriteScale);
+            _slow = actual;
+            items.Add(Simulated("slow", slow, actual));
         }
 
         if (request.TdcAmps is int tdc)
         {
-            items.Add(new PowerLimitWrite("tdc", tdc, PowerLimitWriteState.Accepted, "模拟接受，无回读通道。"));
+            items.Add(new PowerLimitWrite("tdc", tdc, null, PowerLimitWriteState.Accepted, "模拟接受，无回读通道。"));
         }
 
         if (request.EdcAmps is int edc)
         {
-            items.Add(new PowerLimitWrite("edc", edc, PowerLimitWriteState.Accepted, "模拟接受，无回读通道。"));
+            items.Add(new PowerLimitWrite("edc", edc, null, PowerLimitWriteState.Accepted, "模拟接受，无回读通道。"));
         }
 
         return new PowerLimitApplyResult(items, before, new PowerLimitCurrent(110, _fast, _slow, "模拟读数。"), null, true);
     }
+
+    private static PowerLimitWrite Simulated(string key, int requested, int actual) => new(
+        key,
+        requested,
+        actual,
+        actual == requested ? PowerLimitWriteState.Applied : PowerLimitWriteState.Diverged,
+        actual == requested ? "模拟回读一致。" : "模拟固件折算。");
 }
