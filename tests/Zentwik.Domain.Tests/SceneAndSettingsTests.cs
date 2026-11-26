@@ -119,16 +119,79 @@ public sealed class LocalizationCatalogTests
     }
 
     [Fact]
-    public void Unknown_Key_Falls_Back_To_Key_Itself()
+    public void Embedded_Resources_Are_Present_In_Main_Assembly_For_All_Supported_Cultures()
+    {
+        var assembly = typeof(LocalizationCatalog).Assembly;
+        var names = assembly.GetManifestResourceNames();
+
+        foreach (var culture in new[] { "en-US", "zh-CN", "zh-TW" })
+        {
+            var expected = $"Zentwik.Localization.Resources.strings.{culture}.json";
+            Assert.Contains(expected, names);
+
+            using var stream = assembly.GetManifestResourceStream(expected);
+            Assert.NotNull(stream);
+            Assert.True(stream.Length > 0);
+        }
+    }
+
+    [Fact]
+    public void Common_Keys_Return_Real_Translations_Across_All_Cultures()
+    {
+        var catalog = LocalizationCatalog.CreateDefault();
+        Assert.NotEmpty(catalog.Keys);
+
+        string[] commonKeys =
+        [
+            "nav.monitor",
+            "nav.plans",
+            "nav.scenes",
+            "nav.settings",
+            "common.refresh",
+            "common.dismiss",
+            "plans.title",
+            "scenes.title",
+            "settings.language",
+        ];
+
+        foreach (var key in commonKeys)
+        {
+            Assert.Contains(key, catalog.Keys);
+            foreach (var culture in new[] { "en-US", "zh-CN", "zh-TW" })
+            {
+                var translated = catalog.Get(key, culture);
+                Assert.False(string.IsNullOrWhiteSpace(translated));
+                Assert.NotEqual(key, translated);
+            }
+        }
+
+        Assert.Equal("Refresh", catalog.Get("common.refresh", "en-US"));
+        Assert.Equal("刷新", catalog.Get("common.refresh", "zh-CN"));
+        Assert.Equal("重新整理", catalog.Get("common.refresh", "zh-TW"));
+        Assert.Equal("Dismiss", catalog.Get("common.dismiss", "en-US"));
+    }
+
+    [Fact]
+    public void Unknown_Key_And_Missing_Culture_Follow_Fallback_Chain()
     {
         var catalog = LocalizationCatalog.CreateDefault();
         Assert.Equal("does.not.exist", catalog.Get("does.not.exist"));
+        Assert.Equal("does.not.exist", catalog.Get("does.not.exist", "fr-FR"));
+
+        catalog.Merge("zh-CN", new Dictionary<string, string> { ["fallback.zh"] = "简体兜底" });
+        catalog.Merge("en-US", new Dictionary<string, string> { ["fallback.en"] = "English fallback" });
+
+        Assert.Equal("简体兜底", catalog.Get("fallback.zh", "zh-TW"));
+        Assert.Equal("English fallback", catalog.Get("fallback.en", "zh-TW"));
+        Assert.Equal("Refresh", catalog.Get("common.refresh", "fr-FR"));
     }
 
     [Fact]
     public void All_Supported_Cultures_Translate_Every_Key()
     {
         var catalog = LocalizationCatalog.CreateDefault();
+        Assert.NotEmpty(catalog.Keys);
+
         foreach (var key in catalog.Keys)
         {
             foreach (var culture in LocalizationCatalog.SupportedCultures)
