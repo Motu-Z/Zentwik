@@ -1,31 +1,231 @@
-<?xml version="1.0" encoding="utf-8"?>
 <Window x:Class="Zentwik.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:svc="clr-namespace:Zentwik.Desktop.Services"
         Title="Zentwik"
-        Width="1120" Height="760"
+        Width="1160" Height="760"
         MinWidth="880" MinHeight="580"
+        WindowStyle="None"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource Brush.Window}"
+        Background="{DynamicResource Brush.Void}"
         FontFamily="Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI"
         TextOptions.TextFormattingMode="Ideal">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="36"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="0" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="TitlebarToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Secondary}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource Brush.Hover}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource Brush.Hover}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
 
     <Grid>
         <Grid.LayoutTransform>
             <ScaleTransform ScaleX="{Binding UiScale}" ScaleY="{Binding UiScale}" />
         </Grid.LayoutTransform>
         <Grid.RowDefinitions>
+            <RowDefinition Height="36" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- 36px 极简自定义标题栏（右置 5 图标：场景快控 + 状态账本 + 窗口三键） -->
+        <Grid Grid.Row="0" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center"
+                        Margin="18,0,12,0">
+                <Ellipse Width="5" Height="5"
+                         VerticalAlignment="Center"
+                         Margin="0,0,8,0">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{DynamicResource Brush.Bad}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                    <Setter Property="Fill" Value="{DynamicResource Brush.Good}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding HardwareSummary}"
+                           Style="{StaticResource Text.Secondary}"
+                           FontSize="11.5"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        WindowChrome.IsHitTestVisibleInChrome="True">
+                <!-- 1: 场景快控 Flyout -->
+                <ToggleButton x:Name="SceneFlyoutToggle"
+                              Style="{StaticResource TitlebarToggle}"
+                              AutomationProperties.Name="{DynamicResource String.NavScenes}"
+                              ToolTip="{DynamicResource String.NavScenes}">
+                    <Path Width="14" Height="14" Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                          StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                          Data="M13 2 L3 14 L12 14 L11 22 L21 10 L12 10 Z" />
+                </ToggleButton>
+
+                <Popup PlacementTarget="{Binding ElementName=SceneFlyoutToggle}"
+                       Placement="Bottom"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       IsOpen="{Binding IsChecked, ElementName=SceneFlyoutToggle, Mode=TwoWay}">
+                    <Border Style="{StaticResource GlassFlyoutBorder}" Width="260" Margin="0,4,0,0">
+                        <StackPanel>
+                            <DockPanel Margin="4,2,4,6">
+                                <Button DockPanel.Dock="Right"
+                                        Style="{StaticResource FlatButton}"
+                                        Padding="8,3"
+                                        Content="{DynamicResource String.ScenesDeactivate}"
+                                        AutomationProperties.Name="{DynamicResource String.ScenesDeactivate}"
+                                        Command="{Binding DeactivateSceneCommand}" />
+                                <TextBlock Text="{DynamicResource String.ScenesTitle}"
+                                           Style="{StaticResource Text.Secondary}"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ListBox ItemsSource="{Binding Scenes}"
+                                     SelectedItem="{Binding SelectedScene, Mode=TwoWay}"
+                                     MaxHeight="220"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ItemContainerStyle="{StaticResource RowItem}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="6,5">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding Priority}" Style="{StaticResource Text.Secondary}" />
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- 2: StateLedger 状态账本 Flyout -->
+                <ToggleButton x:Name="LedgerFlyoutToggle"
+                              Style="{StaticResource TitlebarToggle}"
+                              AutomationProperties.Name="{DynamicResource String.TuningLedger_title}"
+                              ToolTip="{DynamicResource String.TuningLedger_title}">
+                    <Path Width="14" Height="14" Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"
+                          StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                          Data="M9 5 H7 A2 2 0 0 0 5 7 V19 A2 2 0 0 0 7 21 H17 A2 2 0 0 0 19 19 V7 A2 2 0 0 0 17 5 H15 M9 3 H15 V7 H9 Z" />
+                </ToggleButton>
+
+                <Popup PlacementTarget="{Binding ElementName=LedgerFlyoutToggle}"
+                       Placement="Bottom"
+                       StaysOpen="False"
+                       AllowsTransparency="True"
+                       IsOpen="{Binding IsChecked, ElementName=LedgerFlyoutToggle, Mode=TwoWay}">
+                    <Border Style="{StaticResource GlassFlyoutBorder}" Width="300" Margin="0,4,0,0">
+                        <StackPanel>
+                            <DockPanel Margin="4,2,4,6">
+                                <Button DockPanel.Dock="Right"
+                                        Style="{StaticResource FlatButton}"
+                                        Padding="8,3"
+                                        Content="{DynamicResource String.TuningRelease}"
+                                        AutomationProperties.Name="{DynamicResource String.TuningRelease}"
+                                        Command="{Binding ReleaseTakeoverCommand}" />
+                                <TextBlock Text="{DynamicResource String.TuningLedger_title}"
+                                           Style="{StaticResource Text.Secondary}"
+                                           VerticalAlignment="Center" />
+                            </DockPanel>
+                            <ListBox ItemsSource="{Binding LedgerEntries}"
+                                     SelectedItem="{Binding SelectedLedger, Mode=TwoWay}"
+                                     MaxHeight="240"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ItemContainerStyle="{StaticResource RowItem}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="6,5">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding Owner}" Style="{StaticResource Text.Secondary}" />
+                                                <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding ValuesSummary}" Style="{StaticResource Text.Secondary}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- 3-5: 最小化 / 最大化 / 关闭 -->
+                <Button Style="{StaticResource WindowCaptionButton}"
+                        AutomationProperties.Name="Minimize"
+                        svc:WindowChromeBehavior.Action="Minimize">
+                    <Path Width="10" Height="10" Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.3" Data="M1 5 H11" />
+                </Button>
+                <Button Style="{StaticResource WindowCaptionButton}"
+                        AutomationProperties.Name="Maximize"
+                        svc:WindowChromeBehavior.Action="MaximizeRestore">
+                    <Path Width="10" Height="10" Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.3" Data="M1.5 1.5 H10.5 V10.5 H1.5 Z" />
+                </Button>
+                <Button Style="{StaticResource WindowCloseButton}"
+                        AutomationProperties.Name="Close"
+                        svc:WindowChromeBehavior.Action="Close">
+                    <Path Width="10" Height="10" Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.3" Data="M2 2 L10 10 M10 2 L2 10" />
+                </Button>
+            </StackPanel>
+        </Grid>
+
         <!-- 全局状态与异常提示条 -->
-        <Border Grid.Row="0"
+        <Border Grid.Row="1"
                 Visibility="{Binding HasNotice, Converter={StaticResource BoolToVisibility}}"
                 Background="{DynamicResource Brush.Surface}"
                 BorderBrush="{DynamicResource Brush.Border}"
                 BorderThickness="0,0,0,1"
-                Padding="16,10">
+                Margin="168,0,10,6"
+                CornerRadius="10"
+                Padding="14,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -34,7 +234,7 @@
                 </Grid.ColumnDefinitions>
                 <Ellipse x:Name="NoticeDot"
                          Grid.Column="0"
-                         Width="8" Height="8"
+                         Width="7" Height="7"
                          VerticalAlignment="Center"
                          Margin="0,0,10,0">
                     <Ellipse.Style>
@@ -56,13 +256,16 @@
                 <Button Grid.Column="2"
                         Style="{StaticResource FlatButton}"
                         Content="{DynamicResource String.CommonDismiss}"
-                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                        AutomationProperties.Name="{DynamicResource String.CommonDismiss}"
                         Command="{Binding DismissNoticeCommand}"
                         Margin="12,0,0,0" />
             </Grid>
         </Border>
 
-        <TabControl Grid.Row="1" Style="{StaticResource Sidebar}" ItemContainerStyle="{StaticResource NavTab}">
+        <TabControl x:Name="MainTabs"
+                    Grid.Row="2"
+                    Style="{StaticResource Sidebar}"
+                    ItemContainerStyle="{StaticResource NavTab}">
 
             <!-- 0: 监控 -->
             <TabItem Header="{DynamicResource String.NavMonitor}">
@@ -78,7 +281,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                 Command="{Binding RefreshCommand}" />
                         <TextBlock Text="{DynamicResource String.NavMonitor}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
@@ -154,18 +357,17 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.PlansCreate_toggle}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.PlansCreate_toggle}"
                                     Command="{Binding ToggleCreatePlanCommand}"
                                     Margin="0,0,8,0" />
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.CommonRefresh}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                     Command="{Binding RefreshCommand}" />
                         </StackPanel>
                         <TextBlock Text="{DynamicResource String.PlansTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
 
-                    <!-- 新建方案折叠面板 -->
                     <Border Grid.Row="1"
                             Visibility="{Binding IsCreatePlanOpen, Converter={StaticResource BoolToVisibility}}"
                             Style="{StaticResource Card}"
@@ -213,7 +415,7 @@
                             <Button Grid.Row="1" Grid.Column="4"
                                     Style="{StaticResource AccentButton}"
                                     Content="{DynamicResource String.PlansSave}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.PlansSave}"
                                     Command="{Binding CreatePlanCommand}" />
                         </Grid>
                     </Border>
@@ -248,23 +450,22 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <!-- 选中方案操作栏 -->
                     <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="14,10">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource AccentButton}"
                                         Content="{DynamicResource String.PlansApply}"
-                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                        AutomationProperties.Name="{DynamicResource String.PlansApply}"
                                         Command="{Binding ApplyPlanCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.PlansRevert}"
-                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                        AutomationProperties.Name="{DynamicResource String.PlansRevert}"
                                         Command="{Binding RevertPlanCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.PlansDelete}"
-                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                        AutomationProperties.Name="{DynamicResource String.PlansDelete}"
                                         Command="{Binding DeletePlanCommand}" />
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
@@ -290,23 +491,22 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.ScenesDeactivate}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.ScenesDeactivate}"
                                     Command="{Binding DeactivateSceneCommand}"
                                     Margin="0,0,8,0" />
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.ScenesCreate_toggle}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.ScenesCreate_toggle}"
                                     Command="{Binding ToggleCreateSceneCommand}"
                                     Margin="0,0,8,0" />
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.CommonRefresh}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                     Command="{Binding RefreshCommand}" />
                         </StackPanel>
                         <TextBlock Text="{DynamicResource String.ScenesTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
 
-                    <!-- 新建场景折叠面板 -->
                     <Border Grid.Row="1"
                             Visibility="{Binding IsCreateSceneOpen, Converter={StaticResource BoolToVisibility}}"
                             Style="{StaticResource Card}"
@@ -368,13 +568,12 @@
                             <CheckBox Grid.Row="2" Grid.Column="3"
                                       AutomationProperties.Name="{DynamicResource String.ScenesRestore_on_exit}"
                                       Style="{StaticResource FlatCheckBox}"
-                                      Content="{DynamicResource String.ScenesRestore_on_exit}"
                                       IsChecked="{Binding NewSceneRestoreOnExit, Mode=TwoWay}"
                                       Margin="0,0,8,0" />
                             <Button Grid.Row="2" Grid.Column="4"
                                     Style="{StaticResource AccentButton}"
                                     Content="{DynamicResource String.ScenesSave}"
-                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                    AutomationProperties.Name="{DynamicResource String.ScenesSave}"
                                     Command="{Binding CreateSceneCommand}" />
                         </Grid>
                     </Border>
@@ -410,23 +609,22 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <!-- 选中场景操作栏 -->
                     <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="14,10">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource AccentButton}"
                                         Content="{DynamicResource String.ScenesActivate}"
-                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                        AutomationProperties.Name="{DynamicResource String.ScenesActivate}"
                                         Command="{Binding ActivateSceneCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.ScenesToggle}"
-                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                        AutomationProperties.Name="{DynamicResource String.ScenesToggle}"
                                         Command="{Binding ToggleSceneEnabledCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.ScenesDelete}"
-                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                        AutomationProperties.Name="{DynamicResource String.ScenesDelete}"
                                         Command="{Binding DeleteSceneCommand}" />
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
@@ -453,7 +651,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                 Command="{Binding RefreshTuningCommand}" />
                         <TextBlock Text="{DynamicResource String.TuningTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
@@ -532,7 +730,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.TuningRelease}"
-                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                AutomationProperties.Name="{DynamicResource String.TuningRelease}"
                                 Command="{Binding ReleaseTakeoverCommand}" />
                         <TextBlock Text="{Binding SelectedLedger.Failure, FallbackValue=''}"
                                    Style="{StaticResource Text.Secondary}"
@@ -558,7 +756,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
+                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                 Command="{Binding RefreshCommand}" />
                         <TextBlock Text="{DynamicResource String.NavSettings}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
