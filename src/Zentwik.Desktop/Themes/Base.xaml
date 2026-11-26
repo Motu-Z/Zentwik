@@ -4,6 +4,8 @@
 
     <!-- 结构样式全部使用 DynamicResource 引用主题键，切换主题/强调色时不需要重建控件。 -->
 
+    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
     <Style x:Key="Text.Primary" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
         <Setter Property="FontSize" Value="13" />
@@ -42,7 +44,7 @@
                 <ControlTemplate TargetType="TabControl">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="208" />
+                            <ColumnDefinition Width="216" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
@@ -57,12 +59,22 @@
 
                                 <Border DockPanel.Dock="Bottom" Margin="20,0,20,18">
                                     <StackPanel>
-                                        <Ellipse x:Name="StatusDot"
-                                                 Width="7" Height="7"
-                                                 HorizontalAlignment="Left"
-                                                 Fill="{DynamicResource Brush.Bad}"
-                                                 Margin="0,0,0,6" />
-                                        <TextBlock Text="{Binding StatusText}"
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                            <Ellipse x:Name="StatusDot"
+                                                     Width="7" Height="7"
+                                                     VerticalAlignment="Center"
+                                                     Fill="{DynamicResource Brush.Bad}"
+                                                     Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding StatusText}"
+                                                       Style="{StaticResource Text.Primary}"
+                                                       FontSize="12"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding RuntimeSummary}"
+                                                   Style="{StaticResource Text.Secondary}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding ActiveSceneText}"
                                                    Style="{StaticResource Text.Secondary}"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
@@ -74,7 +86,7 @@
 
                         <ContentPresenter Grid.Column="1"
                                           ContentSource="SelectedContent"
-                                          Margin="28,22,28,22" />
+                                          Margin="24,20,24,20" />
                     </Grid>
 
                     <ControlTemplate.Triggers>
@@ -119,21 +131,38 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}"
+                    <Border x:Name="Border"
+                            Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8"
                             Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Border" Property="Background" Value="{DynamicResource Brush.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+        <Setter Property="Foreground" Value="#FFFFFF" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="FlatCombo" TargetType="ComboBox">
@@ -141,6 +170,22 @@
         <Setter Property="Background" Value="{DynamicResource Brush.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         <Setter Property="Padding" Value="8,5" />
+    </Style>
+
+    <Style x:Key="FlatTextBox" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Brush.Text.Primary}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.SurfaceAlt}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style x:Key="FlatCheckBox" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text.Primary}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
     <Style x:Key="RowItem" TargetType="ListBoxItem">
