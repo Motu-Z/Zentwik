@@ -1142,19 +1142,10 @@ public sealed class PlanCoordinator
         }
 
         var schemeId = scheme.Value;
-        if (plan.BaseSchemeGuid is { } target && active?.Guid != target)
-        {
-            outcomes.Add(ApplyTarget(
-                "power.active",
-                plan.Id,
-                source,
-                priority,
-                active?.Guid.ToString("D"),
-                target.ToString("D"),
-                () => _power.TrySetActiveScheme(target, out var error) ? null : error,
-                () => _power.GetActiveScheme()?.Guid.ToString("D")));
-        }
 
+        // 指定 BaseSchemeGuid 只表示「改哪个方案」，不隐含「切过去」。
+        // 自动切换会把用户当前的电源方案换掉——笔记本上就是风扇、亮度、待机策略当场变，
+        // 而且切到隐藏方案时会把它顶进枚举，用户会误以为它变成永久可见。
         foreach (var setting in plan.Settings)
         {
             if (!Guid.TryParse(setting.SettingId, out var settingId))
@@ -1216,8 +1207,11 @@ public sealed class PlanCoordinator
             }
         }
 
+        // 写值后要重新激活一次才刷新生效；但只在目标本来就是活动方案时做。
+        // 目标不是活动方案时激活等于替用户切方案，改动留在那个方案里，等它被（用户）激活时生效。
         string? activateError = null;
-        if (outcomes.Any(static outcome => outcome.Status == LedgerStatus.Applied)
+        if (schemeId == active?.Guid
+            && outcomes.Any(static outcome => outcome.Status == LedgerStatus.Applied)
             && !_power.TrySetActiveScheme(schemeId, out var setError))
         {
             activateError = setError ?? "重新激活电源方案失败，部分设置可能未立即生效。";

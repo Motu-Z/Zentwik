@@ -5,13 +5,21 @@ using Zentwik.Platform;
 
 namespace Zentwik.Core.Power;
 
-/// <summary>一个 Windows 电源方案的展示状态。Active 表示当前生效，BuiltIn 表示系统内置。</summary>
-public sealed record PowerSchemeState(Guid Guid, string Name, bool Active, bool BuiltIn);
+/// <summary>
+/// 一个 Windows 电源方案的展示状态。Active 表示当前生效，BuiltIn 表示系统内置，
+/// Visible 表示是否出现在方案枚举里（false = 键存在、可读写，但用户看不到）。
+/// </summary>
+public sealed record PowerSchemeState(Guid Guid, string Name, bool Active, bool BuiltIn, bool Visible);
 
 /// <summary>
 /// Windows 电源方案的增删改查。只操作系统方案本身；Zentwik 的 PowerPlan 方案对象另在 PlanCoordinator。
 /// 规则：内置不可删；改名/新建查重（忽略大小写）；删除活动方案前先切到别的方案。
 /// </summary>
+/// <remarks>
+/// 「可见」与「存在」是两件事：<see cref="IPowerPolicyService.ListSchemes"/> 只回答后者中的可见部分。
+/// 存在性、查重、定位一律走 <see cref="IPowerPolicyService.ListAllSchemes"/>，只有「切换活动方案」这类
+/// 会改变用户可见状态的动作才限制在可见列表里。
+/// </remarks>
 public sealed class PowerSchemeService(IPowerPolicyService power)
 {
     public const int MaxNameLength = 64;
@@ -19,12 +27,12 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
     public IReadOnlyList<PowerSchemeState> List()
     {
         var active = power.GetActiveScheme()?.Guid;
-        return power.ListSchemes()
-            .Select(scheme => new PowerSchemeState(
-                scheme.Guid,
-                scheme.FriendlyName,
-                active == scheme.Guid,
-                PowerSchemePresets.IsBuiltIn(scheme.Guid)))
+
+        // 可见的排前面：用户先看到平时能操作的那几个，隐藏的排在后面并带标记。
+        return power.ListAllSchemes()
+            .OrderByDescending(static entry => entry.Visible)
+            .ThenBy(static entry => entry.FriendlyName, StringComparer.CurrentCulture)
+            .Select(entry => ToState(entry.Guid, entry.FriendlyName, entry.Visible, active))
             .ToArray();
     }
 
@@ -63,11 +71,7 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
             throw new CoreException(ErrorCodes.PowerSchemeCreateFailed, error ?? "方案已派生但改名失败，已回滚删除。");
         }
 
-        return new PowerSchemeState(
-            created,
-            normalized,
-            power.GetActiveScheme()?.Guid == created,
-            PowerSchemePresets.IsBuiltIn(created));
+        return State(created, normalized);
     }
 
     public PowerSchemeState Rename(Guid scheme, string name)
@@ -85,11 +89,7 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
             throw new CoreException(ErrorCodes.PowerSchemeCreateFailed, error ?? "电源方案改名失败。");
         }
 
-        return new PowerSchemeState(
-            scheme,
-            normalized,
-            power.GetActiveScheme()?.Guid == scheme,
-            PowerSchemePresets.IsBuiltIn(scheme));
+        return State(scheme, normalized);
     }
 
     public void Delete(Guid scheme)
@@ -190,20 +190,32 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
 
     private bool SwitchAway(Guid exclude)
     {
+        // 只切到可见方案：切到隐藏方案会让它临时冒出来，用户会以为自己多了一个方案。
         var target = power.ListSchemes().FirstOrDefault(scheme => scheme.Guid != exclude);
         return target is not null && power.TrySetActiveScheme(target.Guid, out _);
     }
 
-    private PowerSchemeInfo Find(Guid scheme) =>
-        power.ListSchemes().FirstOrDefault(candidate => candidate.Guid == scheme)
+    /// <summary>按 GUID 定位方案。隐藏方案同样算存在——枚举结果不能用作存在性判断。</summary>
+    private PowerSchemeEntry Find(Guid scheme) =>
+        power.ListAllSchemes().FirstOrDefault(candidate => candidate.Guid == scheme)
         ?? throw new CoreException(ErrorCodes.PowerSchemeNotFound, $"电源方案 {scheme:D} 不存在。");
 
-    private bool Exists(Guid scheme) => power.ListSchemes().Any(candidate => candidate.Guid == scheme);
+    private bool Exists(Guid scheme) => power.ListAllSchemes().Any(candidate => candidate.Guid == scheme);
 
     private bool NameExists(string name, Guid exclude) =>
-        power.ListSchemes().Any(candidate =>
+        power.ListAllSchemes().Any(candidate =>
             candidate.Guid != exclude
             && string.Equals(candidate.FriendlyName, name, StringComparison.OrdinalIgnoreCase));
+
+    private PowerSchemeState State(Guid guid, string name) =>
+        ToState(
+            guid,
+            name,
+            power.ListAllSchemes().FirstOrDefault(entry => entry.Guid == guid)?.Visible ?? true,
+            power.GetActiveScheme()?.Guid);
+
+    private static PowerSchemeState ToState(Guid guid, string name, bool visible, Guid? active) =>
+        new(guid, name, active == guid, PowerSchemePresets.IsBuiltIn(guid), visible);
 
     public static string NormalizeName(string name)
     {

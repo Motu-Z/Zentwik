@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 174 个用例
+dotnet test  Zentwik.slnx          # 185 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
@@ -68,7 +68,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理与手动执行 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |
-| `power list\|create\|rename\|delete` | Windows 电源方案：列出/派生/改名/删除（内置拒删、活动方案先切走） |
+| `power list\|create\|rename\|delete` | Windows 电源方案：列出/派生/改名/删除（内置拒删、活动方案先切走）。列表含不可见的系统模板，带 `hidden` 标记——它们同样可改名、可删除、可作模板 |
 | `settings` | 读取或修改语言、主题、强调色、缩放 |
 | `doctor` | 运行模式、路径、模块状态、最近错误 |
 | `logs [--limit N] [--level error]` | 最近日志 |

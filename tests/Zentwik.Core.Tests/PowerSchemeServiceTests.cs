@@ -168,4 +168,75 @@ public sealed class PowerSchemeServiceTests
         Assert.True(_power.TryReadValue(created.Guid, subGroup, ultimateOwn, ac: true, out var own, out _));
         Assert.Equal(90u, own);
     }
+
+    // 隐藏方案（键存在、可读写，但不在枚举里）必须和可见方案一样能被定位、改名、删除、查重。
+    // 早前实现用枚举做存在性判断，对这类方案会报「不存在」——那是把可见性当成了存在性。
+
+    [Fact]
+    public void List_Shows_Hidden_Schemes_With_Visible_False()
+    {
+        var hidden = CreateHiddenScheme("隐藏的");
+
+        var entry = Assert.Single(_service.List(), scheme => scheme.Guid == hidden);
+
+        Assert.False(entry.Visible);
+        Assert.Contains(_service.List(), static scheme => scheme.Visible);
+    }
+
+    [Fact]
+    public void Rename_Works_On_Hidden_Scheme()
+    {
+        var hidden = CreateHiddenScheme("隐藏原名");
+
+        var renamed = _service.Rename(hidden, "隐藏新名");
+
+        Assert.Equal("隐藏新名", renamed.Name);
+        Assert.False(renamed.Visible);
+        Assert.Contains(_service.List(), scheme => scheme.Guid == hidden && scheme.Name == "隐藏新名");
+    }
+
+    [Fact]
+    public void Delete_Removes_Hidden_Scheme()
+    {
+        var hidden = CreateHiddenScheme("待删的隐藏方案");
+
+        _service.Delete(hidden);
+
+        Assert.DoesNotContain(_service.List(), scheme => scheme.Guid == hidden);
+    }
+
+    [Fact]
+    public void Create_Rejects_Name_Taken_By_Hidden_Scheme()
+    {
+        CreateHiddenScheme("隐藏占用");
+
+        var ex = Assert.Throws<CoreException>(() =>
+            _service.Create(PowerSchemePresets.Balanced.Guid, "隐藏占用"));
+
+        Assert.Equal(ErrorCodes.PowerSchemeNameConflict, ex.Code);
+    }
+
+    [Fact]
+    public void Delete_Active_Switches_To_Visible_Scheme()
+    {
+        // 隐藏方案不能当切换目标：切过去会让它临时冒进枚举，用户会以为自己多了个方案。
+        _ = CreateHiddenScheme("隐藏目标");
+        var victim = _service.Create(PowerSchemePresets.Balanced.Guid, "待删活动");
+        _power.TrySetActiveScheme(victim.Guid, out _);
+
+        _service.Delete(victim.Guid);
+
+        var active = _power.GetActiveScheme();
+        Assert.NotNull(active);
+        Assert.NotEqual(victim.Guid, active.Guid);
+        Assert.Contains(_service.List(), scheme => scheme.Guid == active.Guid && scheme.Visible);
+    }
+
+    private Guid CreateHiddenScheme(string name)
+    {
+        _power.HiddenTemplates.Add(PowerSchemePresets.HighPerformance.Guid);
+        var guid = _power.DuplicateScheme(PowerSchemePresets.HighPerformance.Guid, out _)!.Value;
+        _power.RenameScheme(guid, name, out _);
+        return guid;
+    }
 }

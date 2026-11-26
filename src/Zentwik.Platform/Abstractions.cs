@@ -19,11 +19,23 @@ public interface ITelemetrySource
 
 public sealed record PowerSchemeInfo(Guid Guid, string FriendlyName);
 
+/// <summary>
+/// 一个 Windows 电源方案及其是否可见。Visible=false 表示方案键存在、可读写，
+/// 但不出现在 <see cref="IPowerPolicyService.ListSchemes"/> 的枚举结果里（系统模板/被隐藏的方案）。
+/// </summary>
+public sealed record PowerSchemeEntry(Guid Guid, string FriendlyName, bool Visible);
+
 public interface IPowerPolicyService
 {
     PowerSchemeInfo? GetActiveScheme();
 
     IReadOnlyList<PowerSchemeInfo> ListSchemes();
+
+    /// <summary>
+    /// 列出全部方案，含不出现在枚举里的（系统模板、被激活过滤掉的方案）。
+    /// 枚举结果只回答「此刻是否可见」，不能拿它判断方案是否存在——隐藏方案同样可读写。
+    /// </summary>
+    IReadOnlyList<PowerSchemeEntry> ListAllSchemes();
 
     /// <summary>切换活动电源方案。需要管理员权限；失败返回 false 并给出原因。</summary>
     bool TrySetActiveScheme(Guid scheme, out string? error);

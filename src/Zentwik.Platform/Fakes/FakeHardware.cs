@@ -240,6 +240,39 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
             .Select(pair => new PowerSchemeInfo(pair.Key, pair.Value))
             .ToArray();
 
+    /// <remarks>与真实系统同构：模板键始终在注册表里，即使不出现在枚举结果中，也算「存在但不可见」。</remarks>
+    public IReadOnlyList<PowerSchemeEntry> ListAllSchemes()
+    {
+        var entries = _schemes
+            .Select(pair => new PowerSchemeEntry(pair.Key, pair.Value, !_hidden.Contains(pair.Key)))
+            .ToList();
+
+        foreach (var template in TemplateOnly)
+        {
+            if (!_schemes.ContainsKey(template))
+            {
+                entries.Add(new PowerSchemeEntry(template, TemplateName(template), false));
+            }
+        }
+
+        return entries;
+    }
+
+    private static string TemplateName(Guid scheme)
+    {
+        if (scheme == PowerSaver)
+        {
+            return "节能（模拟）";
+        }
+
+        if (scheme == HighPerformance)
+        {
+            return "高性能（模拟）";
+        }
+
+        return scheme == UltimatePerformance ? "卓越性能（模拟）" : scheme.ToString("D");
+    }
+
     public bool TrySetActiveScheme(Guid scheme, out string? error)
     {
         _active = scheme;

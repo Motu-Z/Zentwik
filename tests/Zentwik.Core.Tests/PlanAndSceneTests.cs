@@ -334,6 +334,37 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Power_Apply_To_Non_Active_Scheme_Does_Not_Switch_Active()
+    {
+        // BaseSchemeGuid 只声明「改哪个方案」。它不等于活动方案时不能顺手切过去——
+        // 那会把用户当前的电源方案换掉（风扇/亮度/待机策略当场变）。
+        var activeScheme = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
+        var otherScheme = new Guid("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
+        var settingId = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+        var power = new FakePowerPolicyService();
+        Assert.True(power.TrySetActiveScheme(activeScheme, out _));
+        var coordinator = new PlanCoordinator(_store, _tuning, power, new FakeProcessScheduler(), _log);
+
+        var plan = new PowerPlan
+        {
+            Id = "power-other-scheme",
+            Name = "Power Other Scheme",
+            Revision = 1,
+            BaseSchemeGuid = otherScheme,
+            Settings = [new PowerSettingEntry { SettingId = settingId.ToString("D"), AcValue = "50" }],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        Assert.DoesNotContain(outcome.Targets, static target => target.Target == "power.active");
+        Assert.Equal(activeScheme, power.GetActiveScheme()?.Guid);
+    }
+
+    [Fact]
     public async Task Scheduling_User_Owned_Field_Is_Not_Overwritten_When_Sibling_Field_Acquired()
     {
         var scheduler = new FakeProcessScheduler(new ProcessTarget(4242, "game"));
@@ -1273,6 +1304,8 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         public PowerSchemeInfo? GetActiveScheme() => new(activeScheme, "Balanced");
 
         public IReadOnlyList<PowerSchemeInfo> ListSchemes() => [new(activeScheme, "Balanced")];
+
+        public IReadOnlyList<PowerSchemeEntry> ListAllSchemes() => [new(activeScheme, "Balanced", true)];
 
         public bool TrySetActiveScheme(Guid scheme, out string? error)
         {

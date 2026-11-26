@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32;
 
 namespace Zentwik.Platform.Windows;
 
@@ -11,6 +12,9 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
     private const uint AccessScheme = 16;
     private const uint AccessSubGroup = 17;
     private const uint AccessIndividualSetting = 18;
+
+    /// <summary>全部方案键（含隐藏的）所在位置。powrprof 没有对应的枚举接口。</summary>
+    private const string SchemeRegistryPath = @"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes";
 
     public PowerSchemeInfo? GetActiveScheme()
     {
@@ -55,6 +59,59 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
         }
 
         return schemes;
+    }
+
+    /// <remarks>
+    /// 可见性只看 <see cref="ListSchemes"/>；方案是否存在看注册表键。
+    /// 注册表里还有 Win11「电源模式」的 overlay 占位键，它们只有名字、没有子组，不是方案，按子组数为 0 排除。
+    /// </remarks>
+    public IReadOnlyList<PowerSchemeEntry> ListAllSchemes()
+    {
+        var visible = ListSchemes().Select(static scheme => scheme.Guid).ToHashSet();
+        var entries = new List<PowerSchemeEntry>();
+
+        foreach (var (guid, isScheme) in ReadSchemeKeys())
+        {
+            if (!isScheme)
+            {
+                continue;
+            }
+
+            entries.Add(new PowerSchemeEntry(
+                guid,
+                ReadFriendlyName(guid) ?? guid.ToString("D"),
+                visible.Contains(guid)));
+        }
+
+        // 注册表读不到（权限或布局变化）时退回可见列表：列表整个空掉比缺几项更难排查。
+        return entries.Count > 0
+            ? entries
+            : ListSchemes().Select(static scheme => new PowerSchemeEntry(scheme.Guid, scheme.FriendlyName, true)).ToArray();
+    }
+
+    /// <remarks>
+    /// 用「有没有子组子键」区分真方案与 overlay 占位键。不能用 PowerEnumerate 判断：
+    /// 对 overlay 这类不存在的方案，它可能返回成功并给出非空内容（实测如此），会把占位键误判成方案。
+    /// </remarks>
+    private static IEnumerable<(Guid Guid, bool IsScheme)> ReadSchemeKeys()
+    {
+        using var schemes = Registry.LocalMachine.OpenSubKey(SchemeRegistryPath);
+
+        if (schemes is null)
+        {
+            yield break;
+        }
+
+        foreach (var name in schemes.GetSubKeyNames())
+        {
+            if (!Guid.TryParse(name, out var guid))
+            {
+                continue;
+            }
+
+            using var key = schemes.OpenSubKey(name);
+            yield return (guid, key is not null && key.SubKeyCount > 0);
+        }
     }
 
     public bool TrySetActiveScheme(Guid scheme, out string? error)
@@ -181,7 +238,16 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
                     break;
                 }
 
-                guids.Add(new Guid(buffer.AsSpan(0, 16)));
+                var guid = new Guid(buffer.AsSpan(0, 16));
+
+                // 传入不存在的方案时 PowerEnumerate 可能返回成功但内容为空。当成「没有子组」，
+                // 否则会被记成一个 Guid.Empty，让 ListAllSchemes 把 overlay 占位键误判为方案。
+                if (guid == Guid.Empty)
+                {
+                    break;
+                }
+
+                guids.Add(guid);
             }
         }
         finally

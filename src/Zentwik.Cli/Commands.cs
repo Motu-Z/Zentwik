@@ -245,6 +245,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                 {
                     scheme.Active ? "active" : string.Empty,
                     scheme.BuiltIn ? "builtin" : string.Empty,
+                    scheme.Visible ? string.Empty : "hidden",
                 }.Where(static flag => flag.Length > 0));
                 Console.WriteLine($"{scheme.Guid:D}  {scheme.Name,-24} {flags}");
             }

@@ -778,7 +778,7 @@ internal sealed class AgentSession : IAsyncDisposable
         ?? throw new CoreException(ErrorCodes.HardwareUnavailable, "电源方案服务未装配。");
 
     private static PowerSchemeDto ToDto(PowerSchemeState state) =>
-        new(state.Guid, state.Name, state.Active, state.BuiltIn);
+        new(state.Guid, state.Name, state.Active, state.BuiltIn, state.Visible);
 
     private static PlanApplyResultDto ToDto(PlanApplyOutcome outcome) => new(
         outcome.Plan.Id,
