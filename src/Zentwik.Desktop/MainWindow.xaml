@@ -56,7 +56,7 @@
                 <Button Grid.Column="2"
                         Style="{StaticResource FlatButton}"
                         Content="{DynamicResource String.CommonDismiss}"
-                        AutomationProperties.Name="{DynamicResource String.CommonDismiss}"
+                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                         Command="{Binding DismissNoticeCommand}"
                         Margin="12,0,0,0" />
             </Grid>
@@ -78,7 +78,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
+                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                 Command="{Binding RefreshCommand}" />
                         <TextBlock Text="{DynamicResource String.NavMonitor}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
@@ -154,12 +154,12 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.PlansCreate_toggle}"
-                                    AutomationProperties.Name="{DynamicResource String.PlansCreate_toggle}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding ToggleCreatePlanCommand}"
                                     Margin="0,0,8,0" />
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.CommonRefresh}"
-                                    AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding RefreshCommand}" />
                         </StackPanel>
                         <TextBlock Text="{DynamicResource String.PlansTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
@@ -213,7 +213,7 @@
                             <Button Grid.Row="1" Grid.Column="4"
                                     Style="{StaticResource AccentButton}"
                                     Content="{DynamicResource String.PlansSave}"
-                                    AutomationProperties.Name="{DynamicResource String.PlansSave}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding CreatePlanCommand}" />
                         </Grid>
                     </Border>
@@ -254,17 +254,17 @@
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource AccentButton}"
                                         Content="{DynamicResource String.PlansApply}"
-                                        AutomationProperties.Name="{DynamicResource String.PlansApply}"
+                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                         Command="{Binding ApplyPlanCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.PlansRevert}"
-                                        AutomationProperties.Name="{DynamicResource String.PlansRevert}"
+                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                         Command="{Binding RevertPlanCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.PlansDelete}"
-                                        AutomationProperties.Name="{DynamicResource String.PlansDelete}"
+                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                         Command="{Binding DeletePlanCommand}" />
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
@@ -290,17 +290,17 @@
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.ScenesDeactivate}"
-                                    AutomationProperties.Name="{DynamicResource String.ScenesDeactivate}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding DeactivateSceneCommand}"
                                     Margin="0,0,8,0" />
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.ScenesCreate_toggle}"
-                                    AutomationProperties.Name="{DynamicResource String.ScenesCreate_toggle}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding ToggleCreateSceneCommand}"
                                     Margin="0,0,8,0" />
                             <Button Style="{StaticResource FlatButton}"
                                     Content="{DynamicResource String.CommonRefresh}"
-                                    AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding RefreshCommand}" />
                         </StackPanel>
                         <TextBlock Text="{DynamicResource String.ScenesTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
@@ -374,7 +374,7 @@
                             <Button Grid.Row="2" Grid.Column="4"
                                     Style="{StaticResource AccentButton}"
                                     Content="{DynamicResource String.ScenesSave}"
-                                    AutomationProperties.Name="{DynamicResource String.ScenesSave}"
+                                    AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                     Command="{Binding CreateSceneCommand}" />
                         </Grid>
                     </Border>
@@ -416,17 +416,17 @@
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource AccentButton}"
                                         Content="{DynamicResource String.ScenesActivate}"
-                                        AutomationProperties.Name="{DynamicResource String.ScenesActivate}"
+                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                         Command="{Binding ActivateSceneCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.ScenesToggle}"
-                                        AutomationProperties.Name="{DynamicResource String.ScenesToggle}"
+                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                         Command="{Binding ToggleSceneEnabledCommand}"
                                         Margin="0,0,8,0" />
                                 <Button Style="{StaticResource FlatButton}"
                                         Content="{DynamicResource String.ScenesDelete}"
-                                        AutomationProperties.Name="{DynamicResource String.ScenesDelete}"
+                                        AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                         Command="{Binding DeleteSceneCommand}" />
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
@@ -453,7 +453,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
+                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                 Command="{Binding RefreshTuningCommand}" />
                         <TextBlock Text="{DynamicResource String.TuningTitle}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
@@ -532,7 +532,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.TuningRelease}"
-                                AutomationProperties.Name="{DynamicResource String.TuningRelease}"
+                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                 Command="{Binding ReleaseTakeoverCommand}" />
                         <TextBlock Text="{Binding SelectedLedger.Failure, FallbackValue=''}"
                                    Style="{StaticResource Text.Secondary}"
@@ -558,7 +558,7 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
+                                AutomationProperties.Name="{Binding Content, RelativeSource={RelativeSource Self}}"
                                 Command="{Binding RefreshCommand}" />
                         <TextBlock Text="{DynamicResource String.NavSettings}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
@@ -604,7 +604,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsAccent}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                             <ComboBox Grid.Column="1"
-                                      AutomationProperties.Name="{DynamicResource String.SettingsAccent}"
+                                      AutomationProperties.Name="{Binding SettingsAccent}"
                                       Style="{StaticResource FlatCombo}"
                                       ItemsSource="{Binding Accents}"
                                       SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" />
