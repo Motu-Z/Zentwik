@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Protocol;
@@ -437,6 +438,8 @@ public sealed class PlanCoordinator
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // 只计实际执行时间，不含等锁：等锁取决于调用方，不反映这一轮的成本。
+            var started = Stopwatch.GetTimestamp();
             var changed = false;
 
             // 1. 清理已退出（或被同 PID 新进程顶替）的 sched.{pid}.* 账本记录，避免误判所有权。
@@ -723,11 +726,45 @@ public sealed class PlanCoordinator
             {
                 await PersistLedgerAsync(ct).ConfigureAwait(false);
             }
+
+            ObserveEnforceDuration(started);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// 单轮调度强制的耗时预算。超过预算只在日志留一条（每分钟至多一次），
+    /// 用于在"机器变卡"之前先发现某一轮变贵，而不是等用户反馈。
+    /// </summary>
+    private static readonly TimeSpan EnforceBudget = TimeSpan.FromMilliseconds(200);
+
+    private readonly Lock _budgetGate = new();
+    private DateTime _lastBudgetWarnAt = DateTime.MinValue;
+
+    private void ObserveEnforceDuration(long startedTimestamp)
+    {
+        var elapsed = Stopwatch.GetElapsedTime(startedTimestamp);
+        if (elapsed < EnforceBudget)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        lock (_budgetGate)
+        {
+            if (now - _lastBudgetWarnAt < TimeSpan.FromMinutes(1))
+            {
+                return;
+            }
+
+            _lastBudgetWarnAt = now;
+        }
+
+        _log.Warn(
+            $"调度强制单轮耗时 {elapsed.TotalMilliseconds:F0} ms，超出 {EnforceBudget.TotalMilliseconds:F0} ms 预算；账本 {_ledger.Entries.Count} 项。");
     }
 
     private static bool SameCpuSets(string? actual, string? desired)

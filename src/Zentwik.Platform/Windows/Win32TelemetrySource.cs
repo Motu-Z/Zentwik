@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Zentwik.Platform.Windows;
 
 /// <summary>用户态可读，未提权时监控仍可用。</summary>
@@ -10,6 +8,11 @@ public sealed class Win32TelemetrySource : ITelemetrySource
     private ulong _previousKernel;
     private ulong _previousUser;
     private TelemetrySample? _last;
+
+    // 进程数变化慢，且统计它要遍历整张进程表；与 CPU 同频刷新属白烧。
+    private int _processCount;
+    private DateTime _processCountAt = DateTime.MinValue;
+    private static readonly TimeSpan ProcessCountTtl = TimeSpan.FromSeconds(2);
 
     public TelemetrySample Sample()
     {
@@ -28,7 +31,6 @@ public sealed class Win32TelemetrySource : ITelemetrySource
                 memoryOk ? memory.AvailPhys : 0,
                 CountProcesses(),
                 Environment.ProcessorCount);
-
             _last = sample;
             return sample;
         }
@@ -69,15 +71,17 @@ public sealed class Win32TelemetrySource : ITelemetrySource
         return Math.Clamp(percent, 0d, 100d);
     }
 
-    private static int CountProcesses()
+    /// <summary>整表计数按 2 秒节流：桌面端 500ms 订阅也不需要每拍都数一遍。</summary>
+    private int CountProcesses()
     {
-        try
+        var now = DateTime.UtcNow;
+        if (now - _processCountAt < ProcessCountTtl)
         {
-            return Process.GetProcesses().Length;
+            return _processCount;
         }
-        catch (InvalidOperationException)
-        {
-            return 0;
-        }
+
+        _processCountAt = now;
+        _processCount = NativeProcessList.Count();
+        return _processCount;
     }
 }

@@ -48,7 +48,7 @@ public static class Help
                 Console.WriteLine("""
                     zentwik monitor [--count N] [--interval MS]
 
-                    订阅遥测。间隔 200–5000 ms，默认 500。
+                    订阅遥测。间隔 500–5000 ms，默认 500。
                     """);
                 break;
             case "ledger":

@@ -63,7 +63,8 @@ internal static partial class NativeProcessList
             do
             {
                 var pid = (int)entry.ProcessId;
-                if (pid <= 0)
+                // 线程数为 0 的条目是已退出待回收的进程：对它们开句柄只会白费系统调用。
+                if (pid <= 0 || entry.ThreadCount == 0)
                 {
                     continue;
                 }
@@ -82,6 +83,45 @@ internal static partial class NativeProcessList
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// 只数进程个数，不读映像名。遥测按秒级刷新，进程数是展示用指标，
+    /// 为它把全表做成 Process 对象（每轮数百次分配）不值得。
+    /// </summary>
+    public static int Count()
+    {
+        var snapshot = CreateToolhelp32Snapshot(Th32CsSnapProcess, 0);
+        if (snapshot == 0 || snapshot == InvalidHandleValue)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var entry = new ProcessEntry32 { Size = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            if (!Process32FirstW(snapshot, ref entry))
+            {
+                return 0;
+            }
+
+            var count = 0;
+            do
+            {
+                // 已退出但对象未回收的进程仍在快照里（线程数 0），计进去会让数字虚高。
+                if (entry.ThreadCount > 0)
+                {
+                    count++;
+                }
+            }
+            while (Process32NextW(snapshot, ref entry));
+
+            return count;
+        }
+        finally
+        {
+            CloseHandle(snapshot);
+        }
     }
 
     private static unsafe string ReadExeName(ref ProcessEntry32 entry)

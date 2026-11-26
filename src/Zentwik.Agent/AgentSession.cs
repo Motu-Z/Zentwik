@@ -500,7 +500,8 @@ internal sealed class AgentSession : IAsyncDisposable
                 var subscription = payload.Deserialize(ZentwikJson.Default.SubscriptionRequest);
                 if (subscription is not null)
                 {
-                    interval = Math.Clamp(subscription.IntervalMs, 200, 5000);
+                    // 下限 500ms：2Hz 已超出界面可辨范围，再快只是按倍数烧采样与 IPC 成本。
+                    interval = Math.Clamp(subscription.IntervalMs, 500, 5000);
                 }
             }
             catch (JsonException)

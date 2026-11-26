@@ -258,7 +258,8 @@ public sealed class AgentPipeTests : IAsyncLifetime
         };
 
         var ack = await connection.SubscribeTelemetryAsync(200);
-        Assert.Equal(200, ack.IntervalMs);
+        // 低于下限的请求被抬到 500ms：2Hz 已超出界面可辨范围，再快只是按倍数烧采样与 IPC 成本。
+        Assert.Equal(500, ack.IntervalMs);
 
         await gate.Task.WaitAsync(TimeSpan.FromSeconds(10));
 

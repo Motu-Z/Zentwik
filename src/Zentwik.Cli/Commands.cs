@@ -106,7 +106,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
     {
         args.EnsureOnly("--pipe", "--count", "--interval");
         var count = ParseInt(args.Value("--count"), 5, 1, 100000);
-        var interval = ParseInt(args.Value("--interval"), 500, 200, 5000);
+        var interval = ParseInt(args.Value("--interval"), 500, 500, 5000);
 
         var received = 0;
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -146,7 +146,8 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         var ack = await connection.SubscribeTelemetryAsync(interval, ct);
         output.Line($"subscribed interval={ack.IntervalMs}ms, expecting {count} samples");
 
-        var completed = await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(count * (interval / 1000d) + 5), ct));
+        // 按服务端实际生效的间隔算超时：请求的间隔可能被抬到下限，用请求值会误报超时。
+        var completed = await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(count * (ack.IntervalMs / 1000d) + 5), ct));
         if (completed != done.Task)
         {
             output.Error("monitor.timeout", $"只收到 {received}/{count} 个样本。");

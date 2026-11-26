@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 199 个用例
+dotnet test  Zentwik.slnx          # 200 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
@@ -63,7 +63,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `status` | 代理状态、协议版本、能力概览 |
 | `caps` | 能力清单与状态 |
 | `modules` | 内置模块与聚合状态 |
-| `monitor [--count N] [--interval MS]` | CPU/内存持续采样 |
+| `monitor [--count N] [--interval MS]` | CPU/内存持续采样；间隔 500–5000 ms，服务端按此下限收敛 |
 | `tuning` | AMD：通道状态与逐核 CO 偏移；`--intel`：电压偏移与睿频上限 |
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理。自动触发四类：进程运行、进程退出、交流供电、电池供电；进程退出属于一次性切换，触发后保持不自动回退 |
