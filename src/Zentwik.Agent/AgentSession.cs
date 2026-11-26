@@ -604,9 +604,9 @@ internal sealed class AgentSession : IAsyncDisposable
 
                 foreach (var core in cpu.Cores)
                 {
-                    if (core.Offset is { } offset && offset is < -50 or > 50)
+                    if (core.Offset is { } offset && !CurveOptimizerBounds.IsWithinL2(offset))
                     {
-                        throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 的 CO 值 {offset} 超出 ±50。");
+                        throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 的 {CurveOptimizerBounds.FormatL2Rejection(offset)}");
                     }
                 }
 

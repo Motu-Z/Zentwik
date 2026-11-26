@@ -1,3 +1,4 @@
+using Zentwik.Domain.Plans;
 using Zentwik.Platform;
 using Zentwik.Platform.Windows;
 
@@ -57,9 +58,9 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
             return false;
         }
 
-        if (offset is < -50 or > 50)
+        if (!CurveOptimizerBounds.IsWithinL2(offset))
         {
-            error = $"CO 值 {offset} 超出范围。";
+            error = CurveOptimizerBounds.FormatL2Rejection(offset);
             return false;
         }
 
@@ -110,7 +111,8 @@ public sealed class FakeIntelTuningProvider : IIntelTuningProvider
     }
 }
 
-public sealed class FakePowerPolicyService : IPowerPolicyService{
+public sealed class FakePowerPolicyService : IPowerPolicyService
+{
     private static readonly Guid Balanced = new("381b4222-f694-41f0-9685-ff5bb260df2e");
     private static readonly Guid HighPerformance = new("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
 

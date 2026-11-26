@@ -1,4 +1,5 @@
 using System.Globalization;
+using Zentwik.Domain.Plans;
 using Zentwik.Platform;
 
 namespace Zentwik.Platform.Windows;
@@ -12,8 +13,6 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
     private const uint MessageTest = 0x01;
     private const string FunctionSendCommand = "ioctl_send_smu_command";
     private const string FunctionGetVersion = "ioctl_get_smu_version";
-    private const int MinOffset = -50;
-    private const int MaxOffset = 50;
     private const int MaxArgs = 6;
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(10);
 
@@ -80,9 +79,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
 
     public bool TryWriteOffset(int core, int offset, out string? error)
     {
-        if (offset is < MinOffset or > MaxOffset)
+        if (!CurveOptimizerBounds.IsWithinL2(offset))
         {
-            error = $"CO 值 {offset} 超出允许范围 {MinOffset}..{MaxOffset}。";
+            error = CurveOptimizerBounds.FormatL2Rejection(offset);
             return false;
         }
 
@@ -195,6 +194,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         if (modulePath is null)
         {
             var detail = $"未找到 PawnIO 模块，已查找：{searched}。可用 ZENTWIK_PAWNIO_MODULE 指定。";
+            error = detail;
             return new CpuTuningStatus(HardwareAvailability.ModuleMissing, detail, vendor, PlatformName(family, model), true, false);
         }
 
@@ -300,7 +300,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
     private CpuTuningStatus Available() => new(
         HardwareAvailability.Available,
         $"SMU 0x{_smuVersion:X8}，{_coreMap.Cores.Count} 个物理核 / {_info.ProcessorCount} 线程。"
-        + $"{_coreMap.Detail}写入后逐核回读校验。",
+        + $"{_coreMap.Detail}L2 输入范围 [{CurveOptimizerBounds.L2MinOffset}, +{CurveOptimizerBounds.L2MaxOffset}]（不对称软限制，非 L1 固件上限）。写入后逐核回读校验。",
         _info.CpuVendor,
         PlatformName(_commands.Family, _commands.Model),
         true,

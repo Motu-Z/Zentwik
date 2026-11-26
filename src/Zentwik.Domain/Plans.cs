@@ -68,3 +68,19 @@ public sealed record SchedulingPlan : Plan
 
     public IReadOnlyList<SchedulingRule> Rules { get; init; } = [];
 }
+
+/// <summary>
+/// Curve Optimizer 分层范围定义（见 knowledge/hardware/cpu/amd-curve-optimizer.md §5）：
+/// L1（固件/AGESA 实际范围）AMD 未公开，观测负向常达 -50、正向多为 +30，二者不对称；
+/// L2（软件输入钳制）为 Zentwik 的不对称软限制，不冒充固件上限。
+/// </summary>
+public static class CurveOptimizerBounds
+{
+    public const int L2MinOffset = -50;
+    public const int L2MaxOffset = 30;
+
+    public static bool IsWithinL2(int offset) => offset is >= L2MinOffset and <= L2MaxOffset;
+
+    public static string FormatL2Rejection(int offset) =>
+        $"CO 值 {offset} 超出 L2 软件输入钳制范围 [{L2MinOffset}, +{L2MaxOffset}]（不对称软限制；AMD 未公开 L1 固件/AGESA 范围）。";
+}
