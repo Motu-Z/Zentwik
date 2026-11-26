@@ -10,6 +10,7 @@ public sealed class PipeIdentityTests
     [InlineData("S-1-5-21-1", "S-1-5-21-1", true)]
     [InlineData("S-1-5-18", "S-1-5-21-1", true)]
     [InlineData("S-1-5-18", "S-1-5-18", true)]
+    [InlineData("S-1-5-32-544", "S-1-5-21-1", true)]
     [InlineData("S-1-5-21-2", "S-1-5-21-1", false)]
     [InlineData("S-1-5-19", "S-1-5-21-1", false)]
     [InlineData(null, "S-1-5-21-1", false)]
