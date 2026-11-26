@@ -10,11 +10,36 @@ public sealed class IntelMsrBitsTests
     {
         foreach (var millivolts in new[] { -150, -100, -50, -30, -10, -1, 0, 1, 10, 50, 100 })
         {
-            var encoded = IntelMsrBits.EncodeVoltageOffset(0, millivolts);
-            var decoded = IntelMsrBits.DecodeVoltageOffset(encoded);
+            var command = IntelMsrBits.BuildWriteCommand(millivolts);
+            var decoded = IntelMsrBits.DecodeVoltageOffset(command);
 
             Assert.InRange(decoded, millivolts - 1, millivolts + 1);
         }
+    }
+
+    [Fact]
+    public void WriteCommand_PutsCommandWordInHighBits()
+    {
+        var command = IntelMsrBits.BuildWriteCommand(-25);
+
+        Assert.Equal(IntelMsrBits.WriteCommand, (uint)(command >> 32));
+        Assert.Equal(IntelMsrBits.OffsetCode(-25) & 0x7FF, (command >> 21) & 0x7FF);
+    }
+
+    [Fact]
+    public void ReadCommand_CarriesPlaneBits()
+    {
+        Assert.Equal((long)(IntelMsrBits.ReadCommand | IntelMsrBits.CachePlane) << 32, IntelMsrBits.BuildReadCommand(IntelMsrBits.CachePlane));
+        Assert.Equal(0L, IntelMsrBits.BuildReadCommand() & 0xFFFF_FFFFL);
+    }
+
+    [Fact]
+    public void BusyFlag_IsTheSignBit()
+    {
+        // 命令字最高位即忙位：写入命令发出后由硬件清零。
+        Assert.True(IntelMsrBits.IsBusy(IntelMsrBits.BuildWriteCommand(-25)));
+        Assert.True(IntelMsrBits.IsBusy(IntelMsrBits.BuildReadCommand()));
+        Assert.False(IntelMsrBits.IsBusy((long)0x11 << 32));
     }
 
     [Fact]
@@ -25,18 +50,6 @@ public sealed class IntelMsrBitsTests
 
         Assert.Equal(-1, IntelMsrBits.DecodeVoltageOffset(minusOne));
         Assert.Equal(-100, IntelMsrBits.DecodeVoltageOffset(minusHundred));
-    }
-
-    [Fact]
-    public void VoltageOffset_KeepsUnrelatedBits()
-    {
-        const long other = 0x0000_0000_00AB_CDEF;
-        const long field = 0x7FFL << 21;
-
-        var encoded = IntelMsrBits.EncodeVoltageOffset(other, -25);
-
-        Assert.Equal(other & ~field, encoded & ~field);
-        Assert.InRange(IntelMsrBits.DecodeVoltageOffset(encoded), -26, -24);
     }
 
     [Fact]

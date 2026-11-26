@@ -11,13 +11,18 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
     private const string FunctionReadMsr = "ioctl_read_msr";
     private const string FunctionWriteMsr = "ioctl_write_msr";
     private const string ModuleFileName = "IntelMSR.bin";
+    private const string MailboxMutexName = @"Global\Access_Intel_OC_Mailbox";
     private const int MinOffset = -150;
     private const int MaxOffset = 100;
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MailboxTimeout = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan MutexTimeout = TimeSpan.FromSeconds(2);
 
     private readonly ISystemInfo _info;
     private readonly Lock _gate = new();
     private PawnIoSession? _session;
+    private Mutex? _mailboxMutex;
+    private bool _mailboxHeld;
     private CpuTuningStatus? _lastFailure;
     private DateTimeOffset _lastFailureAt = DateTimeOffset.MinValue;
     private bool _probed;
@@ -42,7 +47,7 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
                 return false;
             }
 
-            if (!TryReadMsr(IntelMsrBits.OcMailbox, out var voltage, out error)
+            if (!TryMailboxRead(out var voltage, out error)
                 || !TryReadMsr(IntelMsrBits.TurboRatioLimit, out var turbo, out error))
             {
                 return false;
@@ -60,7 +65,14 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
     {
         if (millivolts is < MinOffset or > MaxOffset)
         {
-            error = $"电压偏移 {millivolts} mV 超出允许范围 {MinOffset}..{MaxOffset}。";
+            error = $"电压偏移 {millivolts} mV 超出输入范围 {MinOffset}..{MaxOffset} mV（软件输入边界，不是固件限制）。";
+            return false;
+        }
+
+        var expected = (int)Math.Round(IntelMsrBits.OffsetCode(millivolts) * 1000.0 / 1024.0, MidpointRounding.AwayFromZero);
+        if (Math.Abs(expected - millivolts) > 2)
+        {
+            error = $"{millivolts} mV 无法用 1/1024 V 步进表示，最接近的是 {expected} mV。";
             return false;
         }
 
@@ -71,37 +83,33 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
                 return false;
             }
 
-            if (!TryReadMsr(IntelMsrBits.OcMailbox, out var current, out error))
+            if (!TryEnterMailbox(out error))
             {
                 return false;
             }
 
-            var encoded = IntelMsrBits.EncodeVoltageOffset(current, millivolts);
-            var expected = IntelMsrBits.DecodeVoltageOffset(encoded);
-            if (Math.Abs(expected - millivolts) > 2)
+            try
             {
-                error = $"{millivolts} mV 无法用 1/1024 V 步进表示，最接近的是 {expected} mV。";
-                return false;
-            }
+                if (!WriteMsr(IntelMsrBits.OcMailbox, IntelMsrBits.BuildWriteCommand(millivolts), out error)
+                    || !WaitMailboxIdle(out error)
+                    || !TryMailboxRead(out var raw, out error))
+                {
+                    return false;
+                }
 
-            if (encoded != current && !WriteMsr(IntelMsrBits.OcMailbox, encoded, out error))
+                var readBack = IntelMsrBits.DecodeVoltageOffset(raw);
+                if (Math.Abs(readBack - expected) > 2)
+                {
+                    error = $"电压偏移回读 {readBack} mV，与写入 {expected} mV 不一致；写入可能被微码忽略（UVP/CFG Lock）。";
+                    return false;
+                }
+
+                return true;
+            }
+            finally
             {
-                return false;
+                ReleaseMailbox();
             }
-
-            if (!TryReadMsr(IntelMsrBits.OcMailbox, out var actual, out error))
-            {
-                return false;
-            }
-
-            var readBack = IntelMsrBits.DecodeVoltageOffset(actual);
-            if (readBack != expected)
-            {
-                error = $"电压偏移回读 {readBack} mV，与写入 {expected} mV 不一致。";
-                return false;
-            }
-
-            return true;
         }
     }
 
@@ -112,6 +120,9 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
             _session?.Dispose();
             _session = null;
             _probed = false;
+            ReleaseMailbox();
+            _mailboxMutex?.Dispose();
+            _mailboxMutex = null;
         }
     }
 
@@ -180,7 +191,7 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
 
         _session = open.Session;
 
-        if (!TryReadMsr(IntelMsrBits.OcMailbox, out _, out error))
+        if (!TryMailboxRead(out _, out error))
         {
             DisposeSession();
             return new CpuTuningStatus(HardwareAvailability.ProbeFailed, error, vendor, _info.CpuName, false, false);
@@ -217,6 +228,95 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
 
         value = output[0];
         return true;
+    }
+
+    /// <summary>邮箱读：先写读命令，等忙位清零，再读同一 MSR 取回数据。</summary>
+    private bool TryMailboxRead(out long value, out string? error)
+    {
+        value = 0;
+        if (!WriteMsr(IntelMsrBits.OcMailbox, IntelMsrBits.BuildReadCommand(), out error)
+            || !WaitMailboxIdle(out error))
+        {
+            return false;
+        }
+
+        return TryReadMsr(IntelMsrBits.OcMailbox, out value, out error);
+    }
+
+    private bool WaitMailboxIdle(out string? error)
+    {
+        error = null;
+        var deadline = Environment.TickCount64 + (long)MailboxTimeout.TotalMilliseconds;
+        while (true)
+        {
+            if (!TryReadMsr(IntelMsrBits.OcMailbox, out var raw, out error))
+            {
+                return false;
+            }
+
+            if (!IntelMsrBits.IsBusy(raw))
+            {
+                return true;
+            }
+
+            if (Environment.TickCount64 >= deadline)
+            {
+                error = $"OC Mailbox 忙位未在 {MailboxTimeout.TotalMilliseconds:0} ms 内清零，邮箱可能被其他工具占用。";
+                return false;
+            }
+
+            Thread.Sleep(1);
+        }
+    }
+
+    private bool TryEnterMailbox(out string? error)
+    {
+        if (_mailboxMutex is null)
+        {
+            try
+            {
+                _mailboxMutex = new Mutex(false, MailboxMutexName);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or WaitHandleCannotBeOpenedException)
+            {
+                error = $"无法创建邮箱互斥锁 {MailboxMutexName}：{ex.Message}";
+                return false;
+            }
+        }
+
+        try
+        {
+            if (!_mailboxMutex.WaitOne(MutexTimeout))
+            {
+                error = $"OC Mailbox 被其他进程占用，未在 {MutexTimeout.TotalSeconds:0} 秒内取得互斥锁。";
+                return false;
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // 上一个持有者退出，互斥锁归当前线程。
+        }
+
+        _mailboxHeld = true;
+        error = null;
+        return true;
+    }
+
+    private void ReleaseMailbox()
+    {
+        if (!_mailboxHeld)
+        {
+            return;
+        }
+
+        _mailboxHeld = false;
+        try
+        {
+            _mailboxMutex?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+        }
     }
 
     private bool WriteMsr(uint msr, long value, out string? error)

@@ -166,6 +166,9 @@ public sealed class FakeIntelTuningProvider : IIntelTuningProvider
         return true;
     }
 
+    /// <summary>模拟微码忽略写入（UVP/CFG Lock）：写入返回成功，但回读保持旧值。</summary>
+    public bool IgnoreVoltageWrites { get; set; }
+
     public bool TryWriteVoltageOffset(int millivolts, out string? error)
     {
         if (millivolts is < -150 or > 100)
@@ -174,7 +177,13 @@ public sealed class FakeIntelTuningProvider : IIntelTuningProvider
             return false;
         }
 
-        _voltage = IntelMsrBits.EncodeVoltageOffset(_voltage, millivolts);
+        if (IgnoreVoltageWrites)
+        {
+            error = null;
+            return true;
+        }
+
+        _voltage = IntelMsrBits.BuildWriteCommand(millivolts);
         error = null;
         return true;
     }
