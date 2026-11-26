@@ -1325,5 +1325,17 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             error = "模拟不支持删除。";
             return false;
         }
+
+        public IReadOnlyList<Guid> EnumerateSubgroups(Guid scheme) => [];
+
+        public IReadOnlyList<Guid> EnumerateSettings(Guid scheme, Guid subGroup) => [];
+
+        public string? ReadDescription(Guid scheme) => null;
+
+        public bool TryWriteDescription(Guid scheme, string description, out string? error)
+        {
+            error = "模拟不支持写说明。";
+            return false;
+        }
     }
 }

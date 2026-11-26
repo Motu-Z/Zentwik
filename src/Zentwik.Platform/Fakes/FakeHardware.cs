@@ -193,6 +193,11 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
 {
     private static readonly Guid Balanced = new("381b4222-f694-41f0-9685-ff5bb260df2e");
     private static readonly Guid HighPerformance = new("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
+    private static readonly Guid PowerSaver = new("a1841308-3541-4fab-bc81-f71556f20b4a");
+    private static readonly Guid UltimatePerformance = new("e9a42b02-d5df-448d-aa00-03f14749eb61");
+
+    /// <summary>内置模板键始终存在于注册表，即使不出现在方案枚举里，因此随时可以拿来派生。</summary>
+    private static readonly HashSet<Guid> TemplateOnly = [PowerSaver, HighPerformance, UltimatePerformance];
 
     private static readonly Guid SubProcessor = new("54533251-82be-4824-96c1-47b60b740d00");
     private static readonly Guid CoreParking = new("0cc5b647-c1df-4637-891a-dec35c318583");
@@ -204,6 +209,9 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
         [HighPerformance] = "高性能（模拟）",
     };
 
+    private readonly Dictionary<Guid, string> _descriptions = new();
+    private readonly HashSet<Guid> _hidden = [];
+
     private Guid _active = Balanced;
     private int _nextCreated;
 
@@ -213,11 +221,24 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
     /// <summary>模拟派生失败（模板不存在或系统拒绝）。</summary>
     public bool DuplicateFails { get; set; }
 
+    /// <summary>
+    /// 模拟「从该模板派生出的方案继承隐藏标记」：派生品拿得到 GUID，
+    /// 但不出现在 <see cref="ListSchemes"/> 里，只有激活那一刻才可见。
+    /// </summary>
+    public HashSet<Guid> HiddenTemplates { get; } = [];
+
+    /// <summary>登记一个取值，用于验证「搬设置」是否真的搬了。</summary>
+    public void SetValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value) =>
+        _values[(scheme, subGroup, setting, ac)] = value;
+
     public PowerSchemeInfo? GetActiveScheme() =>
         new(_active, _schemes.TryGetValue(_active, out var name) ? name : _active.ToString("D"));
 
     public IReadOnlyList<PowerSchemeInfo> ListSchemes() =>
-        _schemes.Select(pair => new PowerSchemeInfo(pair.Key, pair.Value)).ToArray();
+        _schemes
+            .Where(pair => !_hidden.Contains(pair.Key))
+            .Select(pair => new PowerSchemeInfo(pair.Key, pair.Value))
+            .ToArray();
 
     public bool TrySetActiveScheme(Guid scheme, out string? error)
     {
@@ -249,16 +270,57 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
 
     public Guid? DuplicateScheme(Guid template, out string? error)
     {
-        if (DuplicateFails || !_schemes.ContainsKey(template))
+        if (DuplicateFails || (!_schemes.ContainsKey(template) && !TemplateOnly.Contains(template)))
         {
             error = "派生失败。";
             return null;
         }
 
         var created = new Guid($"00000000-0000-0000-0000-{++_nextCreated:D12}");
-        _schemes[created] = _schemes[template] + "（副本）";
+        _schemes[created] = (_schemes.TryGetValue(template, out var templateName) ? templateName : "模板") + "（副本）";
+
+        // 与真实系统一致：派生品继承模板的说明；模板被隐藏时派生品也隐藏。
+        if (_descriptions.TryGetValue(template, out var description))
+        {
+            _descriptions[created] = description;
+        }
+
+        if (HiddenTemplates.Contains(template))
+        {
+            _hidden.Add(created);
+        }
+
         error = null;
         return created;
+    }
+
+    public IReadOnlyList<Guid> EnumerateSubgroups(Guid scheme) =>
+        _values.Keys
+            .Where(key => key.Scheme == scheme)
+            .Select(key => key.Sub)
+            .Distinct()
+            .ToArray();
+
+    public IReadOnlyList<Guid> EnumerateSettings(Guid scheme, Guid subGroup) =>
+        _values.Keys
+            .Where(key => key.Scheme == scheme && key.Sub == subGroup)
+            .Select(key => key.Setting)
+            .Distinct()
+            .ToArray();
+
+    public string? ReadDescription(Guid scheme) => _descriptions.GetValueOrDefault(scheme);
+
+    public bool TryWriteDescription(Guid scheme, string description, out string? error)
+    {
+        if (!_schemes.ContainsKey(scheme))
+        {
+            error = "方案不存在。";
+            return false;
+        }
+
+        _descriptions[scheme] = description;
+        error = null;
+        return true;
     }
 
     public bool RenameScheme(Guid scheme, string name, out string? error)

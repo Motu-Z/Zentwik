@@ -143,6 +143,15 @@ internal static partial class Native
         ref uint bufferSize);
 
     [LibraryImport("powrprof.dll")]
+    internal static partial uint PowerReadDescription(
+        nint rootPowerKey,
+        in Guid schemeGuid,
+        nint subGroupGuid,
+        nint powerSettingGuid,
+        [Out] byte[] buffer,
+        ref uint bufferSize);
+
+    [LibraryImport("powrprof.dll")]
     internal static partial uint PowerReadACValueIndex(
         nint rootPowerKey,
         in Guid schemeGuid,

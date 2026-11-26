@@ -9,6 +9,8 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
     private const uint ErrorMoreData = 234;
     private const uint ErrorNoMoreItems = 259;
     private const uint AccessScheme = 16;
+    private const uint AccessSubGroup = 17;
+    private const uint AccessIndividualSetting = 18;
 
     public PowerSchemeInfo? GetActiveScheme()
     {
@@ -107,32 +109,116 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
         }
     }
 
-    public bool RenameScheme(Guid scheme, string name, out string? error)
-    {
-        // 长度按字节计且含结尾符：少 2 字节会丢最后一个字符，返回值仍是 0。
-        var bytes = Encoding.Unicode.GetByteCount(name) + sizeof(char);
-        var buffer = Marshal.AllocHGlobal(bytes);
-
-        try
-        {
-            var encoded = Encoding.Unicode.GetBytes(name + '\0');
-            Marshal.Copy(encoded, 0, buffer, bytes);
-
-            var result = Native.PowerWriteFriendlyName(0, in scheme, 0, 0, buffer, (uint)bytes);
-            error = result == Native.ErrorSuccess ? null : Describe("PowerWriteFriendlyName", result);
-            return result == Native.ErrorSuccess;
-        }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-        }
-    }
+    public bool RenameScheme(Guid scheme, string name, out string? error) =>
+        WriteText(scheme, name, description: false, out error);
 
     public bool DeleteScheme(Guid scheme, out string? error)
     {
         var result = Native.PowerDeleteScheme(0, in scheme);
         error = result == Native.ErrorSuccess ? null : Describe("PowerDeleteScheme", result);
         return result == Native.ErrorSuccess;
+    }
+
+    public IReadOnlyList<Guid> EnumerateSubgroups(Guid scheme) =>
+        EnumerateGuids(scheme, null, AccessSubGroup);
+
+    public IReadOnlyList<Guid> EnumerateSettings(Guid scheme, Guid subGroup) =>
+        EnumerateGuids(scheme, subGroup, AccessIndividualSetting);
+
+    public string? ReadDescription(Guid scheme)
+    {
+        var buffer = new byte[256];
+        uint size = (uint)buffer.Length;
+        var result = Native.PowerReadDescription(0, in scheme, 0, 0, buffer, ref size);
+
+        if (result == ErrorMoreData && size > buffer.Length)
+        {
+            buffer = new byte[size];
+            size = (uint)buffer.Length;
+            result = Native.PowerReadDescription(0, in scheme, 0, 0, buffer, ref size);
+        }
+
+        if (result != Native.ErrorSuccess || size == 0)
+        {
+            return null;
+        }
+
+        var length = (int)Math.Min(size, (uint)buffer.Length);
+        return Encoding.Unicode.GetString(buffer, 0, length).TrimEnd('\0');
+    }
+
+    public bool TryWriteDescription(Guid scheme, string description, out string? error) =>
+        WriteText(scheme, description, description: true, out error);
+
+    /// <summary>枚举方案或子组下的 GUID 列表。找不到更多项即结束，单项异常不中断整体。</summary>
+    private static IReadOnlyList<Guid> EnumerateGuids(Guid scheme, Guid? subGroup, uint accessor)
+    {
+        var guids = new List<Guid>();
+        var schemePointer = Marshal.AllocHGlobal(16);
+        nint subGroupPointer = 0;
+
+        try
+        {
+            Marshal.StructureToPtr(scheme, schemePointer, false);
+            if (subGroup is not null)
+            {
+                subGroupPointer = Marshal.AllocHGlobal(16);
+                Marshal.StructureToPtr(subGroup.Value, subGroupPointer, false);
+            }
+
+            var buffer = new byte[16];
+            for (uint index = 0; ; index++)
+            {
+                uint size = (uint)buffer.Length;
+                var result = Native.PowerEnumerate(0, schemePointer, subGroupPointer, accessor, index, buffer, ref size);
+                if (result == ErrorNoMoreItems)
+                {
+                    break;
+                }
+
+                if (result != Native.ErrorSuccess || size < 16)
+                {
+                    break;
+                }
+
+                guids.Add(new Guid(buffer.AsSpan(0, 16)));
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(schemePointer);
+            if (subGroupPointer != 0)
+            {
+                Marshal.FreeHGlobal(subGroupPointer);
+            }
+        }
+
+        return guids;
+    }
+
+    /// <summary>写方案名或说明。长度按字节计且含结尾符：少 2 字节会丢最后一个字符，返回值仍是 0。</summary>
+    private static bool WriteText(Guid scheme, string text, bool description, out string? error)
+    {
+        var bytes = Encoding.Unicode.GetByteCount(text) + sizeof(char);
+        var buffer = Marshal.AllocHGlobal(bytes);
+
+        try
+        {
+            var encoded = Encoding.Unicode.GetBytes(text + '\0');
+            Marshal.Copy(encoded, 0, buffer, bytes);
+
+            var result = description
+                ? Native.PowerWriteDescription(0, in scheme, 0, 0, buffer, (uint)bytes)
+                : Native.PowerWriteFriendlyName(0, in scheme, 0, 0, buffer, (uint)bytes);
+
+            var api = description ? "PowerWriteDescription" : "PowerWriteFriendlyName";
+            error = result == Native.ErrorSuccess ? null : Describe(api, result);
+            return result == Native.ErrorSuccess;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
     }
 
     private static string Describe(string api, uint code) => code == 5

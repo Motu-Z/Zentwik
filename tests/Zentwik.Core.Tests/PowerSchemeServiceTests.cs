@@ -102,4 +102,70 @@ public sealed class PowerSchemeServiceTests
 
         Assert.Equal(ErrorCodes.PowerSchemeNameConflict, ex.Code);
     }
+
+    [Fact]
+    public void Create_Keeps_Visible_Result_When_Template_Derives_Normally()
+    {
+        var created = _service.Create(PowerSchemePresets.HighPerformance.Guid, "正常派生");
+
+        Assert.Contains(_service.List(), scheme => scheme.Guid == created.Guid);
+    }
+
+    [Fact]
+    public void Create_Falls_Back_To_Balanced_When_Derived_Scheme_Is_Hidden()
+    {
+        // 模拟笔记本把「平衡」以外的方案标记为隐藏：派生品拿得到 GUID 却不出现在枚举里。
+        _power.HiddenTemplates.Add(PowerSchemePresets.HighPerformance.Guid);
+
+        var created = _service.Create(PowerSchemePresets.HighPerformance.Guid, "隐藏机器上的方案");
+
+        Assert.Contains(_service.List(), scheme => scheme.Guid == created.Guid && scheme.Name == "隐藏机器上的方案");
+    }
+
+    [Fact]
+    public void Create_Copies_Settings_From_Template_When_Falling_Back()
+    {
+        var subGroup = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+        var setting = new Guid("33333333-3333-3333-3333-333333333333");
+        _power.SetValue(PowerSchemePresets.HighPerformance.Guid, subGroup, setting, ac: true, 25);
+        _power.SetValue(PowerSchemePresets.HighPerformance.Guid, subGroup, setting, ac: false, 75);
+        _power.HiddenTemplates.Add(PowerSchemePresets.HighPerformance.Guid);
+
+        var created = _service.Create(PowerSchemePresets.HighPerformance.Guid, "搬设置");
+
+        Assert.True(_power.TryReadValue(created.Guid, subGroup, setting, ac: true, out var ac, out _));
+        Assert.Equal(25u, ac);
+        Assert.True(_power.TryReadValue(created.Guid, subGroup, setting, ac: false, out var dc, out _));
+        Assert.Equal(75u, dc);
+    }
+
+    [Fact]
+    public void Create_Copies_Description_From_Template_When_Falling_Back()
+    {
+        _power.TryWriteDescription(PowerSchemePresets.HighPerformance.Guid, "偏向性能", out _);
+        _power.HiddenTemplates.Add(PowerSchemePresets.HighPerformance.Guid);
+
+        var created = _service.Create(PowerSchemePresets.HighPerformance.Guid, "搬说明");
+
+        Assert.Equal("偏向性能", _power.ReadDescription(created.Guid));
+    }
+
+    [Fact]
+    public void Create_Keeps_Ultimate_Layered_On_Top_Of_High_Performance()
+    {
+        var subGroup = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+        var highOnly = new Guid("11111111-1111-1111-1111-111111111111");
+        var ultimateOwn = new Guid("22222222-2222-2222-2222-222222222222");
+
+        _power.SetValue(PowerSchemePresets.HighPerformance.Guid, subGroup, highOnly, ac: true, 40);
+        _power.SetValue(PowerSchemePresets.UltimatePerformance.Guid, subGroup, ultimateOwn, ac: true, 90);
+        _power.HiddenTemplates.Add(PowerSchemePresets.UltimatePerformance.Guid);
+
+        var created = _service.Create(PowerSchemePresets.UltimatePerformance.Guid, "卓越");
+
+        Assert.True(_power.TryReadValue(created.Guid, subGroup, highOnly, ac: true, out var inherited, out _));
+        Assert.Equal(40u, inherited);
+        Assert.True(_power.TryReadValue(created.Guid, subGroup, ultimateOwn, ac: true, out var own, out _));
+        Assert.Equal(90u, own);
+    }
 }

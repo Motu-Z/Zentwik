@@ -40,6 +40,18 @@ public interface IPowerPolicyService
 
     /// <summary>删除方案。活动方案须由上层先切走；内置方案由上层拒绝。</summary>
     bool DeleteScheme(Guid scheme, out string? error);
+
+    /// <summary>枚举方案下的子组。用于把模板的设置项搬到派生品。</summary>
+    IReadOnlyList<Guid> EnumerateSubgroups(Guid scheme);
+
+    /// <summary>枚举某个子组下的设置项。</summary>
+    IReadOnlyList<Guid> EnumerateSettings(Guid scheme, Guid subGroup);
+
+    /// <summary>读方案说明。返回原始字符串（可能是 <c>@dll,-id,文本</c> 形式的间接引用）。</summary>
+    string? ReadDescription(Guid scheme);
+
+    /// <summary>写方案说明。缓冲区按 UTF-16 字节计且含结尾符。</summary>
+    bool TryWriteDescription(Guid scheme, string description, out string? error);
 }
 
 public enum HardwareAvailability
