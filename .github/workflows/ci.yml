@@ -2,9 +2,9 @@ name: Zentwik Next | Continuous Integration
 
 on:
   push:
-    branches: [next]
+    branches: [feat/ui-redesign]
   pull_request:
-    branches: [next]
+    branches: [feat/ui-redesign]
   workflow_dispatch:
 
 concurrency:
@@ -35,7 +35,7 @@ jobs:
         run: dotnet test Zentwik.slnx --configuration Release --no-build --verbosity normal
 
   cli-aot-probe:
-    name: Publish CLI with Native AOT
+    name: REUI Publish CLI
     runs-on: windows-latest
     needs: build-and-test
 
