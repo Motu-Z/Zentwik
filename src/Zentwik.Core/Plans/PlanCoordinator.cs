@@ -388,9 +388,21 @@ public sealed class PlanCoordinator
                     continue;
                 }
 
-                _power.TryReadValue(schemeId, subGroup, settingId, ac, out var current, out _);
+                var targetName = TargetName(schemeId, subGroup, settingId, ac);
+                if (!_power.TryReadValue(schemeId, subGroup, settingId, ac, out var current, out var readError))
+                {
+                    outcomes.Add(new TargetOutcome(
+                        targetName,
+                        null,
+                        desired.ToString(CultureInfo.InvariantCulture),
+                        null,
+                        LedgerStatus.Skipped,
+                        readError ?? "读取当前电源值失败，未写入。"));
+                    continue;
+                }
+
                 outcomes.Add(ApplyTarget(
-                    TargetName(schemeId, subGroup, settingId, ac),
+                    targetName,
                     plan.Id,
                     source,
                     priority,
@@ -403,12 +415,14 @@ public sealed class PlanCoordinator
             }
         }
 
-        if (outcomes.Any(static outcome => outcome.Status == LedgerStatus.Applied))
+        string? activateError = null;
+        if (outcomes.Any(static outcome => outcome.Status == LedgerStatus.Applied)
+            && !_power.TrySetActiveScheme(schemeId, out var setError))
         {
-            _power.TrySetActiveScheme(schemeId, out _);
+            activateError = setError ?? "重新激活电源方案失败，部分设置可能未立即生效。";
         }
 
-        return (outcomes, null);
+        return (outcomes, activateError);
     }
 
     private (IReadOnlyList<TargetOutcome> Targets, string? Error) ApplyScheduling(
@@ -443,41 +457,63 @@ public sealed class PlanCoordinator
 
                 var affinityTarget = $"sched.{process.ProcessId}.affinity";
                 var priorityTarget = $"sched.{process.ProcessId}.priority";
-                var acquired = false;
 
+                string? maskToApply = null;
                 if (rule.CpuMask is not null)
                 {
-                    acquired |= AcquireForApply(affinityTarget, plan.Id, source, priority, currentMask, rule.CpuMask);
+                    var outcome = _ledger.Acquire(affinityTarget, source, priority, currentMask, rule.CpuMask, plan.Id, OwnerFor(source));
+                    if (outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned)
+                    {
+                        maskToApply = rule.CpuMask;
+                    }
+                    else
+                    {
+                        outcomes.Add(new TargetOutcome(
+                            affinityTarget,
+                            currentMask,
+                            rule.CpuMask,
+                            currentMask,
+                            LedgerStatus.Skipped,
+                            DenialReason(outcome)));
+                    }
                 }
 
+                string? priorityToApply = null;
                 if (rule.Priority is not null)
                 {
-                    acquired |= AcquireForApply(priorityTarget, plan.Id, source, priority, currentPriority, rule.Priority);
+                    var outcome = _ledger.Acquire(priorityTarget, source, priority, currentPriority, rule.Priority, plan.Id, OwnerFor(source));
+                    if (outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned)
+                    {
+                        priorityToApply = rule.Priority;
+                    }
+                    else
+                    {
+                        outcomes.Add(new TargetOutcome(
+                            priorityTarget,
+                            currentPriority,
+                            rule.Priority,
+                            currentPriority,
+                            LedgerStatus.Skipped,
+                            DenialReason(outcome)));
+                    }
                 }
 
-                if (!acquired)
+                if (maskToApply is null && priorityToApply is null)
                 {
-                    outcomes.Add(new TargetOutcome(
-                        $"sched.{process.ProcessId}",
-                        null,
-                        null,
-                        null,
-                        LedgerStatus.Skipped,
-                        "调度目标被用户接管或被更高优先级场景持有。"));
                     continue;
                 }
 
-                if (_scheduler.TryApply(process.ProcessId, rule.CpuMask, rule.Priority, out var applyError))
+                if (_scheduler.TryApply(process.ProcessId, maskToApply, priorityToApply, out var applyError))
                 {
                     _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
 
-                    if (rule.CpuMask is not null)
+                    if (maskToApply is not null)
                     {
                         _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
                         outcomes.Add(OutcomeFromLedger(affinityTarget));
                     }
 
-                    if (rule.Priority is not null)
+                    if (priorityToApply is not null)
                     {
                         _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
                         outcomes.Add(OutcomeFromLedger(priorityTarget));
@@ -485,23 +521,17 @@ public sealed class PlanCoordinator
                 }
                 else
                 {
-                    if (rule.CpuMask is not null)
+                    if (maskToApply is not null)
                     {
                         _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
+                        outcomes.Add(OutcomeFromLedger(affinityTarget));
                     }
 
-                    if (rule.Priority is not null)
+                    if (priorityToApply is not null)
                     {
                         _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
+                        outcomes.Add(OutcomeFromLedger(priorityTarget));
                     }
-
-                    outcomes.Add(new TargetOutcome(
-                        $"sched.{process.ProcessId}",
-                        null,
-                        null,
-                        null,
-                        LedgerStatus.Failed,
-                        applyError ?? "应用失败。"));
                 }
             }
         }
@@ -509,17 +539,12 @@ public sealed class PlanCoordinator
         return (outcomes, outcomes.Count == 0 ? "方案没有调度规则。" : null);
     }
 
-    private bool AcquireForApply(
-        string target,
-        string planId,
-        string source,
-        int priority,
-        string? current,
-        string desired)
+    private static string DenialReason(AcquireOutcome outcome) => outcome switch
     {
-        var outcome = _ledger.Acquire(target, source, priority, current, desired, planId, OwnerFor(source));
-        return outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned;
-    }
+        AcquireOutcome.DeniedUserOwned => "用户已接管。",
+        AcquireOutcome.DeniedLowerPriority => "更高优先级场景持有。",
+        _ => "调度目标不可用。",
+    };
 
     private TargetOutcome ApplyTarget(
         string target,

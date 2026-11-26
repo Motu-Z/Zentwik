@@ -711,7 +711,10 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
             foreach (var entry in entries)
             {
-                Console.WriteLine($"{entry.Owner,-6} {entry.Status,-8} p{entry.Priority,-4} {entry.Target,-40} prev={entry.PreviousValue ?? "-"} desired={entry.DesiredValue ?? "-"} actual={entry.ActualValue ?? "-"} {entry.Failure}");
+                var priorityText = entry.Priority >= int.MaxValue - 1
+                    ? "max"
+                    : entry.Priority.ToString(CultureInfo.InvariantCulture);
+                Console.WriteLine($"{entry.Owner,-6} {entry.Status,-8} p{priorityText,-4} {entry.Target,-40} prev={entry.PreviousValue ?? "-"} desired={entry.DesiredValue ?? "-"} actual={entry.ActualValue ?? "-"} {entry.Failure}");
             }
         }
 

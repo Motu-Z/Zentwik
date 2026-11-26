@@ -47,7 +47,8 @@ public static class ModuleCatalog
                     .Select(id => byId.GetValueOrDefault(id))
                     .Where(static capability => capability is not null)
                     .Select(static capability => capability!.Detail)
-                    .Where(static text => !string.IsNullOrWhiteSpace(text)));
+                    .Where(static text => !string.IsNullOrWhiteSpace(text))
+                    .Distinct(StringComparer.Ordinal));
 
             if (simulated)
             {

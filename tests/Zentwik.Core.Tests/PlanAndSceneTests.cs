@@ -219,6 +219,109 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal("cpu.co.0", Assert.Single(reloaded.Ledger).Target);
     }
 
+    [Fact]
+    public async Task Power_PreRead_Failure_Skips_Without_Writing()
+    {
+        var schemeId = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
+        var settingId = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+        var power = new FailingPowerPolicyService(schemeId) { FailReads = true };
+        var coordinator = new PlanCoordinator(_store, _tuning, power, new FakeProcessScheduler(), _log);
+
+        var plan = new PowerPlan
+        {
+            Id = "power-read-fail",
+            Name = "Power Read Fail",
+            Revision = 1,
+            BaseSchemeGuid = schemeId,
+            Settings = [new PowerSettingEntry { SettingId = settingId.ToString("D"), AcValue = "50" }],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.NotApplied, outcome.State);
+        Assert.Single(outcome.Targets);
+        Assert.Equal(LedgerStatus.Skipped, outcome.Targets[0].Status);
+        Assert.Empty(power.WrittenValues);
+        Assert.Empty(coordinator.Entries);
+    }
+
+    [Fact]
+    public async Task Power_Reactivation_Failure_Reports_Partial_And_Error()
+    {
+        var schemeId = new Guid("381b4222-f694-41f0-9685-ff5bb260df2e");
+        var settingId = new Guid("54533251-82be-4824-96c1-47b60b740d00");
+        var power = new FailingPowerPolicyService(schemeId) { FailSetActiveScheme = true };
+        var coordinator = new PlanCoordinator(_store, _tuning, power, new FakeProcessScheduler(), _log);
+
+        var plan = new PowerPlan
+        {
+            Id = "power-activate-fail",
+            Name = "Power Activate Fail",
+            Revision = 1,
+            BaseSchemeGuid = schemeId,
+            Settings = [new PowerSettingEntry { SettingId = settingId.ToString("D"), AcValue = "80" }],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.NotNull(outcome.Error);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets[0].Status);
+    }
+
+    [Fact]
+    public async Task Scheduling_User_Owned_Field_Is_Not_Overwritten_When_Sibling_Field_Acquired()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(4242, "game"));
+        await _store.UpdateAsync(document => document with
+        {
+            Ledger =
+            [
+                new LedgerEntry
+                {
+                    Target = "sched.4242.affinity",
+                    Source = "user",
+                    Owner = OwnerKind.User,
+                    Priority = int.MaxValue,
+                    Status = LedgerStatus.Applied,
+                    ActualValue = "0x3",
+                    Restorable = false,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                },
+            ],
+            Plans =
+            [
+                new SchedulingPlan
+                {
+                    Id = "sched",
+                    Name = "Sched",
+                    Revision = 1,
+                    Rules = [new SchedulingRule { ProcessMatch = "game", CpuMask = "0xF", Priority = "High" }],
+                    CreatedAt = DateTimeOffset.Now,
+                    UpdatedAt = DateTimeOffset.Now,
+                },
+            ],
+        });
+
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var outcome = await coordinator.ApplyAsync("sched", "scene:game", 10);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        var applied = Assert.Single(scheduler.Applied);
+        Assert.Equal(4242, applied.ProcessId);
+        Assert.Null(applied.CpuMask);
+        Assert.Equal("High", applied.Priority);
+        Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(t => t.Target == "sched.4242.affinity").Status);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "sched.4242.priority").Status);
+        Assert.Equal(OwnerKind.User, coordinator.Entries.Single(e => e.Target == "sched.4242.affinity").Owner);
+    }
+
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
@@ -314,6 +417,55 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
 
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class FailingPowerPolicyService(Guid activeScheme) : IPowerPolicyService
+    {
+        private readonly Dictionary<(Guid Scheme, Guid Sub, Guid Setting, bool Ac), uint> _values = new();
+
+        public bool FailReads { get; set; }
+
+        public bool FailSetActiveScheme { get; set; }
+
+        public List<(Guid Scheme, Guid SubGroup, Guid Setting, bool Ac, uint Value)> WrittenValues { get; } = [];
+
+        public PowerSchemeInfo? GetActiveScheme() => new(activeScheme, "Balanced");
+
+        public IReadOnlyList<PowerSchemeInfo> ListSchemes() => [new(activeScheme, "Balanced")];
+
+        public bool TrySetActiveScheme(Guid scheme, out string? error)
+        {
+            if (FailSetActiveScheme)
+            {
+                error = "模拟激活电源方案失败。";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        public bool TryReadValue(Guid scheme, Guid subGroup, Guid setting, bool ac, out uint value, out string? error)
+        {
+            if (FailReads)
+            {
+                value = 0;
+                error = "模拟读取电源值失败。";
+                return false;
+            }
+
+            value = _values.GetValueOrDefault((scheme, subGroup, setting, ac));
+            error = null;
+            return true;
+        }
+
+        public bool TryWriteValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value, out string? error)
+        {
+            WrittenValues.Add((scheme, subGroup, setting, ac, value));
+            _values[(scheme, subGroup, setting, ac)] = value;
+            error = null;
+            return true;
         }
     }
 }
