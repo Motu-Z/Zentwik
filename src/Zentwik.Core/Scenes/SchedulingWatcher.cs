@@ -6,8 +6,15 @@ namespace Zentwik.Core.Scenes;
 /// <summary>
 /// 场景评估与进程调度持续监控的生命周期管理：支持启动、停止、释放，以及配置变更时立即唤醒。
 /// </summary>
+/// <remarks>
+/// 轮询间隔按「有没有活要干」自适应：没有自动场景、账本里也没有要维持的记录时降频。
+/// 后台定时器空转是旧版付出过代价的坑，无事可做还每两秒枚举一遍进程属于纯浪费。
+/// </remarks>
 public sealed class SchedulingWatcher : IAsyncDisposable
 {
+    /// <summary>无事可做时的轮询间隔。仍保留轮询，避免漏掉外部改动后无法自愈。</summary>
+    private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(20);
+
     private readonly SceneEngine _scenes;
     private readonly PlanCoordinator _plans;
     private readonly DiagnosticLog _log;
@@ -126,12 +133,25 @@ public sealed class SchedulingWatcher : IAsyncDisposable
 
             try
             {
-                await _signal.WaitAsync(_interval, ct).ConfigureAwait(false);
+                await _signal.WaitAsync(NextDelay(), ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>本轮结束后该等多久：有自动场景或有要维持的账本时用正常间隔，否则降频。</summary>
+    private TimeSpan NextDelay()
+    {
+        try
+        {
+            return _scenes.HasAutoScenes || _plans.HasHeldEntries ? _interval : IdleInterval;
+        }
+        catch (ObjectDisposedException)
+        {
+            return IdleInterval;
         }
     }
 

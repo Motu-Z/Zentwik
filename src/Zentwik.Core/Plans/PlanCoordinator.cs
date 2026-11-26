@@ -44,6 +44,9 @@ public sealed class PlanCoordinator
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HashSet<string> _cpuSetsWarned = new(StringComparer.Ordinal);
 
+    // 上次漂移检查的时刻（Environment.TickCount64），用于让轮询方按自己的节奏调用而不必各自计时。
+    private long _driftCheckedAt = long.MinValue / 2;
+
     public PlanCoordinator(
         StateStore store,
         ICpuTuningProvider tuning,
@@ -64,6 +67,25 @@ public sealed class PlanCoordinator
     }
 
     public StateLedger Ledger => _ledger;
+
+    /// <summary>
+    /// 账本里是否还有需要维持的记录。为空表示当前没有要守住的状态，持续轮询可以降频。
+    /// </summary>
+    public bool HasHeldEntries
+    {
+        get
+        {
+            foreach (var entry in _ledger.Entries)
+            {
+                if (StateLedger.IsHeld(entry))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 
     public IReadOnlyList<LedgerEntry> Entries => [.. _ledger.Entries.OrderBy(static entry => entry.Target, StringComparer.Ordinal)];
 
@@ -335,8 +357,29 @@ public sealed class PlanCoordinator
         return (null, "未知目标类型。");
     }
 
-    public async Task<IReadOnlyList<string>> DetectDriftAsync(CancellationToken ct = default)
+    /// <summary>
+    /// 核对账本记录的实际值与期望值，发现外部改动即标记为用户接管。
+    /// </summary>
+    /// <param name="minInterval">
+    /// 最小检查间隔。传入正数时节流，未到期直接返回；<c>null</c> 表示每次调用都检查。
+    /// 轮询方应传入间隔：核对 CPU 偏移要逐核读固件，一笔账本就会触发全部核心读取，
+    /// 与场景评估同频（2 秒）等于持续空转烧 CPU。
+    /// </param>
+    public async Task<IReadOnlyList<string>> DetectDriftAsync(
+        CancellationToken ct = default,
+        TimeSpan? minInterval = null)
     {
+        if (minInterval is { } interval && interval > TimeSpan.Zero)
+        {
+            var now = Environment.TickCount64;
+            if (now - Volatile.Read(ref _driftCheckedAt) < (long)interval.TotalMilliseconds)
+            {
+                return [];
+            }
+
+            Volatile.Write(ref _driftCheckedAt, now);
+        }
+
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {

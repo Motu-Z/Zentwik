@@ -23,6 +23,12 @@ public sealed class SceneEngine
 {
     private static readonly TimeSpan BootTolerance = TimeSpan.FromMinutes(2);
 
+    /// <summary>
+    /// 漂移核对的独立周期。核对 CPU 偏移要逐核读固件，一笔 CO 账本就会触发全部核心读取；
+    /// 硬件值不会在两秒内自己变化，跟场景评估同频只是白白占用 CPU。
+    /// </summary>
+    private static readonly TimeSpan DriftInterval = TimeSpan.FromSeconds(30);
+
     private readonly StateStore _store;
     private readonly PlanCoordinator _plans;
     private readonly IProcessScheduler _scheduler;
@@ -31,6 +37,15 @@ public sealed class SceneEngine
     private readonly IBootInfo _boot;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _firstMatch = new(StringComparer.Ordinal);
+
+    // 上一拍各进程是否在跑。用来把「此刻在不在」变成「刚刚退出」，首拍只记录不触发。
+    private readonly Dictionary<string, bool> _lastProcessSeen = new(StringComparer.OrdinalIgnoreCase);
+
+    // 本拍刚退出的进程名，每拍重算一次，供 triggers 复用。
+    private readonly HashSet<string> _exitFired = new(StringComparer.OrdinalIgnoreCase);
+
+    // 退出类场景命中后保持生效，直到被接管、手动停用或场景失效。
+    private readonly HashSet<string> _latched = new(StringComparer.Ordinal);
 
     private string? _activeSceneId;
 
@@ -52,6 +67,26 @@ public sealed class SceneEngine
 
     public string? ActiveSceneId => Volatile.Read(ref _activeSceneId);
 
+    /// <summary>
+    /// 是否存在需要持续评估的自动场景。只有手动场景时评估循环无事可做，
+    /// 轮询方据此降频；配置变更仍会立即唤醒。
+    /// </summary>
+    public bool HasAutoScenes
+    {
+        get
+        {
+            foreach (var scene in _store.Current.Scenes)
+            {
+                if (scene.Enabled && !scene.IsManualOnly)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     public event Action<SceneActivation>? Changed;
 
     public async Task EvaluateAsync(CancellationToken ct = default)
@@ -59,12 +94,32 @@ public sealed class SceneEngine
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            RefreshExitFired();
+
             var now = DateTimeOffset.UtcNow;
             var candidates = new List<SceneCandidate>();
+            var liveIds = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var scene in _store.Current.Scenes)
             {
-                if (!scene.Enabled || scene.IsManualOnly || !TriggersMatch(scene))
+                liveIds.Add(scene.Id);
+
+                if (!scene.Enabled)
+                {
+                    _latched.Remove(scene.Id);
+                    _firstMatch.Remove(scene.Id);
+                    continue;
+                }
+
+                if (scene.IsManualOnly)
+                {
+                    _firstMatch.Remove(scene.Id);
+                    continue;
+                }
+
+                // 退出类场景命中后保持生效：下一拍「刚退出」必然不成立，
+                // 若按持续条件处理会当场回退，等于白切一次。
+                if (!_latched.Contains(scene.Id) && !TriggersMatch(scene))
                 {
                     _firstMatch.Remove(scene.Id);
                     continue;
@@ -79,6 +134,11 @@ public sealed class SceneEngine
                 candidates.Add(new SceneCandidate(scene.Id, scene.Priority, since));
             }
 
+            if (_latched.Count > 0)
+            {
+                _latched.RemoveWhere(id => !liveIds.Contains(id));
+            }
+
             var winner = SceneArbitration.Winner(candidates);
             if (winner is null)
             {
@@ -90,9 +150,18 @@ public sealed class SceneEngine
                 return;
             }
 
+            foreach (var scene in _store.Current.Scenes)
+            {
+                if (string.Equals(scene.Id, winner.SceneId, StringComparison.Ordinal) && HasExitTrigger(scene))
+                {
+                    _latched.Add(scene.Id);
+                    break;
+                }
+            }
+
             if (string.Equals(winner.SceneId, ActiveSceneId, StringComparison.Ordinal))
             {
-                await _plans.DetectDriftAsync(ct).ConfigureAwait(false);
+                await _plans.DetectDriftAsync(ct, DriftInterval).ConfigureAwait(false);
                 return;
             }
 
@@ -103,6 +172,69 @@ public sealed class SceneEngine
             _gate.Release();
         }
     }
+
+    /// <summary>
+    /// 重算「本拍刚退出」的进程名。只查配置里出现过的进程名：全量枚举系统进程没必要，
+    /// 而 <see cref="IProcessScheduler.Find"/> 自带短周期快照，同轮重复查询不会重复枚举。
+    /// </summary>
+    private void RefreshExitFired()
+    {
+        _exitFired.Clear();
+
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var scene in _store.Current.Scenes)
+        {
+            if (!scene.Enabled)
+            {
+                continue;
+            }
+
+            foreach (var trigger in scene.Triggers)
+            {
+                if (string.Equals(trigger.Kind, SceneTriggerKinds.ProcessExited, StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(trigger.Argument))
+                {
+                    // 原样保存参数：进程名归一化由调度器负责，这里不做二次加工。
+                    names.Add(trigger.Argument);
+                }
+            }
+        }
+
+        if (names.Count == 0)
+        {
+            if (_lastProcessSeen.Count > 0)
+            {
+                _lastProcessSeen.Clear();
+            }
+
+            return;
+        }
+
+        foreach (var name in names)
+        {
+            var running = _scheduler.Find(name).Count > 0;
+
+            // 首拍没有上一拍：服务启动前就退出的进程不该补一次动作，只记录状态。
+            if (_lastProcessSeen.TryGetValue(name, out var wasRunning) && wasRunning && !running)
+            {
+                _exitFired.Add(name);
+            }
+
+            _lastProcessSeen[name] = running;
+        }
+
+        if (_lastProcessSeen.Count > names.Count)
+        {
+            foreach (var stale in _lastProcessSeen.Keys.Where(key => !names.Contains(key)).ToArray())
+            {
+                _lastProcessSeen.Remove(stale);
+            }
+        }
+    }
+
+    private static bool HasExitTrigger(Scene scene) =>
+        scene.Triggers.Any(static trigger =>
+            string.Equals(trigger.Kind, SceneTriggerKinds.ProcessExited, StringComparison.Ordinal));
 
     public async Task<SceneActivation> ActivateAsync(string sceneId, CancellationToken ct = default)
     {
@@ -164,6 +296,10 @@ public sealed class SceneEngine
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // 手动停用是对「保持生效」的明确否定：退出类场景的闩锁一并解除，
+            // 否则下一拍它仍会凭旧闩锁重新胜出，用户的停用等于没做。
+            _latched.Clear();
+
             return ActiveSceneId is null
                 ? null
                 : await DeactivateCoreAsync("手动停用", ct).ConfigureAwait(false);
@@ -356,6 +492,18 @@ public sealed class SceneEngine
                     nonManual++;
                     var name = trigger.Argument;
                     if (string.IsNullOrWhiteSpace(name) || _scheduler.Find(name).Count == 0)
+                    {
+                        return false;
+                    }
+
+                    break;
+                }
+
+                case SceneTriggerKinds.ProcessExited:
+                {
+                    nonManual++;
+                    var name = trigger.Argument;
+                    if (string.IsNullOrWhiteSpace(name) || !_exitFired.Contains(name))
                     {
                         return false;
                     }

@@ -767,7 +767,10 @@ internal sealed class AgentSession : IAsyncDisposable
 
         foreach (var trigger in scene.Triggers)
         {
-            if (trigger.Kind is not (SceneTriggerKinds.Manual or SceneTriggerKinds.Process or SceneTriggerKinds.PowerSource))
+            if (trigger.Kind is not (SceneTriggerKinds.Manual
+                or SceneTriggerKinds.Process
+                or SceneTriggerKinds.ProcessExited
+                or SceneTriggerKinds.PowerSource))
             {
                 throw new CoreException(ErrorCodes.SceneInvalid, $"未知触发类型：{trigger.Kind}。");
             }
@@ -775,6 +778,12 @@ internal sealed class AgentSession : IAsyncDisposable
             if (trigger.Kind == SceneTriggerKinds.PowerSource && trigger.Argument is not ("ac" or "dc"))
             {
                 throw new CoreException(ErrorCodes.SceneInvalid, "电源触发参数必须是 ac 或 dc。");
+            }
+
+            if (trigger.Kind is SceneTriggerKinds.Process or SceneTriggerKinds.ProcessExited
+                && string.IsNullOrWhiteSpace(trigger.Argument))
+            {
+                throw new CoreException(ErrorCodes.SceneInvalid, $"{trigger.Kind} 触发必须指定进程名。");
             }
         }
 

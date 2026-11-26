@@ -8,6 +8,10 @@ public sealed class DiagnosticLog : IDisposable
 {
     private const long MaxFileBytes = 8 * 1024 * 1024;
     private const int RecentCapacity = 200;
+    private const string LevelInfo = "info";
+
+    /// <summary>info 日志攒够这么多行刷一次盘；崩溃最多丢这么多行，换来不做逐行系统调用。</summary>
+    private const int FlushThreshold = 32;
 
     private readonly string _directory;
     private readonly Lock _gate = new();
@@ -15,6 +19,7 @@ public sealed class DiagnosticLog : IDisposable
     private readonly Queue<LogEntryDto> _recent = new(RecentCapacity);
     private StreamWriter? _writer;
     private DateOnly _currentDay;
+    private int _unflushed;
     private int _disposed;
 
     public DiagnosticLog(string dataDirectory, bool echoToConsole = true)
@@ -78,7 +83,14 @@ public sealed class DiagnosticLog : IDisposable
             {
                 EnsureWriter();
                 _writer?.WriteLine(line);
-                _writer?.Flush();
+
+                // 警告与错误立即落盘（出问题时最需要它们）；info 攒批再刷。
+                // 每行都 Flush 等于每行一次系统调用，高频日志会把磁盘当水管用。
+                if (!string.Equals(level, LevelInfo, StringComparison.Ordinal) || ++_unflushed >= FlushThreshold)
+                {
+                    _writer?.Flush();
+                    _unflushed = 0;
+                }
             }
             catch (IOException)
             {
@@ -103,6 +115,7 @@ public sealed class DiagnosticLog : IDisposable
         }
 
         _writer?.Dispose();
+        _unflushed = 0;
         _currentDay = today;
         var path = Path.Combine(_directory, $"agent-{today:yyyyMMdd}.log");
         var info = new FileInfo(path);

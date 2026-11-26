@@ -3,7 +3,17 @@ namespace Zentwik.Domain.Scenes;
 public static class SceneTriggerKinds
 {
     public const string Manual = "manual";
+
+    /// <summary>参数为进程名；进程在运行即为命中，属于持续条件。</summary>
     public const string Process = "process";
+
+    /// <summary>
+    /// 参数为进程名；只在该进程退出的那一拍命中，属于边沿条件。
+    /// 命中后场景保持生效，不因条件不再成立而自动回退 —— 它表达的是「这次退出之后切到这里」。
+    /// </summary>
+    public const string ProcessExited = "processExited";
+
+    /// <summary>参数为 ac 或 dc。</summary>
     public const string PowerSource = "powerSource";
 }
 
@@ -17,7 +27,7 @@ public sealed record SceneTrigger
 {
     public required string Kind { get; init; }
 
-    // process：进程名；powerSource：ac 或 dc；manual：忽略。
+    // process / processExited：进程名；powerSource：ac 或 dc；manual：忽略。
     public string? Argument { get; init; }
 }
 

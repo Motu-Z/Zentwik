@@ -1291,6 +1291,99 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// 退出触发只在退出的那一拍成立：靠比对相邻两拍的进程名单得出。
+    /// 命中后场景保持生效，否则下一拍条件必然不成立，会被当场回退，等于白切一次。
+    /// </summary>
+    [Fact]
+    public async Task Scene_With_Exit_Trigger_Fires_Once_And_Stays_Active()
+    {
+        var scheduler = new FakeProcessScheduler();
+        scheduler.AddProcess(new ProcessTarget(4242, "game.exe"));
+        var plans = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, plans, scheduler, _powerStatus, _log);
+
+        await SeedSchedulingSceneAsync("exit-scene", new SceneTrigger
+        {
+            Kind = SceneTriggerKinds.ProcessExited,
+            Argument = "game.exe",
+        });
+
+        // 第一拍只有「在跑」，退出条件不成立。
+        await scenes.EvaluateAsync();
+        Assert.Null(scenes.ActiveSceneId);
+
+        scheduler.RemoveProcess(4242);
+        await scenes.EvaluateAsync();
+        Assert.Equal("exit-scene", scenes.ActiveSceneId);
+
+        // 条件已不再成立，但这次触发带来的场景要留住。
+        await scenes.EvaluateAsync();
+        Assert.Equal("exit-scene", scenes.ActiveSceneId);
+
+        // 手动停用是对「保持生效」的否定，下一拍不得凭旧状态重新胜出。
+        await scenes.DeactivateAsync();
+        await scenes.EvaluateAsync();
+        Assert.Null(scenes.ActiveSceneId);
+    }
+
+    /// <summary>服务启动时进程已经不在，不能补一次「退出」动作。</summary>
+    [Fact]
+    public async Task Exit_Trigger_Does_Not_Fire_When_Process_Was_Already_Gone()
+    {
+        var scheduler = new FakeProcessScheduler();
+        var plans = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, plans, scheduler, _powerStatus, _log);
+
+        await SeedSchedulingSceneAsync("gone-scene", new SceneTrigger
+        {
+            Kind = SceneTriggerKinds.ProcessExited,
+            Argument = "never-started.exe",
+        });
+
+        await scenes.EvaluateAsync();
+        await scenes.EvaluateAsync();
+
+        Assert.Null(scenes.ActiveSceneId);
+    }
+
+    private async Task SeedSchedulingSceneAsync(string sceneId, SceneTrigger trigger)
+    {
+        var plan = new SchedulingPlan
+        {
+            Id = sceneId + "-plan",
+            Name = "Exit Plan",
+            Revision = 1,
+            Rules =
+            [
+                new SchedulingRule
+                {
+                    ProcessMatch = "game.exe",
+                    CpuMask = "0xF",
+                    Priority = "BelowNormal",
+                    Enforce = true,
+                },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+
+        var scene = new Scene
+        {
+            Id = sceneId,
+            Name = "Exit Scene",
+            Priority = 10,
+            Triggers = [trigger],
+            Actions = [new SceneAction { PlanId = plan.Id }],
+        };
+
+        await _store.UpdateAsync(document => document with
+        {
+            Plans = [.. document.Plans, plan],
+            Scenes = [.. document.Scenes, scene],
+        });
+    }
+
     private sealed class FailingPowerPolicyService(Guid activeScheme) : IPowerPolicyService
     {
         private readonly Dictionary<(Guid Scheme, Guid Sub, Guid Setting, bool Ac), uint> _values = new();

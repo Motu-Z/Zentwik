@@ -34,6 +34,14 @@ public static class Help
                       delete <id>                 删除场景
                       save --file <path|->        从 JSON 保存场景
                       create --id <id> --name <name> --plan ID ... [--priority N] [--trigger 类型[:参数] ...]
+
+                    触发类型
+                      process:<进程名>           该进程正在运行时生效
+                      processExited:<进程名>     该进程退出那一刻切换过去，之后保持（不自动回退）
+                      powerSource:ac|dc          交流或电池供电时生效
+                      manual                     只能手动激活
+
+                    多个 --trigger 同时给出时须全部成立；不给则按 manual。
                     """);
                 break;
             case "monitor":

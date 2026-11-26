@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 197 个用例
+dotnet test  Zentwik.slnx          # 199 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
@@ -66,7 +66,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `monitor [--count N] [--interval MS]` | CPU/内存持续采样 |
 | `tuning` | AMD：通道状态与逐核 CO 偏移；`--intel`：电压偏移与睿频上限 |
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
-| `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理与手动执行 |
+| `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理。自动触发四类：进程运行、进程退出、交流供电、电池供电；进程退出属于一次性切换，触发后保持不自动回退 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |
 | `power list\|create\|rename\|delete\|backup\|backups\|restore` | Windows 电源方案：列出/派生/改名/删除/备份/恢复。内置拒删、活动方案先切走；删除默认先备份，`--no-backup` 可跳过。列表含不可见的系统模板，带 `hidden` 标记——它们同样可改名、可删除、可作模板 |
 | `settings` | 读取或修改语言、主题、强调色、缩放 |
