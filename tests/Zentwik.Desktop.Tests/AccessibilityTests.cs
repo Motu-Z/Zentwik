@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -33,7 +34,14 @@ public sealed class AccessibilityTests
                            ?? new FrameworkElementAutomationPeer(element);
                 if (string.IsNullOrWhiteSpace(peer.GetName()))
                 {
-                    missing.Add($"{element.GetType().Name}({element.Name})");
+                    var parent = VisualTreeHelper.GetParent(element);
+                    var templatedParent = element.TemplatedParent;
+                    var autoName = AutomationProperties.GetName(element);
+                    var content = (element as ContentControl)?.Content;
+                    missing.Add(
+                        $"{element.GetType().Name}({element.Name}) " +
+                        $"[Parent={parent?.GetType().Name}, TemplatedParent={templatedParent?.GetType().Name}, " +
+                        $"AutoName='{autoName}', Content='{content}', Visible={element.IsVisible}, Loaded={element.IsLoaded}]");
                 }
             }
 
