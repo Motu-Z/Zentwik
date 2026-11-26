@@ -610,6 +610,11 @@ internal sealed class AgentSession : IAsyncDisposable
                     }
                 }
 
+                if (cpu.FMaxLimitMhz is { } fmax && fmax is < 1000 or > 7000)
+                {
+                    throw new CoreException(ErrorCodes.PlanInvalid, $"FMax 频率 {fmax} MHz 超出有效范围 [1000, 7000]。");
+                }
+
                 break;
             }
 

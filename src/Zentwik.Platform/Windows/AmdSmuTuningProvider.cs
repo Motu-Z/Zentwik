@@ -8,7 +8,7 @@ namespace Zentwik.Platform.Windows;
 /// AMD Curve Optimizer 通道。命令族按 CPU family/model 选择，写入后必须回读一致才算成功；
 /// 只读失败不会伪造数据，写入失败不回退到「假定成功」。
 /// </summary>
-public sealed class AmdSmuTuningProvider : ICpuTuningProvider
+public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider
 {
     private const uint MessageTest = 0x01;
     private const string FunctionSendCommand = "ioctl_send_smu_command";
@@ -124,6 +124,79 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         }
     }
 
+    public bool TryReadFMax(out int limitMhz, out string? error)
+    {
+        limitMhz = 0;
+        lock (_gate)
+        {
+            var status = EnsureSession(out error);
+            if (status.Availability != HardwareAvailability.Available || _session is null)
+            {
+                return false;
+            }
+
+            if (_commands.GetFMax == 0)
+            {
+                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 未配置 FMax 读取命令。";
+                return false;
+            }
+
+            var result = new long[MaxArgs];
+            if (!TrySend(_commands.GetFMax, [0], result, out error))
+            {
+                return false;
+            }
+
+            limitMhz = (int)(result[0] & 0xFFFF_FFFFL);
+            return true;
+        }
+    }
+
+    public bool TryWriteFMax(int limitMhz, out string? error)
+    {
+        if (limitMhz is < 1000 or > 7000)
+        {
+            error = $"FMax 频率 {limitMhz} MHz 超出有效范围 [1000, 7000]。";
+            return false;
+        }
+
+        lock (_gate)
+        {
+            var status = EnsureSession(out error);
+            if (status.Availability != HardwareAvailability.Available || _session is null)
+            {
+                return false;
+            }
+
+            if (_commands.SetFMax == 0)
+            {
+                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 未配置 FMax 写入命令（GetBoostLimitFrequency=0x{_commands.GetFMax:X2} 可读），不能将未配置视为硬件不支持。";
+                return false;
+            }
+
+            var scratch = new long[MaxArgs];
+            if (!TrySend(_commands.SetFMax, [limitMhz], scratch, out error))
+            {
+                return false;
+            }
+
+            Array.Clear(scratch);
+            if (!TrySend(_commands.GetFMax, [0], scratch, out error))
+            {
+                return false;
+            }
+
+            var actual = (int)(scratch[0] & 0xFFFF_FFFFL);
+            if (actual != limitMhz)
+            {
+                error = $"FMax 回读 {actual} MHz，与写入 {limitMhz} MHz 不一致。";
+                return false;
+            }
+
+            return true;
+        }
+    }
+
     public void Dispose()
     {
         lock (_gate)
@@ -194,7 +267,6 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         if (modulePath is null)
         {
             var detail = $"未找到 PawnIO 模块，已查找：{searched}。可用 ZENTWIK_PAWNIO_MODULE 指定。";
-            error = detail;
             return new CpuTuningStatus(HardwareAvailability.ModuleMissing, detail, vendor, PlatformName(family, model), true, false);
         }
 
@@ -226,10 +298,10 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         }
 
         _coreMap = ResolveCoreMap(family, out error);
-        if (!_coreMap.IsUsable)
+        if (_coreMap.Cores.Count == 0)
         {
             DisposeSession();
-            return new CpuTuningStatus(HardwareAvailability.Rejected, error ?? _coreMap.Detail, vendor, PlatformName(family, model), true, false);
+            return new CpuTuningStatus(HardwareAvailability.Rejected, error, vendor, PlatformName(family, model), true, false);
         }
 
         if (!ProbeCoreReads(out error))
@@ -242,10 +314,6 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         return Available();
     }
 
-    /// <summary>
-    /// 映射优先取 APOB 固件表（由 ZENTWIK_APOB_TABLE 提供），否则由 CPUID 核号与 L3 缓存域推导。
-    /// 两种来源都要求通过校验；都不可用时返回不可用，不退回按序号推算。
-    /// </summary>
     private AmdCoreMap ResolveCoreMap(uint family, out string? error)
     {
         error = null;
@@ -395,15 +463,15 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         switch (family)
         {
             case 0x17:
-                commands = new CoCommands(family, model, 0x0A, 0x7C);
+                commands = new CoCommands(family, model, 0x0A, 0x7C, SetFMax: 0x00, GetFMax: 0x6E);
                 return true;
             case 0x19:
                 commands = model is 0x61 or 0x74 or 0x78
-                    ? new CoCommands(family, model, 0x06, 0xD5)
-                    : new CoCommands(family, model, 0x0A, 0x7C);
+                    ? new CoCommands(family, model, 0x06, 0xD5, SetFMax: 0x70, GetFMax: 0x6E)
+                    : new CoCommands(family, model, 0x0A, 0x7C, SetFMax: 0x00, GetFMax: 0x6E);
                 return true;
             case 0x1A:
-                commands = new CoCommands(family, model, 0x06, 0xD5);
+                commands = new CoCommands(family, model, 0x06, 0xD5, SetFMax: 0x70, GetFMax: 0x6E);
                 return true;
             default:
                 commands = default;
@@ -427,5 +495,5 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider
         _coreMap = AmdCoreMap.Empty;
     }
 
-    private readonly record struct CoCommands(uint Family, uint Model, uint Set, uint Get);
+    private readonly record struct CoCommands(uint Family, uint Model, uint Set, uint Get, uint SetFMax, uint GetFMax);
 }

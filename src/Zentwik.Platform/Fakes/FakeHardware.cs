@@ -5,7 +5,7 @@ using Zentwik.Platform.Windows;
 namespace Zentwik.Platform.Fakes;
 
 /// <summary>仅用于开发与测试：不接触硬件，所有结果必须标记为模拟。</summary>
-public sealed class FakeCpuTuningProvider : ICpuTuningProvider
+public sealed class FakeCpuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider
 {
     private readonly Dictionary<int, int> _offsets = new();
 
@@ -65,6 +65,43 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider
         }
 
         _offsets[core] = offset;
+        error = null;
+        return true;
+    }
+
+    /// <summary>模拟 FMax（MHz）与是否配置 FMax 写入命令。</summary>
+    public int FMaxMhz { get; set; } = 5700;
+
+    public bool FMaxWriteSupported { get; set; } = true;
+
+    public bool TryReadFMax(out int limitMhz, out string? error)
+    {
+        limitMhz = FMaxMhz;
+        error = null;
+        return true;
+    }
+
+    public bool TryWriteFMax(int limitMhz, out string? error)
+    {
+        if (FailWrites)
+        {
+            error = "模拟写入失败。";
+            return false;
+        }
+
+        if (!FMaxWriteSupported)
+        {
+            error = "当前平台未配置 FMax 写入命令，不能将未配置视为硬件不支持。";
+            return false;
+        }
+
+        if (limitMhz is < 1000 or > 7000)
+        {
+            error = $"FMax 频率 {limitMhz} MHz 超出有效范围 [1000, 7000]。";
+            return false;
+        }
+
+        FMaxMhz = limitMhz;
         error = null;
         return true;
     }
