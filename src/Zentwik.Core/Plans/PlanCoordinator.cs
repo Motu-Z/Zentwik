@@ -41,6 +41,7 @@ public sealed class PlanCoordinator
     private readonly DiagnosticLog _log;
     private readonly StateLedger _ledger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly HashSet<string> _cpuSetsWarned = new(StringComparer.Ordinal);
 
     public PlanCoordinator(
         StateStore store,
@@ -394,6 +395,15 @@ public sealed class PlanCoordinator
                         normalizedCpuSets = norm;
                     }
 
+                    if (rule.CpuSets is not null && normalizedCpuSets is null)
+                    {
+                        WarnCpuSetsUnavailable(schedPlan.Id, cpuSetsSupported);
+                    }
+                    else if (normalizedCpuSets is not null)
+                    {
+                        _cpuSetsWarned.Remove(schedPlan.Id);
+                    }
+
                     var processes = _scheduler.Find(rule.ProcessMatch);
                     foreach (var process in processes)
                     {
@@ -424,37 +434,31 @@ public sealed class PlanCoordinator
                             rule.Priority,
                             ref changed);
 
-                        if (needMask || needPriority)
+                        if (needMask)
                         {
-                            if (_scheduler.TryApply(
-                                process.ProcessId,
-                                needMask ? rule.CpuMask : null,
-                                needPriority ? rule.Priority : null,
-                                out var applyError))
+                            if (_scheduler.TryApply(process.ProcessId, rule.CpuMask, null, out var applyError))
                             {
-                                _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
-
-                                if (needMask)
-                                {
-                                    _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
-                                }
-
-                                if (needPriority)
-                                {
-                                    _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
-                                }
+                                _scheduler.TryRead(process.ProcessId, out var actualMask, out _, out _);
+                                _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
                             }
                             else
                             {
-                                if (needMask)
-                                {
-                                    _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
-                                }
+                                _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
+                            }
 
-                                if (needPriority)
-                                {
-                                    _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
-                                }
+                            changed = true;
+                        }
+
+                        if (needPriority)
+                        {
+                            if (_scheduler.TryApply(process.ProcessId, null, rule.Priority, out var applyError))
+                            {
+                                _scheduler.TryRead(process.ProcessId, out _, out var actualPriority, out _);
+                                _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                            }
+                            else
+                            {
+                                _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
                             }
 
                             changed = true;
@@ -501,6 +505,21 @@ public sealed class PlanCoordinator
         {
             _gate.Release();
         }
+    }
+
+    private void WarnCpuSetsUnavailable(string planId, bool supported)
+    {
+        lock (_cpuSetsWarned)
+        {
+            if (!_cpuSetsWarned.Add(planId))
+            {
+                return;
+            }
+        }
+
+        _log.Warn(supported
+            ? $"方案 {planId} 的 CPU Sets 规则无法解析，持续执行时跳过该字段。"
+            : $"方案 {planId} 的 CPU Sets 规则在当前系统不可用，持续执行时跳过该字段（亲和性与优先级不受影响）。");
     }
 
     private bool PrepareEnforceField(
@@ -760,6 +779,7 @@ public sealed class PlanCoordinator
             }
             else
             {
+                var writeResult = FMaxWriteResult.Failed;
                 var outcome = ApplyTarget(
                     "cpu.fmax",
                     plan.Id,
@@ -767,15 +787,20 @@ public sealed class PlanCoordinator
                     priority,
                     currentFMax.ToString(CultureInfo.InvariantCulture),
                     desiredFMax.ToString(CultureInfo.InvariantCulture),
-                    () => fmax.TryWriteFMax(desiredFMax, out var writeError) ? null : writeError,
+                    () =>
+                    {
+                        writeResult = fmax.TryWriteFMax(desiredFMax, out var writeError);
+                        return writeResult == FMaxWriteResult.Applied ? null : writeError;
+                    },
                     () => fmax.TryReadFMax(out var actualFMax, out _)
                         ? actualFMax.ToString(CultureInfo.InvariantCulture)
-                        : null);
+                        : null,
+                    FMaxTolerance.Within);
 
-                // 若当前平台未配置 FMax 写命令（如 Zen2/Zen3 SetBoostLimit=0），按 Skipped 安全降级，不阻断同方案内其他核配置。
-                if (outcome.Status == LedgerStatus.Failed && outcome.Failure?.Contains("未配置 FMax 写入命令", StringComparison.Ordinal) == true)
+                // 平台未实现该消息（未配置写命令或基线为 0）属于能力缺失，按 Skipped 安全降级，不阻断同方案内其他核配置。
+                if (writeResult == FMaxWriteResult.Unsupported)
                 {
-                    _ledger.Skip("cpu.fmax", outcome.Failure);
+                    _ledger.Skip("cpu.fmax", outcome.Failure ?? "平台未实现 Boost Limit 消息。");
                     outcome = outcome with { Status = LedgerStatus.Skipped };
                 }
 
@@ -1030,38 +1055,35 @@ public sealed class PlanCoordinator
                     }
                 }
 
-                if (maskToApply is not null || priorityToApply is not null)
+                // 亲和性与优先级分开写入：一项失败时另一项的结果必须保留，不能合并成一个失败。
+                if (maskToApply is not null)
                 {
-                    if (_scheduler.TryApply(process.ProcessId, maskToApply, priorityToApply, out var applyError))
+                    if (_scheduler.TryApply(process.ProcessId, maskToApply, null, out var applyError))
                     {
-                        _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
-
-                        if (maskToApply is not null)
-                        {
-                            _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
-                            outcomes.Add(OutcomeFromLedger(affinityTarget));
-                        }
-
-                        if (priorityToApply is not null)
-                        {
-                            _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
-                            outcomes.Add(OutcomeFromLedger(priorityTarget));
-                        }
+                        _scheduler.TryRead(process.ProcessId, out var actualMask, out _, out _);
+                        _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
                     }
                     else
                     {
-                        if (maskToApply is not null)
-                        {
-                            _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
-                            outcomes.Add(OutcomeFromLedger(affinityTarget));
-                        }
-
-                        if (priorityToApply is not null)
-                        {
-                            _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
-                            outcomes.Add(OutcomeFromLedger(priorityTarget));
-                        }
+                        _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
                     }
+
+                    outcomes.Add(OutcomeFromLedger(affinityTarget));
+                }
+
+                if (priorityToApply is not null)
+                {
+                    if (_scheduler.TryApply(process.ProcessId, null, priorityToApply, out var applyError))
+                    {
+                        _scheduler.TryRead(process.ProcessId, out _, out var actualPriority, out _);
+                        _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                    }
+                    else
+                    {
+                        _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
+                    }
+
+                    outcomes.Add(OutcomeFromLedger(priorityTarget));
                 }
 
                 if (rule.CpuSets is not null)
@@ -1130,7 +1152,8 @@ public sealed class PlanCoordinator
         string? current,
         string desired,
         Func<string?> write,
-        Func<string?> readBack)
+        Func<string?> readBack,
+        Func<string, string, bool>? equivalent = null)
     {
         var acquired = _ledger.Acquire(target, source, priority, current, desired, planId, OwnerFor(source));
         if (acquired == AcquireOutcome.DeniedUserOwned)
@@ -1163,12 +1186,17 @@ public sealed class PlanCoordinator
             return new TargetOutcome(target, current, desired, null, LedgerStatus.Failed, "回读失败。");
         }
 
-        _ledger.Commit(target, actual);
-        return string.Equals(actual, desired, StringComparison.Ordinal)
+        _ledger.Commit(target, actual, equivalent);
+        return Matches(actual, desired, equivalent)
             ? new TargetOutcome(target, current, desired, actual, LedgerStatus.Applied, null)
             : new TargetOutcome(target, current, desired, actual, LedgerStatus.Failed,
                 $"回读值 {actual} 与期望 {desired} 不一致。");
     }
+
+    private static bool Matches(string actual, string desired, Func<string, string, bool>? equivalent) =>
+        equivalent is null
+            ? string.Equals(actual, desired, StringComparison.Ordinal)
+            : equivalent(actual, desired);
 
     private IReadOnlyList<TargetOutcome> Restore(IReadOnlyList<LedgerEntry> entries)
     {
@@ -1237,7 +1265,7 @@ public sealed class PlanCoordinator
                 return (null, "前值不是整数频率。");
             }
 
-            if (!fmax.TryWriteFMax(prevMhz, out var error))
+            if (fmax.TryWriteFMax(prevMhz, out var error) != FMaxWriteResult.Applied)
             {
                 return (null, error);
             }

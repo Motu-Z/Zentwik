@@ -169,12 +169,12 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         }
     }
 
-    public bool TryWriteFMax(int limitMhz, out string? error)
+    public FMaxWriteResult TryWriteFMax(int limitMhz, out string? error)
     {
         if (limitMhz is < 1000 or > 7000)
         {
-            error = $"FMax 频率 {limitMhz} MHz 超出有效范围 [1000, 7000]。";
-            return false;
+            error = $"FMax 频率 {limitMhz} MHz 超出输入范围 [1000, 7000] MHz（软件输入边界，不是固件限制）。";
+            return FMaxWriteResult.Failed;
         }
 
         lock (_gate)
@@ -182,35 +182,48 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             var status = EnsureSession(out error);
             if (status.Availability != HardwareAvailability.Available || _session is null)
             {
-                return false;
+                return FMaxWriteResult.Failed;
             }
 
             if (_commands.SetFMax == 0)
             {
                 error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 未配置 FMax 写入命令（GetBoostLimitFrequency=0x{_commands.GetFMax:X2} 可读），不能将未配置视为硬件不支持。";
-                return false;
+                return FMaxWriteResult.Unsupported;
             }
 
             var scratch = new long[MaxArgs];
+            if (!TrySend(_commands.GetFMax, [0], scratch, out error))
+            {
+                return FMaxWriteResult.Failed;
+            }
+
+            var baseline = (int)(scratch[0] & 0xFFFF_FFFFL);
+            if (baseline == 0)
+            {
+                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 的 Boost Limit 基线读为 0，视为该平台未实现该消息，已跳过写入。";
+                return FMaxWriteResult.Unsupported;
+            }
+
+            Array.Clear(scratch);
             if (!TrySend(_commands.SetFMax, [limitMhz], scratch, out error))
             {
-                return false;
+                return FMaxWriteResult.Failed;
             }
 
             Array.Clear(scratch);
             if (!TrySend(_commands.GetFMax, [0], scratch, out error))
             {
-                return false;
+                return FMaxWriteResult.Failed;
             }
 
             var actual = (int)(scratch[0] & 0xFFFF_FFFFL);
-            if (actual != limitMhz)
+            if (Math.Abs(actual - limitMhz) > IFMaxTuningProvider.ToleranceMhz)
             {
-                error = $"FMax 回读 {actual} MHz，与写入 {limitMhz} MHz 不一致。";
-                return false;
+                error = $"FMax 回读 {actual} MHz，与写入 {limitMhz} MHz 相差超过 {IFMaxTuningProvider.ToleranceMhz} MHz（写前基线 {baseline} MHz）。";
+                return FMaxWriteResult.Failed;
             }
 
-            return true;
+            return FMaxWriteResult.Applied;
         }
     }
 

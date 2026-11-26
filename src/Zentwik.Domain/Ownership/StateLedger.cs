@@ -145,19 +145,22 @@ public sealed class StateLedger
         return AcquireOutcome.Acquired;
     }
 
-    public void Commit(string target, string actualValue)
+    public void Commit(string target, string actualValue, Func<string, string, bool>? equivalent = null)
     {
         if (!_entries.TryGetValue(target, out var entry))
         {
             return;
         }
 
+        var matched = entry.DesiredValue is { } desired
+                      && (equivalent is null
+                          ? string.Equals(actualValue, desired, StringComparison.Ordinal)
+                          : equivalent(actualValue, desired));
+
         _entries[target] = entry with
         {
             ActualValue = actualValue,
-            Status = string.Equals(actualValue, entry.DesiredValue, StringComparison.Ordinal)
-                ? LedgerStatus.Applied
-                : LedgerStatus.Failed,
+            Status = matched ? LedgerStatus.Applied : LedgerStatus.Failed,
             UpdatedAt = _clock.GetUtcNow(),
         };
     }

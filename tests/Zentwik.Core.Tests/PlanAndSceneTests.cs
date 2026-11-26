@@ -418,10 +418,11 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         scheduler.SetProcessState(1001, cpuMask: "0x1", priority: "Normal");
         await coordinator.EnforceSchedulingAsync(scenes.ActiveSceneId);
 
-        var reapplied = Assert.Single(scheduler.Applied);
-        Assert.Equal(1001, reapplied.ProcessId);
-        Assert.Equal("0xF", reapplied.CpuMask);
-        Assert.Equal("High", reapplied.Priority);
+        var maskApplied = Assert.Single(scheduler.Applied, entry => entry.CpuMask is not null);
+        Assert.Equal(1001, maskApplied.ProcessId);
+        Assert.Equal("0xF", maskApplied.CpuMask);
+        var priorityApplied = Assert.Single(scheduler.Applied, entry => entry.Priority is not null);
+        Assert.Equal("High", priorityApplied.Priority);
 
         var affinity = coordinator.Entries.Single(e => e.Target == "sched.1001.affinity");
         Assert.Equal("0x3", affinity.PreviousValue);
@@ -856,6 +857,76 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "cpu.co.0").Status);
         Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(t => t.Target == "cpu.fmax").Status);
         Assert.Equal(-15, ReadOffset(0));
+        Assert.Equal(5700, _tuning.FMaxMhz);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Accepts_FMax_Readback_Rounded_Within_Tolerance()
+    {
+        _tuning.FMaxStepMhz = 25;
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-round",
+            Name = "CPU FMax Rounded",
+            Revision = 1,
+            FMaxLimitMhz = 5210,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        Assert.Equal("5200", Assert.Single(outcome.Targets).Actual);
+        Assert.Equal(5200, _tuning.FMaxMhz);
+        Assert.Equal(LedgerStatus.Applied, _plans.Entries.Single(e => e.Target == "cpu.fmax").Status);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Fails_FMax_When_Readback_Exceeds_Tolerance()
+    {
+        _tuning.FMaxStepMhz = 25;
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-off",
+            Name = "CPU FMax Off",
+            Revision = 1,
+            FMaxLimitMhz = 5240,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Failed, outcome.State);
+        Assert.Equal(LedgerStatus.Failed, Assert.Single(outcome.Targets).Status);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Treats_Zero_FMax_Baseline_As_Unsupported_Not_Failure()
+    {
+        _tuning.FMaxBaselineZero = true;
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-zero",
+            Name = "CPU FMax Zero",
+            Revision = 1,
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -15 }],
+            FMaxLimitMhz = 5400,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        var fmax = outcome.Targets.Single(t => t.Target == "cpu.fmax");
+        Assert.Equal(LedgerStatus.Skipped, fmax.Status);
+        Assert.Contains("未实现", fmax.Failure ?? string.Empty);
+        Assert.Equal(LedgerStatus.Skipped, _plans.Entries.Single(e => e.Target == "cpu.fmax").Status);
         Assert.Equal(5700, _tuning.FMaxMhz);
     }
 

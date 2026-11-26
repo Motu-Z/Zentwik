@@ -93,36 +93,49 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider, IFMaxTuningProvi
 
     public bool FMaxWriteSupported { get; set; } = true;
 
+    /// <summary>模拟平台未实现 Boost Limit 消息：基线读为 0。</summary>
+    public bool FMaxBaselineZero { get; set; }
+
+    /// <summary>模拟固件按步进取整：写入值向下对齐到该粒度。</summary>
+    public int FMaxStepMhz { get; set; } = 1;
+
     public bool TryReadFMax(out int limitMhz, out string? error)
     {
-        limitMhz = FMaxMhz;
+        limitMhz = FMaxBaselineZero ? 0 : FMaxMhz;
         error = null;
         return true;
     }
 
-    public bool TryWriteFMax(int limitMhz, out string? error)
+    public FMaxWriteResult TryWriteFMax(int limitMhz, out string? error)
     {
         if (FailWrites)
         {
             error = "模拟写入失败。";
-            return false;
+            return FMaxWriteResult.Failed;
         }
 
         if (!FMaxWriteSupported)
         {
             error = "当前平台未配置 FMax 写入命令，不能将未配置视为硬件不支持。";
-            return false;
+            return FMaxWriteResult.Unsupported;
+        }
+
+        if (FMaxBaselineZero)
+        {
+            error = "模拟平台 Boost Limit 基线为 0，视为未实现该消息。";
+            return FMaxWriteResult.Unsupported;
         }
 
         if (limitMhz is < 1000 or > 7000)
         {
-            error = $"FMax 频率 {limitMhz} MHz 超出有效范围 [1000, 7000]。";
-            return false;
+            error = $"FMax 频率 {limitMhz} MHz 超出输入范围 [1000, 7000] MHz（软件输入边界，不是固件限制）。";
+            return FMaxWriteResult.Failed;
         }
 
-        FMaxMhz = limitMhz;
+        var rounded = FMaxStepMhz > 1 ? limitMhz / FMaxStepMhz * FMaxStepMhz : limitMhz;
+        FMaxMhz = rounded;
         error = null;
-        return true;
+        return FMaxWriteResult.Applied;
     }
 
     public void Dispose()
