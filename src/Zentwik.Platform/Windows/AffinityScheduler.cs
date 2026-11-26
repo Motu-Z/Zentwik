@@ -137,6 +137,21 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
                     return false;
                 }
 
+                // 亲和性掩码只能表达单个处理器组内的位；多组时写了也不会覆盖全部处理器。
+                if (Native.GetActiveProcessorGroupCount() > 1)
+                {
+                    error = "系统存在多个处理器组，亲和性掩码只覆盖单个组，已拒绝。";
+                    return false;
+                }
+
+                var bits = unchecked((ulong)(long)mask);
+                var processors = Environment.ProcessorCount;
+                if (processors is > 0 and < 64 && (bits >> processors) != 0)
+                {
+                    error = $"掩码 0x{bits:X} 超出系统 {processors} 个逻辑处理器。";
+                    return false;
+                }
+
                 process.ProcessorAffinity = mask;
             }
 
@@ -176,6 +191,12 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
     public bool TryReadCpuSets(int processId, out string? cpuSets, out string? error)
     {
         cpuSets = null;
+        if (!CpuSetsNative.IsAlive(processId))
+        {
+            error = $"进程 {processId} 已退出。";
+            return false;
+        }
+
         if (!CpuSetsNative.TryGetSystemCpuSetMap(out _, out var idToLogical, out error))
         {
             return false;
@@ -230,6 +251,13 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
 
     public bool TryApplyCpuSets(int processId, string? cpuSets, out string? error)
     {
+        // 已退出进程能开句柄且 SetProcessDefaultCpuSets 返回成功，实际什么都没设上。
+        if (!CpuSetsNative.IsAlive(processId))
+        {
+            error = $"进程 {processId} 已退出。";
+            return false;
+        }
+
         if (!CpuSetsNative.TryGetSystemCpuSetMap(out var logicalToId, out _, out error))
         {
             return false;
@@ -245,10 +273,13 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
             }
         }
 
-        var handle = CpuSetsNative.OpenProcess(
-            CpuSetsNative.ProcessQueryLimitedInformation | CpuSetsNative.ProcessSetLimitedInformation,
-            false,
-            processId);
+        // 先只申请写权限：权限要得越多，越容易在受保护进程上被整体拒绝。
+        var handle = CpuSetsNative.OpenProcess(CpuSetsNative.ProcessSetLimitedInformation, false, processId);
+        if (handle == 0)
+        {
+            handle = CpuSetsNative.OpenProcess(CpuSetsNative.ProcessSetInformation, false, processId);
+        }
+
         if (handle == 0)
         {
             error = $"打开进程 {processId} 失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
@@ -257,6 +288,24 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
 
         try
         {
+            // 外部硬亲和性优先于 CPU Sets，两者叠加只会取交集，表现为"绑了没变化"。
+            var probe = CpuSetsNative.OpenProcess(CpuSetsNative.ProcessQueryLimitedInformation, false, processId);
+            if (probe != 0)
+            {
+                try
+                {
+                    if (CpuSetsNative.HasNarrowAffinity(probe, out var processMask, out var systemMask))
+                    {
+                        error = $"进程 {processId} 的硬亲和性 0x{processMask:X} 窄于系统掩码 0x{systemMask:X}，CPU Sets 不会生效，已跳过。";
+                        return false;
+                    }
+                }
+                finally
+                {
+                    CpuSetsNative.CloseHandle(probe);
+                }
+            }
+
             var count = (uint)(ids?.Length ?? 0);
             if (!CpuSetsNative.SetProcessDefaultCpuSets(handle, ids, count))
             {

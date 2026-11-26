@@ -578,8 +578,18 @@ public sealed class PlanCoordinator
                         {
                             if (_scheduler.TryApply(process.ProcessId, rule.CpuMask, null, out var applyError))
                             {
-                                _scheduler.TryRead(process.ProcessId, out var actualMask, out _, out _);
-                                _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
+                                if (!_scheduler.TryRead(process.ProcessId, out var actualMask, out _, out _))
+                                {
+                                    _ledger.MarkUnknown(affinityTarget, "写入后读不到掩码，无法确认是否生效。");
+                                }
+                                else if (SameMask(actualMask, rule.CpuMask))
+                                {
+                                    _ledger.Commit(affinityTarget, actualMask!);
+                                }
+                                else
+                                {
+                                    _ledger.Fail(affinityTarget, $"回读掩码 {actualMask} 与期望 {rule.CpuMask} 不一致。");
+                                }
                             }
                             else
                             {
@@ -593,8 +603,18 @@ public sealed class PlanCoordinator
                         {
                             if (_scheduler.TryApply(process.ProcessId, null, rule.Priority, out var applyError))
                             {
-                                _scheduler.TryRead(process.ProcessId, out _, out var actualPriority, out _);
-                                _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                                if (!_scheduler.TryRead(process.ProcessId, out _, out var actualPriority, out _))
+                                {
+                                    _ledger.MarkUnknown(priorityTarget, "写入后读不到优先级，无法确认是否生效。");
+                                }
+                                else if (string.Equals(actualPriority, rule.Priority, StringComparison.Ordinal))
+                                {
+                                    _ledger.Commit(priorityTarget, actualPriority!);
+                                }
+                                else
+                                {
+                                    _ledger.Fail(priorityTarget, $"回读优先级 {actualPriority} 与期望 {rule.Priority} 不一致。");
+                                }
                             }
                             else
                             {
@@ -1203,8 +1223,18 @@ public sealed class PlanCoordinator
                 {
                     if (_scheduler.TryApply(process.ProcessId, maskToApply, null, out var applyError))
                     {
-                        _scheduler.TryRead(process.ProcessId, out var actualMask, out _, out _);
-                        _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
+                        if (!_scheduler.TryRead(process.ProcessId, out var actualMask, out _, out _))
+                        {
+                            _ledger.MarkUnknown(affinityTarget, "写入后读不到掩码，无法确认是否生效。");
+                        }
+                        else if (SameMask(actualMask, maskToApply))
+                        {
+                            _ledger.Commit(affinityTarget, actualMask!);
+                        }
+                        else
+                        {
+                            _ledger.Fail(affinityTarget, $"回读掩码 {actualMask} 与期望 {maskToApply} 不一致。");
+                        }
                     }
                     else
                     {
@@ -1218,8 +1248,18 @@ public sealed class PlanCoordinator
                 {
                     if (_scheduler.TryApply(process.ProcessId, null, priorityToApply, out var applyError))
                     {
-                        _scheduler.TryRead(process.ProcessId, out _, out var actualPriority, out _);
-                        _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                        if (!_scheduler.TryRead(process.ProcessId, out _, out var actualPriority, out _))
+                        {
+                            _ledger.MarkUnknown(priorityTarget, "写入后读不到优先级，无法确认是否生效。");
+                        }
+                        else if (string.Equals(actualPriority, priorityToApply, StringComparison.Ordinal))
+                        {
+                            _ledger.Commit(priorityTarget, actualPriority!);
+                        }
+                        else
+                        {
+                            _ledger.Fail(priorityTarget, $"回读优先级 {actualPriority} 与期望 {priorityToApply} 不一致。");
+                        }
                     }
                     else
                     {
@@ -1661,6 +1701,27 @@ public sealed class PlanCoordinator
 
         ac = parts[3] == "ac";
         return true;
+    }
+
+    /// <summary>回读值与期望值按数值比较：写入方可能返回不同位宽的十六进制文本。</summary>
+    private static bool SameMask(string? actual, string? desired) =>
+        TryParseHexMask(actual, out var a) && TryParseHexMask(desired, out var d) && a == d;
+
+    private static bool TryParseHexMask(string? text, out ulong value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var span = text.AsSpan().Trim();
+        if (span.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            span = span[2..];
+        }
+
+        return ulong.TryParse(span, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
     }
 
     private static bool TryParseSchedulingTarget(string target, out int processId, out string field)

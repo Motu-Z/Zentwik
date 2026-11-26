@@ -6,12 +6,54 @@ internal static partial class CpuSetsNative
 {
     internal const uint ProcessQueryLimitedInformation = 0x1000;
     internal const uint ProcessSetLimitedInformation = 0x2000;
+    internal const uint ProcessSetInformation = 0x0200;
+    internal const uint StillActive = 259;
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial nint OpenProcess(
         uint desiredAccess,
         [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
         int processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetExitCodeProcess(nint process, out uint exitCode);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetProcessAffinityMask(nint process, out nint processMask, out nint systemMask);
+
+    /// <summary>已退出的进程仍能开句柄、读到退出前的值，写 CPU Sets 还会返回成功；动之前必须判存活。</summary>
+    internal static bool IsAlive(int processId)
+    {
+        var handle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (handle == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            return GetExitCodeProcess(handle, out var code) && code == StillActive;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
+
+    /// <summary>进程是否被外部约束在比系统更窄的硬亲和性上；此时写 CPU Sets 会出现"绑了没变化"。</summary>
+    internal static bool HasNarrowAffinity(nint processHandle, out nint processMask, out nint systemMask)
+    {
+        processMask = 0;
+        systemMask = 0;
+        if (!GetProcessAffinityMask(processHandle, out processMask, out systemMask))
+        {
+            return false;
+        }
+
+        return systemMask != 0 && processMask != systemMask;
+    }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
