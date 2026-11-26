@@ -604,7 +604,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsAccent}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                             <ComboBox Grid.Column="1"
-                                      AutomationProperties.Name="{Binding SettingsAccent}"
+                                      AutomationProperties.Name="{DynamicResource String.SettingsAccent}"
                                       Style="{StaticResource FlatCombo}"
                                       ItemsSource="{Binding Accents}"
                                       SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" />
