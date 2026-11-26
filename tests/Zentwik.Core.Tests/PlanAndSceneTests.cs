@@ -489,6 +489,84 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal("scene:higher", coordinator.Entries.Single(e => e.Target == "sched.1001.priority").Source);
     }
 
+    [Fact]
+    public async Task ApplyCpu_Writes_Verifies_And_Reverts_FMax_With_FakeProvider()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax",
+            Name = "CPU FMax",
+            Revision = 1,
+            FMaxLimitMhz = 5400,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        var target = Assert.Single(outcome.Targets);
+        Assert.Equal("cpu.fmax", target.Target);
+        Assert.Equal("5700", target.Previous);
+        Assert.Equal("5400", target.Actual);
+        Assert.Equal(5400, _tuning.FMaxMhz);
+
+        var reverted = await _plans.RevertPlanAsync(plan.Id);
+        Assert.Equal(LedgerStatus.Reverted, Assert.Single(reverted).Status);
+        Assert.Equal(5700, _tuning.FMaxMhz);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Skips_Unconfigured_FMax_Write_Without_Blocking_CO()
+    {
+        _tuning.FMaxWriteSupported = false;
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-unconfigured",
+            Name = "CPU FMax Unconfigured",
+            Revision = 1,
+            Cores = [new CoreTuning { CoreIndex = 0, Offset = -15 }],
+            FMaxLimitMhz = 5400,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "cpu.co.0").Status);
+        Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(t => t.Target == "cpu.fmax").Status);
+        Assert.Equal(-15, ReadOffset(0));
+        Assert.Equal(5700, _tuning.FMaxMhz);
+    }
+
+    [Fact]
+    public async Task DetectDrift_Detects_External_FMax_Change_And_Marks_User_Takeover()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-drift",
+            Name = "CPU FMax Drift",
+            Revision = 1,
+            FMaxLimitMhz = 5500,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        await _plans.ApplyAsync(plan.Id, "scene:test", 10);
+        _tuning.TryWriteFMax(5600, out _);
+
+        var taken = await _plans.DetectDriftAsync();
+
+        Assert.Single(taken, "cpu.fmax");
+        var entry = _plans.Entries.Single(e => e.Target == "cpu.fmax");
+        Assert.Equal(OwnerKind.User, entry.Owner);
+        Assert.False(entry.Restorable);
+    }
+
     private async Task SeedSchedulingSceneAsync(
         string processMatch,
         string? cpuMask,

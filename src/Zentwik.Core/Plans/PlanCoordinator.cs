@@ -501,69 +501,107 @@ public sealed class PlanCoordinator
             return (Array.Empty<TargetOutcome>(), status.Detail ?? status.Availability.ToString());
         }
 
-        if (!_tuning.TryReadOffsets(out var offsets, out var readError))
-        {
-            return (Array.Empty<TargetOutcome>(), readError ?? "读取当前偏移失败。");
-        }
-
-        var byCore = offsets.ToDictionary(static offset => offset.Core, static offset => offset.Offset);
         var outcomes = new List<TargetOutcome>();
-
-        foreach (var core in plan.Cores)
+        if (plan.Cores.Any(static core => core.Offset is not null))
         {
-            if (core.Offset is not { } desired)
+            if (!_tuning.TryReadOffsets(out var offsets, out var readError))
             {
-                continue;
+                return (Array.Empty<TargetOutcome>(), readError ?? "读取当前偏移失败。");
             }
 
-            var target = $"cpu.co.{core.CoreIndex}";
-            if (!CurveOptimizerBounds.IsWithinL2(desired))
+            var byCore = offsets.ToDictionary(static offset => offset.Core, static offset => offset.Offset);
+            foreach (var core in plan.Cores)
             {
-                outcomes.Add(new TargetOutcome(
+                if (core.Offset is not { } desired)
+                {
+                    continue;
+                }
+
+                var target = $"cpu.co.{core.CoreIndex}";
+                if (!CurveOptimizerBounds.IsWithinL2(desired))
+                {
+                    outcomes.Add(new TargetOutcome(
+                        target,
+                        null,
+                        desired.ToString(CultureInfo.InvariantCulture),
+                        null,
+                        LedgerStatus.Skipped,
+                        CurveOptimizerBounds.FormatL2Rejection(desired)));
+                    continue;
+                }
+
+                if (!byCore.TryGetValue(core.CoreIndex, out var current))
+                {
+                    outcomes.Add(new TargetOutcome(
+                        target,
+                        null,
+                        desired.ToString(CultureInfo.InvariantCulture),
+                        null,
+                        LedgerStatus.Skipped,
+                        "读取该核当前偏移失败，未写入。"));
+                    continue;
+                }
+
+                outcomes.Add(ApplyTarget(
                     target,
-                    null,
+                    plan.Id,
+                    source,
+                    priority,
+                    current.ToString(CultureInfo.InvariantCulture),
                     desired.ToString(CultureInfo.InvariantCulture),
-                    null,
-                    LedgerStatus.Skipped,
-                    CurveOptimizerBounds.FormatL2Rejection(desired)));
-                continue;
+                    () => _tuning.TryWriteOffset(core.CoreIndex, desired, out var writeError) ? null : writeError,
+                    () => ReadCoreOffset(core.CoreIndex)));
             }
-
-            if (!byCore.TryGetValue(core.CoreIndex, out var current))
-            {
-                outcomes.Add(new TargetOutcome(
-                    target,
-                    null,
-                    desired.ToString(CultureInfo.InvariantCulture),
-                    null,
-                    LedgerStatus.Skipped,
-                    "读取该核当前偏移失败，未写入。"));
-                continue;
-            }
-
-            outcomes.Add(ApplyTarget(
-                target,
-                plan.Id,
-                source,
-                priority,
-                current.ToString(CultureInfo.InvariantCulture),
-                desired.ToString(CultureInfo.InvariantCulture),
-                () => _tuning.TryWriteOffset(core.CoreIndex, desired, out var writeError) ? null : writeError,
-                () => ReadCoreOffset(core.CoreIndex)));
         }
 
-        if (plan.FMaxLimitMhz is not null)
+        if (plan.FMaxLimitMhz is { } desiredFMax)
         {
-            outcomes.Add(new TargetOutcome(
-                "cpu.fmax",
-                null,
-                plan.FMaxLimitMhz.Value.ToString(CultureInfo.InvariantCulture),
-                null,
-                LedgerStatus.Skipped,
-                "FMax 写入尚未实现，未做任何修改。"));
+            if (_tuning is not IFMaxTuningProvider fmax)
+            {
+                outcomes.Add(new TargetOutcome(
+                    "cpu.fmax",
+                    null,
+                    desiredFMax.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    LedgerStatus.Skipped,
+                    "当前调校通道不支持 FMax 读写。"));
+            }
+            else if (!fmax.TryReadFMax(out var currentFMax, out var fmaxReadError))
+            {
+                outcomes.Add(new TargetOutcome(
+                    "cpu.fmax",
+                    null,
+                    desiredFMax.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    LedgerStatus.Skipped,
+                    fmaxReadError ?? "读取当前 FMax 失败，未写入。"));
+            }
+            else
+            {
+                var outcome = ApplyTarget(
+                    "cpu.fmax",
+                    plan.Id,
+                    source,
+                    priority,
+                    currentFMax.ToString(CultureInfo.InvariantCulture),
+                    desiredFMax.ToString(CultureInfo.InvariantCulture),
+                    () => fmax.TryWriteFMax(desiredFMax, out var writeError) ? null : writeError,
+                    () => fmax.TryReadFMax(out var actualFMax, out _)
+                        ? actualFMax.ToString(CultureInfo.InvariantCulture)
+                        : null);
+
+                // 若当前平台未配置 FMax 写命令（如 Zen2/Zen3 SetBoostLimit=0），按 Skipped 安全降级，不阻断同方案内其他核配置。
+                if (outcome.Status == LedgerStatus.Failed && outcome.Failure?.Contains("未配置 FMax 写入命令", StringComparison.Ordinal) == true)
+                {
+                    _ledger.Skip("cpu.fmax", outcome.Failure);
+                    outcome = outcome with { Status = LedgerStatus.Skipped };
+                }
+
+                outcomes.Add(outcome);
+            }
         }
 
-        return (outcomes, outcomes.Count == 0 ? "方案没有核配置。" : null);
+        return (outcomes, outcomes.Count == 0 ? "方案没有核或 FMax 配置。" : null);
     }
 
     private (IReadOnlyList<TargetOutcome> Targets, string? Error) ApplyPower(
@@ -867,6 +905,28 @@ public sealed class PlanCoordinator
             return (null, "缺少前值，无法回退。");
         }
 
+        if (string.Equals(entry.Target, "cpu.fmax", StringComparison.Ordinal))
+        {
+            if (_tuning is not IFMaxTuningProvider fmax)
+            {
+                return (null, "当前调校通道不支持 FMax 回退。");
+            }
+
+            if (!int.TryParse(entry.PreviousValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var prevMhz))
+            {
+                return (null, "前值不是整数频率。");
+            }
+
+            if (!fmax.TryWriteFMax(prevMhz, out var error))
+            {
+                return (null, error);
+            }
+
+            return fmax.TryReadFMax(out var actual, out _)
+                ? (actual.ToString(CultureInfo.InvariantCulture), null)
+                : (null, "回读失败。");
+        }
+
         if (entry.Target.StartsWith("cpu.co.", StringComparison.Ordinal))
         {
             if (!int.TryParse(entry.Target["cpu.co.".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var core)
@@ -931,6 +991,13 @@ public sealed class PlanCoordinator
 
     private string? ReadTarget(string target, IReadOnlyList<CoreOffset>? offsets)
     {
+        if (string.Equals(target, "cpu.fmax", StringComparison.Ordinal))
+        {
+            return _tuning is IFMaxTuningProvider fmax && fmax.TryReadFMax(out var actual, out _)
+                ? actual.ToString(CultureInfo.InvariantCulture)
+                : null;
+        }
+
         if (target.StartsWith("cpu.co.", StringComparison.Ordinal))
         {
             if (offsets is null
