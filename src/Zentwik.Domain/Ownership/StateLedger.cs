@@ -53,6 +53,9 @@ public sealed record LedgerEntry
     public bool Restorable { get; init; }
 
     public string? Failure { get; init; }
+
+    /// <summary>写入时目标进程的创建时间（UTC ticks）。0 表示未知或非进程目标，用于识别 PID 复用。</summary>
+    public long ProcessStartTicks { get; init; }
 }
 
 /// <summary>
@@ -95,7 +98,8 @@ public sealed class StateLedger
         string? currentValue,
         string desiredValue,
         string? planId = null,
-        OwnerKind owner = OwnerKind.Scene)
+        OwnerKind owner = OwnerKind.Scene,
+        long processStartTicks = 0)
     {
         var now = _clock.GetUtcNow();
 
@@ -117,7 +121,13 @@ public sealed class StateLedger
             if (string.Equals(existing.Source, source, StringComparison.Ordinal)
                 && existing.Status is LedgerStatus.Applied or LedgerStatus.Unknown)
             {
-                _entries[target] = existing with { DesiredValue = desiredValue, PlanId = planId ?? existing.PlanId, UpdatedAt = now };
+                _entries[target] = existing with
+                {
+                    DesiredValue = desiredValue,
+                    PlanId = planId ?? existing.PlanId,
+                    ProcessStartTicks = processStartTicks > 0 ? processStartTicks : existing.ProcessStartTicks,
+                    UpdatedAt = now,
+                };
                 return AcquireOutcome.AlreadyOwned;
             }
 
@@ -135,6 +145,7 @@ public sealed class StateLedger
                 Status = LedgerStatus.Skipped,
                 Restorable = true,
                 Failure = null,
+                ProcessStartTicks = processStartTicks > 0 ? processStartTicks : existing.ProcessStartTicks,
                 UpdatedAt = now,
             };
             return AcquireOutcome.Acquired;
@@ -151,6 +162,7 @@ public sealed class StateLedger
             Priority = priority,
             Status = LedgerStatus.Skipped,
             Restorable = true,
+            ProcessStartTicks = processStartTicks,
             UpdatedAt = now,
         };
         return AcquireOutcome.Acquired;

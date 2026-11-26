@@ -89,13 +89,19 @@ public interface IIntelTuningProvider
     bool TryWriteVoltageOffset(int millivolts, out string? error);
 }
 
-public sealed record ProcessTarget(int ProcessId, string Name);public interface IProcessScheduler
+/// <summary>进程创建时间（UTC ticks）用于区分 PID 复用：同一 PID 的新进程不是账本记录的那个。</summary>
+public sealed record ProcessTarget(int ProcessId, string Name, long StartedAtTicks = 0);
+
+public interface IProcessScheduler
 {
     IReadOnlyList<ProcessTarget> Find(string name);
 
     bool TryRead(int processId, out string? cpuMask, out string? priority, out string? error);
 
     bool TryApply(int processId, string? cpuMask, string? priority, out string? error);
+
+    /// <summary>读取进程创建时间；进程不存在或已被复用为其他进程时返回 false。</summary>
+    bool TryGetStartTicks(int processId, out long ticks);
 }
 
 /// <summary>可选 CPU Sets 调度接口（Get/SetProcessDefaultCpuSets）。</summary>

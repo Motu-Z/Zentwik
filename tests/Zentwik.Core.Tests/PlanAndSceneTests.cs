@@ -701,6 +701,36 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Pid_Reuse_Does_Not_Inherit_Previous_Baseline()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(5001, "game"), new ProcessTarget(5002, "other"));
+        var plan = new SchedulingPlan
+        {
+            Id = "sched-pid",
+            Name = "Sched Pid",
+            Revision = 1,
+            Rules = [new SchedulingRule { ProcessMatch = "game", CpuMask = "0xF" }],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, int.MaxValue - 1);
+        Assert.Equal("0x3", coordinator.Entries.Single(static e => e.Target == "sched.5001.affinity").PreviousValue);
+
+        // 原进程退出后 PID 被新进程复用，新进程的初始掩码不是旧基线。
+        scheduler.RemoveProcess(5001);
+        scheduler.AddProcess(new ProcessTarget(5001, "game"), "0x7");
+
+        await coordinator.EnforceSchedulingAsync(null);
+
+        var entry = coordinator.Entries.Single(static e => e.Target == "sched.5001.affinity");
+        Assert.Equal("0x7", entry.PreviousValue);
+        Assert.Equal("0xF", entry.ActualValue);
+    }
+
+    [Fact]
     public async Task ApplyScheduling_And_Revert_With_CpuSets()
     {
         var scheduler = new FakeProcessScheduler(new ProcessTarget(3001, "game"));

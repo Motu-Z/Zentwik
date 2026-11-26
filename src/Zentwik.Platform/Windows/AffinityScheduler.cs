@@ -19,11 +19,45 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
         {
             using (process)
             {
-                results.Add(new ProcessTarget(process.Id, process.ProcessName));
+                results.Add(new ProcessTarget(process.Id, process.ProcessName, ReadStartTicks(process)));
             }
         }
 
         return results;
+    }
+
+    public bool TryGetStartTicks(int processId, out long ticks)
+    {
+        ticks = 0;
+
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            if (process.HasExited)
+            {
+                return false;
+            }
+
+            ticks = ReadStartTicks(process);
+            return ticks != 0;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private static long ReadStartTicks(Process process)
+    {
+        try
+        {
+            return process.StartTime.ToUniversalTime().Ticks;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            // 读不到创建时间时不伪造：返回 0，调用方按"无标识"处理。
+            return 0;
+        }
     }
 
     public bool TryRead(int processId, out string? cpuMask, out string? priority, out string? error)

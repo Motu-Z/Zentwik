@@ -190,6 +190,7 @@ public sealed class AgentServer
         }
 
         _powerNotifications.Resumed += () => _ = Task.Run(() => ResumeAsync(ct), CancellationToken.None);
+        _log.Info("系统挂起/恢复通知已注册。");
     }
 
     private async Task ResumeAsync(CancellationToken ct)

@@ -236,9 +236,19 @@ public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetSche
     private readonly List<ProcessTarget> _targets;
     private readonly Dictionary<int, (string CpuMask, string Priority)> _states = new();
     private readonly Dictionary<int, string> _cpuSets = new();
+    private readonly Dictionary<int, long> _startTicks = new();
     private readonly HashSet<int> _exited = [];
+    private long _nextTicks;
 
-    public FakeProcessScheduler(params ProcessTarget[] targets) => _targets = [.. targets];
+    public FakeProcessScheduler(params ProcessTarget[] targets)
+    {
+        _targets = [];
+        foreach (var target in targets)
+        {
+            _targets.Add(target with { StartedAtTicks = RegisterTicks(target.StartedAtTicks) });
+            _startTicks[target.ProcessId] = _targets[^1].StartedAtTicks;
+        }
+    }
 
     public bool CpuSetsSupported { get; set; } = true;
 
@@ -249,18 +259,21 @@ public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetSche
     public void AddProcess(ProcessTarget target, string initialMask = "0x3", string initialPriority = "Normal")
     {
         _exited.Remove(target.ProcessId);
-        if (_targets.All(t => t.ProcessId != target.ProcessId))
-        {
-            _targets.Add(target);
-        }
+        _targets.RemoveAll(t => t.ProcessId == target.ProcessId);
 
+        var ticks = RegisterTicks(target.StartedAtTicks);
+        _targets.Add(target with { StartedAtTicks = ticks });
+        _startTicks[target.ProcessId] = ticks;
         _states[target.ProcessId] = (initialMask, initialPriority);
     }
+
+    private long RegisterTicks(long requested) => requested > 0 ? requested : ++_nextTicks;
 
     public void RemoveProcess(int processId)
     {
         _targets.RemoveAll(t => t.ProcessId == processId);
         _states.Remove(processId);
+        _startTicks.Remove(processId);
         _exited.Add(processId);
     }
 
@@ -330,6 +343,12 @@ public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetSche
         AppliedCpuSets.Add((processId, normalized));
         error = null;
         return true;
+    }
+
+    public bool TryGetStartTicks(int processId, out long ticks)
+    {
+        ticks = 0;
+        return !_exited.Contains(processId) && _startTicks.TryGetValue(processId, out ticks);
     }
 
     public IReadOnlyList<ProcessTarget> Find(string name) =>

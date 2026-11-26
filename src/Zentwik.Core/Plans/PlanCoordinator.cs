@@ -394,7 +394,7 @@ public sealed class PlanCoordinator
         {
             var changed = false;
 
-            // 1. 清理已退出进程的 sched.{pid}.* 账本记录，避免 PID 复用后误判所有权。
+            // 1. 清理已退出（或被同 PID 新进程顶替）的 sched.{pid}.* 账本记录，避免误判所有权。
             var aliveByPid = new Dictionary<int, bool>();
             foreach (var entry in _ledger.Entries.ToArray())
             {
@@ -405,7 +405,7 @@ public sealed class PlanCoordinator
 
                 if (!aliveByPid.TryGetValue(pid, out var alive))
                 {
-                    alive = _scheduler.TryRead(pid, out _, out _, out _);
+                    alive = ProcessStillAlive(pid, entry.ProcessStartTicks);
                     aliveByPid[pid] = alive;
                 }
 
@@ -1145,6 +1145,8 @@ public sealed class PlanCoordinator
 
             foreach (var process in processes)
             {
+                DropStaleSchedulingEntries(process.ProcessId, process.StartedAtTicks);
+
                 if (!_scheduler.TryRead(process.ProcessId, out var currentMask, out var currentPriority, out _))
                 {
                     outcomes.Add(InvalidTarget($"sched.{process.ProcessId}", "无法读取当前调度设置。"));
@@ -1158,7 +1160,7 @@ public sealed class PlanCoordinator
                 string? maskToApply = null;
                 if (rule.CpuMask is not null)
                 {
-                    var outcome = _ledger.Acquire(affinityTarget, source, priority, currentMask, rule.CpuMask, plan.Id, OwnerFor(source));
+                    var outcome = _ledger.Acquire(affinityTarget, source, priority, currentMask, rule.CpuMask, plan.Id, OwnerFor(source), process.StartedAtTicks);
                     if (outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned)
                     {
                         maskToApply = rule.CpuMask;
@@ -1178,7 +1180,7 @@ public sealed class PlanCoordinator
                 string? priorityToApply = null;
                 if (rule.Priority is not null)
                 {
-                    var outcome = _ledger.Acquire(priorityTarget, source, priority, currentPriority, rule.Priority, plan.Id, OwnerFor(source));
+                    var outcome = _ledger.Acquire(priorityTarget, source, priority, currentPriority, rule.Priority, plan.Id, OwnerFor(source), process.StartedAtTicks);
                     if (outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned)
                     {
                         priorityToApply = rule.Priority;
@@ -1268,7 +1270,8 @@ public sealed class PlanCoordinator
                             currentCpuSets ?? string.Empty,
                             normalizedCpuSets,
                             () => cpuSetScheduler.TryApplyCpuSets(process.ProcessId, normalizedCpuSets, out var csErr) ? null : csErr,
-                            () => cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCs, out _) ? actualCs ?? string.Empty : null));
+                            () => cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCs, out _) ? actualCs ?? string.Empty : null,
+                            processStartTicks: process.StartedAtTicks));
                     }
                 }
             }
@@ -1293,9 +1296,10 @@ public sealed class PlanCoordinator
         string desired,
         Func<string?> write,
         Func<string?> readBack,
-        Func<string, string, bool>? equivalent = null)
+        Func<string, string, bool>? equivalent = null,
+        long processStartTicks = 0)
     {
-        var acquired = _ledger.Acquire(target, source, priority, current, desired, planId, OwnerFor(source));
+        var acquired = _ledger.Acquire(target, source, priority, current, desired, planId, OwnerFor(source), processStartTicks);
         if (acquired == AcquireOutcome.DeniedUserOwned)
         {
             return new TargetOutcome(target, current, desired, current, LedgerStatus.Skipped, "用户已接管。");
@@ -1459,6 +1463,12 @@ public sealed class PlanCoordinator
 
         if (TryParseSchedulingTarget(entry.Target, out var pid, out var field))
         {
+            // 账本记的是某个具体进程；PID 被复用时回退会写到无关的新进程上。
+            if (!ProcessStillAlive(pid, entry.ProcessStartTicks))
+            {
+                return (null, $"进程 {pid} 已退出或已被复用，跳过回退。");
+            }
+
             if (field == "cpusets")
             {
                 if (_scheduler is not IProcessCpuSetScheduler cpuSetScheduler)
@@ -1667,6 +1677,31 @@ public sealed class PlanCoordinator
                && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out processId)
                && (field = parts[1]) is "affinity" or "priority" or "cpusets";
     }
+
+    /// <summary>同 PID 的新进程不是账本记录的那个：旧条目直接丢弃，既不复用前值也不回退到新进程。</summary>
+    private void DropStaleSchedulingEntries(int processId, long liveTicks)
+    {
+        if (liveTicks == 0)
+        {
+            return;
+        }
+
+        foreach (var entry in _ledger.Entries.ToArray())
+        {
+            if (TryParseSchedulingTarget(entry.Target, out var pid, out _)
+                && pid == processId
+                && entry.ProcessStartTicks != 0
+                && entry.ProcessStartTicks != liveTicks)
+            {
+                _ledger.Remove(entry.Target);
+            }
+        }
+    }
+
+    /// <summary>账本记录的是某个具体进程：PID 被复用后不能再算作同一目标。</summary>
+    private bool ProcessStillAlive(int processId, long recordedTicks) =>
+        _scheduler.TryGetStartTicks(processId, out var liveTicks)
+        && (recordedTicks == 0 || liveTicks == recordedTicks);
 
     private Task PersistAsync(Plan updated, CancellationToken ct) =>
         _store.UpdateAsync(
