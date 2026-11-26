@@ -615,7 +615,7 @@ public sealed class PlanCoordinator
                 var mismatch = $"方案绑定平台 {plan.PlatformId} 与当前平台 {status.Platform} 不匹配，已安全跳过 AMD 调校。";
                 if (plan.IntelVoltageOffsetMillivolts is null)
                 {
-                    return (Array.Empty<TargetOutcome>(), mismatch);
+                    return (new[] { new TargetOutcome("cpu.amd", null, plan.PlatformId, status.Platform, LedgerStatus.Skipped, mismatch) }, mismatch);
                 }
 
                 outcomes.Add(new TargetOutcome(
