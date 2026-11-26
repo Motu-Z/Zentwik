@@ -61,6 +61,7 @@
                             <DockPanel>
                                 <!-- 点击 Logo 展开 / 收起导航栏 -->
                                 <ToggleButton x:Name="LogoCollapseToggle"
+                                              AutomationProperties.Name="Zentwik"
                                               DockPanel.Dock="Top"
                                               Cursor="Hand"
                                               Margin="0,0,0,14"
@@ -85,12 +86,13 @@
                                                           StrokeLineJoin="Round"
                                                           Data="M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 Z M8 10 L15 10 L9 15 L16 15" />
                                                     <TextBlock x:Name="BrandLabel"
-                                                               Text="Zentwik"
                                                                Foreground="{DynamicResource Brush.Text.Primary}"
                                                                FontSize="14"
                                                                FontWeight="Bold"
                                                                Margin="10,0,0,0"
-                                                               VerticalAlignment="Center" />
+                                                               VerticalAlignment="Center">
+                                                        <Run Text="Zen" /><Run Text="twik" Foreground="{DynamicResource Brush.Accent}" />
+                                                    </TextBlock>
                                                 </StackPanel>
                                             </Border>
                                             <ControlTemplate.Triggers>
