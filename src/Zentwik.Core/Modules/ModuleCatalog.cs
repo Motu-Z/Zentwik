@@ -17,7 +17,7 @@ public static class ModuleCatalog
         new("monitoring", "监控", [CapabilityIds.TelemetryBasic], "CPU、内存与进程计数采样"),
         new("power", "电源", [CapabilityIds.PowerPolicy], "电源方案切换与策略参数写入"),
         new("cpu-tuning", "CPU 调校", [CapabilityIds.AmdSmu, CapabilityIds.IntelMsr], "Curve Optimizer 与 MSR 调校"),
-        new("scheduling", "进程调度", [CapabilityIds.AffinityMask], "进程亲和性与优先级调度（CPU Sets 暂未启用）"),
+        new("scheduling", "进程调度", [CapabilityIds.AffinityMask, CapabilityIds.CpuSets], "进程亲和性、优先级与 CPU Sets 调度"),
         new("automation", "自动化", [CapabilityIds.SceneEngine], "场景触发、仲裁与状态回退"),
         new("diagnostics", "诊断", [], "能力探测、日志与状态对账"),
     ];

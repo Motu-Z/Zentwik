@@ -209,15 +209,20 @@ public sealed class FakePowerStatus(bool onAc = true) : IPowerStatus
     public bool? OnAcPower { get; set; } = onAc;
 }
 
-public sealed class FakeProcessScheduler : IProcessScheduler
+public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetScheduler
 {
     private readonly List<ProcessTarget> _targets;
     private readonly Dictionary<int, (string CpuMask, string Priority)> _states = new();
+    private readonly Dictionary<int, string> _cpuSets = new();
     private readonly HashSet<int> _exited = [];
 
     public FakeProcessScheduler(params ProcessTarget[] targets) => _targets = [.. targets];
 
+    public bool CpuSetsSupported { get; set; } = true;
+
     public List<(int ProcessId, string? CpuMask, string? Priority)> Applied { get; } = [];
+
+    public List<(int ProcessId, string? CpuSets)> AppliedCpuSets { get; } = [];
 
     public void AddProcess(ProcessTarget target, string initialMask = "0x3", string initialPriority = "Normal")
     {
@@ -237,12 +242,72 @@ public sealed class FakeProcessScheduler : IProcessScheduler
         _exited.Add(processId);
     }
 
-    public void SetProcessState(int processId, string? cpuMask = null, string? priority = null)
+    public void SetProcessState(int processId, string? cpuMask = null, string? priority = null, string? cpuSets = null)
     {
         var (currentMask, currentPriority) = _states.TryGetValue(processId, out var state)
             ? state
             : ("0x3", "Normal");
         _states[processId] = (cpuMask ?? currentMask, priority ?? currentPriority);
+        if (cpuSets is not null)
+        {
+            _cpuSets[processId] = cpuSets;
+        }
+    }
+
+    public bool IsCpuSetsSupported(out string? detail)
+    {
+        detail = CpuSetsSupported ? "模拟 CPU Sets 可用。" : "模拟环境禁用 CPU Sets。";
+        return CpuSetsSupported;
+    }
+
+    public bool TryReadCpuSets(int processId, out string? cpuSets, out string? error)
+    {
+        if (!CpuSetsSupported)
+        {
+            cpuSets = null;
+            error = "模拟环境不支持 CPU Sets。";
+            return false;
+        }
+
+        if (_exited.Contains(processId))
+        {
+            cpuSets = null;
+            error = $"进程 {processId} 已退出。";
+            return false;
+        }
+
+        cpuSets = _cpuSets.GetValueOrDefault(processId, string.Empty);
+        error = null;
+        return true;
+    }
+
+    public bool TryApplyCpuSets(int processId, string? cpuSets, out string? error)
+    {
+        if (!CpuSetsSupported)
+        {
+            error = "模拟环境不支持 CPU Sets。";
+            return false;
+        }
+
+        if (_exited.Contains(processId))
+        {
+            error = $"进程 {processId} 已退出。";
+            return false;
+        }
+
+        var normalized = string.Empty;
+        if (!string.IsNullOrWhiteSpace(cpuSets))
+        {
+            if (!CpuSetSpec.TryNormalize(cpuSets, out normalized, out error))
+            {
+                return false;
+            }
+        }
+
+        _cpuSets[processId] = normalized;
+        AppliedCpuSets.Add((processId, normalized));
+        error = null;
+        return true;
     }
 
     public IReadOnlyList<ProcessTarget> Find(string name) =>

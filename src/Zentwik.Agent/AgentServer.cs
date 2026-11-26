@@ -28,6 +28,7 @@ public sealed class AgentServer
     private readonly ICpuTuningProvider _tuning;
     private readonly IIntelTuningProvider _intel;
     private readonly CallerPolicy _policy;
+    private readonly SchedulingWatcher _watcher;
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly List<AgentSession> _sessions = [];
     private readonly Lock _sessionsGate = new();
@@ -58,6 +59,7 @@ public sealed class AgentServer
         _tuning = tuning;
         _intel = intel;
         _policy = policy;
+        _watcher = new SchedulingWatcher(_scenes, _plans, _log);
     }
 
     public event Action<SceneActivation>? SceneChanged;
@@ -66,7 +68,7 @@ public sealed class AgentServer
     {
         _log.Info($"代理启动：管道 {_options.PipeName}，数据目录 {_options.DataDirectory}，协议 v{ProtocolInfo.Version}，服务模式 {_options.ServiceMode}。");
 
-        var sceneLoop = Task.Run(() => SceneLoopAsync(ct), CancellationToken.None);
+        _watcher.Start(ct);
         _scenes.Changed += OnSceneChanged;
 
         try
@@ -130,6 +132,7 @@ public sealed class AgentServer
         finally
         {
             _scenes.Changed -= OnSceneChanged;
+            await _watcher.DisposeAsync().ConfigureAwait(false);
             await RestoreActiveSceneAsync().ConfigureAwait(false);
             await ShutdownSessionsAsync().ConfigureAwait(false);
             _log.Info("代理已停止。");
@@ -158,34 +161,9 @@ public sealed class AgentServer
 
     internal ICpuTuningProvider Tuning => _tuning;
 
-    internal DateTimeOffset StartedAt => _startedAt;
+    internal SchedulingWatcher Watcher => _watcher;
 
-    private async Task SceneLoopAsync(CancellationToken ct)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-        try
-        {
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
-            {
-                try
-                {
-                    await _scenes.EvaluateAsync(ct).ConfigureAwait(false);
-                    await _plans.EnforceSchedulingAsync(_scenes.ActiveSceneId, ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _log.Error($"场景评估失败：{ex.Message}");
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
+    internal DateTimeOffset StartedAt => _startedAt;
 
     private void OnSceneChanged(SceneActivation activation) =>
         SceneChanged?.Invoke(activation);
