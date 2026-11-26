@@ -5,23 +5,42 @@ using Zentwik.Platform.Windows;
 namespace Zentwik.Platform.Fakes;
 
 /// <summary>仅用于开发与测试：不接触硬件，所有结果必须标记为模拟。</summary>
-public sealed class FakeCpuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider
+public sealed class FakeCpuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider, ICpuCcdTopologyProvider
 {
     private readonly Dictionary<int, int> _offsets = new();
+    private readonly Dictionary<int, int> _coreCcds = new();
 
-    public FakeCpuTuningProvider(int coreCount = 8)
+    public FakeCpuTuningProvider(int coreCount = 8, int coresPerCcd = 4)
     {
         for (var core = 0; core < coreCount; core++)
         {
             _offsets[core] = 0;
+            _coreCcds[core] = coresPerCcd > 0 ? core / coresPerCcd : 0;
         }
+    }
+
+    public bool TopologyAvailable { get; set; } = true;
+
+    public string PlatformName { get; set; } = "simulated";
+
+    public void SetCoreCcd(int core, int ccd) => _coreCcds[core] = ccd;
+
+    public bool TryGetCoreCcd(int coreIndex, out int ccdIndex)
+    {
+        if (!TopologyAvailable)
+        {
+            ccdIndex = 0;
+            return false;
+        }
+
+        return _coreCcds.TryGetValue(coreIndex, out ccdIndex);
     }
 
     public CpuTuningStatus Query() => new(
         HardwareAvailability.Available,
         "模拟提供者，未接触硬件。",
         "Fake",
-        "simulated",
+        PlatformName,
         true,
         true);
 

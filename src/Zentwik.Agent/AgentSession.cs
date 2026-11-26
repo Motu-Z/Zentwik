@@ -602,8 +602,34 @@ internal sealed class AgentSession : IAsyncDisposable
                     throw new CoreException(ErrorCodes.PlanInvalid, $"核 {duplicated.Key} 重复配置。");
                 }
 
+                if (cpu.DefaultOffset is { } defaultCo && !CurveOptimizerBounds.IsWithinL2(defaultCo))
+                {
+                    throw new CoreException(ErrorCodes.PlanInvalid, $"默认 CO 值的 {CurveOptimizerBounds.FormatL2Rejection(defaultCo)}");
+                }
+
+                if (cpu.CcdOffsets is not null)
+                {
+                    foreach (var pair in cpu.CcdOffsets)
+                    {
+                        if (pair.Key < 0)
+                        {
+                            throw new CoreException(ErrorCodes.PlanInvalid, $"CCD 编号 {pair.Key} 不能为负数。");
+                        }
+
+                        if (!CurveOptimizerBounds.IsWithinL2(pair.Value))
+                        {
+                            throw new CoreException(ErrorCodes.PlanInvalid, $"CCD {pair.Key} 的 {CurveOptimizerBounds.FormatL2Rejection(pair.Value)}");
+                        }
+                    }
+                }
+
                 foreach (var core in cpu.Cores)
                 {
+                    if (core.Auto && core.Offset is not null)
+                    {
+                        throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 不能同时设置 CO 偏移值与 auto。");
+                    }
+
                     if (core.Offset is { } offset && !CurveOptimizerBounds.IsWithinL2(offset))
                     {
                         throw new CoreException(ErrorCodes.PlanInvalid, $"核 {core.CoreIndex} 的 {CurveOptimizerBounds.FormatL2Rejection(offset)}");

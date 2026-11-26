@@ -8,7 +8,7 @@ namespace Zentwik.Platform.Windows;
 /// AMD Curve Optimizer 通道。命令族按 CPU family/model 选择，写入后必须回读一致才算成功；
 /// 只读失败不会伪造数据，写入失败不回退到「假定成功」。
 /// </summary>
-public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider
+public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider, ICpuCcdTopologyProvider
 {
     private const uint MessageTest = 0x01;
     private const string FunctionSendCommand = "ioctl_send_smu_command";
@@ -33,6 +33,22 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         lock (_gate)
         {
             return EnsureSession(out _);
+        }
+    }
+
+    public bool TryGetCoreCcd(int coreIndex, out int ccdIndex)
+    {
+        ccdIndex = 0;
+        lock (_gate)
+        {
+            var status = EnsureSession(out _);
+            if (status.Availability != HardwareAvailability.Available || !_coreMap.TryGet(coreIndex, out var address))
+            {
+                return false;
+            }
+
+            ccdIndex = address.Ccd;
+            return true;
         }
     }
 
@@ -123,6 +139,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             return true;
         }
     }
+
 
     public bool TryReadFMax(out int limitMhz, out string? error)
     {
@@ -267,6 +284,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         if (modulePath is null)
         {
             var detail = $"未找到 PawnIO 模块，已查找：{searched}。可用 ZENTWIK_PAWNIO_MODULE 指定。";
+            error = detail;
             return new CpuTuningStatus(HardwareAvailability.ModuleMissing, detail, vendor, PlatformName(family, model), true, false);
         }
 
@@ -298,10 +316,10 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         }
 
         _coreMap = ResolveCoreMap(family, out error);
-        if (_coreMap.Cores.Count == 0)
+        if (!_coreMap.IsUsable)
         {
             DisposeSession();
-            return new CpuTuningStatus(HardwareAvailability.Rejected, error, vendor, PlatformName(family, model), true, false);
+            return new CpuTuningStatus(HardwareAvailability.Rejected, error ?? _coreMap.Detail, vendor, PlatformName(family, model), true, false);
         }
 
         if (!ProbeCoreReads(out error))
@@ -314,6 +332,10 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         return Available();
     }
 
+    /// <summary>
+    /// 映射优先取 APOB 固件表（由 ZENTWIK_APOB_TABLE 提供），否则由 CPUID 核号与 L3 缓存域推导。
+    /// 两种来源都要求通过校验；都不可用时返回不可用，不退回按序号推算。
+    /// </summary>
     private AmdCoreMap ResolveCoreMap(uint family, out string? error)
     {
         error = null;
