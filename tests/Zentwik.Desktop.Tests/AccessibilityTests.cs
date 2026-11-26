@@ -22,8 +22,11 @@ public sealed class AccessibilityTests
         UiThread.Run(() =>
         {
             using var host = TestWindow.Create();
-            var resRefresh = Application.Current?.Resources["String.CommonRefresh"];
-            var resDismiss = Application.Current?.Resources["String.CommonDismiss"];
+            var app = Application.Current;
+            var resRefresh = app?.Resources["String.CommonRefresh"];
+            var resDismiss = app?.Resources["String.CommonDismiss"];
+            var resNav = app?.Resources["String.NavMonitor"];
+            var catRefresh = host.Catalog.Get("common.refresh");
 
             foreach (var element in host.Descendants())
             {
@@ -45,7 +48,7 @@ public sealed class AccessibilityTests
                         $"{element.GetType().Name}({element.Name}) " +
                         $"Parent={parent?.GetType().Name} TemplatedParent={templatedParent?.GetType().Name} " +
                         $"AutoName='{autoName}' Content='{content}' Visible={element.IsVisible} Loaded={element.IsLoaded} " +
-                        $"ResRefresh='{resRefresh}' ResDismiss='{resDismiss}'");
+                        $"App={app is not null} ResCount={app?.Resources.Count} ResNav='{resNav}' ResRefresh='{resRefresh}' ResDismiss='{resDismiss}' CatRefresh='{catRefresh}'");
                 }
             }
 
@@ -101,15 +104,18 @@ public sealed class AccessibilityTests
 
     private sealed class TestWindow : IDisposable
     {
-        private TestWindow(MainWindow window, MainViewModel viewModel)
+        private TestWindow(MainWindow window, MainViewModel viewModel, LocalizationCatalog catalog)
         {
             Window = window;
             ViewModel = viewModel;
+            Catalog = catalog;
         }
 
         public MainWindow Window { get; }
 
         public MainViewModel ViewModel { get; }
+
+        public LocalizationCatalog Catalog { get; }
 
         public static TestWindow Create()
         {
@@ -125,7 +131,7 @@ public sealed class AccessibilityTests
             window.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
             window.UpdateLayout();
 
-            return new TestWindow(window, viewModel);
+            return new TestWindow(window, viewModel, catalog);
         }
 
         public TabControl Tabs => Descendants().OfType<TabControl>().First();
