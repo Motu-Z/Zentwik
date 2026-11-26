@@ -20,10 +20,27 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 221 个用例
+dotnet test  Zentwik.slnx          # 227 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
+
+## 安装包
+
+```powershell
+pwsh -File scripts/build-installer.ps1               # 发布 + 打包，产物在 dist\
+pwsh -File scripts/build-installer.ps1 -SkipPublish  # 复用 pkg\ 重新打包
+```
+
+需要 [Inno Setup 6](https://jrsoftware.org/isdl.php)（`winget install JRSoftware.InnoSetup`）。**Inno Setup 6.7 起商业使用需购买许可**，非商业免费。
+
+安装器只做四件事：落文件、停旧服务、调 `Zentwik.Agent.exe --install-service`、卸载时先删服务再删文件。服务的创建/升级/删除逻辑只存在于 `src/Zentwik.Agent/Service/ServiceInstaller.cs` 一处，换打包器时服务行为不变。
+
+- 装到 `%ProgramFiles%\Zentwik`，服务名 `ZentwikAgent`（LocalSystem、自动启动、失败重启 5s/15s/60s）。
+- 可选组件页勾选「硬件功耗墙」等价于安装时传 `--enable-module power-limits`；不勾选**不会**关闭已启用的模块，升级保留用户选择。
+- PawnIO 不是必需项：未检测到只弹一次提示，其余功能照常。
+- 卸载默认保留 `%ProgramData%\ZentwikNext`，在卸载结束时询问。
+- 安装包未签名，首次运行会触发 SmartScreen。
 
 ## 运行
 
@@ -98,7 +115,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 - 硬件功耗墙只覆盖 AMD Zen4/Zen5 的 RSMU 通道；Intel PL1/PL2/Tau 与 AMD STAPM（MP1 邮箱）未提供。TDC/EDC 写入无回读通道，无法验证是否在负载下生效。
 - Intel 通道已实现 OC Mailbox 写协议（命令字、bit63 忙位轮询、全局互斥、写后回读），但无 Intel 真机验证，仅位域单测。
-- GPU 遥测、托盘、WPF 界面与安装器未实现（界面阶段暂停）。
+- GPU 遥测、托盘、WPF 界面未实现（界面阶段暂停）。安装包已有，见上节。
 - 服务异常终止后的 SCM 恢复动作尚未实测。
 - 真实休眠/唤醒回调、重启后保持、多处理器组绑定未验证。
 

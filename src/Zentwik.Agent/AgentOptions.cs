@@ -27,6 +27,9 @@ public sealed class AgentOptions
 
     public bool EchoLog { get; init; } = true;
 
+    /// <summary>安装时一并启用的可选模块。服务启动前写入，避免与运行中的服务争状态文件。</summary>
+    public IReadOnlyList<string> EnableModules { get; init; } = [];
+
     public static AgentOptions Parse(string[] args)
     {
         var mode = AgentMode.Run;
@@ -36,6 +39,7 @@ public sealed class AgentOptions
         string? explicitDataDirectory = null;
         var fake = false;
         var echo = true;
+        var modules = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -68,6 +72,9 @@ public sealed class AgentOptions
                 case "--fake":
                     fake = true;
                     break;
+                case "--enable-module" when i + 1 < args.Length:
+                    modules.Add(args[++i]);
+                    break;
                 case "--quiet":
                     echo = false;
                     break;
@@ -85,6 +92,7 @@ public sealed class AgentOptions
             ServiceMode = serviceMode,
             UseFake = fake,
             EchoLog = echo,
+            EnableModules = modules,
         };
     }
 

@@ -1,5 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Security.Principal;
+using Zentwik.Core.Diagnostics;
+using Zentwik.Core.Modules;
+using Zentwik.Core.State;
 
 namespace Zentwik.Agent.Service;
 
@@ -100,6 +103,21 @@ internal static partial class NativeService
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool ChangeServiceConfig2W(nint service, uint infoLevel, nint info);
 
+    [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ChangeServiceConfigW(
+        nint service,
+        uint serviceType,
+        uint startType,
+        uint errorControl,
+        string? binaryPath,
+        nint loadOrderGroup,
+        nint tagId,
+        nint dependencies,
+        string? serviceStartName,
+        nint password,
+        string? displayName);
+
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool QueryServiceStatusEx(
@@ -129,11 +147,8 @@ internal static partial class NativeService
         }
 
         Directory.CreateDirectory(options.DataDirectory);
-        var ownerSid = WindowsIdentity.GetCurrent().User?.Value;
-        if (ownerSid is not null)
-        {
-            File.WriteAllText(Path.Combine(options.DataDirectory, "owner.sid"), ownerSid);
-        }
+        EnsureOwnerSid(options.DataDirectory);
+        EnableModules(options.DataDirectory, options.EnableModules);
 
         var binaryPath = $"\"{executable}\" --service --name \"{options.ServiceName}\" --data-dir \"{options.DataDirectory}\"";
         var manager = OpenSCManagerW(null, null, ScManagerConnect | ScManagerCreateService);
@@ -148,40 +163,52 @@ internal static partial class NativeService
             var existing = OpenServiceW(manager, options.ServiceName, ServiceAllAccess);
             if (existing != 0)
             {
-                CloseServiceHandle(existing);
-                Console.Error.WriteLine($"服务 {options.ServiceName} 已存在，请先卸载。");
-                return FailureExitCode;
-            }
+                try
+                {
+                    if (!Reconfigure(existing, binaryPath))
+                    {
+                        return FailureExitCode;
+                    }
+                }
+                finally
+                {
+                    CloseServiceHandle(existing);
+                }
 
-            var service = CreateServiceW(
-                manager,
-                options.ServiceName,
-                "Zentwik 调优代理",
-                ServiceAllAccess,
-                ServiceWin32OwnProcess,
-                ServiceAutoStart,
-                ServiceErrorNormal,
-                binaryPath,
-                0,
-                0,
-                0,
-                0,
-                0);
-
-            if (service == 0)
-            {
-                Console.Error.WriteLine($"创建服务失败，Win32 错误码 {Marshal.GetLastWin32Error()}。");
-                return FailureExitCode;
+                Console.WriteLine($"服务 {options.ServiceName} 已更新。");
             }
+            else
+            {
+                var service = CreateServiceW(
+                    manager,
+                    options.ServiceName,
+                    "Zentwik 调优代理",
+                    ServiceAllAccess,
+                    ServiceWin32OwnProcess,
+                    ServiceAutoStart,
+                    ServiceErrorNormal,
+                    binaryPath,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0);
 
-            try
-            {
-                ApplyDescription(service);
-                ApplyRecoveryActions(service);
-            }
-            finally
-            {
-                CloseServiceHandle(service);
+                if (service == 0)
+                {
+                    Console.Error.WriteLine($"创建服务失败，Win32 错误码 {Marshal.GetLastWin32Error()}。");
+                    return FailureExitCode;
+                }
+
+                try
+                {
+                    ApplyDescription(service);
+                    ApplyRecoveryActions(service);
+                }
+                finally
+                {
+                    CloseServiceHandle(service);
+                }
             }
         }
         finally
@@ -194,6 +221,96 @@ internal static partial class NativeService
             ? $"服务 {options.ServiceName} 已安装并启动。"
             : $"服务 {options.ServiceName} 已安装，但启动失败。");
         return started;
+    }
+
+    /// <summary>升级路径：停服务、改启动命令行、刷新描述与恢复动作。服务不存在时不调用。</summary>
+    private static bool Reconfigure(nint service, string binaryPath)
+    {
+        var status = default(ServiceStatusProcess);
+        if (ControlService(service, ServiceControlStop, ref status) && !WaitForState(service, ServiceStopped))
+        {
+            Console.Error.WriteLine("服务未能停止，可能仍在占用旧文件。");
+            return false;
+        }
+
+        if (!ChangeServiceConfigW(
+                service,
+                ServiceWin32OwnProcess,
+                ServiceAutoStart,
+                ServiceErrorNormal,
+                binaryPath,
+                0,
+                0,
+                0,
+                null,
+                0,
+                null))
+        {
+            Console.Error.WriteLine($"更新服务配置失败，Win32 错误码 {Marshal.GetLastWin32Error()}。");
+            return false;
+        }
+
+        ApplyDescription(service);
+        ApplyRecoveryActions(service);
+        return true;
+    }
+
+    /// <summary>所有者只在首次安装时记录；升级不覆盖，避免换管理员安装时改掉归属。</summary>
+    private static void EnsureOwnerSid(string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, "owner.sid");
+        if (File.Exists(path))
+        {
+            return;
+        }
+
+        var ownerSid = WindowsIdentity.GetCurrent().User?.Value;
+        if (ownerSid is not null)
+        {
+            File.WriteAllText(path, ownerSid);
+        }
+    }
+
+    /// <summary>安装时启用的可选模块。此时服务尚未启动，独占写状态文件是安全的。</summary>
+    private static void EnableModules(string dataDirectory, IReadOnlyList<string> modules)
+    {
+        if (modules.Count == 0)
+        {
+            return;
+        }
+
+        var accepted = new List<string>();
+        var rejected = new List<string>();
+        foreach (var id in modules.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (ModuleCatalog.Find(id) is { Optional: true })
+            {
+                accepted.Add(id);
+            }
+            else
+            {
+                rejected.Add(id);
+            }
+        }
+
+        if (rejected.Count > 0)
+        {
+            Console.Error.WriteLine($"忽略未知或不可选的模块：{string.Join("、", rejected)}。");
+        }
+
+        if (accepted.Count == 0)
+        {
+            return;
+        }
+
+        using var log = new DiagnosticLog(dataDirectory, echoToConsole: false);
+        var store = new StateStore(dataDirectory, log);
+        store.LoadAsync().GetAwaiter().GetResult();
+        store.UpdateAsync(document => document with
+        {
+            EnabledOptionalModules = [.. document.EnabledOptionalModules.Union(accepted, StringComparer.OrdinalIgnoreCase)],
+        }).GetAwaiter().GetResult();
+        log.Info($"安装时启用可选模块：{string.Join("、", accepted)}。");
     }
 
     public static int Uninstall(AgentOptions options)

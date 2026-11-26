@@ -11,3 +11,7 @@ TestResults/
 
 # 本地临时文件
 .tmp/
+
+# 安装器中间产物与成品
+pkg/
+dist/
