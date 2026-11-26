@@ -45,10 +45,13 @@ public static class IntelMsrBits
 
     public static bool IsBusy(long msrValue) => (msrValue & BusyBit) != 0;
 
-    /// <summary>coreCount 取 1..8，对应 MSR 中从低到高的 8 个倍频字段。</summary>
+    /// <summary>coreCount 取 1..8，对应 MSR 中从低到高的 8 个倍频字段；越界直接拒绝，不静默钳制。</summary>
     public static int DecodeTurboRatio(long msrValue, int coreCount)
     {
-        var shift = (Math.Clamp(coreCount, 1, 8) - 1) * 8;
+        ArgumentOutOfRangeException.ThrowIfLessThan(coreCount, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(coreCount, 8);
+
+        var shift = (coreCount - 1) * 8;
         return (int)((msrValue >> shift) & 0xFF);
     }
 

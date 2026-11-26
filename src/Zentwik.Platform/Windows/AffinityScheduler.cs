@@ -228,6 +228,12 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
                 return true;
             }
 
+            if (required > 4096)
+            {
+                error = $"进程 {processId} 报告的 CPU Set 数量 {required} 超出合理范围。";
+                return false;
+            }
+
             var ids = new uint[required];
             if (!CpuSetsNative.GetProcessDefaultCpuSets(handle, ids, required, out _))
             {

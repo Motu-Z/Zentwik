@@ -63,11 +63,12 @@ public sealed class IntelMsrBitsTests
     }
 
     [Fact]
-    public void TurboRatio_ClampsCoreCount()
+    public void TurboRatio_Rejects_CoreCount_Outside_1_8()
     {
         var msr = 0x31L << 56 | 0x2FL;
 
-        Assert.Equal(0x2F, IntelMsrBits.DecodeTurboRatio(msr, 0));
-        Assert.Equal(0x31, IntelMsrBits.DecodeTurboRatio(msr, 9));
+        // 越界返回看似合法的倍频会让上层拿到错误数据，直接拒绝。
+        Assert.Throws<ArgumentOutOfRangeException>(() => IntelMsrBits.DecodeTurboRatio(msr, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IntelMsrBits.DecodeTurboRatio(msr, 9));
     }
 }

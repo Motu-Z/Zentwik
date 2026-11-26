@@ -335,7 +335,8 @@ internal static class AmdWindowsTopology
         }
 
         var union = masks.Aggregate(0UL, static (all, mask) => all | mask);
-        var expected = (1UL << processorCount) - 1;
+        // 64 个处理器时 1UL << 64 会回绕成 1，覆盖检查将恒为真。
+        var expected = processorCount >= 64 ? ulong.MaxValue : (1UL << processorCount) - 1;
         if ((union & expected) != expected)
         {
             error = "L3 缓存域未覆盖全部逻辑处理器，拓扑不可信。";
