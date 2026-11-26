@@ -22,6 +22,9 @@ public sealed class AccessibilityTests
         UiThread.Run(() =>
         {
             using var host = TestWindow.Create();
+            var resRefresh = Application.Current?.Resources["String.CommonRefresh"];
+            var resDismiss = Application.Current?.Resources["String.CommonDismiss"];
+
             foreach (var element in host.Descendants())
             {
                 // 页签的容器 peer 读不到标题，Narrator 走的是 TabControlAutomationPeer 的子项。
@@ -40,8 +43,9 @@ public sealed class AccessibilityTests
                     var content = (element as ContentControl)?.Content;
                     missing.Add(
                         $"{element.GetType().Name}({element.Name}) " +
-                        $"[Parent={parent?.GetType().Name}, TemplatedParent={templatedParent?.GetType().Name}, " +
-                        $"AutoName='{autoName}', Content='{content}', Visible={element.IsVisible}, Loaded={element.IsLoaded}]");
+                        $"Parent={parent?.GetType().Name} TemplatedParent={templatedParent?.GetType().Name} " +
+                        $"AutoName='{autoName}' Content='{content}' Visible={element.IsVisible} Loaded={element.IsLoaded} " +
+                        $"ResRefresh='{resRefresh}' ResDismiss='{resDismiss}'");
                 }
             }
 
@@ -60,7 +64,7 @@ public sealed class AccessibilityTests
             }
         });
 
-        Assert.Empty(missing);
+        Assert.True(missing.Count == 0, string.Join(Environment.NewLine, missing));
     }
 
     [Fact]
