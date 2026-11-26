@@ -243,6 +243,234 @@ public sealed class PlanCoordinator
         }
     }
 
+    public async Task EnforceSchedulingAsync(string? activeSceneId, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var changed = false;
+
+            // 1. 清理已退出进程的 sched.{pid}.* 账本记录，避免 PID 复用后误判所有权。
+            var aliveByPid = new Dictionary<int, bool>();
+            foreach (var entry in _ledger.Entries.ToArray())
+            {
+                if (!TryParseSchedulingTarget(entry.Target, out var pid, out _))
+                {
+                    continue;
+                }
+
+                if (!aliveByPid.TryGetValue(pid, out var alive))
+                {
+                    alive = _scheduler.TryRead(pid, out _, out _, out _);
+                    aliveByPid[pid] = alive;
+                }
+
+                if (!alive && _ledger.Remove(entry.Target))
+                {
+                    changed = true;
+                }
+            }
+
+            // 2. 收集当前活跃的调度方案（活动场景引用的方案 + 手动应用的方案）。
+            var activePlans = new List<(SchedulingPlan Plan, string Source, int Priority)>();
+            var coveredPlanIds = new HashSet<string>(StringComparer.Ordinal);
+
+            if (activeSceneId is not null)
+            {
+                var activeScene = _store.Current.Scenes.FirstOrDefault(scene =>
+                    string.Equals(scene.Id, activeSceneId, StringComparison.Ordinal));
+                if (activeScene is not null)
+                {
+                    foreach (var action in activeScene.Actions)
+                    {
+                        var plan = _store.Current.Plans.FirstOrDefault(candidate =>
+                            string.Equals(candidate.Id, action.PlanId, StringComparison.Ordinal));
+                        if (plan is null || (action.PlanRevision != 0 && action.PlanRevision != plan.Revision))
+                        {
+                            continue;
+                        }
+
+                        if (plan is SchedulingPlan schedPlan)
+                        {
+                            activePlans.Add((schedPlan, $"scene:{activeSceneId}", activeScene.Priority));
+                            coveredPlanIds.Add(schedPlan.Id);
+                        }
+                    }
+                }
+            }
+
+            foreach (var plan in _store.Current.Plans)
+            {
+                if (plan is not SchedulingPlan manualPlan || coveredPlanIds.Contains(manualPlan.Id))
+                {
+                    continue;
+                }
+
+                if (manualPlan.LastApply?.State is not (PlanApplyState.Applied or PlanApplyState.Partial))
+                {
+                    continue;
+                }
+
+                var ownedByScene = _ledger.Entries.Any(entry =>
+                    string.Equals(entry.PlanId, manualPlan.Id, StringComparison.Ordinal)
+                    && entry.Owner == OwnerKind.Scene
+                    && entry.Status == LedgerStatus.Applied);
+                if (!ownedByScene)
+                {
+                    activePlans.Add((manualPlan, $"plan:{manualPlan.Id}", int.MaxValue - 1));
+                }
+            }
+
+            // 3. 仅对 Enforce == true 的规则执行新进程绑定与漂移重施加。
+            foreach (var (schedPlan, source, priority) in activePlans)
+            {
+                foreach (var rule in schedPlan.Rules)
+                {
+                    if (!rule.Enforce)
+                    {
+                        continue;
+                    }
+
+                    var processes = _scheduler.Find(rule.ProcessMatch);
+                    foreach (var process in processes)
+                    {
+                        if (!_scheduler.TryRead(process.ProcessId, out var currentMask, out var currentPriority, out _))
+                        {
+                            continue;
+                        }
+
+                        var affinityTarget = $"sched.{process.ProcessId}.affinity";
+                        var priorityTarget = $"sched.{process.ProcessId}.priority";
+
+                        var needMask = PrepareEnforceField(
+                            affinityTarget,
+                            source,
+                            priority,
+                            schedPlan.Id,
+                            currentMask,
+                            rule.CpuMask,
+                            ref changed);
+
+                        var needPriority = PrepareEnforceField(
+                            priorityTarget,
+                            source,
+                            priority,
+                            schedPlan.Id,
+                            currentPriority,
+                            rule.Priority,
+                            ref changed);
+
+                        if (!needMask && !needPriority)
+                        {
+                            continue;
+                        }
+
+                        if (_scheduler.TryApply(
+                            process.ProcessId,
+                            needMask ? rule.CpuMask : null,
+                            needPriority ? rule.Priority : null,
+                            out var applyError))
+                        {
+                            _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
+
+                            if (needMask)
+                            {
+                                _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
+                            }
+
+                            if (needPriority)
+                            {
+                                _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                            }
+                        }
+                        else
+                        {
+                            if (needMask)
+                            {
+                                _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
+                            }
+
+                            if (needPriority)
+                            {
+                                _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
+                            }
+                        }
+
+                        changed = true;
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                await PersistLedgerAsync(ct).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private bool PrepareEnforceField(
+        string target,
+        string source,
+        int priority,
+        string planId,
+        string? currentValue,
+        string? desiredValue,
+        ref bool changed)
+    {
+        if (desiredValue is null)
+        {
+            return false;
+        }
+
+        var existing = _ledger.Get(target);
+        if (existing is not null)
+        {
+            if (existing.Owner == OwnerKind.User)
+            {
+                return false;
+            }
+
+            if (existing.Owner is OwnerKind.Scene or OwnerKind.Plan
+                && existing.Status == LedgerStatus.Applied
+                && existing.Priority > priority
+                && !string.Equals(existing.Source, source, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (string.Equals(existing.Source, source, StringComparison.Ordinal)
+                && existing.Status == LedgerStatus.Applied)
+            {
+                if (string.Equals(currentValue, desiredValue, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                _ledger.Acquire(target, source, priority, currentValue, desiredValue, planId, OwnerFor(source));
+                return true;
+            }
+        }
+
+        var outcome = _ledger.Acquire(target, source, priority, currentValue, desiredValue, planId, OwnerFor(source));
+        if (outcome is not (AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned))
+        {
+            return false;
+        }
+
+        if (string.Equals(currentValue, desiredValue, StringComparison.Ordinal))
+        {
+            _ledger.Commit(target, currentValue ?? string.Empty);
+            changed = true;
+            return false;
+        }
+
+        return true;
+    }
+
     public async Task<bool> ReleaseTakeoverAsync(string target, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);

@@ -365,6 +365,172 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal(0, ReadOffset(1));
     }
 
+    [Fact]
+    public async Task EnforceScheduling_Cleans_Up_Exited_Process_Ledger_Entries()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(1001, "game"));
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: true);
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, coordinator, scheduler, _powerStatus, _log);
+
+        await scenes.EvaluateAsync();
+        Assert.NotNull(coordinator.Entries.SingleOrDefault(e => e.Target == "sched.1001.affinity"));
+
+        scheduler.RemoveProcess(1001);
+        await coordinator.EnforceSchedulingAsync(scenes.ActiveSceneId);
+
+        Assert.DoesNotContain(coordinator.Entries, e => e.Target.StartsWith("sched.1001.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EnforceScheduling_Binds_Newly_Spawned_Process_And_Preserves_PreviousValue()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(1001, "game"));
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: true);
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, coordinator, scheduler, _powerStatus, _log);
+
+        await scenes.EvaluateAsync();
+
+        scheduler.AddProcess(new ProcessTarget(2002, "game"), initialMask: "0x5", initialPriority: "BelowNormal");
+        await coordinator.EnforceSchedulingAsync(scenes.ActiveSceneId);
+
+        var affinity = coordinator.Entries.Single(e => e.Target == "sched.2002.affinity");
+        var priority = coordinator.Entries.Single(e => e.Target == "sched.2002.priority");
+        Assert.Equal("0x5", affinity.PreviousValue);
+        Assert.Equal("0xF", affinity.ActualValue);
+        Assert.Equal("BelowNormal", priority.PreviousValue);
+        Assert.Equal("High", priority.ActualValue);
+    }
+
+    [Fact]
+    public async Task EnforceScheduling_Reapplies_Drifted_Process_When_Enforce_Is_True()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(1001, "game"));
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: true);
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, coordinator, scheduler, _powerStatus, _log);
+
+        await scenes.EvaluateAsync();
+        scheduler.Applied.Clear();
+
+        scheduler.SetProcessState(1001, cpuMask: "0x1", priority: "Normal");
+        await coordinator.EnforceSchedulingAsync(scenes.ActiveSceneId);
+
+        var reapplied = Assert.Single(scheduler.Applied);
+        Assert.Equal(1001, reapplied.ProcessId);
+        Assert.Equal("0xF", reapplied.CpuMask);
+        Assert.Equal("High", reapplied.Priority);
+
+        var affinity = coordinator.Entries.Single(e => e.Target == "sched.1001.affinity");
+        Assert.Equal("0x3", affinity.PreviousValue);
+        Assert.Equal("0xF", affinity.ActualValue);
+    }
+
+    [Fact]
+    public async Task EnforceScheduling_Does_Not_Reapply_Drifted_Process_When_Enforce_Is_False()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(1001, "game"));
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: false);
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, coordinator, scheduler, _powerStatus, _log);
+
+        await scenes.EvaluateAsync();
+        scheduler.Applied.Clear();
+
+        scheduler.SetProcessState(1001, cpuMask: "0x1", priority: "Normal");
+        await coordinator.EnforceSchedulingAsync(scenes.ActiveSceneId);
+
+        Assert.Empty(scheduler.Applied);
+    }
+
+    [Fact]
+    public async Task EnforceScheduling_Respects_UserOwned_And_HigherPriority_Scene_Isolation()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(1001, "game"));
+        await _store.UpdateAsync(document => document with
+        {
+            Ledger =
+            [
+                new LedgerEntry
+                {
+                    Target = "sched.1001.affinity",
+                    Source = "user",
+                    Owner = OwnerKind.User,
+                    Priority = int.MaxValue,
+                    Status = LedgerStatus.Applied,
+                    ActualValue = "0x3",
+                    Restorable = false,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                },
+                new LedgerEntry
+                {
+                    Target = "sched.1001.priority",
+                    PlanId = "higher-plan",
+                    Source = "scene:higher",
+                    Owner = OwnerKind.Scene,
+                    Priority = 100,
+                    Status = LedgerStatus.Applied,
+                    PreviousValue = "Normal",
+                    DesiredValue = "AboveNormal",
+                    ActualValue = "AboveNormal",
+                    Restorable = true,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                },
+            ],
+        });
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: true, scenePriority: 10);
+
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        await coordinator.EnforceSchedulingAsync("sched-scene");
+
+        Assert.Empty(scheduler.Applied);
+        Assert.Equal(OwnerKind.User, coordinator.Entries.Single(e => e.Target == "sched.1001.affinity").Owner);
+        Assert.Equal("scene:higher", coordinator.Entries.Single(e => e.Target == "sched.1001.priority").Source);
+    }
+
+    private async Task SeedSchedulingSceneAsync(
+        string processMatch,
+        string? cpuMask,
+        string? priority,
+        bool enforce,
+        int scenePriority = 10)
+    {
+        var plan = new SchedulingPlan
+        {
+            Id = "sched-plan",
+            Name = "Sched Plan",
+            Revision = 1,
+            Rules =
+            [
+                new SchedulingRule
+                {
+                    ProcessMatch = processMatch,
+                    CpuMask = cpuMask,
+                    Priority = priority,
+                    Enforce = enforce,
+                },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+
+        var scene = new Scene
+        {
+            Id = "sched-scene",
+            Name = "Sched Scene",
+            Priority = scenePriority,
+            Triggers = [new SceneTrigger { Kind = SceneTriggerKinds.Process, Argument = processMatch }],
+            Actions = [new SceneAction { PlanId = plan.Id, PlanRevision = 1 }],
+        };
+
+        await _store.UpdateAsync(document => document with
+        {
+            Plans = [.. document.Plans, plan],
+            Scenes = [.. document.Scenes, scene],
+        });
+    }
+
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
