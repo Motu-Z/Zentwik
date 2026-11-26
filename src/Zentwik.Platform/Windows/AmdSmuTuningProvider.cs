@@ -16,8 +16,13 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     private const int MaxArgs = 6;
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(10);
 
+    private const string PciMutexName = @"Global\Access_PCI";
+    private static readonly TimeSpan PciMutexTimeout = TimeSpan.FromMilliseconds(500);
+
     private readonly ISystemInfo _info;
     private readonly Lock _gate = new();
+    private Mutex? _pciMutex;
+    private bool _pciHeld;
     private PawnIoSession? _session;
     private DateTimeOffset _lastFailureAt = DateTimeOffset.MinValue;
     private CpuTuningStatus? _lastFailure;
@@ -200,8 +205,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             var baseline = (int)(scratch[0] & 0xFFFF_FFFFL);
             if (baseline == 0)
             {
-                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 的 Boost Limit 基线读为 0，视为该平台未实现该消息，已跳过写入。";
-                return FMaxWriteResult.Unsupported;
+                // 读到 0 不能证明平台不支持：无法区分"命令不存在""通信失败""固件未实现读"，也不能作为回退基线。
+                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 的 Boost Limit 基线读为 0，基线未知，拒绝写入。";
+                return FMaxWriteResult.Failed;
             }
 
             Array.Clear(scratch);
@@ -234,6 +240,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             _session?.Dispose();
             _session = null;
             _probed = false;
+            ReleasePci();
+            _pciMutex?.Dispose();
+            _pciMutex = null;
         }
     }
 
@@ -290,6 +299,14 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         if (!TryResolveCommands(family, model, out _commands))
         {
             error = $"Family {family:X}h Model {model:X}h 未列入支持的 SMU 命令族。";
+            return new CpuTuningStatus(HardwareAvailability.NotSupported, error, vendor, PlatformName(family, model), true, false);
+        }
+
+        // 这些型号的 CO 命令在 MP1 邮箱，而 ioctl_send_smu_command 只能发 RSMU；
+        // 套用桌面命令号会静默不生效，因此明确报不支持，不发错命令。
+        if (RequiresMp1Mailbox(family, model))
+        {
+            error = $"Family {family:X}h Model {model:X}h 的 CO 命令位于 MP1 邮箱，当前 RSMU 通道无法送达。";
             return new CpuTuningStatus(HardwareAvailability.NotSupported, error, vendor, PlatformName(family, model), true, false);
         }
 
@@ -418,26 +435,90 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             return false;
         }
 
-        var input = new long[MaxArgs + 1];
-        input[0] = message;
-        for (var i = 0; i < Math.Min(MaxArgs, args.Length); i++)
+        // 模块注释要求调用方先取得 \BaseNamedObjects\Access_PCI 互斥；进程内锁挡不住其他工具的半写。
+        if (!TryEnterPci(out error))
         {
-            input[i + 1] = args[i];
-        }
-
-        var output = new long[MaxArgs];
-        if (!_session.Execute(FunctionSendCommand, input, output, out var code))
-        {
-            error = DescribeFailure(message, code);
             return false;
         }
 
-        for (var i = 0; i < Math.Min(result.Length, output.Length); i++)
+        try
         {
-            result[i] = output[i];
+            var input = new long[MaxArgs + 1];
+            input[0] = message;
+            for (var i = 0; i < Math.Min(MaxArgs, args.Length); i++)
+            {
+                input[i + 1] = args[i];
+            }
+
+            var output = new long[MaxArgs];
+            if (!_session.Execute(FunctionSendCommand, input, output, out var code))
+            {
+                error = DescribeFailure(message, code);
+                return false;
+            }
+
+            for (var i = 0; i < Math.Min(result.Length, output.Length); i++)
+            {
+                result[i] = output[i];
+            }
+
+            return true;
+        }
+        finally
+        {
+            ReleasePci();
+        }
+    }
+
+    private bool TryEnterPci(out string? error)
+    {
+        if (_pciMutex is null)
+        {
+            try
+            {
+                _pciMutex = new Mutex(false, PciMutexName);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or WaitHandleCannotBeOpenedException)
+            {
+                error = $"无法创建 PCI 互斥锁 {PciMutexName}：{ex.Message}";
+                return false;
+            }
         }
 
+        try
+        {
+            if (!_pciMutex.WaitOne(PciMutexTimeout))
+            {
+                error = $"PCI 访问被其他进程占用，未在 {PciMutexTimeout.TotalMilliseconds:0} 毫秒内取得互斥锁。";
+                return false;
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // 上一个持有者退出，互斥锁归当前线程。
+        }
+
+        _pciHeld = true;
+        error = null;
         return true;
+    }
+
+    private void ReleasePci()
+    {
+        if (_pciMutex is null || !_pciHeld)
+        {
+            return;
+        }
+
+        _pciHeld = false;
+        try
+        {
+            _pciMutex.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+            // 非持有线程调用：忽略，避免掩盖真正的写入结果。
+        }
     }
 
     private static string DescribeFailure(uint message, int code)
@@ -492,6 +573,17 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         var span = text.AsSpan(start, end - start);
         return uint.TryParse(span, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : 0;
     }
+
+    /// <summary>
+    /// 已知走 MP1 邮箱的移动/APU 型号（研究仓库 implementation-references §4）。
+    /// 只列有上游源码记录的型号，其余保持原有分派，避免把未列出的平台误判为不支持。
+    /// </summary>
+    private static bool RequiresMp1Mailbox(uint family, uint model) => family switch
+    {
+        0x19 => model is 0x40 or 0x44 or 0x50 or 0x60 or 0x68 or 0x74 or 0x75 or 0x78,
+        0x1A => model is 0x20 or 0x24 or 0x60 or 0x70,
+        _ => false,
+    };
 
     private static bool TryResolveCommands(uint family, uint model, out CoCommands commands)
     {

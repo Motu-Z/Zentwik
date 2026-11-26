@@ -115,7 +115,8 @@ internal sealed class IntelMsrProbe(IIntelTuningProvider intel) : ICapabilityPro
         var status = intel.Query();
         var state = status.Availability switch
         {
-            HardwareAvailability.Available => CapabilityState.Enabled,
+            // 与 AMD 探针同口径：能读写就是运行中，不因厂商不同返回另一种语义。
+            HardwareAvailability.Available => CapabilityState.Running,
             HardwareAvailability.ProbeFailed or HardwareAvailability.Rejected => CapabilityState.Failed,
             HardwareAvailability.DriverUnavailable
                 or HardwareAvailability.ModuleMissing

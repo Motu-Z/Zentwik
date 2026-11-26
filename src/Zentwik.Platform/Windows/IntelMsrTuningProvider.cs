@@ -47,17 +47,30 @@ public sealed class IntelMsrTuningProvider : IIntelTuningProvider
                 return false;
             }
 
-            if (!TryMailboxRead(out var voltage, out error)
-                || !TryReadMsr(IntelMsrBits.TurboRatioLimit, out var turbo, out error))
+            // 0x150 的"读"也是先写读命令，必须与写入共用同一把全局互斥。
+            if (!TryEnterMailbox(out error))
             {
                 return false;
             }
 
-            state = new IntelTuningState(
-                IntelMsrBits.DecodeVoltageOffset(voltage),
-                IntelMsrBits.DecodeTurboRatio(turbo, 1),
-                IntelMsrBits.DecodeTurboRatio(turbo, 8));
-            return true;
+            try
+            {
+                if (!TryMailboxRead(out var voltage, out error)
+                    || !TryReadMsr(IntelMsrBits.TurboRatioLimit, out var turbo, out error))
+                {
+                    return false;
+                }
+
+                state = new IntelTuningState(
+                    IntelMsrBits.DecodeVoltageOffset(voltage),
+                    IntelMsrBits.DecodeTurboRatio(turbo, 1),
+                    IntelMsrBits.DecodeTurboRatio(turbo, 8));
+                return true;
+            }
+            finally
+            {
+                ReleaseMailbox();
+            }
         }
     }
 
