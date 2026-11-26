@@ -3,6 +3,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Xunit;
 using Zentwik.Desktop.Services;
 using Zentwik.Desktop.ViewModels;
@@ -108,6 +109,8 @@ public sealed class AccessibilityTests
             var viewModel = new MainViewModel(catalog, themes);
             var window = new MainWindow(viewModel);
             window.Show();
+            window.UpdateLayout();
+            window.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
             window.UpdateLayout();
 
             return new TestWindow(window, viewModel);
