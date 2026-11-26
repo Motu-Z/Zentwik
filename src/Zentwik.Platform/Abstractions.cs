@@ -98,6 +98,16 @@ public sealed record ProcessTarget(int ProcessId, string Name);public interface 
     bool TryApply(int processId, string? cpuMask, string? priority, out string? error);
 }
 
+/// <summary>可选 CPU Sets 调度接口（Get/SetProcessDefaultCpuSets）。</summary>
+public interface IProcessCpuSetScheduler
+{
+    bool IsCpuSetsSupported(out string? detail);
+
+    bool TryReadCpuSets(int processId, out string? cpuSets, out string? error);
+
+    bool TryApplyCpuSets(int processId, string? cpuSets, out string? error);
+}
+
 public interface IPowerStatus
 {
     /// <summary>null 表示无法判定（例如台式机无电池且状态未知）。</summary>

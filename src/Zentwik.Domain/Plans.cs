@@ -73,6 +73,9 @@ public sealed record SchedulingRule
 
     public string? Priority { get; init; }
 
+    // CPU Sets 逻辑处理器集合（如 "0,1,2,3" 或 "0-3,8-11"）。null 表示不管理 CPU Sets。
+    public string? CpuSets { get; init; }
+
     // 进程自行改回设置时是否重新施加。
     public bool Enforce { get; init; } = true;
 }
@@ -300,5 +303,112 @@ public static class CurveOptimizerConfig
         }
 
         return string.Join(", ", parts);
+    }
+}
+
+/// <summary>
+/// CPU Sets 规范解析、规范化与逻辑处理器映射校验（如 "0-3,8,10-11"）。
+/// </summary>
+public static class CpuSetSpec
+{
+    public static bool TryParse(string? spec, out IReadOnlyList<int> logicalIndices, out string? error)
+    {
+        logicalIndices = [];
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(spec))
+        {
+            error = "CPU Sets 规范不能为空。";
+            return false;
+        }
+
+        var result = new SortedSet<int>();
+        foreach (var rawToken in spec.Split(',', StringSplitOptions.TrimEntries))
+        {
+            if (string.IsNullOrWhiteSpace(rawToken))
+            {
+                error = $"CPU Sets 包含空项：\"{spec}\"。";
+                return false;
+            }
+
+            var dash = rawToken.IndexOf('-', StringComparison.Ordinal);
+            if (dash < 0)
+            {
+                if (!int.TryParse(rawToken, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var single) || single < 0)
+                {
+                    error = $"无法解析 CPU Sets 索引 \"{rawToken}\"。";
+                    return false;
+                }
+
+                result.Add(single);
+                continue;
+            }
+
+            var left = rawToken[..dash].Trim();
+            var right = rawToken[(dash + 1)..].Trim();
+            if (!int.TryParse(left, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var start)
+                || !int.TryParse(right, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var end)
+                || start < 0
+                || end < start)
+            {
+                error = $"无法解析 CPU Sets 范围 \"{rawToken}\"。";
+                return false;
+            }
+
+            for (var i = start; i <= end; i++)
+            {
+                result.Add(i);
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            error = "CPU Sets 未包含任何逻辑处理器。";
+            return false;
+        }
+
+        logicalIndices = [.. result];
+        return true;
+    }
+
+    public static string Format(IEnumerable<int> logicalIndices) =>
+        string.Join(",", logicalIndices.Distinct().Order());
+
+    public static bool TryNormalize(string? spec, out string normalized, out string? error)
+    {
+        if (!TryParse(spec, out var indices, out error))
+        {
+            normalized = string.Empty;
+            return false;
+        }
+
+        normalized = Format(indices);
+        return true;
+    }
+
+    public static bool ValidateAndResolve(
+        IReadOnlyList<int> requestedLogicalIndices,
+        IReadOnlyDictionary<int, uint> logicalToCpuSetId,
+        out uint[] cpuSetIds,
+        out string? error)
+    {
+        cpuSetIds = [];
+        error = null;
+
+        if (requestedLogicalIndices.Count == 0)
+        {
+            error = "CPU Sets 未指定任何逻辑处理器。";
+            return false;
+        }
+
+        var missing = requestedLogicalIndices.Where(idx => !logicalToCpuSetId.ContainsKey(idx)).ToArray();
+        if (missing.Length > 0)
+        {
+            error = $"逻辑处理器 {string.Join(",", missing)} 不在系统 CPU Sets 拓扑中。";
+            return false;
+        }
+
+        cpuSetIds = requestedLogicalIndices.Select(idx => logicalToCpuSetId[idx]).Distinct().ToArray();
+        return true;
     }
 }

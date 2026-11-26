@@ -1,12 +1,12 @@
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
+using Zentwik.Domain.Plans;
 using Zentwik.Platform;
 
 namespace Zentwik.Platform.Windows;
 
-/// <summary>亲和性与优先级只作用于已有进程；跨处理器组时亲和性会被系统忽略。</summary>
-public sealed class AffinityScheduler : IProcessScheduler
+public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetScheduler
 {
     public IReadOnlyList<ProcessTarget> Find(string name)
     {
@@ -14,35 +14,32 @@ public sealed class AffinityScheduler : IProcessScheduler
             ? name[..^4]
             : name;
 
-        var targets = new List<ProcessTarget>();
-        foreach (var process in Process.GetProcesses())
+        var results = new List<ProcessTarget>();
+        foreach (var process in Process.GetProcessesByName(normalized))
         {
             using (process)
             {
-                if (string.Equals(process.ProcessName, normalized, StringComparison.OrdinalIgnoreCase))
-                {
-                    targets.Add(new ProcessTarget(process.Id, process.ProcessName));
-                }
+                results.Add(new ProcessTarget(process.Id, process.ProcessName));
             }
         }
 
-        return targets;
+        return results;
     }
 
     public bool TryRead(int processId, out string? cpuMask, out string? priority, out string? error)
     {
         cpuMask = null;
         priority = null;
-        error = null;
 
         try
         {
             using var process = Process.GetProcessById(processId);
-            cpuMask = $"0x{(long)process.ProcessorAffinity:X}";
+            cpuMask = $"0x{process.ProcessorAffinity.ToInt64():X}";
             priority = process.PriorityClass.ToString();
+            error = null;
             return true;
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             error = ex.Message;
             return false;
@@ -51,12 +48,6 @@ public sealed class AffinityScheduler : IProcessScheduler
 
     public bool TryApply(int processId, string? cpuMask, string? priority, out string? error)
     {
-        error = null;
-        if (cpuMask is null && priority is null)
-        {
-            return true;
-        }
-
         try
         {
             using var process = Process.GetProcessById(processId);
@@ -74,41 +65,154 @@ public sealed class AffinityScheduler : IProcessScheduler
 
             if (priority is not null)
             {
-                if (!Enum.TryParse<ProcessPriorityClass>(priority, ignoreCase: true, out var level))
+                if (!Enum.TryParse<ProcessPriorityClass>(priority, ignoreCase: true, out var priorityClass))
                 {
-                    error = $"未知优先级：{priority}。";
+                    error = $"未知进程优先级：{priority}。";
                     return false;
                 }
 
-                process.PriorityClass = level;
+                process.PriorityClass = priorityClass;
             }
 
+            error = null;
             return true;
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception or NotSupportedException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             error = ex.Message;
             return false;
         }
     }
 
-    private static bool TryParseMask(string text, out nint mask)
+    public bool IsCpuSetsSupported(out string? detail)
     {
-        mask = 0;
-        var span = text.AsSpan().Trim();
-        var hex = span.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-        if (hex)
+        if (!CpuSetsNative.TryGetSystemCpuSetMap(out var logicalToId, out _, out var error))
         {
-            span = span[2..];
+            detail = error;
+            return false;
         }
 
-        var style = hex ? NumberStyles.HexNumber : NumberStyles.Integer;
-        if (!ulong.TryParse(span, style, CultureInfo.InvariantCulture, out var value) || value == 0)
+        detail = $"Windows CPU Sets 可用，共 {logicalToId.Count} 个逻辑处理器集合。";
+        return true;
+    }
+
+    public bool TryReadCpuSets(int processId, out string? cpuSets, out string? error)
+    {
+        cpuSets = null;
+        if (!CpuSetsNative.TryGetSystemCpuSetMap(out _, out var idToLogical, out error))
         {
             return false;
         }
 
-        mask = (nint)(long)value;
-        return true;
+        var handle = CpuSetsNative.OpenProcess(CpuSetsNative.ProcessQueryLimitedInformation, false, processId);
+        if (handle == 0)
+        {
+            error = $"打开进程 {processId} 失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+            return false;
+        }
+
+        try
+        {
+            if (!CpuSetsNative.GetProcessDefaultCpuSets(handle, null, 0, out var required))
+            {
+                var code = Marshal.GetLastWin32Error();
+                if (code != 122) // ERROR_INSUFFICIENT_BUFFER
+                {
+                    error = $"读取进程 {processId} CPU Sets 失败，Win32 错误码 {code}。";
+                    return false;
+                }
+            }
+
+            if (required == 0)
+            {
+                cpuSets = string.Empty;
+                error = null;
+                return true;
+            }
+
+            var ids = new uint[required];
+            if (!CpuSetsNative.GetProcessDefaultCpuSets(handle, ids, required, out _))
+            {
+                error = $"读取进程 {processId} CPU Sets 失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+                return false;
+            }
+
+            var logical = ids
+                .Where(idToLogical.ContainsKey)
+                .Select(id => idToLogical[id])
+                .ToArray();
+            cpuSets = CpuSetSpec.Format(logical);
+            error = null;
+            return true;
+        }
+        finally
+        {
+            CpuSetsNative.CloseHandle(handle);
+        }
+    }
+
+    public bool TryApplyCpuSets(int processId, string? cpuSets, out string? error)
+    {
+        if (!CpuSetsNative.TryGetSystemCpuSetMap(out var logicalToId, out _, out error))
+        {
+            return false;
+        }
+
+        uint[]? ids = null;
+        if (!string.IsNullOrWhiteSpace(cpuSets))
+        {
+            if (!CpuSetSpec.TryParse(cpuSets, out var requested, out error)
+                || !CpuSetSpec.ValidateAndResolve(requested, logicalToId, out ids, out error))
+            {
+                return false;
+            }
+        }
+
+        var handle = CpuSetsNative.OpenProcess(
+            CpuSetsNative.ProcessQueryLimitedInformation | CpuSetsNative.ProcessSetLimitedInformation,
+            false,
+            processId);
+        if (handle == 0)
+        {
+            error = $"打开进程 {processId} 失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+            return false;
+        }
+
+        try
+        {
+            var count = (uint)(ids?.Length ?? 0);
+            if (!CpuSetsNative.SetProcessDefaultCpuSets(handle, ids, count))
+            {
+                error = $"设置进程 {processId} CPU Sets 失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+        finally
+        {
+            CpuSetsNative.CloseHandle(handle);
+        }
+    }
+
+    private static bool TryParseMask(string text, out nint mask)
+    {
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            if (ulong.TryParse(text.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var hex))
+            {
+                mask = unchecked((nint)(long)hex);
+                return mask != 0;
+            }
+        }
+        else if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dec))
+        {
+            mask = unchecked((nint)(long)dec);
+            return mask != 0;
+        }
+
+        mask = 0;
+        return false;
     }
 }
