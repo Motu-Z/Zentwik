@@ -673,22 +673,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 var assignment = spec.Split('=', 2);
                 if (assignment.Length != 2 || string.IsNullOrWhiteSpace(assignment[0]))
                 {
-                    throw new FormatException("调度方案参数请使用 进程名=掩码:优先级（如 game=0xF:High）。");
+                    throw new FormatException("调度方案参数请使用 进程名=掩码:优先级[:cpusets]（如 game=0xF:High:0-3）。");
                 }
 
-                var parts = assignment[1].Split(':', 2);
+                var parts = assignment[1].Split(':', 3);
                 var mask = string.IsNullOrWhiteSpace(parts[0]) ? null : parts[0].Trim();
                 var priority = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1].Trim() : null;
-                if (mask is null && priority is null)
+                var cpuSets = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : null;
+                if (mask is null && priority is null && cpuSets is null)
                 {
-                    throw new ArgumentException("调度规则至少需要掩码或优先级。");
+                    throw new ArgumentException("调度规则至少需要掩码、优先级或 CPU Sets。");
                 }
 
                 return new SchedulingPlan
                 {
                     Id = id,
                     Name = name,
-                    Rules = [new SchedulingRule { ProcessMatch = assignment[0].Trim(), CpuMask = mask, Priority = priority }],
+                    Rules = [new SchedulingRule { ProcessMatch = assignment[0].Trim(), CpuMask = mask, Priority = priority, CpuSets = cpuSets }],
                     CreatedAt = now,
                     UpdatedAt = now,
                 };
@@ -1108,7 +1109,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             CpuTuningPlan cpu => CurveOptimizerConfig.FormatPlanSummary(cpu),
             PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? $"设置 {power.Settings.Count} 项",
-            SchedulingPlan sched => string.Join(", ", sched.Rules.Select(static r => $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"})")),
+            SchedulingPlan sched => string.Join(", ", sched.Rules.Select(static r => r.CpuSets is null ? $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"})" : $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"}:{r.CpuSets})")),
             _ => string.Empty,
         };
         return new PlanRow(

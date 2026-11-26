@@ -639,6 +639,128 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.All(offsets, o => Assert.Equal(-15, o.Offset));
     }
 
+    [Fact]
+    public async Task ApplyScheduling_And_Revert_With_CpuSets()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(3001, "game"));
+        var plan = new SchedulingPlan
+        {
+            Id = "sched-cpusets",
+            Name = "Sched CpuSets",
+            Revision = 1,
+            Rules =
+            [
+                new SchedulingRule
+                {
+                    ProcessMatch = "game",
+                    CpuSets = "0-3",
+                    Enforce = true,
+                },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        var target = Assert.Single(outcome.Targets);
+        Assert.Equal("sched.3001.cpusets", target.Target);
+        Assert.Equal(string.Empty, target.Previous);
+        Assert.Equal("0,1,2,3", target.Actual);
+
+        var reverted = await coordinator.RevertPlanAsync(plan.Id);
+        Assert.Equal(LedgerStatus.Reverted, Assert.Single(reverted).Status);
+        Assert.True(scheduler.TryReadCpuSets(3001, out var afterRevert, out _));
+        Assert.Equal(string.Empty, afterRevert);
+    }
+
+    [Fact]
+    public async Task ApplyScheduling_Skips_Unsupported_CpuSets_Without_Blocking_Affinity()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(3002, "game"))
+        {
+            CpuSetsSupported = false,
+        };
+        var plan = new SchedulingPlan
+        {
+            Id = "sched-cpusets-unsupported",
+            Name = "Sched CpuSets Unsupported",
+            Revision = 1,
+            Rules =
+            [
+                new SchedulingRule
+                {
+                    ProcessMatch = "game",
+                    CpuMask = "0xF",
+                    CpuSets = "0-3",
+                },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "sched.3002.affinity").Status);
+        Assert.Equal(LedgerStatus.Skipped, outcome.Targets.Single(t => t.Target == "sched.3002.cpusets").Status);
+    }
+
+    [Fact]
+    public async Task EnforceScheduling_Reverts_Orphaned_Target_When_Rule_Config_Changes()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(4001, "game"));
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: true);
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, coordinator, scheduler, _powerStatus, _log);
+
+        await scenes.EvaluateAsync();
+        Assert.NotNull(coordinator.Entries.SingleOrDefault(e => e.Target == "sched.4001.affinity"));
+        Assert.NotNull(coordinator.Entries.SingleOrDefault(e => e.Target == "sched.4001.priority"));
+
+        // 模拟配置变更：移除 CpuMask，仅保留 Priority
+        await _store.UpdateAsync(document => document with
+        {
+            Plans = document.Plans.Select(p => p is SchedulingPlan sp && sp.Id == "sched-plan"
+                ? sp with
+                {
+                    Rules = [new SchedulingRule { ProcessMatch = "game", CpuMask = null, Priority = "High", Enforce = true }],
+                }
+                : p).ToArray(),
+        });
+
+        await coordinator.EnforceSchedulingAsync(scenes.ActiveSceneId);
+
+        Assert.DoesNotContain(coordinator.Entries, e => e.Target == "sched.4001.affinity");
+        Assert.Contains(coordinator.Entries, e => e.Target == "sched.4001.priority" && e.Status == LedgerStatus.Applied);
+        Assert.True(scheduler.TryRead(4001, out var maskAfter, out var prioAfter, out _));
+        Assert.Equal("0x3", maskAfter);
+        Assert.Equal("High", prioAfter);
+    }
+
+    [Fact]
+    public async Task SchedulingWatcher_Lifecycle_Start_Notify_And_StopAsync()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(5001, "game"));
+        await SeedSchedulingSceneAsync("game", "0xF", "High", enforce: true);
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var scenes = new SceneEngine(_store, coordinator, scheduler, _powerStatus, _log);
+
+        await using var watcher = new SchedulingWatcher(scenes, coordinator, _log, TimeSpan.FromMinutes(5));
+        watcher.Start();
+        Assert.True(watcher.IsRunning);
+
+        watcher.NotifyConfigChanged();
+        await Task.Delay(100);
+        await watcher.StopAsync();
+        Assert.False(watcher.IsRunning);
+    }
+
     private async Task SeedSchedulingSceneAsync(
         string processMatch,
         string? cpuMask,

@@ -324,7 +324,61 @@ public sealed class PlanCoordinator
                 }
             }
 
+            // 2.5 配置变更对账：若某活跃来源的规则已被删改或清空字段，回退并清理其遗留接管项。
+            var activeSources = activePlans.Select(static p => p.Source).ToHashSet(StringComparer.Ordinal);
+            var desiredTargets = new HashSet<(string Source, string Target)>();
+            foreach (var (schedPlan, source, _) in activePlans)
+            {
+                foreach (var rule in schedPlan.Rules)
+                {
+                    foreach (var process in _scheduler.Find(rule.ProcessMatch))
+                    {
+                        if (rule.CpuMask is not null)
+                        {
+                            desiredTargets.Add((source, $"sched.{process.ProcessId}.affinity"));
+                        }
+
+                        if (rule.Priority is not null)
+                        {
+                            desiredTargets.Add((source, $"sched.{process.ProcessId}.priority"));
+                        }
+
+                        if (rule.CpuSets is not null)
+                        {
+                            desiredTargets.Add((source, $"sched.{process.ProcessId}.cpusets"));
+                        }
+                    }
+                }
+            }
+
+            foreach (var entry in _ledger.Entries.ToArray())
+            {
+                if (!TryParseSchedulingTarget(entry.Target, out _, out _)
+                    || entry.Owner is not (OwnerKind.Scene or OwnerKind.Plan)
+                    || entry.Status != LedgerStatus.Applied
+                    || !activeSources.Contains(entry.Source)
+                    || desiredTargets.Contains((entry.Source, entry.Target)))
+                {
+                    continue;
+                }
+
+                if (entry.Restorable && entry.PreviousValue is not null)
+                {
+                    var (actual, error) = RestoreTarget(entry);
+                    var reverted = error is null && string.Equals(actual, entry.PreviousValue, StringComparison.Ordinal);
+                    _ledger.MarkReverted(entry.Target, actual ?? string.Empty, reverted, error);
+                }
+
+                if (_ledger.Remove(entry.Target))
+                {
+                    changed = true;
+                }
+            }
+
             // 3. 仅对 Enforce == true 的规则执行新进程绑定与漂移重施加。
+            var cpuSetScheduler = _scheduler as IProcessCpuSetScheduler;
+            var cpuSetsSupported = cpuSetScheduler is not null && cpuSetScheduler.IsCpuSetsSupported(out _);
+
             foreach (var (schedPlan, source, priority) in activePlans)
             {
                 foreach (var rule in schedPlan.Rules)
@@ -332,6 +386,12 @@ public sealed class PlanCoordinator
                     if (!rule.Enforce)
                     {
                         continue;
+                    }
+
+                    string? normalizedCpuSets = null;
+                    if (rule.CpuSets is not null && cpuSetsSupported && CpuSetSpec.TryNormalize(rule.CpuSets, out var norm, out _))
+                    {
+                        normalizedCpuSets = norm;
                     }
 
                     var processes = _scheduler.Find(rule.ProcessMatch);
@@ -344,6 +404,7 @@ public sealed class PlanCoordinator
 
                         var affinityTarget = $"sched.{process.ProcessId}.affinity";
                         var priorityTarget = $"sched.{process.ProcessId}.priority";
+                        var cpuSetsTarget = $"sched.{process.ProcessId}.cpusets";
 
                         var needMask = PrepareEnforceField(
                             affinityTarget,
@@ -363,43 +424,70 @@ public sealed class PlanCoordinator
                             rule.Priority,
                             ref changed);
 
-                        if (!needMask && !needPriority)
+                        if (needMask || needPriority)
                         {
-                            continue;
+                            if (_scheduler.TryApply(
+                                process.ProcessId,
+                                needMask ? rule.CpuMask : null,
+                                needPriority ? rule.Priority : null,
+                                out var applyError))
+                            {
+                                _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
+
+                                if (needMask)
+                                {
+                                    _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
+                                }
+
+                                if (needPriority)
+                                {
+                                    _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                                }
+                            }
+                            else
+                            {
+                                if (needMask)
+                                {
+                                    _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
+                                }
+
+                                if (needPriority)
+                                {
+                                    _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
+                                }
+                            }
+
+                            changed = true;
                         }
 
-                        if (_scheduler.TryApply(
-                            process.ProcessId,
-                            needMask ? rule.CpuMask : null,
-                            needPriority ? rule.Priority : null,
-                            out var applyError))
+                        if (normalizedCpuSets is not null
+                            && cpuSetScheduler is not null
+                            && cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var currentCpuSets, out _))
                         {
-                            _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
+                            var needCpuSets = PrepareEnforceField(
+                                cpuSetsTarget,
+                                source,
+                                priority,
+                                schedPlan.Id,
+                                currentCpuSets ?? string.Empty,
+                                normalizedCpuSets,
+                                ref changed);
 
-                            if (needMask)
+                            if (needCpuSets)
                             {
-                                _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
-                            }
+                                if (cpuSetScheduler.TryApplyCpuSets(process.ProcessId, normalizedCpuSets, out var csError))
+                                {
+                                    cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCpuSets, out _);
+                                    _ledger.Commit(cpuSetsTarget, actualCpuSets ?? string.Empty);
+                                }
+                                else
+                                {
+                                    _ledger.Fail(cpuSetsTarget, csError ?? "应用 CPU Sets 失败。");
+                                }
 
-                            if (needPriority)
-                            {
-                                _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                                changed = true;
                             }
                         }
-                        else
-                        {
-                            if (needMask)
-                            {
-                                _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
-                            }
-
-                            if (needPriority)
-                            {
-                                _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
-                            }
-                        }
-
-                        changed = true;
                     }
                 }
             }
@@ -879,12 +967,16 @@ public sealed class PlanCoordinator
                 outcomes.Add(new TargetOutcome(
                     $"sched.{rule.ProcessMatch}",
                     null,
-                    rule.CpuMask ?? rule.Priority,
+                    rule.CpuMask ?? rule.Priority ?? rule.CpuSets,
                     null,
                     LedgerStatus.Skipped,
                     "未找到匹配进程。"));
                 continue;
             }
+
+            var cpuSetScheduler = _scheduler as IProcessCpuSetScheduler;
+            string? cpuSetsDetail = null;
+            var cpuSetsSupported = cpuSetScheduler is not null && cpuSetScheduler.IsCpuSetsSupported(out cpuSetsDetail);
 
             foreach (var process in processes)
             {
@@ -896,6 +988,7 @@ public sealed class PlanCoordinator
 
                 var affinityTarget = $"sched.{process.ProcessId}.affinity";
                 var priorityTarget = $"sched.{process.ProcessId}.priority";
+                var cpuSetsTarget = $"sched.{process.ProcessId}.cpusets";
 
                 string? maskToApply = null;
                 if (rule.CpuMask is not null)
@@ -937,39 +1030,83 @@ public sealed class PlanCoordinator
                     }
                 }
 
-                if (maskToApply is null && priorityToApply is null)
+                if (maskToApply is not null || priorityToApply is not null)
                 {
-                    continue;
+                    if (_scheduler.TryApply(process.ProcessId, maskToApply, priorityToApply, out var applyError))
+                    {
+                        _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
+
+                        if (maskToApply is not null)
+                        {
+                            _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
+                            outcomes.Add(OutcomeFromLedger(affinityTarget));
+                        }
+
+                        if (priorityToApply is not null)
+                        {
+                            _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
+                            outcomes.Add(OutcomeFromLedger(priorityTarget));
+                        }
+                    }
+                    else
+                    {
+                        if (maskToApply is not null)
+                        {
+                            _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
+                            outcomes.Add(OutcomeFromLedger(affinityTarget));
+                        }
+
+                        if (priorityToApply is not null)
+                        {
+                            _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
+                            outcomes.Add(OutcomeFromLedger(priorityTarget));
+                        }
+                    }
                 }
 
-                if (_scheduler.TryApply(process.ProcessId, maskToApply, priorityToApply, out var applyError))
+                if (rule.CpuSets is not null)
                 {
-                    _scheduler.TryRead(process.ProcessId, out var actualMask, out var actualPriority, out _);
-
-                    if (maskToApply is not null)
+                    if (!CpuSetSpec.TryNormalize(rule.CpuSets, out var normalizedCpuSets, out var parseError))
                     {
-                        _ledger.Commit(affinityTarget, actualMask ?? string.Empty);
-                        outcomes.Add(OutcomeFromLedger(affinityTarget));
+                        outcomes.Add(new TargetOutcome(
+                            cpuSetsTarget,
+                            null,
+                            rule.CpuSets,
+                            null,
+                            LedgerStatus.Skipped,
+                            parseError ?? "CPU Sets 格式非法。"));
                     }
-
-                    if (priorityToApply is not null)
+                    else if (!cpuSetsSupported || cpuSetScheduler is null)
                     {
-                        _ledger.Commit(priorityTarget, actualPriority ?? string.Empty);
-                        outcomes.Add(OutcomeFromLedger(priorityTarget));
+                        outcomes.Add(new TargetOutcome(
+                            cpuSetsTarget,
+                            null,
+                            normalizedCpuSets,
+                            null,
+                            LedgerStatus.Skipped,
+                            cpuSetsDetail ?? "当前调度器不支持 CPU Sets。"));
                     }
-                }
-                else
-                {
-                    if (maskToApply is not null)
+                    else if (!cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var currentCpuSets, out var readCsError))
                     {
-                        _ledger.Fail(affinityTarget, applyError ?? "应用失败。");
-                        outcomes.Add(OutcomeFromLedger(affinityTarget));
+                        outcomes.Add(new TargetOutcome(
+                            cpuSetsTarget,
+                            null,
+                            normalizedCpuSets,
+                            null,
+                            LedgerStatus.Skipped,
+                            readCsError ?? "读取当前 CPU Sets 失败。"));
                     }
-
-                    if (priorityToApply is not null)
+                    else
                     {
-                        _ledger.Fail(priorityTarget, applyError ?? "应用失败。");
-                        outcomes.Add(OutcomeFromLedger(priorityTarget));
+                        outcomes.Add(ApplyTarget(
+                            cpuSetsTarget,
+                            plan.Id,
+                            source,
+                            priority,
+                            currentCpuSets ?? string.Empty,
+                            normalizedCpuSets,
+                            () => cpuSetScheduler.TryApplyCpuSets(process.ProcessId, normalizedCpuSets, out var csErr) ? null : csErr,
+                            () => cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCs, out _) ? actualCs ?? string.Empty : null));
                     }
                 }
             }
@@ -1154,6 +1291,23 @@ public sealed class PlanCoordinator
 
         if (TryParseSchedulingTarget(entry.Target, out var pid, out var field))
         {
+            if (field == "cpusets")
+            {
+                if (_scheduler is not IProcessCpuSetScheduler cpuSetScheduler)
+                {
+                    return (null, "当前调度器不支持 CPU Sets 回退。");
+                }
+
+                if (!cpuSetScheduler.TryApplyCpuSets(pid, entry.PreviousValue, out var csError))
+                {
+                    return (null, csError);
+                }
+
+                return cpuSetScheduler.TryReadCpuSets(pid, out var actualCs, out _)
+                    ? (actualCs ?? string.Empty, null)
+                    : (null, "回读失败。");
+            }
+
             var mask = field == "affinity" ? entry.PreviousValue : null;
             var priority = field == "priority" ? entry.PreviousValue : null;
             if (!_scheduler.TryApply(pid, mask, priority, out var error))
@@ -1344,7 +1498,7 @@ public sealed class PlanCoordinator
         var parts = target["sched.".Length..].Split('.');
         return parts.Length == 2
                && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out processId)
-               && (field = parts[1]) is "affinity" or "priority";
+               && (field = parts[1]) is "affinity" or "priority" or "cpusets";
     }
 
     private Task PersistAsync(Plan updated, CancellationToken ct) =>

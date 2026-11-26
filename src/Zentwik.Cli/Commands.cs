@@ -529,15 +529,16 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             var assignment = entry.Split('=', 2);
             if (assignment.Length != 2)
             {
-                throw new CliUsageException($"无法解析 --rule {entry}，格式为 进程=掩码:优先级。");
+                throw new CliUsageException($"无法解析 --rule {entry}，格式为 进程=掩码:优先级[:cpusets]。");
             }
 
-            var parts = assignment[1].Split(':', 2);
+            var parts = assignment[1].Split(':', 3);
             var mask = string.IsNullOrWhiteSpace(parts[0]) ? null : parts[0];
             var priority = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : null;
-            if (mask is null && priority is null)
+            var cpuSets = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2] : null;
+            if (mask is null && priority is null && cpuSets is null)
             {
-                throw new CliUsageException("调度规则至少需要掩码或优先级。");
+                throw new CliUsageException("调度规则至少需要掩码、优先级或 CPU Sets。");
             }
 
             rules.Add(new SchedulingRule
@@ -545,6 +546,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                 ProcessMatch = assignment[0],
                 CpuMask = mask,
                 Priority = priority,
+                CpuSets = cpuSets,
             });
         }
 
@@ -893,7 +895,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             case SchedulingPlan scheduling:
                 foreach (var rule in scheduling.Rules)
                 {
-                    Console.WriteLine($"  {rule.ProcessMatch} mask={rule.CpuMask ?? "-"} priority={rule.Priority ?? "-"} enforce={Output.Status(rule.Enforce)}");
+                    Console.WriteLine($"  {rule.ProcessMatch} mask={rule.CpuMask ?? "-"} priority={rule.Priority ?? "-"} cpusets={rule.CpuSets ?? "-"} enforce={Output.Status(rule.Enforce)}");
                 }
 
                 break;

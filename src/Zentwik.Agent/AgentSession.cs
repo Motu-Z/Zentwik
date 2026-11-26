@@ -326,6 +326,7 @@ internal sealed class AgentSession : IAsyncDisposable
             },
             ct).ConfigureAwait(false);
 
+        _server.Watcher.NotifyConfigChanged();
         _log.Info($"方案已保存：{saved.Id} rev {saved.Revision}");
         return Ok(request, JsonSerializer.SerializeToElement(saved, ZentwikJson.Default.Plan));
     }
@@ -352,6 +353,7 @@ internal sealed class AgentSession : IAsyncDisposable
             },
             ct).ConfigureAwait(false);
 
+        _server.Watcher.NotifyConfigChanged();
         _log.Info($"方案已删除：{plan.Id}");
         return Ok(request, JsonSerializer.SerializeToElement(true, ZentwikJson.Default.Boolean));
     }
@@ -377,6 +379,7 @@ internal sealed class AgentSession : IAsyncDisposable
             },
             ct).ConfigureAwait(false);
 
+        _server.Watcher.NotifyConfigChanged();
         _log.Info($"场景已保存：{saved.Id}");
         return Ok(request, JsonSerializer.SerializeToElement(saved, ZentwikJson.Default.Scene));
     }
@@ -398,6 +401,7 @@ internal sealed class AgentSession : IAsyncDisposable
             },
             ct).ConfigureAwait(false);
 
+        _server.Watcher.NotifyConfigChanged();
         _log.Info($"场景已删除：{scene.Id}");
         return Ok(request, JsonSerializer.SerializeToElement(true, ZentwikJson.Default.Boolean));
     }
@@ -674,6 +678,11 @@ internal sealed class AgentSession : IAsyncDisposable
                     if (string.IsNullOrWhiteSpace(rule.ProcessMatch))
                     {
                         throw new CoreException(ErrorCodes.PlanInvalid, "调度规则缺少进程名。");
+                    }
+
+                    if (rule.CpuSets is not null && !CpuSetSpec.TryParse(rule.CpuSets, out _, out var csError))
+                    {
+                        throw new CoreException(ErrorCodes.PlanInvalid, csError ?? "CPU Sets 格式非法。");
                     }
                 }
 
