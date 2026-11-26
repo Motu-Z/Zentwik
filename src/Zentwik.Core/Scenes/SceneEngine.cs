@@ -154,7 +154,7 @@ public sealed class SceneEngine
             var orphans = _plans.Entries
                 .Where(static entry => entry.Owner == OwnerKind.Scene
                                        && entry.Restorable
-                                       && entry.Status == LedgerStatus.Applied)
+                                       && entry.Status is LedgerStatus.Applied or LedgerStatus.Unknown)
                 .ToArray();
 
             if (orphans.Length == 0)

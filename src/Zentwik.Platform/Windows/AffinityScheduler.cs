@@ -34,6 +34,13 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
         try
         {
             using var process = Process.GetProcessById(processId);
+            if (process.HasExited)
+            {
+                // 已退出进程的句柄仍可读到退出前的值，直接采用会造成"假成功"。
+                error = $"进程 {processId} 已退出。";
+                return false;
+            }
+
             cpuMask = $"0x{process.ProcessorAffinity.ToInt64():X}";
             priority = process.PriorityClass.ToString();
             error = null;
@@ -51,6 +58,11 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
         try
         {
             using var process = Process.GetProcessById(processId);
+            if (process.HasExited)
+            {
+                error = $"进程 {processId} 已退出。";
+                return false;
+            }
 
             if (cpuMask is not null)
             {

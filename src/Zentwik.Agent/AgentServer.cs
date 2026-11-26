@@ -29,6 +29,7 @@ public sealed class AgentServer
     private readonly IIntelTuningProvider _intel;
     private readonly CallerPolicy _policy;
     private readonly SchedulingWatcher _watcher;
+    private readonly IPowerNotificationSource? _powerNotifications;
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private readonly List<AgentSession> _sessions = [];
     private readonly Lock _sessionsGate = new();
@@ -45,7 +46,8 @@ public sealed class AgentServer
         DoctorService doctor,
         ICpuTuningProvider tuning,
         IIntelTuningProvider intel,
-        CallerPolicy policy)
+        CallerPolicy policy,
+        IPowerNotificationSource? powerNotifications = null)
     {
         _options = options;
         _store = store;
@@ -59,6 +61,7 @@ public sealed class AgentServer
         _tuning = tuning;
         _intel = intel;
         _policy = policy;
+        _powerNotifications = powerNotifications;
         _watcher = new SchedulingWatcher(_scenes, _plans, _log);
     }
 
@@ -70,6 +73,7 @@ public sealed class AgentServer
 
         _watcher.Start(ct);
         _scenes.Changed += OnSceneChanged;
+        StartPowerNotifications(ct);
 
         try
         {
@@ -132,6 +136,7 @@ public sealed class AgentServer
         finally
         {
             _scenes.Changed -= OnSceneChanged;
+            _powerNotifications?.Dispose();
             await _watcher.DisposeAsync().ConfigureAwait(false);
             await RestoreActiveSceneAsync().ConfigureAwait(false);
             await ShutdownSessionsAsync().ConfigureAwait(false);
@@ -167,6 +172,42 @@ public sealed class AgentServer
 
     private void OnSceneChanged(SceneActivation activation) =>
         SceneChanged?.Invoke(activation);
+
+    /// <summary>
+    /// 唤醒后先核对账本再评估场景：重放前必须读到实际值，不能无条件重写历史写入。
+    /// </summary>
+    private void StartPowerNotifications(CancellationToken ct)
+    {
+        if (_powerNotifications is null)
+        {
+            return;
+        }
+
+        if (!_powerNotifications.Start(out var error))
+        {
+            _log.Warn($"系统挂起/恢复通知不可用：{error}");
+            return;
+        }
+
+        _powerNotifications.Resumed += () => _ = Task.Run(() => ResumeAsync(ct), CancellationToken.None);
+    }
+
+    private async Task ResumeAsync(CancellationToken ct)
+    {
+        try
+        {
+            var result = await _plans.ReconcileAfterResumeAsync(ct).ConfigureAwait(false);
+            _log.Info($"系统恢复核对：确认 {result.Verified}，重写 {result.Reapplied}，用户接管 {result.TakenOver}，未知 {result.Unknown}。");
+            await _scenes.EvaluateAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _log.Error($"系统恢复核对失败：{ex.Message}");
+        }
+    }
 
     private void Track(AgentSession session)
     {

@@ -111,7 +111,7 @@ public sealed class PlanCoordinator
         {
             var entries = _ledger.Entries
                 .Where(entry => string.Equals(entry.PlanId, planId, StringComparison.Ordinal))
-                .Where(static entry => entry.Owner is OwnerKind.Scene or OwnerKind.Plan && entry.Restorable && entry.Status == LedgerStatus.Applied)
+                .Where(static entry => StateLedger.IsHeld(entry) && entry.Restorable)
                 .OrderBy(static entry => entry.Target, StringComparer.Ordinal)
                 .ToArray();
 
@@ -124,7 +124,7 @@ public sealed class PlanCoordinator
                 var remaining = _ledger.Entries.Any(entry =>
                     string.Equals(entry.PlanId, planId, StringComparison.Ordinal)
                     && entry.Owner == OwnerKind.Scene
-                    && entry.Status == LedgerStatus.Applied);
+                    && entry.Status is LedgerStatus.Applied or LedgerStatus.Unknown);
 
                 var updated = plan with
                 {
@@ -191,6 +191,146 @@ public sealed class PlanCoordinator
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// 系统恢复后核对 CPU 相关目标：实际值等于期望值记为确认，退回前值视为失效并按期望重写，
+    /// 既不是期望值也不是前值视为用户接管（不覆盖），读不到则记为未知。
+    /// </summary>
+    public async Task<ResumeReconcileResult> ReconcileAfterResumeAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var candidates = _ledger.Entries
+                .Where(static entry => StateLedger.IsHeld(entry) && IsResumeTarget(entry.Target))
+                .ToArray();
+
+            if (candidates.Length == 0)
+            {
+                return new ResumeReconcileResult(0, 0, 0, 0, []);
+            }
+
+            IReadOnlyList<CoreOffset>? offsets = null;
+            if (candidates.Any(static entry => entry.Target.StartsWith("cpu.co.", StringComparison.Ordinal)))
+            {
+                _tuning.TryReadOffsets(out var read, out _);
+                offsets = read;
+            }
+
+            var verified = 0;
+            var reapplied = 0;
+            var takenOver = 0;
+            var unknown = 0;
+            var details = new List<string>();
+
+            foreach (var entry in candidates)
+            {
+                var equivalent = EquivalentFor(entry.Target);
+                var actual = ReadTarget(entry.Target, offsets);
+                if (actual is null)
+                {
+                    _ledger.MarkUnknown(entry.Target, "系统恢复后无法读取实际值。");
+                    unknown++;
+                    details.Add($"{entry.Target}: 无法读取");
+                    continue;
+                }
+
+                if (entry.DesiredValue is { } desired && Matches(actual, desired, equivalent))
+                {
+                    _ledger.Commit(entry.Target, actual, equivalent);
+                    verified++;
+                    continue;
+                }
+
+                if (entry.Restorable
+                    && entry.PreviousValue is { } previous
+                    && string.Equals(actual, previous, StringComparison.Ordinal))
+                {
+                    var (restored, error) = ReapplyTarget(entry.Target, entry.DesiredValue!);
+                    if (error is null && restored is not null)
+                    {
+                        _ledger.Commit(entry.Target, restored, equivalent);
+                        reapplied++;
+                        details.Add($"{entry.Target}: 已重写为 {restored}");
+                    }
+                    else
+                    {
+                        _ledger.Fail(entry.Target, error ?? "重写后无法回读。");
+                        details.Add($"{entry.Target}: 重写失败 {error}");
+                    }
+
+                    continue;
+                }
+
+                _ledger.MarkUserTakeover(entry.Target, actual);
+                takenOver++;
+                details.Add($"{entry.Target}: 实际 {actual}，标记为用户接管");
+            }
+
+            await PersistLedgerAsync(ct).ConfigureAwait(false);
+            _log.Info($"恢复核对：确认 {verified}，重写 {reapplied}，用户接管 {takenOver}，未知 {unknown}。");
+            return new ResumeReconcileResult(verified, reapplied, takenOver, unknown, details);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private static bool IsResumeTarget(string target) =>
+        target.StartsWith("cpu.co.", StringComparison.Ordinal)
+        || string.Equals(target, "cpu.fmax", StringComparison.Ordinal)
+        || string.Equals(target, "cpu.intel.voltage", StringComparison.Ordinal);
+
+    private static Func<string, string, bool>? EquivalentFor(string target) =>
+        string.Equals(target, "cpu.fmax", StringComparison.Ordinal) ? FMaxTolerance.Within : null;
+
+    private (string? Actual, string? Error) ReapplyTarget(string target, string desired)
+    {
+        if (!int.TryParse(desired, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        {
+            return (null, "期望值不是整数。");
+        }
+
+        if (target.StartsWith("cpu.co.", StringComparison.Ordinal))
+        {
+            if (!int.TryParse(target["cpu.co.".Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var core))
+            {
+                return (null, "目标格式非法。");
+            }
+
+            return _tuning.TryWriteOffset(core, value, out var error)
+                ? (ReadCoreOffset(core), null)
+                : (null, error);
+        }
+
+        if (string.Equals(target, "cpu.fmax", StringComparison.Ordinal))
+        {
+            if (_tuning is not IFMaxTuningProvider fmax)
+            {
+                return (null, "当前调校通道不支持 FMax 写入。");
+            }
+
+            return fmax.TryWriteFMax(value, out var error) == FMaxWriteResult.Applied
+                   && fmax.TryReadFMax(out var actual, out _)
+                ? (actual.ToString(CultureInfo.InvariantCulture), null)
+                : (null, error ?? "FMax 写入未被接受。");
+        }
+
+        if (string.Equals(target, "cpu.intel.voltage", StringComparison.Ordinal))
+        {
+            if (_intel is null)
+            {
+                return (null, "未装配 Intel MSR 调校通道。");
+            }
+
+            return _intel.TryWriteVoltageOffset(value, out var error) && _intel.TryRead(out var actual, out _)
+                ? (actual.VoltageOffsetMillivolts.ToString(CultureInfo.InvariantCulture), null)
+                : (null, error ?? "Intel 电压偏移写入未被接受。");
+        }
+
+        return (null, "未知目标类型。");
     }
 
     public async Task<IReadOnlyList<string>> DetectDriftAsync(CancellationToken ct = default)
@@ -318,7 +458,7 @@ public sealed class PlanCoordinator
                 var ownedByScene = _ledger.Entries.Any(entry =>
                     string.Equals(entry.PlanId, manualPlan.Id, StringComparison.Ordinal)
                     && entry.Owner == OwnerKind.Scene
-                    && entry.Status == LedgerStatus.Applied);
+                    && entry.Status is LedgerStatus.Applied or LedgerStatus.Unknown);
                 if (!ownedByScene)
                 {
                     activePlans.Add((manualPlan, $"plan:{manualPlan.Id}", int.MaxValue - 1));
@@ -1430,8 +1570,7 @@ public sealed class PlanCoordinator
     private bool HasAppliedEntries(string planId) =>
         _ledger.Entries.Any(entry =>
             string.Equals(entry.PlanId, planId, StringComparison.Ordinal)
-            && entry.Owner is OwnerKind.Scene or OwnerKind.Plan
-            && entry.Status == LedgerStatus.Applied);
+            && StateLedger.IsHeld(entry));
 
     private static PlanApplyState Summarize(IReadOnlyList<TargetOutcome> targets, string? error)
     {
@@ -1549,3 +1688,10 @@ public sealed class PlanCoordinator
     private Task PersistLedgerAsync(CancellationToken ct) =>
         _store.UpdateAsync(document => document with { Ledger = [.. _ledger.Entries] }, ct);
 }
+/// <summary>系统恢复后的核对结果：确认、重写、用户接管与无法确认分别计数。</summary>
+public sealed record ResumeReconcileResult(
+    int Verified,
+    int Reapplied,
+    int TakenOver,
+    int Unknown,
+    IReadOnlyList<string> Details);

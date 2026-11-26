@@ -954,6 +954,63 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.False(entry.Restorable);
     }
 
+    [Fact]
+    public async Task Resume_Reapplies_Value_That_Fell_Back_To_Baseline()
+    {
+        var plan = await SeedPlanAsync();
+        await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+        Assert.Equal(-25, ReadOffset(0));
+
+        _tuning.TryWriteOffset(0, 0, out _);
+        var result = await _plans.ReconcileAfterResumeAsync();
+
+        Assert.Equal(1, result.Reapplied);
+        Assert.Equal(-25, ReadOffset(0));
+        Assert.Equal(LedgerStatus.Applied, _plans.Entries.Single(e => e.Target == "cpu.co.0").Status);
+    }
+
+    [Fact]
+    public async Task Resume_Keeps_Value_That_Matches_Desired_Without_Writing()
+    {
+        var plan = await SeedPlanAsync();
+        await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        var result = await _plans.ReconcileAfterResumeAsync();
+
+        Assert.Equal(1, result.Verified);
+        Assert.Equal(0, result.Reapplied);
+        Assert.Equal(-25, ReadOffset(0));
+    }
+
+    [Fact]
+    public async Task Resume_Treats_Third_Party_Value_As_User_Takeover()
+    {
+        var plan = await SeedPlanAsync();
+        await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        _tuning.TryWriteOffset(0, -5, out _);
+        var result = await _plans.ReconcileAfterResumeAsync();
+
+        Assert.Equal(1, result.TakenOver);
+        Assert.Equal(-5, ReadOffset(0));
+        var entry = _plans.Entries.Single(e => e.Target == "cpu.co.0");
+        Assert.Equal(OwnerKind.User, entry.Owner);
+        Assert.False(entry.Restorable);
+    }
+
+    [Fact]
+    public async Task Resume_Marks_Unreadable_Target_As_Unknown()
+    {
+        var plan = await SeedPlanAsync();
+        await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        _tuning.UnreadableCores.Add(0);
+        var result = await _plans.ReconcileAfterResumeAsync();
+
+        Assert.Equal(1, result.Unknown);
+        Assert.Equal(LedgerStatus.Unknown, _plans.Entries.Single(e => e.Target == "cpu.co.0").Status);
+    }
+
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));

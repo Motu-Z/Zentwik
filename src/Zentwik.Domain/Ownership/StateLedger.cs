@@ -15,6 +15,9 @@ public enum LedgerStatus
     Reverted,
     Failed,
     Skipped,
+
+    /// <summary>写入了但无法确认实际值（如休眠恢复后读取失败），不得当作成功或失败。</summary>
+    Unknown,
 }
 
 public enum AcquireOutcome
@@ -78,6 +81,11 @@ public sealed class StateLedger
 
     public LedgerEntry? Get(string target) => _entries.GetValueOrDefault(target);
 
+    /// <summary>仍然由方案/场景持有（含无法确认实际值的条目），可用于回退与冲突判定。</summary>
+    public static bool IsHeld(LedgerEntry entry) =>
+        entry.Owner is OwnerKind.Scene or OwnerKind.Plan
+        && entry.Status is LedgerStatus.Applied or LedgerStatus.Unknown;
+
     public bool Remove(string target) => _entries.Remove(target);
 
     public AcquireOutcome Acquire(
@@ -99,7 +107,7 @@ public sealed class StateLedger
             }
 
             if (existing.Owner is OwnerKind.Scene or OwnerKind.Plan
-                && existing.Status == LedgerStatus.Applied
+                && existing.Status is LedgerStatus.Applied or LedgerStatus.Unknown
                 && existing.Priority > priority
                 && !string.Equals(existing.Source, source, StringComparison.Ordinal))
             {
@@ -107,7 +115,7 @@ public sealed class StateLedger
             }
 
             if (string.Equals(existing.Source, source, StringComparison.Ordinal)
-                && existing.Status == LedgerStatus.Applied)
+                && existing.Status is LedgerStatus.Applied or LedgerStatus.Unknown)
             {
                 _entries[target] = existing with { DesiredValue = desiredValue, PlanId = planId ?? existing.PlanId, UpdatedAt = now };
                 return AcquireOutcome.AlreadyOwned;
@@ -195,6 +203,21 @@ public sealed class StateLedger
         };
     }
 
+    public void MarkUnknown(string target, string reason)
+    {
+        if (!_entries.TryGetValue(target, out var entry))
+        {
+            return;
+        }
+
+        _entries[target] = entry with
+        {
+            Status = LedgerStatus.Unknown,
+            Failure = reason,
+            UpdatedAt = _clock.GetUtcNow(),
+        };
+    }
+
     public bool MarkUserTakeover(string target, string? currentValue)
     {
         if (!_entries.TryGetValue(target, out var entry))
@@ -242,7 +265,7 @@ public sealed class StateLedger
     public IReadOnlyList<LedgerEntry> PlanRevert(string source) =>
         Entries
             .Where(entry => string.Equals(entry.Source, source, StringComparison.Ordinal))
-            .Where(static entry => entry.Owner is OwnerKind.Scene or OwnerKind.Plan && entry.Restorable && entry.Status == LedgerStatus.Applied)
+            .Where(static entry => IsHeld(entry) && entry.Restorable)
             .OrderBy(static entry => entry.Target, StringComparer.Ordinal)
             .ToList();
 
@@ -250,7 +273,7 @@ public sealed class StateLedger
         Entries
             .Where(entry => string.Equals(entry.Source, source, StringComparison.Ordinal)
                             && string.Equals(entry.PlanId, planId, StringComparison.Ordinal))
-            .Where(static entry => entry.Owner is OwnerKind.Scene or OwnerKind.Plan && entry.Restorable && entry.Status == LedgerStatus.Applied)
+            .Where(static entry => IsHeld(entry) && entry.Restorable)
             .OrderBy(static entry => entry.Target, StringComparer.Ordinal)
             .ToList();
 
