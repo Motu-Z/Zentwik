@@ -8,22 +8,53 @@ namespace Zentwik.Platform.Windows;
 
 public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetScheduler
 {
+    // 一轮持续执行会对多条规则逐个查找进程；共用一份短时快照，避免每条规则各枚举一遍系统进程。
+    private static readonly TimeSpan SnapshotTtl = TimeSpan.FromSeconds(1);
+
+    private readonly Lock _snapshotGate = new();
+    private Dictionary<string, ProcessTarget[]>? _snapshot;
+    private DateTime _snapshotAt;
+
     public IReadOnlyList<ProcessTarget> Find(string name)
     {
-        var normalized = name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? name[..^4]
-            : name;
+        var normalized = Normalize(name);
+        var now = DateTime.UtcNow;
 
-        var results = new List<ProcessTarget>();
-        foreach (var process in Process.GetProcessesByName(normalized))
+        lock (_snapshotGate)
         {
-            using (process)
+            if (_snapshot is null || now - _snapshotAt > SnapshotTtl)
             {
-                results.Add(new ProcessTarget(process.Id, process.ProcessName, ReadStartTicks(process)));
+                _snapshot = TakeSnapshot();
+                _snapshotAt = now;
             }
+
+            return _snapshot.GetValueOrDefault(normalized) ?? [];
+        }
+    }
+
+    private static string Normalize(string name) =>
+        name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
+
+    private static Dictionary<string, ProcessTarget[]> TakeSnapshot()
+    {
+        var byName = new Dictionary<string, List<ProcessTarget>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (processId, exeName) in NativeProcessList.Capture())
+        {
+            var name = Normalize(exeName);
+            if (!byName.TryGetValue(name, out var list))
+            {
+                list = [];
+                byName[name] = list;
+            }
+
+            // 创建时间不在这里读：对全表逐个开句柄才是这项开销的来源，调用方按需单查。
+            list.Add(new ProcessTarget(processId, name));
         }
 
-        return results;
+        return byName.ToDictionary(
+            static pair => pair.Key,
+            static pair => pair.Value.ToArray(),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     public bool TryGetStartTicks(int processId, out long ticks)

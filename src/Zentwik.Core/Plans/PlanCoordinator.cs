@@ -1145,7 +1145,8 @@ public sealed class PlanCoordinator
 
             foreach (var process in processes)
             {
-                DropStaleSchedulingEntries(process.ProcessId, process.StartedAtTicks);
+                var startTicks = StartTicksOf(process);
+                DropStaleSchedulingEntries(process.ProcessId, startTicks);
 
                 if (!_scheduler.TryRead(process.ProcessId, out var currentMask, out var currentPriority, out _))
                 {
@@ -1160,7 +1161,7 @@ public sealed class PlanCoordinator
                 string? maskToApply = null;
                 if (rule.CpuMask is not null)
                 {
-                    var outcome = _ledger.Acquire(affinityTarget, source, priority, currentMask, rule.CpuMask, plan.Id, OwnerFor(source), process.StartedAtTicks);
+                    var outcome = _ledger.Acquire(affinityTarget, source, priority, currentMask, rule.CpuMask, plan.Id, OwnerFor(source), startTicks);
                     if (outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned)
                     {
                         maskToApply = rule.CpuMask;
@@ -1180,7 +1181,7 @@ public sealed class PlanCoordinator
                 string? priorityToApply = null;
                 if (rule.Priority is not null)
                 {
-                    var outcome = _ledger.Acquire(priorityTarget, source, priority, currentPriority, rule.Priority, plan.Id, OwnerFor(source), process.StartedAtTicks);
+                    var outcome = _ledger.Acquire(priorityTarget, source, priority, currentPriority, rule.Priority, plan.Id, OwnerFor(source), startTicks);
                     if (outcome is AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned)
                     {
                         priorityToApply = rule.Priority;
@@ -1271,7 +1272,7 @@ public sealed class PlanCoordinator
                             normalizedCpuSets,
                             () => cpuSetScheduler.TryApplyCpuSets(process.ProcessId, normalizedCpuSets, out var csErr) ? null : csErr,
                             () => cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCs, out _) ? actualCs ?? string.Empty : null,
-                            processStartTicks: process.StartedAtTicks));
+                            processStartTicks: startTicks));
                     }
                 }
             }
@@ -1697,6 +1698,12 @@ public sealed class PlanCoordinator
             }
         }
     }
+
+    /// <summary>进程创建时间只在需要记账时单查，不对整表逐个开句柄。</summary>
+    private long StartTicksOf(ProcessTarget process) =>
+        process.StartedAtTicks != 0
+            ? process.StartedAtTicks
+            : (_scheduler.TryGetStartTicks(process.ProcessId, out var ticks) ? ticks : 0);
 
     /// <summary>账本记录的是某个具体进程：PID 被复用后不能再算作同一目标。</summary>
     private bool ProcessStillAlive(int processId, long recordedTicks) =>
