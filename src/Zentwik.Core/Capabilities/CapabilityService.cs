@@ -35,6 +35,15 @@ public sealed class CapabilityService(IEnumerable<ICapabilityProbe> probes)
         }
     }
 
+    /// <summary>开关类改动之后调用：缓存里存的是改动前的探测结果，不清掉会让响应自相矛盾。</summary>
+    public void Invalidate()
+    {
+        lock (_gate)
+        {
+            _cached = null;
+        }
+    }
+
     private static CapabilityDescriptor ProbeSafely(ICapabilityProbe probe)
     {
         try

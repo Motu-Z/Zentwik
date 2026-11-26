@@ -176,6 +176,8 @@ internal sealed class AgentSession : IAsyncDisposable
                     ? await service.EnableAsync(id, ct).ConfigureAwait(false)
                     : await service.DisableAsync(id, ct).ConfigureAwait(false);
 
+                // 能力探测缓存里是改动前的状态，必须重探，否则响应会同时说「已启用」和「未启用」。
+                _server.Capabilities.Invalidate();
                 var modules = ModuleCatalog.Describe(_server.Capabilities.Get(), _server.Options.UseFake, enabled).ToArray();
                 return Ok(request, JsonSerializer.SerializeToElement(modules, ZentwikJson.Default.ModuleDtoArray));
             }
