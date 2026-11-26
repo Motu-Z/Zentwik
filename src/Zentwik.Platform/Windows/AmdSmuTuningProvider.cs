@@ -1,5 +1,6 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Power;
 using Zentwik.Platform;
 
 namespace Zentwik.Platform.Windows;
@@ -8,11 +9,27 @@ namespace Zentwik.Platform.Windows;
 /// AMD Curve Optimizer 通道。命令族按 CPU family/model 选择，写入后必须回读一致才算成功；
 /// 只读失败不会伪造数据，写入失败不回退到「假定成功」。
 /// </summary>
-public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider, ICpuCcdTopologyProvider
+public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvider, ICpuCcdTopologyProvider, IPowerLimitProvider
 {
     private const uint MessageTest = 0x01;
+
+    /// <summary>PM 表在 DRAM 里，须先请求固件传输一份；不传读到的是上一次的残留内容。</summary>
+    private const uint MessageTransferTableToDram = 0x03;
+
+    // Zen4/Zen5 的 RSMU DPTC 接口（ZenStates-Core Zen4Settings.cs；Zen5Settings 直接继承 Zen4）。
+    // MP1 侧另有一套（SetStapm 0x4F / SetFast 0x3E / SetSlow 0x5F），但 ioctl_send_smu_command 只能发 RSMU，
+    // 套用 MP1 命令号会被当作 RSMU 命令解释，因此不提供 STAPM。
+    private const uint MessageSetFastLimit = 0x56;
+    private const uint MessageSetSlowLimit = 0xCB;
+    private const uint MessageSetTdcLimit = 0x57;
+    private const uint MessageSetEdcLimit = 0x58;
+    private const uint MessageGetFusedPowerLimit = 0xDC;
+    private const uint MessageGetFusedApuSlowLimit = 0xDA;
+    private const uint MessageGetFusedVddTdc = 0xDB;
     private const string FunctionSendCommand = "ioctl_send_smu_command";
     private const string FunctionGetVersion = "ioctl_get_smu_version";
+    private const string FunctionResolvePmTable = "ioctl_resolve_pm_table";
+    private const string FunctionReadPmTable = "ioctl_read_pm_table";
     private const int MaxArgs = 6;
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(10);
 
@@ -30,6 +47,8 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     private AmdCoreMap _coreMap = AmdCoreMap.Empty;
     private uint _smuVersion;
     private bool _probed;
+    private bool _pmTableReady;
+    private uint _pmTableVersion;
 
     public AmdSmuTuningProvider(ISystemInfo info) => _info = info;
 
@@ -233,6 +252,381 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         }
     }
 
+    public (HardwareAvailability Availability, string? Detail) ProbePowerLimit()
+    {
+        lock (_gate)
+        {
+            var status = EnsureSession(out var error);
+            if (status.Availability != HardwareAvailability.Available || _session is null)
+            {
+                return (status.Availability, status.Detail ?? error);
+            }
+
+            if (!TryResolvePowerLimitCommands(_commands.Family, _commands.Model, out _))
+            {
+                return (HardwareAvailability.NotSupported,
+                    $"Family {_commands.Family:X}h Model {_commands.Model:X}h 的 DPTC 命令位于 MP1 邮箱（0x4F/0x3E/0x5F），"
+                    + "当前 RSMU 通道无法送达，不对该平台宣称可用。");
+            }
+
+            if (!TryReadPmTable(forceTransfer: false, out var table, out var pmError))
+            {
+                return (HardwareAvailability.Rejected, $"功耗表读取失败：{pmError}");
+            }
+
+            var current = DecodeCurrent(table);
+            if (!current.HasAny)
+            {
+                return (HardwareAvailability.Rejected, $"功耗表 v0x{_pmTableVersion:X8} 内容全为 0，无法建立可回读的基线。");
+            }
+
+            return (HardwareAvailability.Available,
+                $"功耗表 v0x{_pmTableVersion:X8}：当前 FAST {FormatWatts(current.FastWatts)}，"
+                + $"SLOW {FormatWatts(current.SlowWatts)}，STAPM {FormatWatts(current.StapmWatts)}（只读）。"
+                + "写入 FAST/SLOW 后回读校验；TDC/EDC 无回读通道。");
+        }
+    }
+
+    public bool TryReadCurrentPowerLimits(out PowerLimitCurrent current, out string? error)
+    {
+        lock (_gate)
+        {
+            var status = EnsureSession(out var statusError);
+            if (status.Availability != HardwareAvailability.Available || _session is null)
+            {
+                error = status.Detail ?? statusError ?? "SMU 通道不可用。";
+                current = PowerLimitCurrent.Unreadable(error);
+                return false;
+            }
+
+            if (!TryReadPmTable(forceTransfer: false, out var table, out error))
+            {
+                current = PowerLimitCurrent.Unreadable(error ?? "功耗表读取失败。");
+                return false;
+            }
+
+            current = DecodeCurrent(table);
+            return current.HasAny;
+        }
+    }
+
+    public bool TryReadFusedPowerLimits(out FusedPowerLimits limits, out string? error)
+    {
+        lock (_gate)
+        {
+            var status = EnsureSession(out var statusError);
+            if (status.Availability != HardwareAvailability.Available || _session is null)
+            {
+                error = status.Detail ?? statusError ?? "SMU 通道不可用。";
+                limits = FusedPowerLimits.None(error);
+                return false;
+            }
+
+            var notes = new List<string>(3);
+            var ppt = ReadFusedValue(MessageGetFusedPowerLimit, "fused PPT", notes);
+            var apuSlow = ReadFusedValue(MessageGetFusedApuSlowLimit, "fused APU slow", notes);
+            var vddTdc = ReadFusedValue(MessageGetFusedVddTdc, "fused VDD TDC", notes);
+
+            limits = new FusedPowerLimits(
+                ppt / 1000,
+                apuSlow / 1000,
+                vddTdc / 1000,
+                null,
+                notes.Count == 0 ? "SMU 熔断值，功率已换算为 W、电流为 A。" : string.Join("；", notes));
+
+            error = limits.HasAny ? null : limits.Detail;
+            return limits.HasAny;
+        }
+    }
+
+    public PowerLimitApplyResult ApplyPowerLimits(PowerLimitRequest request)
+    {
+        lock (_gate)
+        {
+            var status = EnsureSession(out var statusError);
+            if (status.Availability != HardwareAvailability.Available || _session is null)
+            {
+                return Rejected(status.Detail ?? statusError ?? "SMU 通道不可用。");
+            }
+
+            if (!TryResolvePowerLimitCommands(_commands.Family, _commands.Model, out var commands))
+            {
+                return Rejected("该平台的 DPTC 命令位于 MP1 邮箱，当前 RSMU 通道无法送达。");
+            }
+
+            if (PowerLimitBounds.Validate(request) is { } invalid)
+            {
+                return Rejected(invalid);
+            }
+
+            if (!TryReadPmTable(forceTransfer: false, out var beforeTable, out var beforeError))
+            {
+                // 没有回读基线就不写：写完无法确认，等于把风险留给用户。
+                return Rejected($"写前读功耗表失败：{beforeError}");
+            }
+
+            var before = DecodeCurrent(beforeTable);
+            var items = new List<PowerLimitWrite>(4);
+
+            if (request.FastWatts is int fast)
+            {
+                WriteLimit(commands.Fast, "fast", "FAST", fast, fast * 1000, items);
+            }
+
+            if (request.SlowWatts is int slow)
+            {
+                WriteLimit(commands.Slow, "slow", "SLOW", slow, slow * 1000, items);
+            }
+
+            if (request.TdcAmps is int tdc)
+            {
+                WriteLimit(commands.Tdc, "tdc", "TDC", tdc, tdc, items);
+            }
+
+            if (request.EdcAmps is int edc)
+            {
+                WriteLimit(commands.Edc, "edc", "EDC", edc, edc, items);
+            }
+
+            PowerLimitCurrent? after = null;
+            if (TryReadPmTable(forceTransfer: true, out var afterTable, out _))
+            {
+                after = DecodeCurrent(afterTable);
+                Verify(items, before, after);
+            }
+
+            return new PowerLimitApplyResult(items, before, after, null, false);
+        }
+    }
+
+    private static PowerLimitApplyResult Rejected(string reason) =>
+        new([], null, null, reason, false);
+
+    private void WriteLimit(uint message, string key, string label, int requested, int wireValue, List<PowerLimitWrite> items)
+    {
+        if (TrySend(message, [wireValue], new long[MaxArgs], out var error))
+        {
+            items.Add(new PowerLimitWrite(key, requested, PowerLimitWriteState.Accepted, $"{label} 命令已接受，等待回读。"));
+            return;
+        }
+
+        items.Add(new PowerLimitWrite(key, requested, PowerLimitWriteState.Rejected, error));
+    }
+
+    /// <summary>
+    /// FAST/SLOW 在 PM 表里有对应项：回读一致算 Applied；回读变了但不符合请求算 Diverged（固件折算）；
+    /// 回读完全没变算 Rejected。TDC/EDC 无回读通道，保持 Accepted。
+    /// </summary>
+    private static void Verify(List<PowerLimitWrite> items, PowerLimitCurrent before, PowerLimitCurrent after)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (item.State != PowerLimitWriteState.Accepted)
+            {
+                continue;
+            }
+
+            int? actual = item.Item switch
+            {
+                "fast" => after.FastWatts,
+                "slow" => after.SlowWatts,
+                _ => null,
+            };
+
+            if (actual is null)
+            {
+                continue;
+            }
+
+            int? previous = item.Item switch
+            {
+                "fast" => before.FastWatts,
+                "slow" => before.SlowWatts,
+                _ => null,
+            };
+
+            var state = PowerLimitReadBack.Classify(item.Requested, actual, previous);
+            items[i] = item with
+            {
+                State = state,
+                Detail = state switch
+                {
+                    PowerLimitWriteState.Applied => $"回读 {actual} W。",
+                    PowerLimitWriteState.Rejected => $"回读仍为 {actual} W，写入未生效。",
+                    _ => $"回读 {actual} W，与请求 {item.Requested} W 不一致；固件按自身策略折算，实际按回读值生效。",
+                },
+            };
+        }
+    }
+
+    /// <summary>
+    /// PM 表前六项偏移跨表版本稳定：STAPM/FAST/SLOW 的 limit 与 value 交替，各占一个 float。
+    /// 表内容由固件按需传输，读到全 0 说明尚未传输，必须发 0x3 后重读；写入后也要强制重传才看得到新值。
+    /// </summary>
+    private bool TryReadPmTable(bool forceTransfer, out float[] values, out string? error)
+    {
+        values = [];
+        error = null;
+
+        if (_session is null)
+        {
+            error = "SMU 会话未建立。";
+            return false;
+        }
+
+        if (!TryEnterPci(out error))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!_pmTableReady)
+            {
+                var resolve = new long[2];
+                if (!_session.Execute(FunctionResolvePmTable, [], resolve, out var resolveError))
+                {
+                    error = $"解析功耗表地址失败（Win32 {resolveError}）。";
+                    return false;
+                }
+
+                if (resolve[1] == 0)
+                {
+                    error = "驱动返回的功耗表地址为 0。";
+                    return false;
+                }
+
+                _pmTableVersion = (uint)resolve[0];
+                _pmTableReady = true;
+            }
+
+            if (!TryReadRaw(out values, out error))
+            {
+                return false;
+            }
+
+            if (forceTransfer || !HasLimits(values))
+            {
+                if (!TryTransferTable(out var transferError))
+                {
+                    error = transferError;
+                    return false;
+                }
+
+                // 固件在传输完成后才刷新 DRAM，立刻读会拿到旧内容。
+                Thread.Sleep(20);
+
+                if (!TryReadRaw(out values, out error))
+                {
+                    return false;
+                }
+            }
+
+            if (!HasLimits(values))
+            {
+                error = $"功耗表 v0x{_pmTableVersion:X8} 的 limit 字段全为 0，无法作为基线。";
+                return false;
+            }
+
+            return true;
+        }
+        finally
+        {
+            ReleasePci();
+        }
+    }
+
+    private bool TryReadRaw(out float[] values, out string? error)
+    {
+        values = [];
+        error = null;
+
+        var rows = new long[3];
+        if (!_session!.Execute(FunctionReadPmTable, [], rows, out var readError))
+        {
+            // 地址可能因固件重载失效，下次重新解析。
+            _pmTableReady = false;
+            error = $"读取功耗表失败（Win32 {readError}）。";
+            return false;
+        }
+
+        values =
+        [
+            FloatAt(rows[0], 0), FloatAt(rows[0], 1),
+            FloatAt(rows[1], 0), FloatAt(rows[1], 1),
+            FloatAt(rows[2], 0), FloatAt(rows[2], 1),
+        ];
+        return true;
+    }
+
+    /// <summary>调用方须已持有 PCI 互斥，不能再走 TrySend（会重复取锁）。</summary>
+    private bool TryTransferTable(out string? error)
+    {
+        error = null;
+        var input = new long[MaxArgs + 1];
+        input[0] = MessageTransferTableToDram;
+
+        if (!_session!.Execute(FunctionSendCommand, input, new long[MaxArgs], out var code))
+        {
+            error = DescribeFailure(MessageTransferTableToDram, code);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>limit 位置按 W 计，超出 1–1000 的值视为未填充，不能当基线。</summary>
+    private static bool HasLimits(float[] values) =>
+        ToWatts(values[2]).HasValue || ToWatts(values[4]).HasValue;
+
+    private static float FloatAt(long row, int index) =>
+        BitConverter.Int32BitsToSingle((int)((row >> (index * 32)) & 0xFFFF_FFFFL));
+
+    private PowerLimitCurrent DecodeCurrent(float[] table) => new(
+        ToWatts(table[0]),
+        ToWatts(table[2]),
+        ToWatts(table[4]),
+        $"功耗表 v0x{_pmTableVersion:X8}，功率单位 W。");
+
+    private static int? ToWatts(float raw) =>
+        float.IsFinite(raw) && raw > 0 && raw <= 1000 ? (int)Math.Round(raw) : null;
+
+    /// <summary>熔断值单位：功率 mW、电流 mA；越界视为不可信，不参与展示。</summary>
+    private int? ReadFusedValue(uint message, string label, List<string> notes)
+    {
+        var result = new long[MaxArgs];
+        if (!TrySend(message, [], result, out var failure))
+        {
+            notes.Add($"{label}：{failure}");
+            return null;
+        }
+
+        var raw = (long)(result[0] & 0xFFFF_FFFFL);
+        if (raw <= 0 || raw > 1_000_000)
+        {
+            notes.Add($"{label} 返回 {raw}，超出可信范围。");
+            return null;
+        }
+
+        return (int)raw;
+    }
+
+    private static string FormatWatts(int? value) => value.HasValue ? $"{value} W" : "读不到";
+
+    /// <summary>Zen4/5 的 DPTC 在 RSMU；Zen3 及更早只在 MP1，当前通道发不出去，不能当作硬件不支持。</summary>
+    private static bool TryResolvePowerLimitCommands(uint family, uint model, out PowerLimitCommands commands)
+    {
+        commands = family switch
+        {
+            0x1A => new PowerLimitCommands(0x56, 0xCB, 0x57, 0x58),
+            0x19 when model == 0x61 => new PowerLimitCommands(0x56, 0xCB, 0x57, 0x58),
+            _ => default,
+        };
+
+        return commands.Fast != 0;
+    }
+
     public void Dispose()
     {
         lock (_gate)
@@ -281,6 +675,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         _session?.Dispose();
         _session = null;
         _probed = false;
+        _pmTableReady = false;
         _coreMap = AmdCoreMap.Empty;
 
         var vendor = _info.CpuVendor;
@@ -619,8 +1014,11 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         _session?.Dispose();
         _session = null;
         _probed = false;
+        _pmTableReady = false;
         _coreMap = AmdCoreMap.Empty;
     }
 
     private readonly record struct CoCommands(uint Family, uint Model, uint Set, uint Get, uint SetFMax, uint GetFMax);
+
+    private readonly record struct PowerLimitCommands(uint Fast, uint Slow, uint Tdc, uint Edc);
 }

@@ -164,7 +164,39 @@ public sealed record ModuleDto(
     string Name,
     string State,
     string? Detail,
-    IReadOnlyList<string> Capabilities);
+    IReadOnlyList<string> Capabilities,
+    bool Optional = false,
+    bool Enabled = true);
+
+public sealed record ModuleTarget(string Id);
+
+/// <summary>功耗墙读数。当前值来自 PM 表，熔断值来自 SMU fused 命令，两者不能互相替代。</summary>
+public sealed record PowerLimitStateDto(
+    bool Supported,
+    bool Available,
+    string? Error,
+    int? StapmWatts,
+    int? FastWatts,
+    int? SlowWatts,
+    int? FusedFastWatts,
+    int? FusedSlowWatts,
+    int? FusedTdcAmps,
+    string? FusedDetail,
+    bool Simulated);
+
+/// <summary>功耗墙写入请求，null 表示该项不改；功率 W、电流 A。</summary>
+public sealed record PowerLimitApplyRequest(int? FastWatts, int? SlowWatts, int? TdcAmps, int? EdcAmps);
+
+public sealed record PowerLimitWriteDto(string Item, int Requested, string State, string? Detail);
+
+public sealed record PowerLimitApplyDto(
+    IReadOnlyList<PowerLimitWriteDto> Items,
+    int? BeforeFastWatts,
+    int? BeforeSlowWatts,
+    int? AfterFastWatts,
+    int? AfterSlowWatts,
+    string? RejectedReason,
+    bool Simulated);
 
 public sealed record LogEntryDto(
     DateTimeOffset Timestamp,

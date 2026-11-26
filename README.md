@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 200 个用例
+dotnet test  Zentwik.slnx          # 221 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
@@ -62,9 +62,10 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | --- | --- |
 | `status` | 代理状态、协议版本、能力概览 |
 | `caps` | 能力清单与状态 |
-| `modules` | 内置模块与聚合状态 |
+| `modules` | 模块状态；`enable <id>` / `disable <id>` 切换可选组件 |
 | `monitor [--count N] [--interval MS]` | CPU/内存持续采样；间隔 500–5000 ms，服务端按此下限收敛 |
 | `tuning` | AMD：通道状态与逐核 CO 偏移；`--intel`：电压偏移与睿频上限 |
+| `powerlimit get\|set` | 硬件功耗墙：读 PM 表当前值与 SMU 熔断值；`set --fast/--slow/--tdc/--edc` 写入。须先启用可选组件 |
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理。自动触发四类：进程运行、进程退出、交流供电、电池供电；进程退出属于一次性切换，触发后保持不自动回退 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |
@@ -81,6 +82,12 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 方案应用语义：写前记录前值 → 写入 → 回读 → 期望与实际不一致即判定失败；结果落在状态账本，`Owner` 区分 Scene/Plan/User。硬件不可用时返回失败原因，不伪造成功。
 
+硬件功耗墙是可选组件，默认关闭，须 `modules enable power-limits` 后才加载与探测。当前只对 Zen4/Zen5 的 RSMU DPTC 命令开放（FAST `0x56`、SLOW `0xCB`、TDC `0x57`、EDC `0x58`）；Zen3 及更早的 DPTC 命令在 MP1 邮箱，本通道发不出去，报不支持而不是发错命令。STAPM 同在 MP1，仅展示读数，不提供写入。
+
+当前值来自 PM 表。读表前必须发 `0x3` 请求固件把表传输到 DRAM，否则读到的是残留内容；写入后强制重传再回读。结果分四类：`applied`（回读一致）、`diverged`（已改变但与请求不符，固件按自身策略折算，按回读值生效）、`accepted`（TDC/EDC 无回读通道）、`rejected`（被拒或回读未变）。写入前必须先读到可用的 PM 表基线，读不到就不写。
+
+9955HX 实测（2026-11-27）：PM 表 v0x00621202 可读，FAST 100 W / SLOW 68 W / STAPM 56 W；熔断值 FAST 160 W / SLOW 102 W / VDD TDC 108 A。FAST/SLOW 写入被固件接受，但回读是请求值的 80%（95→76、65→52、125→100），写回 125/85 可精确复原 100/68。TDC/EDC 未做写入验证。
+
 调校通道可用性：`available` / `notSupported` / `driverUnavailable` / `moduleMissing` / `privilegeMissing`（PawnIO 拒绝访问，需要管理员运行代理）/ `probeFailed` / `rejected`（通道可用但平台拒绝该操作，例如固件锁定 CO）。
 
 核地址编码固定为 `[31:28]` CCD、`[27:24]` CCX、`[23:20]` 核内序号（数值字段，不是独热位）；写入参数低 16 位放 margin 的补码。核的物理位置优先取自 APOB 固件映射（`ZENTWIK_APOB_TABLE` 指向原始表），否则由 CPUID `0x8000001E` 的硬件核号与系统 L3 缓存域推导，并与物理核数、线程数交叉校验；两种来源都不可用时状态报 `rejected` 并给出原因，不按 `序号 / 8` 推算。
@@ -89,7 +96,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 ## 当前未实现
 
-- 硬件功耗限制（AMD STAPM/PPT FAST/SLOW/TDC/EDC、Intel PL1/PL2/Tau）尚未实现；HX 平台默认不展示常规入口，仅允许用户主动选择受控尝试。
+- 硬件功耗墙只覆盖 AMD Zen4/Zen5 的 RSMU 通道；Intel PL1/PL2/Tau 与 AMD STAPM（MP1 邮箱）未提供。TDC/EDC 写入无回读通道，无法验证是否在负载下生效。
 - Intel 通道已实现 OC Mailbox 写协议（命令字、bit63 忙位轮询、全局互斥、写后回读），但无 Intel 真机验证，仅位域单测。
 - GPU 遥测、托盘、WPF 界面与安装器未实现（界面阶段暂停）。
 - 服务异常终止后的 SCM 恢复动作尚未实测。

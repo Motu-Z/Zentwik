@@ -3,14 +3,24 @@ using Zentwik.Domain.Capabilities;
 
 namespace Zentwik.Core.Modules;
 
+/// <summary>模块描述能力组合，不引入独立加载器：当前没有第三方插件。</summary>
+/// <param name="Optional">
+/// 可选组件：默认关闭，须显式启用才加载。用于会改变硬件行为的模块——
+/// 默认开启等于替所有用户做了风险选择。非可选模块一律视为启用。
+/// </param>
 public sealed record ModuleDefinition(
     string Id,
     string Name,
     IReadOnlyList<string> Capabilities,
     string Purpose,
-    bool AnyOf = false);
+    bool AnyOf = false,
+    bool Optional = false);
 
-/// <summary>内置模块清单。模块描述能力组合，不引入独立加载器：当前没有第三方插件。</summary>
+public static class ModuleIds
+{
+    public const string PowerLimits = "power-limits";
+}
+
 public static class ModuleCatalog
 {
     public static IReadOnlyList<ModuleDefinition> Definitions { get; } =
@@ -22,15 +32,36 @@ public static class ModuleCatalog
         new("scheduling", "进程调度", [CapabilityIds.AffinityMask, CapabilityIds.CpuSets], "进程亲和性、优先级与 CPU Sets 调度"),
         new("automation", "自动化", [CapabilityIds.SceneEngine], "场景触发、仲裁与状态回退"),
         new("diagnostics", "诊断", [], "能力探测、日志与状态对账"),
+        new(ModuleIds.PowerLimits, "硬件功耗墙", [CapabilityIds.AmdPowerLimit], "PPT/TDC/EDC 写入，绕出厂功耗限制", Optional: true),
     ];
 
-    public static IReadOnlyList<ModuleDto> Describe(IReadOnlyList<CapabilityDescriptor> capabilities, bool simulated)
+    public static ModuleDefinition? Find(string id) =>
+        Definitions.FirstOrDefault(definition =>
+            string.Equals(definition.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    public static IReadOnlyList<ModuleDto> Describe(
+        IReadOnlyList<CapabilityDescriptor> capabilities,
+        bool simulated,
+        IReadOnlySet<string>? enabledOptional = null)
     {
         var byId = capabilities.ToDictionary(static capability => capability.Id, StringComparer.Ordinal);
         var modules = new List<ModuleDto>(Definitions.Count);
 
         foreach (var definition in Definitions)
         {
+            // 可选组件未启用时不看能力探测结果：它压根没加载，状态不能显示为就绪。
+            if (definition.Optional && (enabledOptional is null || !enabledOptional.Contains(definition.Id)))
+            {
+                modules.Add(new ModuleDto(
+                    definition.Id,
+                    definition.Name,
+                    "unavailable",
+                    "可选组件，未启用。",
+                    definition.Capabilities,
+                    Optional: true,
+                    Enabled: false));
+                continue;
+            }
             var states = definition.Capabilities
                 .Select(id => byId.GetValueOrDefault(id)?.State ?? CapabilityState.Unavailable)
                 .ToArray();
@@ -52,7 +83,7 @@ public static class ModuleCatalog
                 detail = string.IsNullOrEmpty(detail) ? "模拟模式。" : $"模拟模式；{detail}";
             }
 
-            modules.Add(new ModuleDto(definition.Id, definition.Name, state, detail, definition.Capabilities));
+            modules.Add(new ModuleDto(definition.Id, definition.Name, state, detail, definition.Capabilities, definition.Optional, true));
         }
 
         return modules;

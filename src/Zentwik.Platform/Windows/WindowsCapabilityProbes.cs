@@ -11,15 +11,22 @@ public static class WindowsCapabilityProbes
         ICpuTuningProvider tuning,
         IIntelTuningProvider intel,
         IProcessScheduler scheduler,
-        IPowerPolicyService power) =>
-    [
-        new PowerPolicyProbe(power),
-        new TelemetryProbe(telemetry),
-        new CpuTuningProbe(tuning),
-        new SchedulingProbe(),
-        new IntelMsrProbe(intel),
-        new SceneEngineProbe(),
-    ];
+        IPowerPolicyService power,
+        IPowerLimitProvider? powerLimits = null,
+        Func<bool>? powerLimitsEnabled = null)
+    {
+        yield return new PowerPolicyProbe(power);
+        yield return new TelemetryProbe(telemetry);
+        yield return new CpuTuningProbe(tuning);
+        yield return new SchedulingProbe();
+        yield return new IntelMsrProbe(intel);
+        yield return new SceneEngineProbe();
+
+        if (powerLimits is not null)
+        {
+            yield return new PowerLimitProbe(powerLimits, powerLimitsEnabled ?? (static () => true));
+        }
+    }
 }
 
 internal sealed class PowerPolicyProbe(IPowerPolicyService power) : ICapabilityProbe
@@ -90,6 +97,42 @@ internal sealed class CpuTuningProbe(ICpuTuningProvider tuning) : ICapabilityPro
             Id = CapabilityId,
             State = state,
             Detail = status.Simulated ? $"模拟：{status.Detail}" : status.Detail,
+        };
+    }
+}
+
+internal sealed class PowerLimitProbe(IPowerLimitProvider powerLimits, Func<bool> enabled) : ICapabilityProbe
+{
+    public string CapabilityId => CapabilityIds.AmdPowerLimit;
+
+    public CapabilityDescriptor Probe()
+    {
+        if (!enabled())
+        {
+            return new CapabilityDescriptor
+            {
+                Id = CapabilityId,
+                State = CapabilityState.Unavailable,
+                Detail = "可选组件，未启用。",
+            };
+        }
+
+        var (availability, detail) = powerLimits.ProbePowerLimit();
+        var state = availability switch
+        {
+            HardwareAvailability.Available => CapabilityState.Running,
+            HardwareAvailability.ProbeFailed or HardwareAvailability.Rejected => CapabilityState.Failed,
+            HardwareAvailability.DriverUnavailable
+                or HardwareAvailability.ModuleMissing
+                or HardwareAvailability.PrivilegeMissing => CapabilityState.Installed,
+            _ => CapabilityState.Unavailable,
+        };
+
+        return new CapabilityDescriptor
+        {
+            Id = CapabilityId,
+            State = state,
+            Detail = detail,
         };
     }
 }

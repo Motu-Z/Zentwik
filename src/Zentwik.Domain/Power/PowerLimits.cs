@@ -1,0 +1,136 @@
+namespace Zentwik.Domain.Power;
+
+/// <summary>
+/// 一次功耗墙设置请求。null 表示该项不改。
+/// 单位：功率 W、电流 A（写入前转为 SMU 要求的 mW / mA）。
+/// </summary>
+/// <remarks>
+/// 不含 STAPM：该命令在 MP1 邮箱，当前通道只能发 RSMU，未配置的命令号不能当作硬件不支持。
+/// </remarks>
+public sealed record PowerLimitRequest(int? FastWatts, int? SlowWatts, int? TdcAmps, int? EdcAmps)
+{
+    public bool IsEmpty => FastWatts is null && SlowWatts is null && TdcAmps is null && EdcAmps is null;
+}
+
+/// <summary>
+/// PM 表里的当前生效上限。null 表示读不到；读不到不是「没有上限」。
+/// STAPM 只读：本通道写不了，但读数可用于对照厂商固件的持续功耗策略。
+/// </summary>
+public sealed record PowerLimitCurrent(int? StapmWatts, int? FastWatts, int? SlowWatts, string Detail)
+{
+    public bool HasAny => StapmWatts is not null || FastWatts is not null || SlowWatts is not null;
+
+    public static PowerLimitCurrent Unreadable(string detail) => new(null, null, null, detail);
+}
+
+/// <summary>
+/// 出厂熔断的功耗/电流上限（SMU fused 值）。它不是当前生效值——
+/// 当前生效值在 PM 表，固件可能在 fused 之内再限一层。
+/// </summary>
+public sealed record FusedPowerLimits(int? FastWatts, int? SlowWatts, int? TdcAmps, int? EdcAmps, string Detail)
+{
+    public bool HasAny => FastWatts is not null || SlowWatts is not null || TdcAmps is not null || EdcAmps is not null;
+
+    public static FusedPowerLimits None(string detail) => new(null, null, null, null, detail);
+}
+
+/// <summary>单项写入状态。Applied 必须回读一致；Accepted 仅表示 SMU 收下了请求。</summary>
+public enum PowerLimitWriteState
+{
+    /// <summary>写入后回读与请求一致（在容差内）。</summary>
+    Applied,
+
+    /// <summary>SMU 收下且回读有变化，但与请求不一致——固件按自身策略折算，不能算成功也不能算失败。</summary>
+    Diverged,
+
+    /// <summary>SMU 未报错，但该项没有可用的回读通道，无法确认生效。</summary>
+    Accepted,
+
+    /// <summary>写入被拒，或回读完全没变化。</summary>
+    Rejected,
+}
+
+public sealed record PowerLimitWrite(string Item, int Requested, PowerLimitWriteState State, string? Detail);
+
+/// <summary>写入汇总。RejectedReason 非空表示通道层面就不可用，此时 Items 为空。</summary>
+public sealed record PowerLimitApplyResult(
+    IReadOnlyList<PowerLimitWrite> Items,
+    PowerLimitCurrent? Before,
+    PowerLimitCurrent? After,
+    string? RejectedReason,
+    bool Simulated)
+{
+    public bool AnyApplied => Items.Any(static item => item.State == PowerLimitWriteState.Applied);
+
+    public bool HasDiverged => Items.Any(static item => item.State == PowerLimitWriteState.Diverged);
+
+    public bool HasRejected => Items.Any(static item => item.State == PowerLimitWriteState.Rejected);
+}
+
+/// <summary>功耗墙的取值范围。超出即拒绝，不静默钳到边界——用户要知道自己越界了。</summary>
+public static class PowerLimitBounds
+{
+    public const int MinWatts = 1;
+    public const int MaxWatts = 1000;
+    public const int MinAmps = 1;
+    public const int MaxAmps = 500;
+
+    /// <summary>PM 表按 1 W 取整，固件还会滞后刷新，容差覆盖两者。</summary>
+    public const int ReadBackToleranceWatts = 2;
+
+    public static string? Validate(PowerLimitRequest request)
+    {
+        if (request.IsEmpty)
+        {
+            return "没有给出任何要修改的项。";
+        }
+
+        if (request.FastWatts is int fast && (fast < MinWatts || fast > MaxWatts))
+        {
+            return $"FAST 上限 {fast} W 超出 [{MinWatts}, {MaxWatts}]。";
+        }
+
+        if (request.SlowWatts is int slow && (slow < MinWatts || slow > MaxWatts))
+        {
+            return $"SLOW 上限 {slow} W 超出 [{MinWatts}, {MaxWatts}]。";
+        }
+
+        if (request.TdcAmps is int tdc && (tdc < MinAmps || tdc > MaxAmps))
+        {
+            return $"TDC 上限 {tdc} A 超出 [{MinAmps}, {MaxAmps}]。";
+        }
+
+        if (request.EdcAmps is int edc && (edc < MinAmps || edc > MaxAmps))
+        {
+            return $"EDC 上限 {edc} A 超出 [{MinAmps}, {MaxAmps}]。";
+        }
+
+        if (request.FastWatts is int f && request.SlowWatts is int s && s > f)
+        {
+            return $"SLOW 上限 {s} W 高于 FAST 上限 {f} W：短时上限不应低于长时上限。";
+        }
+
+        return null;
+    }
+}
+
+/// <summary>把写入请求与 PM 表回读按状态分类；不猜固件为什么折算，只如实区分四种结果。</summary>
+public static class PowerLimitReadBack
+{
+    public static PowerLimitWriteState Classify(int requested, int? actual, int? previous)
+    {
+        if (actual is null)
+        {
+            return PowerLimitWriteState.Accepted;
+        }
+
+        if (Math.Abs(actual.Value - requested) <= PowerLimitBounds.ReadBackToleranceWatts)
+        {
+            return PowerLimitWriteState.Applied;
+        }
+
+        return previous.HasValue && previous.Value == actual.Value
+            ? PowerLimitWriteState.Rejected
+            : PowerLimitWriteState.Diverged;
+    }
+}

@@ -22,5 +22,8 @@ public sealed record StateDocument
 
     public IReadOnlyList<LedgerEntry> Ledger { get; init; } = [];
 
+    /// <summary>显式启用的可选模块。非可选模块不受此列表影响，永远视为启用。</summary>
+    public IReadOnlyList<string> EnabledOptionalModules { get; init; } = [];
+
     public DateTimeOffset? LastBootTimeUtc { get; init; }
 }

@@ -23,6 +23,8 @@ public static class Ops
     public const string Status = "agent.status";
     public const string CapabilitiesList = "capabilities.list";
     public const string ModulesList = "modules.list";
+    public const string ModulesEnable = "modules.enable";
+    public const string ModulesDisable = "modules.disable";
     public const string TelemetrySubscribe = "telemetry.subscribe";
     public const string TelemetryUnsubscribe = "telemetry.unsubscribe";
 
@@ -56,6 +58,8 @@ public static class Ops
 
     public const string TuningRead = "hardware.tuning.read";
     public const string IntelTuningRead = "hardware.tuning.intel";
+    public const string PowerLimitRead = "hardware.power.limit.read";
+    public const string PowerLimitApply = "hardware.power.limit.apply";
 
     public const string DiagnosticsDoctor = "diagnostics.doctor";
     public const string DiagnosticsLog = "diagnostics.log";
@@ -94,6 +98,14 @@ public static class ErrorCodes
     public const string PowerSchemeBackupFailed = "power.scheme_backup_failed";
     public const string PowerSchemeBackupNotFound = "power.scheme_backup_not_found";
     public const string PowerSchemeRestoreFailed = "power.scheme_restore_failed";
+
+    public const string ModuleNotFound = "module.not_found";
+    public const string ModuleNotOptional = "module.not_optional";
+    public const string ModuleDisabled = "module.disabled";
+
+    public const string PowerLimitRejected = "power.limit_rejected";
+    public const string PowerLimitInvalid = "power.limit_invalid";
+    public const string PowerLimitUnsupported = "power.limit_unsupported";
 }
 
 public sealed class RequestEnvelope

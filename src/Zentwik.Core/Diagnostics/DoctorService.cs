@@ -19,7 +19,8 @@ public sealed class DoctorService(
     DiagnosticLog log,
     AgentRuntime runtime,
     ISystemInfo system,
-    Func<string?> activeScene)
+    Func<string?> activeScene,
+    ModuleService? modules = null)
 {
     public DoctorDto Build()
     {
@@ -43,7 +44,7 @@ public sealed class DoctorService(
             LedgerEntryCount: store.Current.Ledger.Count,
             ActiveSceneId: activeScene(),
             Capabilities: capabilityDtos,
-            Modules: ModuleCatalog.Describe(capabilityList, runtime.Simulated),
+            Modules: ModuleCatalog.Describe(capabilityList, runtime.Simulated, modules?.EnabledOptional),
             RecentErrors: log.RecentErrors(20));
     }
 }

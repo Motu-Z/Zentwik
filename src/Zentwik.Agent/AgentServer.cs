@@ -1,4 +1,4 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Text.Json;
 using Zentwik.Agent.Security;
 using Zentwik.Contracts.Dto;
@@ -6,6 +6,7 @@ using Zentwik.Contracts.Json;
 using Zentwik.Contracts.Protocol;
 using Zentwik.Core.Capabilities;
 using Zentwik.Core.Diagnostics;
+using Zentwik.Core.Modules;
 using Zentwik.Core.Plans;
 using Zentwik.Core.Power;
 using Zentwik.Core.Scenes;
@@ -25,6 +26,8 @@ public sealed class AgentServer
     private readonly DiagnosticLog _log;
     private readonly PlanCoordinator _plans;
     private readonly PowerSchemeService? _powerSchemes;
+    private readonly ModuleService? _modules;
+    private readonly IPowerLimitProvider? _powerLimits;
     private readonly SceneEngine _scenes;
     private readonly DoctorService _doctor;
     private readonly ICpuTuningProvider _tuning;
@@ -50,7 +53,9 @@ public sealed class AgentServer
         IIntelTuningProvider intel,
         CallerPolicy policy,
         IPowerNotificationSource? powerNotifications = null,
-        PowerSchemeService? powerSchemes = null)
+        PowerSchemeService? powerSchemes = null,
+        ModuleService? modules = null,
+        IPowerLimitProvider? powerLimits = null)
     {
         _options = options;
         _store = store;
@@ -60,6 +65,8 @@ public sealed class AgentServer
         _log = log;
         _plans = plans;
         _powerSchemes = powerSchemes;
+        _modules = modules;
+        _powerLimits = powerLimits;
         _scenes = scenes;
         _doctor = doctor;
         _tuning = tuning;
@@ -165,6 +172,10 @@ public sealed class AgentServer
     internal PlanCoordinator Plans => _plans;
 
     internal PowerSchemeService? PowerSchemes => _powerSchemes;
+
+    internal ModuleService? Modules => _modules;
+
+    internal IPowerLimitProvider? PowerLimits => _powerLimits;
 
     internal SceneEngine Scenes => _scenes;
 

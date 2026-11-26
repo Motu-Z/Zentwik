@@ -139,6 +139,38 @@ public sealed class AgentConnection : IAsyncDisposable
     public async Task<IReadOnlyList<ModuleDto>> ListModulesAsync(CancellationToken ct = default) =>
         await InvokeAsync(Ops.ModulesList, ZentwikJson.Default.ModuleDtoArray, ct).ConfigureAwait(false);
 
+    public async Task<IReadOnlyList<ModuleDto>> EnableModuleAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.ModulesEnable,
+                new ModuleTarget(id),
+                ZentwikJson.Default.ModuleTarget,
+                ZentwikJson.Default.ModuleDtoArray,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<ModuleDto>> DisableModuleAsync(string id, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.ModulesDisable,
+                new ModuleTarget(id),
+                ZentwikJson.Default.ModuleTarget,
+                ZentwikJson.Default.ModuleDtoArray,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<PowerLimitStateDto> ReadPowerLimitsAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PowerLimitRead, ZentwikJson.Default.PowerLimitStateDto, ct).ConfigureAwait(false);
+
+    public async Task<PowerLimitApplyDto> ApplyPowerLimitsAsync(
+        PowerLimitApplyRequest request,
+        CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.PowerLimitApply,
+                request,
+                ZentwikJson.Default.PowerLimitApplyRequest,
+                ZentwikJson.Default.PowerLimitApplyDto,
+                ct)
+            .ConfigureAwait(false);
+
     public async Task<IReadOnlyList<Plan>> ListPlansAsync(CancellationToken ct = default) =>
         await InvokeAsync(Ops.PlansList, ZentwikJson.Default.PlanArray, ct).ConfigureAwait(false);
 

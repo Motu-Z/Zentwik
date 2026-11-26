@@ -5,6 +5,7 @@ using Zentwik.Agent.Service;
 using Zentwik.Contracts.Protocol;
 using Zentwik.Core.Capabilities;
 using Zentwik.Core.Diagnostics;
+using Zentwik.Core.Modules;
 using Zentwik.Core.Plans;
 using Zentwik.Core.Power;
 using Zentwik.Core.Scenes;
@@ -58,8 +59,22 @@ IPowerStatus powerStatus = options.UseFake ? new FakePowerStatus() : new Win32Po
 ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource(system.ProcessorCount) : new Win32TelemetrySource();
 IPowerNotificationSource powerNotifications = options.UseFake ? new NoPowerNotifications() : new Win32SuspendResumeNotifications();
 
+// AMD 的 CO 与功耗墙共用同一个 PawnIO 会话与 PCI 互斥，实际是同一实例。
+IPowerLimitProvider powerLimits = options.UseFake ? new FakePowerLimitProvider() : (AmdSmuTuningProvider)tuning;
+
+var modules = new ModuleService(store, log);
 var hub = new TelemetryHub(telemetry);
-var capabilities = new CapabilityService(WindowsCapabilityProbes.Create(system, telemetry, tuning, intel, scheduler, power).Append(new CpuSetsCapabilityProbe(scheduler)));
+var capabilities = new CapabilityService(
+    WindowsCapabilityProbes.Create(
+            system,
+            telemetry,
+            tuning,
+            intel,
+            scheduler,
+            power,
+            powerLimits,
+            () => modules.IsEnabled(ModuleIds.PowerLimits))
+        .Append(new CpuSetsCapabilityProbe(scheduler)));
 var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel, powerStatus);
 var powerSchemes = new PowerSchemeService(power, new PowerSchemeBackupStore(options.DataDirectory, log), log);
 var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
@@ -72,10 +87,12 @@ if (recovered.Count > 0)
 
 var version = typeof(AgentServer).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
 var runtime = new AgentRuntime(version, options.ServiceMode, options.UseFake, DateTimeOffset.Now);
-var doctor = new DoctorService(store, capabilities, log, runtime, system, () => scenes.ActiveSceneId);
+var doctor = new DoctorService(store, capabilities, log, runtime, system, () => scenes.ActiveSceneId, modules);
 
 var policy = new CallerPolicy(store.Current.OwnerSid, RequireInteractiveSession: true, IntegrityLevel.Medium);
-var server = new AgentServer(options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, intel, policy, powerNotifications, powerSchemes);
+var server = new AgentServer(
+    options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, intel, policy,
+    powerNotifications, powerSchemes, modules, powerLimits);
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>

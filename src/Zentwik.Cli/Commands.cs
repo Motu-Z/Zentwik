@@ -25,6 +25,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             "scenes" => await ScenesAsync(ct),
             "ledger" => await LedgerAsync(ct),
             "power" => await PowerAsync(ct),
+            "powerlimit" => await PowerLimitAsync(ct),
             "settings" => await SettingsAsync(ct),
             "doctor" => await DoctorAsync(ct),
             "logs" => await LogsAsync(ct),
@@ -83,23 +84,51 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> ModulesAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe");
-        var modules = await connection.ListModulesAsync(ct);
+        var sub = args.Positionals.Count > 1 ? args.Positionals[1] : "list";
+        switch (sub)
+        {
+            case "list":
+            {
+                args.EnsureOnly("--pipe");
+                PrintModules(await connection.ListModulesAsync(ct));
+                return ExitCodes.Ok;
+            }
+
+            case "enable":
+            case "disable":
+            {
+                args.EnsureOnly("--pipe");
+                var id = args.Positional(2, "模块");
+                var modules = sub == "enable"
+                    ? await connection.EnableModuleAsync(id, ct)
+                    : await connection.DisableModuleAsync(id, ct);
+                PrintModules(modules);
+                return ExitCodes.Ok;
+            }
+
+            default:
+                throw new CliUsageException($"未知子命令：modules {sub}");
+        }
+    }
+
+    private void PrintModules(IReadOnlyList<ModuleDto> modules)
+    {
         output.JsonValue(modules.ToArray(), ZentwikJson.Default.ModuleDtoArray);
 
-        if (!output.Json)
+        if (output.Json)
         {
-            foreach (var module in modules)
-            {
-                Console.WriteLine($"{module.Id,-16} {module.State,-12} {module.Name}");
-                if (!string.IsNullOrWhiteSpace(module.Detail))
-                {
-                    Console.WriteLine($"  {module.Detail}");
-                }
-            }
+            return;
         }
 
-        return ExitCodes.Ok;
+        foreach (var module in modules)
+        {
+            var suffix = module.Optional ? (module.Enabled ? "  [可选·已启用]" : "  [可选·未启用]") : string.Empty;
+            Console.WriteLine($"{module.Id,-16} {module.State,-12} {module.Name}{suffix}");
+            if (!string.IsNullOrWhiteSpace(module.Detail))
+            {
+                Console.WriteLine($"  {module.Detail}");
+            }
+        }
     }
 
     private async Task<int> MonitorAsync(CancellationToken ct)
@@ -218,6 +247,108 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
         return snapshot.Availability == "available" ? ExitCodes.Ok : ExitCodes.Unavailable;
     }
+
+    private async Task<int> PowerLimitAsync(CancellationToken ct)
+    {
+        var sub = args.Positionals.Count > 1 ? args.Positionals[1] : "get";
+        return sub switch
+        {
+            "get" or "show" => await PowerLimitGetAsync(ct),
+            "set" or "apply" => await PowerLimitSetAsync(ct),
+            _ => throw new CliUsageException($"未知子命令：powerlimit {sub}"),
+        };
+    }
+
+    private async Task<int> PowerLimitGetAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe");
+        var state = await connection.ReadPowerLimitsAsync(ct);
+        output.JsonValue(state, ZentwikJson.Default.PowerLimitStateDto);
+
+        if (output.Json)
+        {
+            return ExitCodes.Ok;
+        }
+
+        if (!state.Supported)
+        {
+            Console.WriteLine("unsupported  该平台未提供可用的功耗命令");
+            if (state.Error is { } unsupported)
+            {
+                Console.WriteLine($"  {unsupported}");
+            }
+
+            return ExitCodes.Failed;
+        }
+
+        Console.WriteLine($"current      FAST {FormatLimit(state.FastWatts, "W")}  SLOW {FormatLimit(state.SlowWatts, "W")}  STAPM {FormatLimit(state.StapmWatts, "W")}");
+        Console.WriteLine($"fused        FAST {FormatLimit(state.FusedFastWatts, "W")}  SLOW {FormatLimit(state.FusedSlowWatts, "W")}  TDC {FormatLimit(state.FusedTdcAmps, "A")}");
+
+        if (state.Error is { } error)
+        {
+            Console.WriteLine($"  {error}");
+        }
+
+        return state.Available ? ExitCodes.Ok : ExitCodes.Failed;
+    }
+
+    private async Task<int> PowerLimitSetAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--fast", "--slow", "--tdc", "--edc");
+        var fast = OptionalLimit("--fast", PowerLimitBounds.MinWatts, PowerLimitBounds.MaxWatts, "W");
+        var slow = OptionalLimit("--slow", PowerLimitBounds.MinWatts, PowerLimitBounds.MaxWatts, "W");
+        var tdc = OptionalLimit("--tdc", PowerLimitBounds.MinAmps, PowerLimitBounds.MaxAmps, "A");
+        var edc = OptionalLimit("--edc", PowerLimitBounds.MinAmps, PowerLimitBounds.MaxAmps, "A");
+
+        if (fast is null && slow is null && tdc is null && edc is null)
+        {
+            throw new CliUsageException("powerlimit set 需要至少一项：--fast / --slow / --tdc / --edc。");
+        }
+
+        var result = await connection.ApplyPowerLimitsAsync(new PowerLimitApplyRequest(fast, slow, tdc, edc), ct);
+        output.JsonValue(result, ZentwikJson.Default.PowerLimitApplyDto);
+
+        if (output.Json)
+        {
+            return ExitCodes.Ok;
+        }
+
+        foreach (var item in result.Items)
+        {
+            var unit = item.Item is "tdc" or "edc" ? "A" : "W";
+            Console.WriteLine($"{item.Item,-5} {item.State,-9} {item.Requested} {unit}  {item.Detail}");
+        }
+
+        var rejected = result.Items.Count(static item => item.State == "rejected");
+        var diverged = result.Items.Count(static item => item.State == "diverged");
+        Console.WriteLine($"result       applied {result.Items.Count(static item => item.State == "applied")}，"
+            + $"diverged {diverged}，accepted {result.Items.Count(static item => item.State == "accepted")}，rejected {rejected}");
+
+        return rejected > 0 ? ExitCodes.Failed : diverged > 0 ? ExitCodes.Partial : ExitCodes.Ok;
+    }
+
+    private int? OptionalLimit(string name, int min, int max, string unit)
+    {
+        var text = args.Value(name);
+        if (text is null)
+        {
+            return null;
+        }
+
+        if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new CliUsageException($"{name} 需要整数，收到 {text}。");
+        }
+
+        if (value < min || value > max)
+        {
+            throw new CliUsageException($"{name} 超出 [{min}, {max}] {unit}。");
+        }
+
+        return value;
+    }
+
+    private static string FormatLimit(int? value, string unit) => value.HasValue ? $"{value} {unit}" : "-";
 
     private async Task<int> PowerAsync(CancellationToken ct)
     {

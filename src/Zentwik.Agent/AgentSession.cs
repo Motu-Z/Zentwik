@@ -14,6 +14,7 @@ using Zentwik.Core.Power;
 using Zentwik.Core.Scenes;
 using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Power;
 using Zentwik.Domain.Scenes;
 using Zentwik.Domain.Settings;
 using Zentwik.Platform;
@@ -159,7 +160,23 @@ internal sealed class AgentSession : IAsyncDisposable
 
             case Ops.ModulesList:
             {
-                var modules = ModuleCatalog.Describe(_server.Capabilities.Get(), _server.Options.UseFake).ToArray();
+                var enabled = _server.Modules?.EnabledOptional;
+                var modules = ModuleCatalog.Describe(_server.Capabilities.Get(), _server.Options.UseFake, enabled).ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(modules, ZentwikJson.Default.ModuleDtoArray));
+            }
+
+            case Ops.ModulesEnable:
+            case Ops.ModulesDisable:
+            {
+                var id = RequirePayload(request, ZentwikJson.Default.ModuleTarget).Id;
+                var service = _server.Modules
+                    ?? throw new CoreException(ErrorCodes.HardwareUnavailable, "模块服务未装配。");
+
+                var enabled = request.Op == Ops.ModulesEnable
+                    ? await service.EnableAsync(id, ct).ConfigureAwait(false)
+                    : await service.DisableAsync(id, ct).ConfigureAwait(false);
+
+                var modules = ModuleCatalog.Describe(_server.Capabilities.Get(), _server.Options.UseFake, enabled).ToArray();
                 return Ok(request, JsonSerializer.SerializeToElement(modules, ZentwikJson.Default.ModuleDtoArray));
             }
 
@@ -325,6 +342,58 @@ internal sealed class AgentSession : IAsyncDisposable
             {
                 var snapshot = ReadIntelTuning();
                 return Ok(request, JsonSerializer.SerializeToElement(snapshot, ZentwikJson.Default.IntelTuningSnapshotDto));
+            }
+
+            case Ops.PowerLimitRead:
+            {
+                RequireModule(ModuleIds.PowerLimits);
+                var state = ReadPowerLimits(PowerLimits());
+                return Ok(request, JsonSerializer.SerializeToElement(state, ZentwikJson.Default.PowerLimitStateDto));
+            }
+
+            case Ops.PowerLimitApply:
+            {
+                RequireModule(ModuleIds.PowerLimits);
+                var body = RequirePayload(request, ZentwikJson.Default.PowerLimitApplyRequest);
+                var limits = new PowerLimitRequest(body.FastWatts, body.SlowWatts, body.TdcAmps, body.EdcAmps);
+
+                if (PowerLimitBounds.Validate(limits) is { } invalid)
+                {
+                    throw new CoreException(ErrorCodes.PowerLimitInvalid, invalid);
+                }
+
+                var provider = PowerLimits();
+                var applied = provider.ApplyPowerLimits(limits);
+                if (applied.RejectedReason is { } reason)
+                {
+                    var (availability, _) = provider.ProbePowerLimit();
+                    throw new CoreException(
+                        availability == HardwareAvailability.NotSupported
+                            ? ErrorCodes.PowerLimitUnsupported
+                            : ErrorCodes.PowerLimitRejected,
+                        reason);
+                }
+
+                var dto = new PowerLimitApplyDto(
+                    [.. applied.Items.Select(static item => new PowerLimitWriteDto(
+                        item.Item,
+                        item.Requested,
+                        item.State switch
+                        {
+                            PowerLimitWriteState.Applied => "applied",
+                            PowerLimitWriteState.Diverged => "diverged",
+                            PowerLimitWriteState.Accepted => "accepted",
+                            _ => "rejected",
+                        },
+                        item.Detail))],
+                    applied.Before?.FastWatts,
+                    applied.Before?.SlowWatts,
+                    applied.After?.FastWatts,
+                    applied.After?.SlowWatts,
+                    null,
+                    applied.Simulated);
+
+                return Ok(request, JsonSerializer.SerializeToElement(dto, ZentwikJson.Default.PowerLimitApplyDto));
             }
 
             case Ops.DiagnosticsDoctor:
@@ -813,6 +882,55 @@ internal sealed class AgentSession : IAsyncDisposable
     private PowerSchemeService PowerSchemes() =>
         _server.PowerSchemes
         ?? throw new CoreException(ErrorCodes.HardwareUnavailable, "电源方案服务未装配。");
+
+    private void RequireModule(string id)
+    {
+        var modules = _server.Modules;
+        if (modules is not null && !modules.IsEnabled(id))
+        {
+            throw new CoreException(ErrorCodes.ModuleDisabled, $"可选模块 {id} 未启用。");
+        }
+    }
+
+    private IPowerLimitProvider PowerLimits() =>
+        _server.PowerLimits
+        ?? throw new CoreException(ErrorCodes.HardwareUnavailable, "功耗墙服务未装配。");
+
+    /// <summary>成功路径只读一次功耗表；失败时才探测，用于区分平台不支持与通道异常。</summary>
+    private PowerLimitStateDto ReadPowerLimits(IPowerLimitProvider provider)
+    {
+        PowerLimitCurrent? current = null;
+        var supported = true;
+        string? error = null;
+
+        if (provider.TryReadCurrentPowerLimits(out var read, out var readError))
+        {
+            current = read;
+        }
+        else
+        {
+            var (availability, detail) = provider.ProbePowerLimit();
+            supported = availability != HardwareAvailability.NotSupported;
+            error = readError ?? detail;
+        }
+
+        FusedPowerLimits? fused = provider.TryReadFusedPowerLimits(out var fusedRead, out var fusedError)
+            ? fusedRead
+            : null;
+
+        return new PowerLimitStateDto(
+            supported,
+            current?.HasAny == true,
+            error ?? fusedError,
+            current?.StapmWatts,
+            current?.FastWatts,
+            current?.SlowWatts,
+            fused?.FastWatts,
+            fused?.SlowWatts,
+            fused?.TdcAmps,
+            fused?.Detail,
+            _server.Options.UseFake);
+    }
 
     private static PowerSchemeDto ToDto(PowerSchemeState state) =>
         new(state.Guid, state.Name, state.Active, state.BuiltIn, state.Visible);

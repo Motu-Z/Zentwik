@@ -85,6 +85,25 @@ public static class Help
                     恢复不会还原原 GUID，也不保证可见性——系统按当前策略决定新方案可不可见。
                     """);
                 break;
+            case "powerlimit":
+                Console.WriteLine("""
+                    zentwik powerlimit <subcommand>
+
+                      get                         读取当前生效上限与出厂熔断值
+                      set --fast <W> --slow <W>   写入功耗上限，至少给一项
+                          [--tdc <A>] [--edc <A>]
+
+                    当前值来自 PM 表；FAST/SLOW 写入后回读校验，TDC/EDC 无回读通道，只表示 SMU 已接受。
+                    需先启用可选组件：zentwik modules enable power-limits
+                    """);
+                break;
+            case "modules":
+                Console.WriteLine("""
+                    zentwik modules [list | enable <id> | disable <id>]
+
+                    可选组件默认关闭，启用后才加载并探测。会改变硬件行为的组件不默认开启。
+                    """);
+                break;
             case "tuning":
                 Console.WriteLine("""
                     zentwik tuning [--intel]
@@ -116,13 +135,14 @@ public static class Help
             命令
               status                    代理状态与能力概览
               caps                      能力清单
-              modules                   内置模块状态
+              modules                   模块状态与可选组件开关
               monitor                   持续采样 CPU 与内存
               tuning                    读取 CPU 电压偏移
               plans                     方案管理
               scenes                    场景管理
               ledger                    状态账本
               power                     Windows 电源方案管理
+              powerlimit                硬件功耗墙读写
               settings                  界面与语言设置
               doctor                    诊断信息
               logs                      最近日志

@@ -1,4 +1,5 @@
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Power;
 using Zentwik.Platform;
 using Zentwik.Platform.Windows;
 
@@ -574,5 +575,70 @@ public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetSche
         Applied.Add((processId, cpuMask, priority));
         error = null;
         return true;
+    }
+}
+/// <summary>仅用于开发与测试：不接触 SMU，读数与写入结果都标记为模拟。</summary>
+public sealed class FakePowerLimitProvider : IPowerLimitProvider
+{
+    private int? _fast = 100;
+    private int? _slow = 90;
+
+    public bool RejectWrites { get; set; }
+
+    public (HardwareAvailability Availability, string? Detail) ProbePowerLimit() =>
+        (HardwareAvailability.Available, "模拟提供者，功耗表读数非真实硬件值。");
+
+    public bool TryReadCurrentPowerLimits(out PowerLimitCurrent current, out string? error)
+    {
+        current = new PowerLimitCurrent(110, _fast, _slow, "模拟读数。");
+        error = null;
+        return true;
+    }
+
+    public bool TryReadFusedPowerLimits(out FusedPowerLimits limits, out string? error)
+    {
+        limits = new FusedPowerLimits(120, 110, 180, null, "模拟熔断值。");
+        error = null;
+        return true;
+    }
+
+    public PowerLimitApplyResult ApplyPowerLimits(PowerLimitRequest request)
+    {
+        if (RejectWrites)
+        {
+            return new PowerLimitApplyResult([], null, null, "模拟拒绝：固件不接受功耗写入。", true);
+        }
+
+        if (PowerLimitBounds.Validate(request) is { } invalid)
+        {
+            return new PowerLimitApplyResult([], null, null, invalid, true);
+        }
+
+        var before = new PowerLimitCurrent(110, _fast, _slow, "模拟读数。");
+        var items = new List<PowerLimitWrite>(4);
+
+        if (request.FastWatts is int fast)
+        {
+            _fast = fast;
+            items.Add(new PowerLimitWrite("fast", fast, PowerLimitWriteState.Applied, "模拟回读一致。"));
+        }
+
+        if (request.SlowWatts is int slow)
+        {
+            _slow = slow;
+            items.Add(new PowerLimitWrite("slow", slow, PowerLimitWriteState.Applied, "模拟回读一致。"));
+        }
+
+        if (request.TdcAmps is int tdc)
+        {
+            items.Add(new PowerLimitWrite("tdc", tdc, PowerLimitWriteState.Accepted, "模拟接受，无回读通道。"));
+        }
+
+        if (request.EdcAmps is int edc)
+        {
+            items.Add(new PowerLimitWrite("edc", edc, PowerLimitWriteState.Accepted, "模拟接受，无回读通道。"));
+        }
+
+        return new PowerLimitApplyResult(items, before, new PowerLimitCurrent(110, _fast, _slow, "模拟读数。"), null, true);
     }
 }

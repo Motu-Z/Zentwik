@@ -1,4 +1,5 @@
 using Zentwik.Domain.Capabilities;
+using Zentwik.Domain.Power;
 
 namespace Zentwik.Platform;
 
@@ -112,9 +113,29 @@ public interface ICpuCcdTopologyProvider
     bool TryGetCoreCcd(int coreIndex, out int ccdIndex);
 }
 
+/// <summary>
+/// 硬件功耗墙（PPT FAST/SLOW、TDC、EDC）。属可选组件，须用户显式启用后才可用。
+/// </summary>
+/// <remarks>
+/// 当前生效值来自 PM 表（驱动模块提供 resolve/read 两个调用），熔断值来自 SMU fused 命令，两者不可互换。
+/// FAST/SLOW 有 PM 表回读，写入必须回读一致才算 Applied；TDC/EDC 无回读通道，只能记为 Accepted。
+/// </remarks>
+public interface IPowerLimitProvider
+{
+    /// <summary>探测通道。只读，不发任何写入命令。</summary>
+    (HardwareAvailability Availability, string? Detail) ProbePowerLimit();
+
+    /// <summary>读 PM 表里的当前生效上限；读不到返回 false，不伪造数值。</summary>
+    bool TryReadCurrentPowerLimits(out PowerLimitCurrent current, out string? error);
+
+    /// <summary>读 SMU 熔断上限，用于与当前值对照；平台不提供该命令时返回 false。</summary>
+    bool TryReadFusedPowerLimits(out FusedPowerLimits limits, out string? error);
+
+    PowerLimitApplyResult ApplyPowerLimits(PowerLimitRequest request);
+}
+
 /// <summary>Intel 调校是会话级的：写入只改 MSR，重启后由固件恢复。</summary>
-public sealed record IntelTuningState(
-    int VoltageOffsetMillivolts,
+public sealed record IntelTuningState(    int VoltageOffsetMillivolts,
     int TurboRatio1Core,
     int TurboRatio8Cores);
 

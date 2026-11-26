@@ -68,6 +68,7 @@ public sealed class StateStore
                 Plans = document.Plans ?? [],
                 Scenes = document.Scenes ?? [],
                 Ledger = document.Ledger ?? [],
+                EnabledOptionalModules = document.EnabledOptionalModules ?? [],
             };
             _log.Info($"已加载状态：方案 {Current.Plans.Count}，场景 {Current.Scenes.Count}，账本 {Current.Ledger.Count}。");
         }
