@@ -194,8 +194,14 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
     private static readonly Guid Balanced = new("381b4222-f694-41f0-9685-ff5bb260df2e");
     private static readonly Guid HighPerformance = new("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c");
 
+    private static readonly Guid SubProcessor = new("54533251-82be-4824-96c1-47b60b740d00");
+    private static readonly Guid CoreParking = new("0cc5b647-c1df-4637-891a-dec35c318583");
+
     private readonly Dictionary<(Guid Scheme, Guid Sub, Guid Setting, bool Ac), uint> _values = new();
     private Guid _active = Balanced;
+
+    /// <summary>核心停泊最小核心数，100 = 不停泊。</summary>
+    public uint CoreParkingMinPercent { get; set; } = 100;
 
     public PowerSchemeInfo? GetActiveScheme() => new(_active, Name(_active));
 
@@ -211,6 +217,13 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
 
     public bool TryReadValue(Guid scheme, Guid subGroup, Guid setting, bool ac, out uint value, out string? error)
     {
+        if (subGroup == SubProcessor && setting == CoreParking)
+        {
+            value = CoreParkingMinPercent;
+            error = null;
+            return true;
+        }
+
         value = _values.GetValueOrDefault((scheme, subGroup, setting, ac));
         error = null;
         return true;
@@ -251,6 +264,9 @@ public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetSche
     }
 
     public bool CpuSetsSupported { get; set; } = true;
+
+    /// <summary>模拟系统静默拒绝 CPU Sets 写入：接口返回成功但值不变，用于验证回读比对。</summary>
+    public bool CpuSetsWriteIgnored { get; set; }
 
     public List<(int ProcessId, string? CpuMask, string? Priority)> Applied { get; } = [];
 
@@ -339,7 +355,11 @@ public sealed class FakeProcessScheduler : IProcessScheduler, IProcessCpuSetSche
             }
         }
 
-        _cpuSets[processId] = normalized;
+        if (!CpuSetsWriteIgnored)
+        {
+            _cpuSets[processId] = normalized;
+        }
+
         AppliedCpuSets.Add((processId, normalized));
         error = null;
         return true;

@@ -123,8 +123,7 @@ public sealed class PlanCoordinator
             {
                 var remaining = _ledger.Entries.Any(entry =>
                     string.Equals(entry.PlanId, planId, StringComparison.Ordinal)
-                    && entry.Owner == OwnerKind.Scene
-                    && entry.Status is LedgerStatus.Applied or LedgerStatus.Unknown);
+                    && StateLedger.IsHeld(entry));
 
                 var updated = plan with
                 {
@@ -547,6 +546,9 @@ public sealed class PlanCoordinator
                     var processes = _scheduler.Find(rule.ProcessMatch);
                     foreach (var process in processes)
                     {
+                        var startTicks = StartTicksOf(process);
+                        DropStaleSchedulingEntries(process.ProcessId, startTicks);
+
                         if (!_scheduler.TryRead(process.ProcessId, out var currentMask, out var currentPriority, out _))
                         {
                             continue;
@@ -563,6 +565,7 @@ public sealed class PlanCoordinator
                             schedPlan.Id,
                             currentMask,
                             rule.CpuMask,
+                            startTicks,
                             ref changed);
 
                         var needPriority = PrepareEnforceField(
@@ -572,6 +575,7 @@ public sealed class PlanCoordinator
                             schedPlan.Id,
                             currentPriority,
                             rule.Priority,
+                            startTicks,
                             ref changed);
 
                         if (needMask)
@@ -635,14 +639,27 @@ public sealed class PlanCoordinator
                                 schedPlan.Id,
                                 currentCpuSets ?? string.Empty,
                                 normalizedCpuSets,
+                                startTicks,
                                 ref changed);
 
                             if (needCpuSets)
                             {
                                 if (cpuSetScheduler.TryApplyCpuSets(process.ProcessId, normalizedCpuSets, out var csError))
                                 {
-                                    cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCpuSets, out _);
-                                    _ledger.Commit(cpuSetsTarget, actualCpuSets ?? string.Empty);
+                                    if (!cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCpuSets, out _))
+                                    {
+                                        _ledger.MarkUnknown(cpuSetsTarget, "写入后读不到 CPU Sets，无法确认是否生效。");
+                                    }
+                                    else if (SameCpuSets(actualCpuSets, normalizedCpuSets))
+                                    {
+                                        _ledger.Commit(cpuSetsTarget, actualCpuSets ?? string.Empty);
+                                    }
+                                    else
+                                    {
+                                        _ledger.Fail(cpuSetsTarget, $"回读 CPU Sets {actualCpuSets} 与期望 {normalizedCpuSets} 不一致。");
+                                    }
+
+                                    WarnCoreParking(schedPlan.Id);
                                 }
                                 else
                                 {
@@ -667,6 +684,78 @@ public sealed class PlanCoordinator
         }
     }
 
+    private static bool SameCpuSets(string? actual, string? desired)
+    {
+        var left = actual ?? string.Empty;
+        var right = desired ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return string.IsNullOrWhiteSpace(left) && string.IsNullOrWhiteSpace(right);
+        }
+
+        return CpuSetSpec.TryNormalize(left, out var normalizedLeft, out _)
+               && CpuSetSpec.TryNormalize(right, out var normalizedRight, out _)
+               && string.Equals(normalizedLeft, normalizedRight, StringComparison.Ordinal);
+    }
+
+    /// <summary>CPU Set 是软约束：核心停泊开启时实际运行范围可能超出设定集合，按方案提示一次。</summary>
+    private void WarnCoreParking(string planId)
+    {
+        var parked = CoreParkingPercent();
+        if (parked is not int percent || percent >= 100)
+        {
+            return;
+        }
+
+        lock (_cpuSetsWarned)
+        {
+            if (!_cpuSetsWarned.Add($"parking:{planId}"))
+            {
+                return;
+            }
+        }
+
+        _log.Warn($"方案 {planId} 的 CPU Sets 已写入，但当前核心停泊 {percent}%，实际运行范围可能超出设定集合。");
+    }
+
+    private int? CoreParkingPercent()
+    {
+        var now = Environment.TickCount64;
+        if (now - _parkingTick < 10_000)
+        {
+            return _parkingValue;
+        }
+
+        _parkingTick = now;
+        _parkingValue = null;
+
+        var scheme = _power.GetActiveScheme();
+        if (scheme is null)
+        {
+            return null;
+        }
+
+        int? lowest = null;
+        foreach (var ac in new[] { true, false })
+        {
+            if (_power.TryReadValue(scheme.Guid, SubProcessorGroup, CoreParkingSetting, ac, out var value, out _)
+                && value is >= 0 and <= 100)
+            {
+                lowest = lowest is int current ? Math.Min(current, (int)value) : (int)value;
+            }
+        }
+
+        _parkingValue = lowest;
+        return lowest;
+    }
+
+    private static readonly Guid SubProcessorGroup = new("54533251-82be-4824-96c1-47b60b740d00");
+    private static readonly Guid CoreParkingSetting = new("0cc5b647-c1df-4637-891a-dec35c318583");
+
+    private long _parkingTick = long.MinValue / 2;
+    private int? _parkingValue;
+
     private void WarnCpuSetsUnavailable(string planId, bool supported)
     {
         lock (_cpuSetsWarned)
@@ -689,6 +778,7 @@ public sealed class PlanCoordinator
         string planId,
         string? currentValue,
         string? desiredValue,
+        long processStartTicks,
         ref bool changed)
     {
         if (desiredValue is null)
@@ -720,12 +810,12 @@ public sealed class PlanCoordinator
                     return false;
                 }
 
-                _ledger.Acquire(target, source, priority, currentValue, desiredValue, planId, OwnerFor(source));
+                _ledger.Acquire(target, source, priority, currentValue, desiredValue, planId, OwnerFor(source), processStartTicks);
                 return true;
             }
         }
 
-        var outcome = _ledger.Acquire(target, source, priority, currentValue, desiredValue, planId, OwnerFor(source));
+        var outcome = _ledger.Acquire(target, source, priority, currentValue, desiredValue, planId, OwnerFor(source), processStartTicks);
         if (outcome is not (AcquireOutcome.Acquired or AcquireOutcome.AlreadyOwned))
         {
             return false;
@@ -1303,7 +1393,7 @@ public sealed class PlanCoordinator
                     }
                     else
                     {
-                        outcomes.Add(ApplyTarget(
+                        var cpuSetsOutcome = ApplyTarget(
                             cpuSetsTarget,
                             plan.Id,
                             source,
@@ -1312,7 +1402,15 @@ public sealed class PlanCoordinator
                             normalizedCpuSets,
                             () => cpuSetScheduler.TryApplyCpuSets(process.ProcessId, normalizedCpuSets, out var csErr) ? null : csErr,
                             () => cpuSetScheduler.TryReadCpuSets(process.ProcessId, out var actualCs, out _) ? actualCs ?? string.Empty : null,
-                            processStartTicks: startTicks));
+                            SameCpuSets,
+                            startTicks);
+
+                        outcomes.Add(cpuSetsOutcome);
+
+                        if (cpuSetsOutcome.Status == LedgerStatus.Applied)
+                        {
+                            WarnCoreParking(plan.Id);
+                        }
                     }
                 }
             }

@@ -769,6 +769,71 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApplyScheduling_CpuSets_Silent_Rejection_Is_Not_Recorded_As_Applied()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(3003, "game"))
+        {
+            CpuSetsWriteIgnored = true,
+        };
+        var plan = new SchedulingPlan
+        {
+            Id = "sched-cpusets-ignored",
+            Name = "Sched CpuSets Ignored",
+            Revision = 1,
+            Rules =
+            [
+                new SchedulingRule
+                {
+                    ProcessMatch = "game",
+                    CpuSets = "0-3",
+                    Enforce = true,
+                },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var coordinator = new PlanCoordinator(_store, _tuning, new FakePowerPolicyService(), scheduler, _log);
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Failed, outcome.State);
+        Assert.Equal(LedgerStatus.Failed, Assert.Single(outcome.Targets).Status);
+        Assert.Equal(LedgerStatus.Failed, coordinator.Ledger.Get("sched.3003.cpusets")!.Status);
+    }
+
+    [Fact]
+    public async Task ApplyScheduling_CpuSets_Stays_Applied_When_Core_Parking_Is_On()
+    {
+        var scheduler = new FakeProcessScheduler(new ProcessTarget(3004, "game"));
+        var power = new FakePowerPolicyService { CoreParkingMinPercent = 50 };
+        var plan = new SchedulingPlan
+        {
+            Id = "sched-cpusets-parking",
+            Name = "Sched CpuSets Parking",
+            Revision = 1,
+            Rules =
+            [
+                new SchedulingRule
+                {
+                    ProcessMatch = "game",
+                    CpuSets = "0-3",
+                    Enforce = true,
+                },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var coordinator = new PlanCoordinator(_store, _tuning, power, scheduler, _log);
+        var outcome = await coordinator.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        Assert.Equal(LedgerStatus.Applied, Assert.Single(outcome.Targets).Status);
+    }
+
+    [Fact]
     public async Task ApplyScheduling_Skips_Unsupported_CpuSets_Without_Blocking_Affinity()
     {
         var scheduler = new FakeProcessScheduler(new ProcessTarget(3002, "game"))
