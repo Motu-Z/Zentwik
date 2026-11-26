@@ -289,6 +289,18 @@ public sealed class PlanCoordinator
             }
 
             var target = $"cpu.co.{core.CoreIndex}";
+            if (!CurveOptimizerBounds.IsWithinL2(desired))
+            {
+                outcomes.Add(new TargetOutcome(
+                    target,
+                    null,
+                    desired.ToString(CultureInfo.InvariantCulture),
+                    null,
+                    LedgerStatus.Skipped,
+                    CurveOptimizerBounds.FormatL2Rejection(desired)));
+                continue;
+            }
+
             if (!byCore.TryGetValue(core.CoreIndex, out var current))
             {
                 outcomes.Add(new TargetOutcome(

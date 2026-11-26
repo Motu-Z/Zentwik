@@ -322,6 +322,49 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
         Assert.Equal(OwnerKind.User, coordinator.Entries.Single(e => e.Target == "sched.4242.affinity").Owner);
     }
 
+    [Fact]
+    public void Co_Asymmetric_L2_Bounds_Accept_Minus50_And_Plus30_Reject_Plus31_And_Minus51()
+    {
+        Assert.True(CurveOptimizerBounds.IsWithinL2(-50));
+        Assert.True(CurveOptimizerBounds.IsWithinL2(0));
+        Assert.True(CurveOptimizerBounds.IsWithinL2(30));
+        Assert.False(CurveOptimizerBounds.IsWithinL2(31));
+        Assert.False(CurveOptimizerBounds.IsWithinL2(-51));
+
+        var message = CurveOptimizerBounds.FormatL2Rejection(31);
+        Assert.Contains("L2", message, StringComparison.Ordinal);
+        Assert.Contains("+30", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ApplyCpu_Skips_OutOfL2_Core_Without_Blocking_Valid_Cores()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-l2-mixed",
+            Name = "CPU L2 Mixed",
+            Revision = 1,
+            Cores =
+            [
+                new CoreTuning { CoreIndex = 0, Offset = -20 },
+                new CoreTuning { CoreIndex = 1, Offset = 35 },
+            ],
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Partial, outcome.State);
+        Assert.Equal(LedgerStatus.Applied, outcome.Targets.Single(t => t.Target == "cpu.co.0").Status);
+        var skipped = outcome.Targets.Single(t => t.Target == "cpu.co.1");
+        Assert.Equal(LedgerStatus.Skipped, skipped.Status);
+        Assert.Contains("L2", skipped.Failure ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal(-20, ReadOffset(0));
+        Assert.Equal(0, ReadOffset(1));
+    }
+
     private int ReadOffset(int core)
     {
         Assert.True(_tuning.TryReadOffsets(out var offsets, out _));
