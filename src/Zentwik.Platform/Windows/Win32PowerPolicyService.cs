@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32;
@@ -181,6 +183,62 @@ public sealed class Win32PowerPolicyService : IPowerPolicyService
 
     public IReadOnlyList<Guid> EnumerateSettings(Guid scheme, Guid subGroup) =>
         EnumerateGuids(scheme, subGroup, AccessIndividualSetting);
+
+    /// <remarks>
+    /// powrprof 没有「导入导出」接口，完整原件只能靠 powercfg.exe。
+    /// 它失败的方式很隐蔽：非管理员时退出码仍为 0，但文件是 0 字节，所以成败按文件长度判定。
+    /// 输出是本地化文本，不解析、也不重定向（重定向而不读会在输出多时死锁）。
+    /// </remarks>
+    public bool TryExportScheme(string path, Guid scheme, out string? error)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var startInfo = new ProcessStartInfo("powercfg.exe", $"-export \"{path}\" {scheme:D}")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                error = "无法启动 powercfg.exe。";
+                return false;
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            try
+            {
+                process.WaitForExitAsync(timeout.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                error = "powercfg 导出超时。";
+                return false;
+            }
+
+            var file = new FileInfo(path);
+            if (process.ExitCode != 0 || !file.Exists || file.Length == 0)
+            {
+                error = $"powercfg 导出失败：退出码 {process.ExitCode}，文件 {(file.Exists ? file.Length : 0)} 字节。";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is Win32Exception or IOException or UnauthorizedAccessException)
+        {
+            error = $"powercfg 导出失败：{ex.Message}";
+            return false;
+        }
+    }
 
     public string? ReadDescription(Guid scheme)
     {

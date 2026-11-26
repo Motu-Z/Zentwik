@@ -102,6 +102,34 @@ public sealed record PowerSchemeNameRequest(Guid Guid, string Name);
 /// <summary>按 GUID 定位一个电源方案。</summary>
 public sealed record PowerSchemeTarget(Guid Guid);
 
+/// <summary>删除电源方案。NoBackup=true 表示不留备份（默认留）。</summary>
+public sealed record PowerSchemeDeleteRequest(Guid Guid, bool NoBackup = false);
+
+/// <summary>删除结果：Backup 为删除前自动生成的备份，--no-backup 时为 null。</summary>
+public sealed record PowerSchemeDeleteResultDto(Guid Guid, bool Deleted, PowerSchemeBackupDto? Backup);
+
+/// <summary>一份方案备份。Id 即备份文件名，用它恢复；PortablePath 是附带的 .pow 原件，可能为 null。</summary>
+public sealed record PowerSchemeBackupDto(
+    string Id,
+    string Path,
+    Guid SourceGuid,
+    string Name,
+    bool Visible,
+    DateTimeOffset CreatedAt,
+    int SettingCount,
+    int UnreadableCount,
+    string? PortablePath);
+
+/// <summary>从备份恢复：Backup 可为备份 ID，也可为备份文件路径。</summary>
+public sealed record PowerSchemeRestoreRequest(string Backup);
+
+/// <summary>恢复结果：新建的方案 GUID 与写入统计。Failures 只列前若干条原因。</summary>
+public sealed record PowerSchemeRestoreResultDto(
+    PowerSchemeDto Scheme,
+    int Applied,
+    int Failed,
+    string[] Failures);
+
 public sealed record TargetOutcomeDto(
     string Target,
     string? Previous,

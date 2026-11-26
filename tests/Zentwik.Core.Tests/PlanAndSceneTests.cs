@@ -1370,5 +1370,11 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
             error = "模拟不支持写说明。";
             return false;
         }
+
+        public bool TryExportScheme(string path, Guid scheme, out string? error)
+        {
+            error = "模拟不支持导出。";
+            return false;
+        }
     }
 }

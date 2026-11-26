@@ -53,6 +53,12 @@ public interface IPowerPolicyService
     /// <summary>删除方案。活动方案须由上层先切走；内置方案由上层拒绝。</summary>
     bool DeleteScheme(Guid scheme, out string? error);
 
+    /// <summary>
+    /// 导出一个 .pow 原件（Windows 原生格式）。它不经过 powrprof，只能调 powercfg，
+    /// 因此在无管理员权限时通常写出 0 字节文件——实现必须按文件长度判定成败。
+    /// </summary>
+    bool TryExportScheme(string path, Guid scheme, out string? error);
+
     /// <summary>枚举方案下的子组。用于把模板的设置项搬到派生品。</summary>
     IReadOnlyList<Guid> EnumerateSubgroups(Guid scheme);
 

@@ -20,7 +20,7 @@ Desktop     WPF 壳（暂停）
 
 ```bash
 dotnet build Zentwik.slnx          # 0 警告 0 错误（TreatWarningsAsErrors）
-dotnet test  Zentwik.slnx          # 185 个用例
+dotnet test  Zentwik.slnx          # 196 个用例
 ```
 
 界面测试（`tests/Zentwik.Desktop.Tests`）在单个 STA 线程里创建真实窗口，用自动化 peer 校验控件名称、用容器实例化数量校验列表虚拟化。
@@ -52,7 +52,7 @@ dotnet run --project src/Zentwik.Cli -- status
 dotnet run --project src/Zentwik.Cli -- tuning --json
 ```
 
-数据目录：控制台模式 `%APPDATA%\ZentwikNext`，服务或安装模式 `%ProgramData%\ZentwikNext`。可用 `--data-dir` 覆盖。含 `state.json`、`owner.sid`、`logs\`。
+数据目录：控制台模式 `%APPDATA%\ZentwikNext`，服务或安装模式 `%ProgramData%\ZentwikNext`。可用 `--data-dir` 覆盖。含 `state.json`、`owner.sid`、`logs\`、`power-backups\`。
 
 ## CLI
 
@@ -68,12 +68,16 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 | `plans list\|show\|apply\|revert\|delete\|save\|create` | 方案管理（三类方案独立） |
 | `scenes list\|show\|activate\|deactivate\|enable\|disable\|delete\|save\|create` | 场景管理与手动执行 |
 | `ledger [release <target>]` | 状态账本、释放用户接管 |
-| `power list\|create\|rename\|delete` | Windows 电源方案：列出/派生/改名/删除（内置拒删、活动方案先切走）。列表含不可见的系统模板，带 `hidden` 标记——它们同样可改名、可删除、可作模板 |
+| `power list\|create\|rename\|delete\|backup\|backups\|restore` | Windows 电源方案：列出/派生/改名/删除/备份/恢复。内置拒删、活动方案先切走；删除默认先备份，`--no-backup` 可跳过。列表含不可见的系统模板，带 `hidden` 标记——它们同样可改名、可删除、可作模板 |
 | `settings` | 读取或修改语言、主题、强调色、缩放 |
 | `doctor` | 运行模式、路径、模块状态、最近错误 |
 | `logs [--limit N] [--level error]` | 最近日志 |
 
 退出码：`0` 成功、`1` 代理不可用、`2` 用法错误、`3` 操作失败、`4` 能力不可用、`5` 超时、`6` 部分成功。
+
+电源方案备份：一份备份 = `power-backups\` 下一个 JSON 清单（显示名、说明、全部设置项的 AC/DC 取值）加一个同名的 `.pow` 原件。`.pow` 由 `powercfg -export` 生成，是可脱离本工具手动导入的 Windows 原生格式；导出失败只记日志，不影响备份本身。删除前备份失败会中止删除——删除不可逆，留多余备份无害，删掉再报错就救不回来。
+
+恢复的边界必须说清：系统会给新方案分配新 GUID，原 GUID 回不来；可见性也回不来——`.pow` 导入一个隐藏方案模板，实测得到的是**可见**方案（活动方案不变）。恢复以「平衡」为底再逐项写回备份里的取值，备份中没记录的设置项保持平衡的取值，因此结果不一定与原方案逐项相同。名字被占用时自动追加 `(恢复)`。
 
 方案应用语义：写前记录前值 → 写入 → 回读 → 期望与实际不一致即判定失败；结果落在状态账本，`Owner` 区分 Scene/Plan/User。硬件不可用时返回失败原因，不伪造成功。
 

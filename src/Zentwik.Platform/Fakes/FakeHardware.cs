@@ -221,11 +221,15 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
     /// <summary>模拟派生失败（模板不存在或系统拒绝）。</summary>
     public bool DuplicateFails { get; set; }
 
-    /// <summary>
-    /// 模拟「从该模板派生出的方案继承隐藏标记」：派生品拿得到 GUID，
-    /// 但不出现在 <see cref="ListSchemes"/> 里，只有激活那一刻才可见。
-    /// </summary>
+    /// <summary>模拟「从该模板派生出的方案继承隐藏标记」：派生品拿得到 GUID，
+    /// 但不出现在 <see cref="ListSchemes"/> 里，只有激活那一刻才可见。</summary>
     public HashSet<Guid> HiddenTemplates { get; } = [];
+
+    /// <summary>这些设置项拒绝写入（模拟受硬件或驱动限制的设置）。</summary>
+    public HashSet<Guid> FailingWriteSettings { get; } = [];
+
+    /// <summary>这些设置项的取值读不出来（模拟未定义的设置）。</summary>
+    public HashSet<Guid> FailingReadSettings { get; } = [];
 
     /// <summary>登记一个取值，用于验证「搬设置」是否真的搬了。</summary>
     public void SetValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value) =>
@@ -282,6 +286,13 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
 
     public bool TryReadValue(Guid scheme, Guid subGroup, Guid setting, bool ac, out uint value, out string? error)
     {
+        if (FailingReadSettings.Contains(setting))
+        {
+            value = 0;
+            error = "模拟读取失败。";
+            return false;
+        }
+
         if (subGroup == SubProcessor && setting == CoreParking)
         {
             value = CoreParkingMinPercent;
@@ -296,6 +307,12 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
 
     public bool TryWriteValue(Guid scheme, Guid subGroup, Guid setting, bool ac, uint value, out string? error)
     {
+        if (FailingWriteSettings.Contains(setting))
+        {
+            error = "模拟写入被拒。";
+            return false;
+        }
+
         _values[(scheme, subGroup, setting, ac)] = value;
         error = null;
         return true;
@@ -380,6 +397,13 @@ public sealed class FakePowerPolicyService : IPowerPolicyService
         _schemes.Remove(scheme);
         error = null;
         return true;
+    }
+
+    /// <summary>.pow 是 powercfg 的产物，模拟环境造不出来；返回失败，调用方必须当成非致命。</summary>
+    public bool TryExportScheme(string path, Guid scheme, out string? error)
+    {
+        error = "模拟环境不导出 .pow。";
+        return false;
     }
 }
 

@@ -7,12 +7,30 @@ using Zentwik.Platform.Fakes;
 
 namespace Zentwik.Core.Tests;
 
-public sealed class PowerSchemeServiceTests
+public sealed class PowerSchemeServiceTests : IDisposable
 {
     private readonly FakePowerPolicyService _power = new();
+    private readonly string _directory =
+        Path.Combine(Path.GetTempPath(), "zentwik-power-tests", Guid.NewGuid().ToString("N"));
     private readonly PowerSchemeService _service;
 
-    public PowerSchemeServiceTests() => _service = new PowerSchemeService(_power);
+    public PowerSchemeServiceTests() =>
+        _service = new PowerSchemeService(_power, new PowerSchemeBackupStore(_directory));
+
+    public void Dispose()
+    {
+        try
+        {
+            if (Directory.Exists(_directory))
+            {
+                Directory.Delete(_directory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // 临时目录清不掉不影响结论，交给系统清理。
+        }
+    }
 
     [Fact]
     public void List_Marks_Active_And_BuiltIn()
@@ -230,6 +248,166 @@ public sealed class PowerSchemeServiceTests
         Assert.NotNull(active);
         Assert.NotEqual(victim.Guid, active.Guid);
         Assert.Contains(_service.List(), scheme => scheme.Guid == active.Guid && scheme.Visible);
+    }
+
+    // 删除不可逆。备份是「删掉还能拿回来」的唯一保证，所以默认必须留；
+    // 留不下来就不该删——宁可报错让用户先处理，也不能先删再报错。
+
+    [Fact]
+    public void Backup_Writes_Manifest_And_Appears_In_List()
+    {
+        var scheme = CreateSchemeWithValues();
+
+        var backup = _service.Backup(scheme);
+
+        Assert.True(File.Exists(backup.Path));
+        Assert.Equal(scheme, backup.SourceGuid);
+        Assert.Equal("带设置的方案", backup.Name);
+        Assert.Equal(2, backup.SettingCount);
+        Assert.Equal(0, backup.UnreadableCount);
+
+        var listed = Assert.Single(_service.ListBackups());
+        Assert.Equal(backup.Id, listed.Id);
+        Assert.Equal(2, listed.SettingCount);
+    }
+
+    [Fact]
+    public void Backup_Succeeds_When_Portable_Export_Fails()
+    {
+        // .pow 是附带产物；导出失败不该让备份失败（模拟环境里它总是失败）。
+        var backup = _service.Backup(CreateSchemeWithValues());
+
+        Assert.Null(backup.PortablePath);
+        Assert.True(File.Exists(backup.Path));
+    }
+
+    [Fact]
+    public void Backup_Counts_Settings_That_Cannot_Be_Read()
+    {
+        var scheme = CreateSchemeWithValues();
+        _power.FailingReadSettings.Add(SettingB);
+
+        var backup = _service.Backup(scheme);
+
+        Assert.Equal(1, backup.SettingCount);
+        Assert.Equal(1, backup.UnreadableCount);
+    }
+
+    [Fact]
+    public void Delete_Keeps_Backup_By_Default()
+    {
+        var scheme = CreateSchemeWithValues();
+
+        var result = _service.Delete(scheme);
+
+        Assert.NotNull(result.Backup);
+        Assert.True(File.Exists(result.Backup.Path));
+        Assert.Single(_service.ListBackups());
+        Assert.DoesNotContain(_service.List(), candidate => candidate.Guid == scheme);
+    }
+
+    [Fact]
+    public void Delete_Without_Backup_Writes_Nothing()
+    {
+        var scheme = CreateSchemeWithValues();
+
+        var result = _service.Delete(scheme, keepBackup: false);
+
+        Assert.Null(result.Backup);
+        Assert.Empty(_service.ListBackups());
+    }
+
+    [Fact]
+    public void Restore_Rebuilds_Settings_And_Name()
+    {
+        var scheme = CreateSchemeWithValues();
+        var backup = _service.Backup(scheme);
+        _service.Delete(scheme, keepBackup: false);
+
+        var restored = _service.Restore(backup.Id);
+
+        Assert.Equal("带设置的方案", restored.Scheme.Name);
+        Assert.NotEqual(scheme, restored.Scheme.Guid);
+        Assert.Equal(0, restored.Failed);
+        Assert.Equal(4, restored.Applied);
+
+        Assert.True(_power.TryReadValue(restored.Scheme.Guid, SubGroup, SettingA, ac: true, out var ac, out _));
+        Assert.Equal(15u, ac);
+        Assert.True(_power.TryReadValue(restored.Scheme.Guid, SubGroup, SettingA, ac: false, out var dc, out _));
+        Assert.Equal(5u, dc);
+        Assert.True(_power.TryReadValue(restored.Scheme.Guid, SubGroup, SettingB, ac: true, out var other, out _));
+        Assert.Equal(40u, other);
+    }
+
+    [Fact]
+    public void Restore_Restores_Description()
+    {
+        var scheme = CreateSchemeWithValues();
+        _power.TryWriteDescription(scheme, "偏向续航", out _);
+        var backup = _service.Backup(scheme);
+
+        var restored = _service.Restore(backup.Id);
+
+        Assert.Equal("偏向续航", _power.ReadDescription(restored.Scheme.Guid));
+    }
+
+    [Fact]
+    public void Restore_Suffixes_Name_When_Original_Still_Exists()
+    {
+        var scheme = CreateSchemeWithValues();
+        var backup = _service.Backup(scheme);
+
+        var restored = _service.Restore(backup.Id);
+
+        Assert.Equal("带设置的方案 (恢复)", restored.Scheme.Name);
+        Assert.Contains(_service.List(), candidate => candidate.Guid == scheme && candidate.Name == "带设置的方案");
+    }
+
+    [Fact]
+    public void Restore_Reports_Settings_That_Reject_Writes()
+    {
+        var scheme = CreateSchemeWithValues();
+        var backup = _service.Backup(scheme);
+        _power.FailingWriteSettings.Add(SettingB);
+
+        var restored = _service.Restore(backup.Id);
+
+        Assert.Equal(2, restored.Failed);
+        Assert.Equal(2, restored.Applied);
+        Assert.NotEmpty(restored.Failures);
+        Assert.Contains(restored.Failures, static failure => failure.Contains("模拟写入被拒", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Restore_Rejects_Unknown_Backup()
+    {
+        var ex = Assert.Throws<CoreException>(() => _service.Restore("不存在的备份"));
+        Assert.Equal(ErrorCodes.PowerSchemeBackupNotFound, ex.Code);
+    }
+
+    [Fact]
+    public void Restore_Rejects_Corrupt_Backup()
+    {
+        Directory.CreateDirectory(Path.Combine(_directory, "power-backups"));
+        File.WriteAllText(Path.Combine(_directory, "power-backups", "broken.json"), "{ not json");
+
+        var ex = Assert.Throws<CoreException>(() => _service.Restore("broken"));
+
+        Assert.Equal(ErrorCodes.PowerSchemeRestoreFailed, ex.Code);
+        Assert.Empty(_service.ListBackups());
+    }
+
+    private static readonly Guid SubGroup = new("54533251-82be-4824-96c1-47b60b740d00");
+    private static readonly Guid SettingA = new("aaaaaaaa-1111-2222-3333-444444444444");
+    private static readonly Guid SettingB = new("bbbbbbbb-1111-2222-3333-444444444444");
+
+    private Guid CreateSchemeWithValues(string name = "带设置的方案")
+    {
+        var created = _service.Create(PowerSchemePresets.Balanced.Guid, name);
+        _power.SetValue(created.Guid, SubGroup, SettingA, ac: true, 15);
+        _power.SetValue(created.Guid, SubGroup, SettingA, ac: false, 5);
+        _power.SetValue(created.Guid, SubGroup, SettingB, ac: true, 40);
+        return created.Guid;
     }
 
     private Guid CreateHiddenScheme(string name)

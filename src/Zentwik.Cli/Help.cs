@@ -67,7 +67,14 @@ public static class Help
                                                   以模板派生新方案
                       rename --id <GUID> --name <name>
                                                   改方案显示名
-                      delete --id <GUID>          删除方案（内置拒删；活动方案先切走）
+                      delete --id <GUID> [--no-backup]
+                                                  删除方案（默认先备份；内置拒删；活动方案先切走）
+                      backup --id <GUID>          把方案的设置项与说明存成一份备份
+                      backups                     列出已有备份
+                      restore --backup <ID|路径>  从备份重建方案（新 GUID，名字冲突时自动加后缀）
+
+                    备份写在服务的 power-backups 目录：一份 JSON 清单 + 一个可选的 .pow 原件。
+                    恢复不会还原原 GUID，也不保证可见性——系统按当前策略决定新方案可不可见。
                     """);
                 break;
             case "tuning":

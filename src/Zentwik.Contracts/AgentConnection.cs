@@ -212,12 +212,36 @@ public sealed class AgentConnection : IAsyncDisposable
                 ct)
             .ConfigureAwait(false);
 
-    public async Task<bool> DeletePowerSchemeAsync(Guid scheme, CancellationToken ct = default) =>
+    public async Task<PowerSchemeDeleteResultDto> DeletePowerSchemeAsync(
+        Guid scheme,
+        bool keepBackup = true,
+        CancellationToken ct = default) =>
         await InvokeAsync(
                 Ops.PowerSchemeDelete,
+                new PowerSchemeDeleteRequest(scheme, !keepBackup),
+                ZentwikJson.Default.PowerSchemeDeleteRequest,
+                ZentwikJson.Default.PowerSchemeDeleteResultDto,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<PowerSchemeBackupDto> BackupPowerSchemeAsync(Guid scheme, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.PowerSchemeBackup,
                 new PowerSchemeTarget(scheme),
                 ZentwikJson.Default.PowerSchemeTarget,
-                ZentwikJson.Default.Boolean,
+                ZentwikJson.Default.PowerSchemeBackupDto,
+                ct)
+            .ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<PowerSchemeBackupDto>> ListPowerSchemeBackupsAsync(CancellationToken ct = default) =>
+        await InvokeAsync(Ops.PowerSchemeBackups, ZentwikJson.Default.PowerSchemeBackupDtoArray, ct).ConfigureAwait(false);
+
+    public async Task<PowerSchemeRestoreResultDto> RestorePowerSchemeAsync(string backup, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.PowerSchemeRestore,
+                new PowerSchemeRestoreRequest(backup),
+                ZentwikJson.Default.PowerSchemeRestoreRequest,
+                ZentwikJson.Default.PowerSchemeRestoreResultDto,
                 ct)
             .ConfigureAwait(false);
 

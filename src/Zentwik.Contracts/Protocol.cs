@@ -47,6 +47,9 @@ public static class Ops
     public const string PowerSchemeCreate = "power.scheme.create";
     public const string PowerSchemeRename = "power.scheme.rename";
     public const string PowerSchemeDelete = "power.scheme.delete";
+    public const string PowerSchemeBackup = "power.scheme.backup";
+    public const string PowerSchemeBackups = "power.scheme.backups";
+    public const string PowerSchemeRestore = "power.scheme.restore";
 
     public const string SettingsGet = "settings.get";
     public const string SettingsSet = "settings.set";
@@ -88,6 +91,9 @@ public static class ErrorCodes
     public const string PowerSchemeNameConflict = "power.scheme_name_conflict";
     public const string PowerSchemeCreateFailed = "power.scheme_create_failed";
     public const string PowerSchemeDeleteFailed = "power.scheme_delete_failed";
+    public const string PowerSchemeBackupFailed = "power.scheme_backup_failed";
+    public const string PowerSchemeBackupNotFound = "power.scheme_backup_not_found";
+    public const string PowerSchemeRestoreFailed = "power.scheme_restore_failed";
 }
 
 public sealed class RequestEnvelope

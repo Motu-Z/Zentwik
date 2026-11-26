@@ -5,6 +5,7 @@ using Zentwik.Contracts.Protocol;
 using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Persistence;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Power;
 using Zentwik.Domain.Scenes;
 using Zentwik.Domain.Settings;
 
@@ -38,6 +39,14 @@ namespace Zentwik.Contracts.Json;
 [JsonSerializable(typeof(PowerSchemeCreateRequest))]
 [JsonSerializable(typeof(PowerSchemeNameRequest))]
 [JsonSerializable(typeof(PowerSchemeTarget))]
+[JsonSerializable(typeof(PowerSchemeDeleteRequest))]
+[JsonSerializable(typeof(PowerSchemeDeleteResultDto))]
+[JsonSerializable(typeof(PowerSchemeBackupDto))]
+[JsonSerializable(typeof(PowerSchemeBackupDto[]))]
+[JsonSerializable(typeof(PowerSchemeRestoreRequest))]
+[JsonSerializable(typeof(PowerSchemeRestoreResultDto))]
+[JsonSerializable(typeof(PowerSchemeBackupDocument))]
+[JsonSerializable(typeof(PowerSchemeSettingValue[]))]
 [JsonSerializable(typeof(TargetOutcomeDto))]
 [JsonSerializable(typeof(TargetOutcomeDto[]))]
 [JsonSerializable(typeof(PlanApplyResultDto))]

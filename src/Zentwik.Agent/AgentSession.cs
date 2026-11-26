@@ -275,9 +275,35 @@ internal sealed class AgentSession : IAsyncDisposable
 
             case Ops.PowerSchemeDelete:
             {
+                var payload = RequirePayload(request, ZentwikJson.Default.PowerSchemeDeleteRequest);
+                var result = PowerSchemes().Delete(payload.Guid, keepBackup: !payload.NoBackup);
+                var dto = new PowerSchemeDeleteResultDto(result.Guid, true, result.Backup is null ? null : ToDto(result.Backup));
+                return Ok(request, JsonSerializer.SerializeToElement(dto, ZentwikJson.Default.PowerSchemeDeleteResultDto));
+            }
+
+            case Ops.PowerSchemeBackup:
+            {
                 var payload = RequirePayload(request, ZentwikJson.Default.PowerSchemeTarget);
-                PowerSchemes().Delete(payload.Guid);
-                return Ok(request, JsonSerializer.SerializeToElement(true, ZentwikJson.Default.Boolean));
+                var backup = PowerSchemes().Backup(payload.Guid);
+                return Ok(request, JsonSerializer.SerializeToElement(ToDto(backup), ZentwikJson.Default.PowerSchemeBackupDto));
+            }
+
+            case Ops.PowerSchemeBackups:
+            {
+                var list = PowerSchemes().ListBackups().Select(ToDto).ToArray();
+                return Ok(request, JsonSerializer.SerializeToElement(list, ZentwikJson.Default.PowerSchemeBackupDtoArray));
+            }
+
+            case Ops.PowerSchemeRestore:
+            {
+                var payload = RequirePayload(request, ZentwikJson.Default.PowerSchemeRestoreRequest);
+                var restored = PowerSchemes().Restore(payload.Backup);
+                var dto = new PowerSchemeRestoreResultDto(
+                    ToDto(restored.Scheme),
+                    restored.Applied,
+                    restored.Failed,
+                    restored.Failures.ToArray());
+                return Ok(request, JsonSerializer.SerializeToElement(dto, ZentwikJson.Default.PowerSchemeRestoreResultDto));
             }
 
             case Ops.SettingsGet:
@@ -779,6 +805,17 @@ internal sealed class AgentSession : IAsyncDisposable
 
     private static PowerSchemeDto ToDto(PowerSchemeState state) =>
         new(state.Guid, state.Name, state.Active, state.BuiltIn, state.Visible);
+
+    private static PowerSchemeBackupDto ToDto(PowerSchemeBackup backup) => new(
+        backup.Id,
+        backup.Path,
+        backup.SourceGuid,
+        backup.Name,
+        backup.Visible,
+        backup.CreatedAt,
+        backup.SettingCount,
+        backup.UnreadableCount,
+        backup.PortablePath);
 
     private static PlanApplyResultDto ToDto(PlanApplyOutcome outcome) => new(
         outcome.Plan.Id,

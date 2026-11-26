@@ -1,4 +1,5 @@
 using Zentwik.Contracts.Protocol;
+using Zentwik.Core.Diagnostics;
 using Zentwik.Core.Plans;
 using Zentwik.Domain.Power;
 using Zentwik.Platform;
@@ -11,8 +12,30 @@ namespace Zentwik.Core.Power;
 /// </summary>
 public sealed record PowerSchemeState(Guid Guid, string Name, bool Active, bool BuiltIn, bool Visible);
 
+/// <summary>一份已落盘的备份。UnreadableCount 是「两侧都读不到」的设置项数，它们没进备份。</summary>
+public sealed record PowerSchemeBackup(
+    string Id,
+    string Path,
+    Guid SourceGuid,
+    string Name,
+    bool Visible,
+    DateTimeOffset CreatedAt,
+    int SettingCount,
+    int UnreadableCount,
+    string? PortablePath);
+
+/// <summary>删除结果。Backup 为空表示这次删除没有留备份（--no-backup）。</summary>
+public sealed record PowerSchemeDeleteResult(Guid Guid, PowerSchemeBackup? Backup);
+
+/// <summary>恢复结果。Failures 只列前几条原因，Failed 是完整失败数。</summary>
+public sealed record PowerSchemeRestoreResult(
+    PowerSchemeState Scheme,
+    int Applied,
+    int Failed,
+    IReadOnlyList<string> Failures);
+
 /// <summary>
-/// Windows 电源方案的增删改查。只操作系统方案本身；Zentwik 的 PowerPlan 方案对象另在 PlanCoordinator。
+/// Windows 电源方案的增删改查与备份恢复。只操作系统方案本身；Zentwik 的 PowerPlan 方案对象另在 PlanCoordinator。
 /// 规则：内置不可删；改名/新建查重（忽略大小写）；删除活动方案前先切到别的方案。
 /// </summary>
 /// <remarks>
@@ -20,9 +43,15 @@ public sealed record PowerSchemeState(Guid Guid, string Name, bool Active, bool 
 /// 存在性、查重、定位一律走 <see cref="IPowerPolicyService.ListAllSchemes"/>，只有「切换活动方案」这类
 /// 会改变用户可见状态的动作才限制在可见列表里。
 /// </remarks>
-public sealed class PowerSchemeService(IPowerPolicyService power)
+public sealed class PowerSchemeService(
+    IPowerPolicyService power,
+    PowerSchemeBackupStore backups,
+    DiagnosticLog? log = null)
 {
     public const int MaxNameLength = 64;
+
+    /// <summary>恢复时最多回报的失败条数：设置项可能上百，全列出来命令行没法看。</summary>
+    private const int MaxReportedFailures = 5;
 
     public IReadOnlyList<PowerSchemeState> List()
     {
@@ -92,7 +121,7 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
         return State(scheme, normalized);
     }
 
-    public void Delete(Guid scheme)
+    public PowerSchemeDeleteResult Delete(Guid scheme, bool keepBackup = true)
     {
         if (PowerSchemePresets.IsBuiltIn(scheme))
         {
@@ -100,6 +129,22 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
         }
 
         _ = Find(scheme);
+
+        // 先备份再删：删除不可逆，备份失败就中止。留一份多余备份无害，删掉再报错就没救。
+        PowerSchemeBackup? backup = null;
+        if (keepBackup)
+        {
+            try
+            {
+                backup = Backup(scheme);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new CoreException(
+                    ErrorCodes.PowerSchemeBackupFailed,
+                    $"删除前备份失败，已中止删除：{ex.Message}");
+            }
+        }
 
         if (power.GetActiveScheme()?.Guid == scheme && !SwitchAway(scheme))
         {
@@ -109,6 +154,178 @@ public sealed class PowerSchemeService(IPowerPolicyService power)
         if (!power.DeleteScheme(scheme, out var error))
         {
             throw new CoreException(ErrorCodes.PowerSchemeDeleteFailed, error ?? "删除电源方案失败。");
+        }
+
+        return new PowerSchemeDeleteResult(scheme, backup);
+    }
+
+    /// <summary>把一个方案的全部设置项、说明与显示名存成一份备份。</summary>
+    /// <remarks>
+    /// 只记能读到的东西：两侧都读不到的设置项跳过并计数，不让一项失败挡住整份备份。
+    /// 附带的 .pow 是 Windows 原生原件，可脱离本工具手动导入；导出失败不影响备份本身。
+    /// </remarks>
+    public PowerSchemeBackup Backup(Guid scheme)
+    {
+        var entry = Find(scheme);
+        var settings = new List<PowerSchemeSettingValue>();
+        var unreadable = 0;
+
+        foreach (var subGroup in power.EnumerateSubgroups(scheme))
+        {
+            foreach (var setting in power.EnumerateSettings(scheme, subGroup))
+            {
+                var hasAc = power.TryReadValue(scheme, subGroup, setting, ac: true, out var ac, out _);
+                var hasDc = power.TryReadValue(scheme, subGroup, setting, ac: false, out var dc, out _);
+
+                if (!hasAc && !hasDc)
+                {
+                    unreadable++;
+                    continue;
+                }
+
+                settings.Add(new PowerSchemeSettingValue(subGroup, setting, hasAc ? ac : null, hasDc ? dc : null));
+            }
+        }
+
+        var document = new PowerSchemeBackupDocument
+        {
+            SourceGuid = scheme,
+            Name = entry.FriendlyName,
+            Description = power.ReadDescription(scheme),
+            Visible = entry.Visible,
+            CreatedAt = DateTimeOffset.Now,
+            MachineName = Environment.MachineName,
+            Settings = settings,
+        };
+
+        var id = backups.NewId(scheme);
+        var path = backups.Save(document, id);
+        var portable = ExportPortable(scheme, path);
+
+        return new PowerSchemeBackup(
+            id,
+            path,
+            scheme,
+            document.Name,
+            document.Visible,
+            document.CreatedAt,
+            settings.Count,
+            unreadable,
+            portable);
+    }
+
+    public IReadOnlyList<PowerSchemeBackup> ListBackups() =>
+        backups.List()
+            .Select(static entry => new PowerSchemeBackup(
+                entry.Id,
+                entry.Path,
+                entry.Document.SourceGuid,
+                entry.Document.Name,
+                entry.Document.Visible,
+                entry.Document.CreatedAt,
+                entry.Document.Settings.Count,
+                0,
+                PortablePathOf(entry.Path)))
+            .ToArray();
+
+    /// <summary>按备份重建一个方案。原 GUID 与可见性都回不来，名字冲突时自动加「(恢复)」后缀。</summary>
+    /// <remarks>
+    /// 底子是「平衡」：它在所有机器上都可见。备份里有取值的设置项逐项写回，
+    /// 备份里没有的保持平衡的取值——这是本方法的已知边界，恢复结果不一定与原方案逐字节相同。
+    /// </remarks>
+    public PowerSchemeRestoreResult Restore(string backupId)
+    {
+        var entry = backups.Load(backupId);
+        var document = entry.Document;
+        var name = UniqueName(string.IsNullOrWhiteSpace(document.Name) ? "恢复的方案" : document.Name);
+        var created = Create(PowerSchemePresets.Balanced.Guid, name);
+
+        var applied = 0;
+        var failed = 0;
+        var failures = new List<string>();
+
+        foreach (var setting in document.Settings)
+        {
+            if (setting.Ac is { } ac)
+            {
+                if (power.TryWriteValue(created.Guid, setting.SubGroup, setting.Setting, ac: true, ac, out var error))
+                {
+                    applied++;
+                }
+                else
+                {
+                    failed++;
+                    AddFailure(failures, setting, "AC", error);
+                }
+            }
+
+            if (setting.Dc is { } dc)
+            {
+                if (power.TryWriteValue(created.Guid, setting.SubGroup, setting.Setting, ac: false, dc, out var error))
+                {
+                    applied++;
+                }
+                else
+                {
+                    failed++;
+                    AddFailure(failures, setting, "DC", error);
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(document.Description))
+        {
+            power.TryWriteDescription(created.Guid, document.Description, out _);
+        }
+
+        log?.Info($"已从备份 {entry.Id} 恢复方案「{name}」（{created.Guid:D}）：写入 {applied} 项，失败 {failed} 项。");
+        return new PowerSchemeRestoreResult(created, applied, failed, failures);
+    }
+
+    /// <summary>导出一份 .pow 原件。powrprof 无导入导出接口，只能调 powercfg；失败只记日志。</summary>
+    private string? ExportPortable(Guid scheme, string jsonPath)
+    {
+        var path = Path.ChangeExtension(jsonPath, ".pow");
+        if (power.TryExportScheme(path, scheme, out var error))
+        {
+            return path;
+        }
+
+        log?.Warn($"附带 .pow 导出失败（备份本身有效，忽略）：{error}");
+        return null;
+    }
+
+    private static string? PortablePathOf(string jsonPath)
+    {
+        var path = Path.ChangeExtension(jsonPath, ".pow");
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>恢复出的方案要能用：名字被占用就加后缀，别让用户为了恢复先去删掉同名方案。</summary>
+    private string UniqueName(string desired)
+    {
+        if (!NameExists(desired, Guid.Empty))
+        {
+            return desired;
+        }
+
+        for (var attempt = 1; attempt <= 99; attempt++)
+        {
+            var candidate = attempt == 1 ? $"{desired} (恢复)" : $"{desired} (恢复 {attempt})";
+            if (candidate.Length <= MaxNameLength && !NameExists(candidate, Guid.Empty))
+            {
+                return candidate;
+            }
+        }
+
+        throw new CoreException(ErrorCodes.PowerSchemeNameConflict, $"无法为「{desired}」找到可用的恢复名称。");
+    }
+
+    private static void AddFailure(List<string> failures, PowerSchemeSettingValue setting, string side, string? error)
+    {
+        if (failures.Count < MaxReportedFailures)
+        {
+            failures.Add($"{setting.SubGroup:D}/{setting.Setting:D} {side}：{error ?? "写入失败"}");
         }
     }
 

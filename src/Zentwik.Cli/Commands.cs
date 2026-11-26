@@ -227,6 +227,9 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             "create" => await PowerCreateAsync(ct),
             "rename" => await PowerRenameAsync(ct),
             "delete" => await PowerDeleteAsync(ct),
+            "backup" => await PowerBackupAsync(ct),
+            "backups" => await PowerBackupsAsync(ct),
+            "restore" => await PowerRestoreAsync(ct),
             _ => throw new CliUsageException($"未知子命令：power {sub}"),
         };
     }
@@ -293,17 +296,92 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> PowerDeleteAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--id");
+        args.EnsureOnly("--pipe", "--id", "--no-backup");
         var id = RequireGuid("--id");
-        var deleted = await connection.DeletePowerSchemeAsync(id, ct);
-        output.JsonValue(deleted, ZentwikJson.Default.Boolean);
+        var keepBackup = !args.Flag("--no-backup");
+
+        var result = await connection.DeletePowerSchemeAsync(id, keepBackup, ct);
+        output.JsonValue(result, ZentwikJson.Default.PowerSchemeDeleteResultDto);
 
         if (!output.Json)
         {
-            Console.WriteLine(deleted ? $"deleted {id:D}" : $"未删除 {id:D}");
+            Console.WriteLine($"deleted {result.Guid:D}");
+            Console.WriteLine(result.Backup is { } backup
+                ? $"  backup  {backup.Path}"
+                : "  backup  (未留备份)");
         }
 
-        return deleted ? ExitCodes.Ok : ExitCodes.Failed;
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> PowerBackupAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--id");
+        var id = RequireGuid("--id");
+
+        var backup = await connection.BackupPowerSchemeAsync(id, ct);
+        output.JsonValue(backup, ZentwikJson.Default.PowerSchemeBackupDto);
+
+        if (!output.Json)
+        {
+            Console.WriteLine($"backup {backup.Id}");
+            Console.WriteLine($"  settings  {backup.SettingCount}{(backup.UnreadableCount > 0 ? $"（另有 {backup.UnreadableCount} 项读不到，未记录）" : string.Empty)}");
+            Console.WriteLine($"  manifest  {backup.Path}");
+            Console.WriteLine($"  portable  {backup.PortablePath ?? "(未生成 .pow)"}");
+        }
+
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> PowerBackupsAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe");
+        var backups = await connection.ListPowerSchemeBackupsAsync(ct);
+        output.JsonValue(backups.ToArray(), ZentwikJson.Default.PowerSchemeBackupDtoArray);
+
+        if (!output.Json)
+        {
+            if (backups.Count == 0)
+            {
+                Console.WriteLine("没有备份。");
+                return ExitCodes.Ok;
+            }
+
+            foreach (var backup in backups)
+            {
+                var flags = string.Join(' ', new[]
+                {
+                    backup.Visible ? string.Empty : "hidden",
+                    backup.PortablePath is null ? "no-pow" : string.Empty,
+                }.Where(static flag => flag.Length > 0));
+
+                Console.WriteLine($"{backup.CreatedAt:yyyy-MM-dd HH:mm:ss}  {backup.Name,-24} {backup.SettingCount,4} 项  {backup.Id}  {flags}");
+            }
+        }
+
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> PowerRestoreAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--backup");
+        var backup = args.Value("--backup")
+            ?? throw new CliUsageException("power restore 需要 --backup <备份 ID|文件路径>。");
+
+        var result = await connection.RestorePowerSchemeAsync(backup, ct);
+        output.JsonValue(result, ZentwikJson.Default.PowerSchemeRestoreResultDto);
+
+        if (!output.Json)
+        {
+            Console.WriteLine($"restored {result.Scheme.Guid:D} {result.Scheme.Name}");
+            Console.WriteLine($"  settings  {result.Applied} 项写入成功，{result.Failed} 项失败");
+            foreach (var failure in result.Failures)
+            {
+                Console.WriteLine($"  ! {failure}");
+            }
+        }
+
+        return result.Failed == 0 ? ExitCodes.Ok : ExitCodes.Partial;
     }
 
     private Guid RequireGuid(string option)
