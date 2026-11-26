@@ -130,7 +130,7 @@
                                      ItemContainerStyle="{StaticResource RowItem}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <DockPanel Margin="6,5">
+                                        <DockPanel Margin="8,6">
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding Priority}" Style="{StaticResource Text.Secondary}" />
                                             <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" />
                                         </DockPanel>
@@ -178,7 +178,7 @@
                                      ItemContainerStyle="{StaticResource RowItem}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Margin="6,5">
+                                        <StackPanel Margin="8,6">
                                             <DockPanel>
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Owner}" Style="{StaticResource Text.Secondary}" />
                                                 <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" />
@@ -267,7 +267,7 @@
                     Style="{StaticResource Sidebar}"
                     ItemContainerStyle="{StaticResource NavTab}">
 
-            <!-- 0: 监控 -->
+            <!-- 0: 首页总览与监控 -->
             <TabItem Header="{DynamicResource String.NavMonitor}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -343,7 +343,7 @@
                 </Grid>
             </TabItem>
 
-            <!-- 1: 方案（索引必须保持 1，供无障碍与虚拟化测试定位） -->
+            <!-- 1: 方案（索引必须保持 1，供无障碍与虚拟化测试定位；无边框行列表 + 行内摘要） -->
             <TabItem Header="{DynamicResource String.NavPlans}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -429,28 +429,32 @@
                              ItemContainerStyle="{StaticResource RowItem}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Style="{StaticResource Card}" Padding="14,12">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding Kind}" Style="{StaticResource Text.Secondary}" />
-                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontSize="15" Margin="0,3,0,0" />
-                                            <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                <Grid Margin="14,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Kind}" Style="{StaticResource Text.Secondary}" Margin="10,1,0,0" />
                                         </StackPanel>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                            <TextBlock Text="{Binding Caption}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
-                                            <TextBlock Text="{Binding Outcome}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,3,0,0" />
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <TextBlock Text="{Binding Caption}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
+                                        <TextBlock Text="{Binding Outcome}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="14,10">
+                    <Border Grid.Row="3"
+                            BorderBrush="{DynamicResource Brush.Border}"
+                            BorderThickness="0,1,0,0"
+                            Margin="0,8,0,0"
+                            Padding="4,12,4,0">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource AccentButton}"
@@ -469,7 +473,7 @@
                                         Command="{Binding DeletePlanCommand}" />
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{Binding SelectedPlan.Name, FallbackValue='—'}" Style="{StaticResource Text.Primary}" />
+                                <TextBlock Text="{Binding SelectedPlan.Name, FallbackValue='—'}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding SelectedPlan.Outcome, FallbackValue=''}" Style="{StaticResource Text.Secondary}" />
                             </StackPanel>
                         </DockPanel>
@@ -477,7 +481,7 @@
                 </Grid>
             </TabItem>
 
-            <!-- 2: 场景 -->
+            <!-- 2: 场景（无边框列表） -->
             <TabItem Header="{DynamicResource String.NavScenes}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -587,29 +591,33 @@
                              ItemContainerStyle="{StaticResource RowItem}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Style="{StaticResource Card}" Padding="14,12">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding Priority}" Style="{StaticResource Text.Secondary}" />
-                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontSize="15" Margin="0,3,0,0" />
-                                            <TextBlock Text="{Binding Targets}" Style="{StaticResource Text.Secondary}" Margin="0,3,0,0" />
+                                <Grid Margin="14,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Priority}" Style="{StaticResource Text.Secondary}" Margin="10,1,0,0" />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding LastOutcome}"
-                                                   Style="{StaticResource Text.Secondary}"
-                                                   VerticalAlignment="Center"
-                                                   HorizontalAlignment="Right" />
-                                    </Grid>
-                                </Border>
+                                        <TextBlock Text="{Binding Targets}" Style="{StaticResource Text.Secondary}" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding LastOutcome}"
+                                               Style="{StaticResource Text.Secondary}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Right" />
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="14,10">
+                    <Border Grid.Row="3"
+                            BorderBrush="{DynamicResource Brush.Border}"
+                            BorderThickness="0,1,0,0"
+                            Margin="0,8,0,0"
+                            Padding="4,12,4,0">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource AccentButton}"
@@ -628,7 +636,7 @@
                                         Command="{Binding DeleteSceneCommand}" />
                             </StackPanel>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="{Binding SelectedScene.Name, FallbackValue='—'}" Style="{StaticResource Text.Primary}" />
+                                <TextBlock Text="{Binding SelectedScene.Name, FallbackValue='—'}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding SelectedScene.LastOutcome, FallbackValue=''}" Style="{StaticResource Text.Secondary}" />
                             </StackPanel>
                         </DockPanel>
@@ -705,22 +713,20 @@
                                  ItemContainerStyle="{StaticResource RowItem}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource Card}" Padding="12,10">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" />
-                                                <TextBlock Text="{Binding ValuesSummary}" Style="{StaticResource Text.Secondary}" Margin="0,3,0,0" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding Owner}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
-                                                <TextBlock Text="{Binding Status}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,3,0,0" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
+                                    <Grid Margin="14,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" />
+                                            <TextBlock Text="{Binding ValuesSummary}" Style="{StaticResource Text.Secondary}" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding Owner}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
+                                            <TextBlock Text="{Binding Status}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -739,15 +745,10 @@
                 </Grid>
             </TabItem>
 
-            <!-- 4: 设置 -->
+            <!-- 4: 设置（可扩展子选单：外观与语言 / 能力探针） -->
             <TabItem Header="{DynamicResource String.NavSettings}">
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -761,90 +762,91 @@
                         <TextBlock Text="{DynamicResource String.NavSettings}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
 
-                    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,12">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="160" />
-                                <ColumnDefinition Width="220" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsLanguage}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      AutomationProperties.Name="{DynamicResource String.SettingsLanguage}"
-                                      Style="{StaticResource FlatCombo}"
-                                      ItemsSource="{Binding Languages}"
-                                      SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}" />
-                        </Grid>
-                    </Border>
+                    <TabControl Grid.Row="1" Style="{StaticResource SubNavControl}" ItemContainerStyle="{StaticResource SubNavTab}">
+                        <TabItem Header="{DynamicResource String.SettingsTheme}">
+                            <StackPanel>
+                                <Grid Margin="12,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsLanguage}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1"
+                                              AutomationProperties.Name="{DynamicResource String.SettingsLanguage}"
+                                              Style="{StaticResource FlatCombo}"
+                                              ItemsSource="{Binding Languages}"
+                                              SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}" />
+                                </Grid>
 
-                    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,0,0,12">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="160" />
-                                <ColumnDefinition Width="220" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsTheme}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      AutomationProperties.Name="{DynamicResource String.SettingsTheme}"
-                                      Style="{StaticResource FlatCombo}"
-                                      ItemsSource="{Binding Themes}"
-                                      SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" />
-                        </Grid>
-                    </Border>
+                                <Grid Margin="12,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsTheme}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1"
+                                              AutomationProperties.Name="{DynamicResource String.SettingsTheme}"
+                                              Style="{StaticResource FlatCombo}"
+                                              ItemsSource="{Binding Themes}"
+                                              SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" />
+                                </Grid>
 
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,0,0,12">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="160" />
-                                <ColumnDefinition Width="220" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsAccent}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      AutomationProperties.Name="{DynamicResource String.SettingsAccent}"
-                                      Style="{StaticResource FlatCombo}"
-                                      ItemsSource="{Binding Accents}"
-                                      SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" />
-                        </Grid>
-                    </Border>
+                                <Grid Margin="12,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsAccent}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1"
+                                              AutomationProperties.Name="{DynamicResource String.SettingsAccent}"
+                                              Style="{StaticResource FlatCombo}"
+                                              ItemsSource="{Binding Accents}"
+                                              SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" />
+                                </Grid>
 
-                    <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,0,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="160" />
-                                <ColumnDefinition Width="220" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsScale}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1"
-                                      AutomationProperties.Name="{DynamicResource String.SettingsScale}"
-                                      Style="{StaticResource FlatCombo}"
-                                      ItemsSource="{Binding ScaleOptions}"
-                                      SelectedItem="{Binding UiScale, Mode=TwoWay}" />
-                        </Grid>
-                    </Border>
+                                <Grid Margin="12,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="220" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsScale}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1"
+                                              AutomationProperties.Name="{DynamicResource String.SettingsScale}"
+                                              Style="{StaticResource FlatCombo}"
+                                              ItemsSource="{Binding ScaleOptions}"
+                                              SelectedItem="{Binding UiScale, Mode=TwoWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </TabItem>
 
-                    <TextBlock Grid.Row="5" Text="{DynamicResource String.CapsTitle}" Style="{StaticResource Text.Primary}" Margin="0,0,0,10" />
-
-                    <ListBox Grid.Row="6"
-                             AutomationProperties.Name="{DynamicResource String.CapsTitle}"
-                             ItemsSource="{Binding Capabilities}"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             ItemContainerStyle="{StaticResource RowItem}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Style="{StaticResource Card}" Padding="14,10">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Id}" Style="{StaticResource Text.Primary}" />
-                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                                        <TextBlock Text="{Binding State}" Style="{StaticResource Text.Secondary}" Margin="0,4,0,0" />
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                        <TabItem Header="{DynamicResource String.CapsTitle}">
+                            <ListBox AutomationProperties.Name="{DynamicResource String.CapsTitle}"
+                                     ItemsSource="{Binding Capabilities}"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ItemContainerStyle="{StaticResource RowItem}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="14,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding Id}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding State}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </TabItem>
+                    </TabControl>
                 </Grid>
             </TabItem>
         </TabControl>
