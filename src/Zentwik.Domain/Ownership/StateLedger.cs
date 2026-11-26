@@ -121,9 +121,12 @@ public sealed class StateLedger
                 return AcquireOutcome.AlreadyOwned;
             }
 
-            // 接管时沿用最初记录的前值，避免链式恢复丢失真正的前值。
+            // 本方仍持有时沿用最初前值，避免链式恢复丢失基线；
+            // 所有权已释放（回退/失败）则以本次读到的实际值为新基线，不能用陈旧快照覆盖用户此后的改动。
+            var stillHeld = existing.Status is LedgerStatus.Applied or LedgerStatus.Unknown;
             _entries[target] = existing with
             {
+                PreviousValue = stillHeld || currentValue is null ? existing.PreviousValue : currentValue,
                 DesiredValue = desiredValue,
                 PlanId = planId ?? existing.PlanId,
                 Source = source,

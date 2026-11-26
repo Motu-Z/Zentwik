@@ -145,6 +145,26 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Reapply_After_Revert_Takes_Fresh_Baseline()
+    {
+        var plan = await SeedPlanAsync();
+        await _plans.ApplyAsync(plan.Id, $"plan:{plan.Id}", int.MaxValue - 1);
+        await _plans.RevertPlanAsync(plan.Id);
+        Assert.Equal(0, ReadOffset(0));
+
+        // 用户在此期间手动改动，回退后账本的前值已过时。
+        _tuning.TryWriteOffset(0, -12, out _);
+
+        await _plans.ApplyAsync(plan.Id, $"plan:{plan.Id}", int.MaxValue - 1);
+
+        var entry = _plans.Entries.Single(static candidate => candidate.Target == "cpu.co.0");
+        Assert.Equal("-12", entry.PreviousValue);
+
+        await _plans.RevertPlanAsync(plan.Id);
+        Assert.Equal(-12, ReadOffset(0));
+    }
+
+    [Fact]
     public async Task Drift_Detection_Marks_User_Takeover()
     {
         var plan = await SeedPlanAsync();
