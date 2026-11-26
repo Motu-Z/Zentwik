@@ -347,6 +347,17 @@ internal sealed class AgentSession : IAsyncDisposable
             throw new CoreException(ErrorCodes.PlanInvalid, $"方案被场景引用：{string.Join(",", usedBy)}。");
         }
 
+        // 账本仍持有该方案的写入时，删除会让条目失去回退依据，必须先回退。
+        var held = _server.Plans.Ledger.Entries
+            .Where(entry => string.Equals(entry.PlanId, id, StringComparison.Ordinal) && StateLedger.IsHeld(entry))
+            .Select(static entry => entry.Target)
+            .ToArray();
+
+        if (held.Length > 0)
+        {
+            throw new CoreException(ErrorCodes.PlanInvalid, $"方案仍持有目标写入：{string.Join(",", held)}，请先回退。");
+        }
+
         await _server.Store.UpdateAsync(
             document => document with
             {
