@@ -321,7 +321,14 @@
                                 Content="{DynamicResource String.CommonRefresh}"
                                 AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                 Command="{Binding RefreshCommand}" />
-                        <TextBlock Text="{DynamicResource String.NavMonitor}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource String.NavMonitor}" Style="{StaticResource Text.Title}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock Text="{Binding RuntimeSummary}" Style="{StaticResource Text.Secondary}" FontSize="11.5" />
+                                <TextBlock Text=" · " Style="{StaticResource Text.Secondary}" FontSize="11.5" />
+                                <TextBlock Text="{Binding ActiveSceneText}" Style="{StaticResource Text.Secondary}" FontSize="11.5" />
+                            </StackPanel>
+                        </StackPanel>
                     </DockPanel>
 
                     <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,10">
@@ -380,11 +387,16 @@
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <DockPanel Grid.Row="0">
-                                <TextBlock DockPanel.Dock="Right"
-                                           Text="{Binding SensorDetailText}"
-                                           Style="{StaticResource Text.Secondary}"
-                                           FontSize="11"
-                                           TextTrimming="CharacterEllipsis" />
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <TextBlock Text="{Binding SensorDetailText}"
+                                               Style="{StaticResource Text.Secondary}"
+                                               FontSize="11"
+                                               Margin="0,0,10,0"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding LastSampleTimeText}"
+                                               Style="{StaticResource Text.Secondary}"
+                                               FontSize="11" />
+                                </StackPanel>
                                 <TextBlock Text="{DynamicResource String.MonitorCpu}"
                                            Style="{StaticResource Text.Secondary}" />
                             </DockPanel>
