@@ -130,6 +130,7 @@
                                            Style="{StaticResource Text.Secondary}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
+                            <Grid>
                             <ListBox AutomationProperties.Name="{DynamicResource String.ScenesTitle}"
                                      ItemsSource="{Binding Scenes}"
                                      SelectedItem="{Binding SelectedScene, Mode=TwoWay}"
@@ -160,6 +161,19 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                            <TextBlock Text="{DynamicResource String.ScenesEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,14" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Scenes.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </Popup>
@@ -193,6 +207,7 @@
                                            Style="{StaticResource Text.Secondary}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
+                            <Grid>
                             <ListBox AutomationProperties.Name="{DynamicResource String.TuningLedger_title}"
                                      ItemsSource="{Binding LedgerEntries}"
                                      SelectedItem="{Binding SelectedLedger, Mode=TwoWay}"
@@ -226,6 +241,19 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                            <TextBlock Text="{DynamicResource String.TuningLedger_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,14" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding LedgerEntries.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </Popup>
