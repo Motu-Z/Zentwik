@@ -18,6 +18,10 @@ public sealed record CapabilityDto(
     string? Detail,
     IReadOnlyList<string> Requires);
 
+/// <summary>
+/// 一帧遥测。ProcessorUtilization 是逐逻辑处理器的占用率（索引即操作系统处理器序号，与 CoreClocks 的核号不是同一编号）；
+/// 它每拍都读，CoreClocks 按传感器间隔读，两段节奏不同所以分开。
+/// </summary>
 public sealed record TelemetryDto(
     DateTimeOffset Timestamp,
     double CpuTotalPercent,
@@ -28,7 +32,8 @@ public sealed record TelemetryDto(
     double? TemperatureCelsius = null,
     double? PackagePowerWatts = null,
     string? SensorDetail = null,
-    IReadOnlyList<TelemetryCoreClockDto>? CoreClocks = null);
+    IReadOnlyList<TelemetryCoreClockDto>? CoreClocks = null,
+    IReadOnlyList<double>? ProcessorUtilization = null);
 
 /// <summary>
 /// 一个物理核在采样窗口内的平均频率。Ccd 与 Core 是 SMU 核掩码字段，与 CO 的核编号同源。
@@ -96,6 +101,12 @@ public sealed record SubscriptionRequest(int IntervalMs, int? SensorIntervalMs =
 
 /// <summary>返回实际生效的间隔：请求值可能被抬到下限，客户端须按这里算超时。</summary>
 public sealed record SubscriptionAck(int IntervalMs, int SensorIntervalMs = 0);
+
+/// <summary>查询监控历史：Limit 是返回的最大帧数（从最新往前取）。</summary>
+public sealed record HistoryRequest(int Limit);
+
+/// <summary>监控历史快照。Samples 时间升序；Capacity 是缓冲上限，Count 是当前帧数，Count &lt; Capacity 说明缓冲尚未填满。</summary>
+public sealed record HistoryDto(int Capacity, int Count, IReadOnlyList<TelemetryDto> Samples);
 
 public sealed record EmptyPayload;
 
