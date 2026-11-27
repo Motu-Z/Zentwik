@@ -19,9 +19,9 @@
         <TabControl Grid.Row="1" Style="{StaticResource SubNavControl}" ItemContainerStyle="{StaticResource SubNavTab}">
             <TabItem Header="{DynamicResource String.SettingsTheme}">
                 <StackPanel>
-                    <Grid Margin="12,10">
+                    <Grid Margin="{DynamicResource DensityRowMargin}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
@@ -33,9 +33,9 @@
                                   SelectedItem="{Binding SelectedLanguage, Mode=TwoWay}" />
                     </Grid>
 
-                    <Grid Margin="12,10">
+                    <Grid Margin="{DynamicResource DensityRowMargin}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
@@ -47,9 +47,9 @@
                                   SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" />
                     </Grid>
 
-                    <Grid Margin="12,10">
+                    <Grid Margin="{DynamicResource DensityRowMargin}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
@@ -61,9 +61,23 @@
                                   SelectedItem="{Binding SelectedAccent, Mode=TwoWay}" />
                     </Grid>
 
-                    <Grid Margin="12,10">
+                    <Grid Margin="{DynamicResource DensityRowMargin}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="信息密度" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <ComboBox x:Name="DensityCombo"
+                                  Grid.Column="1"
+                                  AutomationProperties.Name="信息密度"
+                                  Style="{StaticResource FlatCombo}"
+                                  SelectionChanged="OnDensitySelectionChanged" />
+                    </Grid>
+
+                    <Grid Margin="{DynamicResource DensityRowMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
@@ -74,18 +88,34 @@
                                   ItemsSource="{Binding ScaleOptions}"
                                   SelectedItem="{Binding UiScale, Mode=TwoWay}" />
                     </Grid>
+
+                    <Grid Margin="{DynamicResource DensityRowMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="显示未启用或不可用模块" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <CheckBox x:Name="ShowUnavailableToggle"
+                                  Grid.Column="1"
+                                  HorizontalAlignment="Left"
+                                  AutomationProperties.Name="显示未启用或不可用模块"
+                                  Style="{StaticResource FlatCheckBox}"
+                                  Checked="OnShowUnavailableChanged"
+                                  Unchecked="OnShowUnavailableChanged" />
+                    </Grid>
                 </StackPanel>
             </TabItem>
 
             <TabItem Header="{DynamicResource String.CapsTitle}">
-                <ListBox AutomationProperties.Name="{DynamicResource String.CapsTitle}"
+                <ListBox x:Name="CapabilitiesList"
+                         AutomationProperties.Name="{DynamicResource String.CapsTitle}"
                          ItemsSource="{Binding Capabilities}"
                          Background="Transparent"
                          BorderThickness="0"
                          ItemContainerStyle="{StaticResource RowItem}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="14,10">
+                            <Grid Margin="{DynamicResource DensityRowMargin}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
