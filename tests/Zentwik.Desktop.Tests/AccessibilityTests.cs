@@ -56,6 +56,38 @@ public sealed class AccessibilityTests
     }
 
     [Fact]
+    public void All_Tabs_Expose_Automation_Names()
+    {
+        var missing = new List<string>();
+
+        UiThread.Run(() =>
+        {
+            using var host = TestWindow.Create();
+            var tabCount = host.Tabs.Items.Count;
+            for (var index = 0; index < tabCount; index++)
+            {
+                host.SelectTab(index);
+                foreach (var element in host.Descendants())
+                {
+                    if (!IsInteractive(element) || element is TabItem)
+                    {
+                        continue;
+                    }
+
+                    var peer = UIElementAutomationPeer.CreatePeerForElement(element)
+                               ?? new FrameworkElementAutomationPeer(element);
+                    if (string.IsNullOrWhiteSpace(peer.GetName()))
+                    {
+                        missing.Add($"Tab[{index}]:{element.GetType().Name}({element.Name})");
+                    }
+                }
+            }
+        });
+
+        Assert.Empty(missing);
+    }
+
+    [Fact]
     public void Plans_List_Realizes_Only_Visible_Rows()
     {
         var realized = -1;
