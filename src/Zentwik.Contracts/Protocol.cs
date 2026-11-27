@@ -27,6 +27,7 @@ public static class Ops
     public const string ModulesDisable = "modules.disable";
     public const string TelemetrySubscribe = "telemetry.subscribe";
     public const string TelemetryUnsubscribe = "telemetry.unsubscribe";
+    public const string TelemetryHistory = "telemetry.history";
 
     public const string PlansList = "plans.list";
     public const string PlansGet = "plans.get";
