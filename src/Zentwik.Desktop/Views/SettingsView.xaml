@@ -112,6 +112,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -144,9 +145,19 @@
                                   SelectedItem="{Binding SelectedSensorIntervalMs, Mode=TwoWay}" />
                     </Grid>
 
-                    <TextBlock Grid.Row="2" Text="{DynamicResource String.SettingsModules_title}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,10,0,6" />
+                    <Grid Grid.Row="2" Margin="{DynamicResource DensityRowMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsTelemetry_effective}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding EffectiveTelemetrySummary}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                    </Grid>
 
-                    <ListBox Grid.Row="3"
+                    <TextBlock Grid.Row="3" Text="{DynamicResource String.SettingsModules_title}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,10,0,6" />
+
+                    <Grid Grid.Row="4">
+                    <ListBox
                              AutomationProperties.Name="{DynamicResource String.SettingsModules_title}"
                              ItemsSource="{Binding Modules}"
                              SelectedItem="{Binding SelectedModule, Mode=TwoWay}"
@@ -172,8 +183,21 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <TextBlock Text="{DynamicResource String.SettingsModules_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Modules.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    </Grid>
 
-                    <DockPanel Grid.Row="4" Margin="0,10,0,0">
+                    <DockPanel Grid.Row="5" Margin="0,10,0,0">
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{Binding SelectedModule.ActionLabel, FallbackValue='切换可选组件'}"
@@ -187,6 +211,7 @@
             </TabItem>
 
             <TabItem Header="{DynamicResource String.CapsTitle}">
+                <Grid>
                 <ListBox x:Name="CapabilitiesList"
                          AutomationProperties.Name="{DynamicResource String.CapsTitle}"
                          ItemsSource="{Binding Capabilities}"
@@ -209,6 +234,19 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <TextBlock Text="{DynamicResource String.SettingsCaps_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Capabilities.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                </Grid>
             </TabItem>
 
             <TabItem Header="{DynamicResource String.SettingsLogs_tab}">
@@ -227,7 +265,8 @@
                         <TextBlock Text="{DynamicResource String.SettingsLogs_caption}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
                     </DockPanel>
 
-                    <ListBox Grid.Row="1"
+                    <Grid Grid.Row="1">
+                    <ListBox
                              AutomationProperties.Name="{DynamicResource String.SettingsLogs_tab}"
                              ItemsSource="{Binding Logs}"
                              Background="Transparent"
@@ -248,18 +287,51 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <TextBlock Text="{DynamicResource String.SettingsLogs_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Logs.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    </Grid>
                 </Grid>
             </TabItem>
 
             <TabItem Header="{DynamicResource String.SettingsDeploy_tab}">
-                <StackPanel>
-                    <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock Text="{DynamicResource String.SettingsDeploy_mode}" Style="{StaticResource Text.Secondary}" />
-                            <TextBlock Text="{Binding DeploymentModeText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,4,0,0" />
-                        </StackPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="{DynamicResource String.SettingsDeploy_mode}" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{Binding DeploymentModeText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                <TextBlock Text="{DynamicResource String.SettingsDeploy_version}" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{Binding AgentVersionText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{DynamicResource String.SettingsDeploy_counts}" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{Binding StateCountsText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
-                    <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
+                    <Border Grid.Row="1" Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource String.SettingsDeploy_data_dir}" Style="{StaticResource Text.Secondary}" />
                             <TextBlock Text="{Binding DataDirectoryText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,8" />
@@ -269,7 +341,47 @@
                             <TextBlock Text="{Binding LogDirectoryText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
-                </StackPanel>
+                    <Border Grid.Row="2" Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="{DynamicResource String.SettingsDeploy_errors}" Style="{StaticResource Text.Secondary}" Margin="0,0,0,6" />
+                            <ListBox Grid.Row="1"
+                                     AutomationProperties.Name="{DynamicResource String.SettingsDeploy_errors}"
+                                     ItemsSource="{Binding RecentErrors}"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ItemContainerStyle="{StaticResource RowItem}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="{DynamicResource DensityRowMargin}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="68" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding TimeText}" Style="{StaticResource Text.Secondary}" FontSize="11.5" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Message}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Grid.Row="1" Text="{DynamicResource String.SettingsDeploy_errors_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RecentErrors.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                </Grid>
             </TabItem>
         </TabControl>
     </Grid>
