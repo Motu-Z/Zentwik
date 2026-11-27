@@ -67,10 +67,10 @@
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="信息密度" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsDensity}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <ComboBox x:Name="DensityCombo"
                                   Grid.Column="1"
-                                  AutomationProperties.Name="信息密度"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsDensity}"
                                   Style="{StaticResource FlatCombo}"
                                   SelectionChanged="OnDensitySelectionChanged" />
                     </Grid>
@@ -94,11 +94,11 @@
                             <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="显示未启用或不可用模块" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsShow_unavailable}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <CheckBox x:Name="ShowUnavailableToggle"
                                   Grid.Column="1"
                                   HorizontalAlignment="Left"
-                                  AutomationProperties.Name="显示未启用或不可用模块"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsShow_unavailable}"
                                   Style="{StaticResource FlatCheckBox}"
                                   Checked="OnShowUnavailableChanged"
                                   Unchecked="OnShowUnavailableChanged" />
@@ -106,7 +106,7 @@
                 </StackPanel>
             </TabItem>
 
-            <TabItem Header="运行与行为">
+            <TabItem Header="{DynamicResource String.SettingsRuntime_tab}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -122,9 +122,9 @@
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="监控推送间隔 (ms)" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsMonitor_interval}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1"
-                                  AutomationProperties.Name="监控推送间隔"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsMonitor_interval}"
                                   Style="{StaticResource FlatCombo}"
                                   ItemsSource="{Binding MonitorIntervalOptions}"
                                   SelectedItem="{Binding SelectedMonitorIntervalMs, Mode=TwoWay}" />
@@ -136,18 +136,18 @@
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="传感器采样间隔 (ms)" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="{DynamicResource String.SettingsSensor_interval}" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1"
-                                  AutomationProperties.Name="传感器采样间隔"
+                                  AutomationProperties.Name="{DynamicResource String.SettingsSensor_interval}"
                                   Style="{StaticResource FlatCombo}"
                                   ItemsSource="{Binding SensorIntervalOptions}"
                                   SelectedItem="{Binding SelectedSensorIntervalMs, Mode=TwoWay}" />
                     </Grid>
 
-                    <TextBlock Grid.Row="2" Text="模块与可选组件" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,10,0,6" />
+                    <TextBlock Grid.Row="2" Text="{DynamicResource String.SettingsModules_title}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,10,0,6" />
 
                     <ListBox Grid.Row="3"
-                             AutomationProperties.Name="模块与可选组件"
+                             AutomationProperties.Name="{DynamicResource String.SettingsModules_title}"
                              ItemsSource="{Binding Modules}"
                              SelectedItem="{Binding SelectedModule, Mode=TwoWay}"
                              Background="Transparent"
@@ -177,9 +177,9 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{Binding SelectedModule.ActionLabel, FallbackValue='切换可选组件'}"
-                                AutomationProperties.Name="切换可选组件"
+                                AutomationProperties.Name="{DynamicResource String.SettingsModules_toggle}"
                                 Command="{Binding ToggleSelectedModuleCommand}" />
-                        <TextBlock Text="可选组件（如功耗墙）默认关闭，需显式启用后才会加载并探测。"
+                        <TextBlock Text="{DynamicResource String.SettingsModules_hint}"
                                    Style="{StaticResource Text.Secondary}"
                                    VerticalAlignment="Center" />
                     </DockPanel>
@@ -211,7 +211,7 @@
                 </ListBox>
             </TabItem>
 
-            <TabItem Header="运行日志">
+            <TabItem Header="{DynamicResource String.SettingsLogs_tab}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -222,13 +222,13 @@
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="刷新日志"
+                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                 Command="{Binding RefreshLogsCommand}" />
-                        <TextBlock Text="最近 80 条服务运行日志" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
+                        <TextBlock Text="{DynamicResource String.SettingsLogs_caption}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
                     </DockPanel>
 
                     <ListBox Grid.Row="1"
-                             AutomationProperties.Name="运行日志"
+                             AutomationProperties.Name="{DynamicResource String.SettingsLogs_tab}"
                              ItemsSource="{Binding Logs}"
                              Background="Transparent"
                              BorderThickness="0"
@@ -251,21 +251,21 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="部署与数据">
+            <TabItem Header="{DynamicResource String.SettingsDeploy_tab}">
                 <StackPanel>
                     <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="运行模式" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{DynamicResource String.SettingsDeploy_mode}" Style="{StaticResource Text.Secondary}" />
                             <TextBlock Text="{Binding DeploymentModeText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="数据目录" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{DynamicResource String.SettingsDeploy_data_dir}" Style="{StaticResource Text.Secondary}" />
                             <TextBlock Text="{Binding DataDirectoryText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,8" />
-                            <TextBlock Text="状态文件 (state.json)" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{DynamicResource String.SettingsDeploy_state_path}" Style="{StaticResource Text.Secondary}" />
                             <TextBlock Text="{Binding StatePathText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,8" />
-                            <TextBlock Text="日志目录" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{DynamicResource String.SettingsDeploy_log_dir}" Style="{StaticResource Text.Secondary}" />
                             <TextBlock Text="{Binding LogDirectoryText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
