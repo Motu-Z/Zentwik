@@ -106,6 +106,86 @@
                 </StackPanel>
             </TabItem>
 
+            <TabItem Header="运行与行为">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="{DynamicResource DensityRowMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="监控推送间隔 (ms)" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1"
+                                  AutomationProperties.Name="监控推送间隔"
+                                  Style="{StaticResource FlatCombo}"
+                                  ItemsSource="{Binding MonitorIntervalOptions}"
+                                  SelectedItem="{Binding SelectedMonitorIntervalMs, Mode=TwoWay}" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="{DynamicResource DensityRowMargin}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="传感器采样间隔 (ms)" Style="{StaticResource Text.Primary}" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1"
+                                  AutomationProperties.Name="传感器采样间隔"
+                                  Style="{StaticResource FlatCombo}"
+                                  ItemsSource="{Binding SensorIntervalOptions}"
+                                  SelectedItem="{Binding SelectedSensorIntervalMs, Mode=TwoWay}" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Text="模块与可选组件" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,10,0,6" />
+
+                    <ListBox Grid.Row="3"
+                             AutomationProperties.Name="模块与可选组件"
+                             ItemsSource="{Binding Modules}"
+                             SelectedItem="{Binding SelectedModule, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemContainerStyle="{StaticResource RowItem}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="{DynamicResource DensityRowMargin}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding OptionalBadge}" Style="{StaticResource Text.Secondary}" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding State}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <DockPanel Grid.Row="4" Margin="0,10,0,0">
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource FlatButton}"
+                                Content="{Binding SelectedModule.ActionLabel, FallbackValue='切换可选组件'}"
+                                AutomationProperties.Name="切换可选组件"
+                                Command="{Binding ToggleSelectedModuleCommand}" />
+                        <TextBlock Text="可选组件（如功耗墙）默认关闭，需显式启用后才会加载并探测。"
+                                   Style="{StaticResource Text.Secondary}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="{DynamicResource String.CapsTitle}">
                 <ListBox x:Name="CapabilitiesList"
                          AutomationProperties.Name="{DynamicResource String.CapsTitle}"
