@@ -21,6 +21,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             "caps" or "capabilities" => await CapabilitiesAsync(ct),
             "modules" => await ModulesAsync(ct),
             "monitor" or "watch" => await MonitorAsync(ct),
+            "history" => await HistoryAsync(ct),
             "tuning" => await TuningAsync(ct),
             "plans" => await PlansAsync(ct),
             "scenes" => await ScenesAsync(ct),
@@ -134,9 +135,10 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> MonitorAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval", "--clocks");
+        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval", "--clocks", "--per-core");
         var count = ParseInt(args.Value("--count"), 5, 1, 100000);
         var showClocks = args.Flag("--clocks");
+        var showPerCore = args.Flag("--per-core");
 
         // 不传就用设置里的默认值：间隔是用户偏好，不该在每个命令上都重复指定。
         var interval = args.Value("--interval") is null
@@ -169,14 +171,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             }
             else
             {
-                var memoryUsed = sample.MemoryTotalBytes == 0
-                    ? 0d
-                    : (1d - (double)sample.MemoryAvailableBytes / sample.MemoryTotalBytes) * 100d;
-                var temperature = sample.TemperatureCelsius is { } celsius ? $"  temp {celsius,5:0.0}C" : string.Empty;
-                var power = sample.PackagePowerWatts is { } watts ? $"  pkg {watts,6:0.0}W" : string.Empty;
-                var clock = DescribeClocks(sample.CoreClocks);
-                Console.WriteLine(
-                    $"{sample.Timestamp:HH:mm:ss.fff}  cpu {sample.CpuTotalPercent,5:0.0}%  mem {memoryUsed,5:0.0}%  proc {sample.ProcessCount,4}  cores {sample.ProcessorCount}{temperature}{power}{clock}");
+                Console.WriteLine($"{sample.Timestamp:HH:mm:ss.fff}  {DescribeSample(sample)}");
 
                 if (showClocks && sample.CoreClocks is { Count: > 0 } clocks)
                 {
@@ -186,6 +181,11 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                             .Select(static item => $"c{item.Core}:{item.Megahertz:0}"));
                         Console.WriteLine($"  ccd{group.Key} {values}");
                     }
+                }
+
+                if (showPerCore && sample.ProcessorUtilization is { } utilization)
+                {
+                    PrintProcessorUtilization(utilization);
                 }
 
                 // 传感器不可用与首帧缺基线都走这里，同一句只提示一次。
@@ -1194,6 +1194,37 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         return $"  clk {high:0.00}G";
     }
 
+    /// <summary>单帧的紧凑描述，monitor 与 history 共用，保证两处口径一致。</summary>
+    private static string DescribeSample(TelemetryDto sample)
+    {
+        var memoryUsed = sample.MemoryTotalBytes == 0
+            ? 0d
+            : (1d - (double)sample.MemoryAvailableBytes / sample.MemoryTotalBytes) * 100d;
+        var temperature = sample.TemperatureCelsius is { } celsius ? $"  temp {celsius,5:0.0}C" : string.Empty;
+        var power = sample.PackagePowerWatts is { } watts ? $"  pkg {watts,6:0.0}W" : string.Empty;
+        var clock = DescribeClocks(sample.CoreClocks);
+        return $"cpu {sample.CpuTotalPercent,5:0.0}%  mem {memoryUsed,5:0.0}%  proc {sample.ProcessCount,4}  cores {sample.ProcessorCount}{temperature}{power}{clock}";
+    }
+
+    /// <summary>
+    /// 逐逻辑处理器占用率，每 16 个一行。索引是操作系统处理器序号（含 SMT），
+    /// 与 --clocks 的核号（SMU 掩码字段）不是同一编号。
+    /// </summary>
+    private static void PrintProcessorUtilization(IReadOnlyList<double> utilization)
+    {
+        for (var row = 0; row < utilization.Count; row += 16)
+        {
+            var end = Math.Min(row + 16, utilization.Count);
+            var values = new string[end - row];
+            for (var index = row; index < end; index++)
+            {
+                values[index - row] = $"{utilization[index],3:0}";
+            }
+
+            Console.WriteLine($"  load[{row,2}-{end - 1,2}] {string.Join(' ', values)}");
+        }
+    }
+
     private async Task<int> DoctorAsync(CancellationToken ct)
     {
         args.EnsureOnly("--pipe");
@@ -1245,6 +1276,25 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             foreach (var entry in entries)
             {
                 Console.WriteLine($"{entry.Timestamp:yyyy-MM-dd HH:mm:ss.fff} {entry.Level,-5} {entry.Message}");
+            }
+        }
+
+        return ExitCodes.Ok;
+    }
+
+    private async Task<int> HistoryAsync(CancellationToken ct)
+    {
+        args.EnsureOnly("--pipe", "--limit");
+        var limit = ParseInt(args.Value("--limit"), 60, 1, 3600);
+        var history = await connection.GetTelemetryHistoryAsync(limit, ct);
+        output.JsonValue(history, ZentwikJson.Default.HistoryDto);
+
+        if (!output.Json)
+        {
+            output.Line($"history capacity={history.Capacity} count={history.Count}, showing {history.Samples.Count}");
+            foreach (var sample in history.Samples)
+            {
+                Console.WriteLine($"{sample.Timestamp:HH:mm:ss}  {DescribeSample(sample)}");
             }
         }
 
