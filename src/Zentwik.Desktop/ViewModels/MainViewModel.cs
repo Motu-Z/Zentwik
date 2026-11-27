@@ -67,6 +67,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _dataDirectoryText = "—";
     private string _statePathText = "—";
     private string _logDirectoryText = "—";
+    private PowerSchemeRow? _selectedPowerScheme;
+    private PowerBackupRow? _selectedPowerBackup;
+    private string _newPowerSchemeName = string.Empty;
+    private string _coreClocksStatusText = "等待传感器采样…";
 
     private string? _noticeText;
     private bool _noticeIsError;
@@ -124,6 +128,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshPowerLimitsCommand = new AsyncRelayCommand(RefreshPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
         ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
         RefreshLogsCommand = new AsyncRelayCommand(RefreshLogsAsync, () => IsConnected);
+        CreatePowerSchemeCommand = new AsyncRelayCommand(CreatePowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null && !string.IsNullOrWhiteSpace(NewPowerSchemeName));
+        BackupPowerSchemeCommand = new AsyncRelayCommand(BackupSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null);
+        DeletePowerSchemeCommand = new AsyncRelayCommand(DeleteSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false, Active: false });
+        RestorePowerBackupCommand = new AsyncRelayCommand(RestoreSelectedPowerBackupAsync, () => IsConnected && SelectedPowerBackup is not null);
 
         catalog.CultureChanged += OnCultureChanged;
     }
@@ -145,6 +153,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<LogRow> Logs { get; } = [];
 
+    public ObservableCollection<CoreClockRow> CoreClocks { get; } = [];
+
+    public ObservableCollection<PowerSchemeRow> PowerSchemes { get; } = [];
+
+    public ObservableCollection<PowerBackupRow> PowerBackups { get; } = [];
+
+    public ObservableCollection<string> PlanIds { get; } = [];
+
     public IReadOnlyList<string> Languages => LocalizationCatalog.SupportedCultures;
 
     public IReadOnlyList<string> Themes { get; } = ["dark", "light"];
@@ -163,6 +179,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     [
         SceneTriggerKinds.Manual,
         SceneTriggerKinds.Process,
+        SceneTriggerKinds.ProcessExited,
         SceneTriggerKinds.PowerSource,
     ];
 
@@ -185,6 +202,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand RefreshPowerLimitsCommand { get; }
     public AsyncRelayCommand ApplyPowerLimitsCommand { get; }
     public AsyncRelayCommand RefreshLogsCommand { get; }
+    public AsyncRelayCommand CreatePowerSchemeCommand { get; }
+    public AsyncRelayCommand BackupPowerSchemeCommand { get; }
+    public AsyncRelayCommand DeletePowerSchemeCommand { get; }
+    public AsyncRelayCommand RestorePowerBackupCommand { get; }
 
     public bool IsConnected
     {
@@ -384,6 +405,50 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _logDirectoryText;
         private set => Set(ref _logDirectoryText, value);
+    }
+
+    public string CoreClocksStatusText
+    {
+        get => _coreClocksStatusText;
+        private set => Set(ref _coreClocksStatusText, value);
+    }
+
+    public PowerSchemeRow? SelectedPowerScheme
+    {
+        get => _selectedPowerScheme;
+        set
+        {
+            if (Set(ref _selectedPowerScheme, value))
+            {
+                CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+                BackupPowerSchemeCommand.RaiseCanExecuteChanged();
+                DeletePowerSchemeCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public PowerBackupRow? SelectedPowerBackup
+    {
+        get => _selectedPowerBackup;
+        set
+        {
+            if (Set(ref _selectedPowerBackup, value))
+            {
+                RestorePowerBackupCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string NewPowerSchemeName
+    {
+        get => _newPowerSchemeName;
+        set
+        {
+            if (Set(ref _newPowerSchemeName, value))
+            {
+                CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public string? NoticeText
@@ -659,6 +724,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var intelTuning = await connection.ReadIntelTuningAsync(ct).ConfigureAwait(false);
         var doctor = await connection.GetDoctorAsync(ct).ConfigureAwait(false);
         var logs = await connection.GetLogAsync(80, ct).ConfigureAwait(false);
+        var powerSchemes = await connection.ListPowerSchemesAsync(ct).ConfigureAwait(false);
+        var powerBackups = await connection.ListPowerSchemeBackupsAsync(ct).ConfigureAwait(false);
 
         _ui.Post(_ =>
         {
@@ -666,12 +733,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var selectedSceneId = SelectedScene?.Id;
             var selectedLedgerTarget = SelectedLedger?.Target;
             var selectedModuleId = SelectedModule?.Id;
+            var selectedSchemeGuid = SelectedPowerScheme?.Guid;
+            var selectedBackupId = SelectedPowerBackup?.Id;
 
             Replace(Capabilities, capabilities.Select(static c => new CapabilityRow(c.Id, c.State, c.Detail ?? string.Empty)));
             Replace(Modules, modules.Select(static m => new ModuleRow(m.Id, m.Name, m.State, m.Detail ?? string.Empty, m.Optional, m.Enabled)));
             SelectedModule = Modules.FirstOrDefault(m => m.Id == selectedModuleId) ?? Modules.FirstOrDefault();
             ShowPowerLimits = modules.Any(static m => string.Equals(m.Id, "power-limits", StringComparison.OrdinalIgnoreCase) && m.Enabled);
             Replace(Plans, plans.Select(BuildPlanRow));
+            Replace(PlanIds, plans.Select(static p => p.Id));
+            Replace(PowerSchemes, powerSchemes.Select(static s => new PowerSchemeRow(s.Guid, s.Name, s.Active, s.BuiltIn, s.Visible)));
+            Replace(PowerBackups, powerBackups.Select(static b => new PowerBackupRow(b.Id, b.Name, b.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), b.SettingCount, b.PortablePath is not null)));
+            SelectedPowerScheme = PowerSchemes.FirstOrDefault(s => s.Guid == selectedSchemeGuid) ?? PowerSchemes.FirstOrDefault();
+            SelectedPowerBackup = PowerBackups.FirstOrDefault(b => b.Id == selectedBackupId) ?? PowerBackups.FirstOrDefault();
             Replace(Scenes, scenes.Select(BuildSceneRow));
             Replace(CoreOffsets, amdTuning.Cores.Select(static c => new CoreOffsetRow(c.Core, c.Offset)));
             Replace(LedgerEntries, ledger.Select(BuildLedgerRow));
@@ -771,6 +845,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             case "cpuTuning":
             {
                 int? defaultCo = null;
+                int? fmax = null;
+                int? intelMv = null;
                 var ccdOffsets = new Dictionary<int, int>();
                 var cores = new List<CoreTuning>();
                 foreach (var token in spec.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries))
@@ -791,6 +867,28 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                         }
 
                         defaultCo = def;
+                        continue;
+                    }
+
+                    if (string.Equals(key, "fmax", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedFmax))
+                        {
+                            throw new FormatException($"无法解析 fmax 值 \"{val}\"。");
+                        }
+
+                        fmax = parsedFmax;
+                        continue;
+                    }
+
+                    if (string.Equals(key, "intel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMv))
+                        {
+                            throw new FormatException($"无法解析 intel 电压偏移 \"{val}\"。");
+                        }
+
+                        intelMv = parsedMv;
                         continue;
                     }
 
@@ -826,7 +924,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
                 }
 
-                if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0)
+                if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0 && fmax is null && intelMv is null)
                 {
                     throw new ArgumentException("CPU 调校方案至少需要一个 CO 配置（如 default=-15, ccd0=-20, 0=-10 或 1=auto）。");
                 }
@@ -838,6 +936,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     DefaultOffset = defaultCo,
                     CcdOffsets = ccdOffsets.Count == 0 ? null : ccdOffsets,
                     Cores = cores,
+                    FMaxLimitMhz = fmax,
+                    IntelVoltageOffsetMillivolts = intelMv,
                     CreatedAt = now,
                     UpdatedAt = now,
                 };
@@ -1164,6 +1264,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _history.Dequeue();
         }
 
+        if (sample.CoreClocks is { Count: > 0 } liveClocks)
+        {
+            Replace(CoreClocks, liveClocks
+                .OrderBy(static c => c.Ccd)
+                .ThenBy(static c => c.Core)
+                .Select(static c => new CoreClockRow(c.Ccd, c.Core, c.Megahertz)));
+            CoreClocksStatusText = $"活跃物理核 {liveClocks.Count} 个（睡眠核已省略）";
+        }
+        else
+        {
+            CoreClocks.Clear();
+            CoreClocksStatusText = string.IsNullOrWhiteSpace(sample.SensorDetail)
+                ? "当前无活跃核心频率数据"
+                : sample.SensorDetail;
+        }
+
         HistoryChanged?.Invoke([.. _history]);
     }
 
@@ -1353,6 +1469,92 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task CreatePowerSchemeAsync()
+    {
+        var connection = _connection;
+        var template = SelectedPowerScheme;
+        var name = NewPowerSchemeName.Trim();
+        if (connection is null || template is null || string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        try
+        {
+            var created = await connection.CreatePowerSchemeAsync(template.Guid, name, _cts.Token).ConfigureAwait(false);
+            NewPowerSchemeName = string.Empty;
+            await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            ShowNotice($"已派生电源方案 {created.Name}。", isError: false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private async Task BackupSelectedPowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var backup = await connection.BackupPowerSchemeAsync(selected.Guid, _cts.Token).ConfigureAwait(false);
+            await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            ShowNotice($"已备份电源方案 {backup.Name}（{backup.SettingCount} 项）。", isError: false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private async Task DeleteSelectedPowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await connection.DeletePowerSchemeAsync(selected.Guid, keepBackup: true, _cts.Token).ConfigureAwait(false);
+            await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            ShowNotice($"已删除电源方案 {selected.Name}（已自动备份）。", isError: false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private async Task RestoreSelectedPowerBackupAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerBackup;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await connection.RestorePowerSchemeAsync(selected.Id, _cts.Token).ConfigureAwait(false);
+            await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            ShowNotice($"已从备份恢复方案 {result.Scheme.Name}（成功 {result.Applied} 项，失败 {result.Failed} 项）。", isError: result.Failed > 0);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
     private void OnConnectionClosed(Exception? error)
     {
         _ = error;
@@ -1438,6 +1640,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshPowerLimitsCommand.RaiseCanExecuteChanged();
         ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
         RefreshLogsCommand.RaiseCanExecuteChanged();
+        CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+        BackupPowerSchemeCommand.RaiseCanExecuteChanged();
+        DeletePowerSchemeCommand.RaiseCanExecuteChanged();
+        RestorePowerBackupCommand.RaiseCanExecuteChanged();
     }
 
     private static PlanRow BuildPlanRow(Plan plan)
@@ -1563,3 +1769,36 @@ public sealed record ModuleRow(
 }
 
 public sealed record LogRow(string TimeText, string Level, string Message);
+
+public sealed record CoreClockRow(int Ccd, int Core, double Megahertz)
+{
+    public string Label => $"CCD{Ccd} · C{Core}";
+    public string ValueText => $"{Megahertz:0} MHz";
+}
+
+public sealed record PowerSchemeRow(
+    Guid Guid,
+    string Name,
+    bool Active,
+    bool BuiltIn,
+    bool Visible)
+{
+    public string Badges => string.Join(" · ", new[]
+    {
+        Active ? "当前活动" : string.Empty,
+        BuiltIn ? "系统内置" : "自定义",
+        Visible ? string.Empty : "隐藏",
+    }.Where(static x => x.Length > 0));
+
+    public string GuidText => Guid.ToString("D");
+}
+
+public sealed record PowerBackupRow(
+    string Id,
+    string Name,
+    string CreatedAtText,
+    int SettingCount,
+    bool HasPortable)
+{
+    public string Summary => $"{CreatedAtText} · {SettingCount} 项{(HasPortable ? " · 含 .pow" : string.Empty)}";
+}
