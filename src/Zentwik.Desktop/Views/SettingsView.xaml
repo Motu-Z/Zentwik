@@ -210,6 +210,67 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </TabItem>
+
+            <TabItem Header="运行日志">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource FlatButton}"
+                                Content="{DynamicResource String.CommonRefresh}"
+                                AutomationProperties.Name="刷新日志"
+                                Command="{Binding RefreshLogsCommand}" />
+                        <TextBlock Text="最近 80 条服务运行日志" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <ListBox Grid.Row="1"
+                             AutomationProperties.Name="运行日志"
+                             ItemsSource="{Binding Logs}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemContainerStyle="{StaticResource RowItem}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="{DynamicResource DensityRowMargin}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="52" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding TimeText}" Style="{StaticResource Text.Secondary}" FontSize="11.5" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Level}" Style="{StaticResource Text.Secondary}" FontSize="11.5" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Message}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="部署与数据">
+                <StackPanel>
+                    <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="运行模式" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{Binding DeploymentModeText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="数据目录" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{Binding DataDirectoryText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,8" />
+                            <TextBlock Text="状态文件 (state.json)" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{Binding StatePathText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,8" />
+                            <TextBlock Text="日志目录" Style="{StaticResource Text.Secondary}" />
+                            <TextBlock Text="{Binding LogDirectoryText}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
         </TabControl>
     </Grid>
 </UserControl>
