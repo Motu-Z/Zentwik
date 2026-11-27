@@ -29,33 +29,70 @@
             </StackPanel>
         </Border>
 
-        <!-- EQ 风格分核 CO 偏移阵列 -->
-        <StackPanel Grid.Row="2" Margin="0,0,0,14">
-            <TextBlock Text="{DynamicResource String.TuningCores_title}" Style="{StaticResource Text.Primary}" Margin="0,0,0,8" />
-            <ListBox AutomationProperties.Name="{DynamicResource String.TuningCores_title}"
-                     ItemsSource="{Binding CoreOffsets}"
-                     MaxHeight="156"
-                     Background="Transparent"
-                     BorderThickness="0"
-                     ItemContainerStyle="{StaticResource RowItem}">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource Card}" Padding="10,9" Margin="0,0,8,6" MinWidth="82">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Label}" Style="{StaticResource Text.Secondary}" FontSize="11" HorizontalAlignment="Center" />
-                                <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Brush.Accent}" Margin="4,7,4,6" />
-                                <TextBlock Text="{Binding ValueText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </StackPanel>
+        <!-- EQ 风格分核 CO 偏移与实时物理核频率阵列 -->
+        <Grid Grid.Row="2" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                <TextBlock Text="{DynamicResource String.TuningCores_title}" Style="{StaticResource Text.Primary}" Margin="0,0,0,6" />
+                <ListBox AutomationProperties.Name="{DynamicResource String.TuningCores_title}"
+                         ItemsSource="{Binding CoreOffsets}"
+                         MaxHeight="148"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ItemContainerStyle="{StaticResource RowItem}">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Card}" Padding="10,8" Margin="0,0,6,6" MinWidth="76">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Label}" Style="{StaticResource Text.Secondary}" FontSize="11" HorizontalAlignment="Center" />
+                                    <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Brush.Accent}" Margin="4,6,4,5" />
+                                    <TextBlock Text="{Binding ValueText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                <DockPanel Margin="0,0,0,6">
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding CoreClocksStatusText}" Style="{StaticResource Text.Secondary}" FontSize="11" VerticalAlignment="Center" />
+                    <TextBlock Text="逐核实时频率 (APERF)" Style="{StaticResource Text.Primary}" />
+                </DockPanel>
+                <ListBox AutomationProperties.Name="逐核实时频率"
+                         ItemsSource="{Binding CoreClocks}"
+                         MaxHeight="148"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ItemContainerStyle="{StaticResource RowItem}">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Card}" Padding="10,8" Margin="0,0,6,6" MinWidth="88">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Label}" Style="{StaticResource Text.Secondary}" FontSize="11" HorizontalAlignment="Center" />
+                                    <Border Height="3" CornerRadius="1.5" Background="{DynamicResource Brush.Good}" Margin="4,6,4,5" />
+                                    <TextBlock Text="{Binding ValueText}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+        </Grid>
 
         <!-- 硬件功耗墙（可选组件启用后可见） -->
         <Border Grid.Row="3"
