@@ -154,6 +154,18 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
+        <TextBlock Grid.Row="2" Text="{DynamicResource String.ScenesEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Scenes.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
 
         <Border Grid.Row="3"
                 BorderBrush="{DynamicResource Brush.Border}"
@@ -168,8 +180,8 @@
                             Command="{Binding ActivateSceneCommand}"
                             Margin="0,0,8,0" />
                     <Button Style="{StaticResource FlatButton}"
-                            Content="编辑选中"
-                            AutomationProperties.Name="编辑选中场景"
+                            Content="{DynamicResource String.ScenesEdit_selected}"
+                            AutomationProperties.Name="{DynamicResource String.ScenesEdit_selected_a11y}"
                             Command="{Binding EditSceneCommand}"
                             Margin="0,0,8,0" />
                     <Button Style="{StaticResource FlatButton}"
