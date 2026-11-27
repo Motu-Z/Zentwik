@@ -28,6 +28,14 @@ public partial class MainWindow : Window
 
     private void OnChartSizeChanged(object sender, SizeChangedEventArgs e) => RenderChart();
 
+    private void OnQuickNavClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out var index) && index >= 0 && index < MainTabs.Items.Count)
+        {
+            MainTabs.SelectedIndex = index;
+        }
+    }
+
     // 最近值贴右：采样不足时不会从左侧拉出一条无意义的斜线。
     private void RenderChart()
     {
