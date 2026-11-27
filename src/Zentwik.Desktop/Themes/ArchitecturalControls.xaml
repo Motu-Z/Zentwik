@@ -1,6 +1,10 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- 3-Tier Density Tokens (Updated dynamically by UiDensityService) -->
+    <Thickness x:Key="DensityRowMargin">14,10</Thickness>
+    <Thickness x:Key="DensityCardPadding">16,14</Thickness>
+
     <!-- Single Continuous Architectural Sheet -->
     <Style x:Key="ArchitecturalSheet" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource Brush.Window}" />
