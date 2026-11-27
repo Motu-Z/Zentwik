@@ -46,16 +46,27 @@ public static class Help
                 break;
             case "monitor":
                 Console.WriteLine("""
-                    zentwik monitor [--count N] [--interval MS] [--sensor-interval MS] [--clocks]
+                    zentwik monitor [--count N] [--interval MS] [--sensor-interval MS] [--clocks] [--per-core]
 
                     订阅遥测。不带间隔参数时用 zentwik settings 里的值。
                       推送间隔    500–5000 ms
                       传感器间隔  500–30000 ms；两次读取之间沿用上一次温度、功耗与频率
                     --clocks 追加逐核频率（MHz，按 CCD 与核号列出）。数值是窗口内平均频率，
                              核心睡眠的时间也算在内；整窗睡眠的核不出现。单行的 clk 是最高一核的值。
+                    --per-core 追加逐逻辑处理器占用率（0–100，索引是操作系统处理器序号，
+                             含 SMT，与 --clocks 的核号不是同一编号）。
 
                     温度是封装 Tctl，功耗是封装能量计数器在相邻两次读取之间的平均值。
                     响应行里的 interval/sensors 是服务端实际生效的值，请求值可能被夹到上下限。
+                    """);
+                break;
+            case "history":
+                Console.WriteLine("""
+                    zentwik history [--limit N]
+
+                    查询服务端最近采样的遥测历史（时间升序）。历史只在订阅期间积累，
+                    无订阅者时不采样、也不落盘，因此服务重启或长时间没开监控后为空。
+                    --limit 最大返回帧数，默认 60；缓冲上限约 3600 帧（1 秒推送约 1 小时）。
                     """);
                 break;
             case "ledger":
@@ -148,6 +159,7 @@ public static class Help
               caps                      能力清单
               modules                   模块状态与可选组件开关
               monitor                   持续采样 CPU 与内存
+              history                   查询最近采样的遥测历史
               tuning                    读取 CPU 电压偏移
               plans                     方案管理
               scenes                    场景管理
