@@ -9,26 +9,14 @@ namespace Zentwik.Desktop.Views;
 
 public partial class SettingsView : UserControl
 {
-    private static readonly string[] DensityChoices = ["宽松", "标准", "紧凑"];
-
     public SettingsView()
     {
         InitializeComponent();
-        DensityCombo.ItemsSource = DensityChoices;
-        DensityCombo.SelectedItem = UiDensityService.CurrentDensity;
         ShowUnavailableToggle.IsChecked = UiDensityService.ShowUnavailableModules;
         Loaded += OnLoaded;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e) => ApplyCapabilityFilter();
-
-    private void OnDensitySelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (DensityCombo.SelectedItem is string density)
-        {
-            UiDensityService.Apply(density);
-        }
-    }
 
     private void OnShowUnavailableChanged(object sender, RoutedEventArgs e)
     {
