@@ -72,7 +72,10 @@
                                   Grid.Column="1"
                                   AutomationProperties.Name="{DynamicResource String.SettingsDensity}"
                                   Style="{StaticResource FlatCombo}"
-                                  SelectionChanged="OnDensitySelectionChanged" />
+                                  ItemsSource="{Binding DensityOptions}"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Id"
+                                  SelectedValue="{Binding SelectedDensity, Mode=TwoWay}" />
                     </Grid>
 
                     <Grid Margin="{DynamicResource DensityRowMargin}">
