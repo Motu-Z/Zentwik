@@ -45,11 +45,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private double? _packagePowerWatts;
     private double? _peakClockMhz;
     private string _sensorDetailText = string.Empty;
-    private string _lastSampleTimeText = "等待采样…";
+    private string _lastSampleTimeText;
 
     private string _selectedLanguage;
     private string _selectedTheme;
     private string _selectedAccent;
+    private string _selectedDensity = UiDensityService.CurrentDensity;
     private double _uiScale = 1d;
     private int _selectedMonitorIntervalMs = 1000;
     private int _selectedSensorIntervalMs = 1000;
@@ -74,8 +75,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private PowerSchemeRow? _selectedPowerScheme;
     private PowerBackupRow? _selectedPowerBackup;
     private string _newPowerSchemeName = string.Empty;
-    private string _coreClocksStatusText = "等待传感器采样…";
-    private string _processorLoadsStatusText = "等待基线采样…";
+    private string _coreClocksStatusText;
+    private string _processorLoadsStatusText;
+    private bool _hasSample;
+    private bool _hasSensorClocks;
+    private bool _hasProcessorLoads;
 
     private string? _noticeText;
     private bool _noticeIsError;
@@ -110,6 +114,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _selectedAccent = themes.Accent;
         _statusText = catalog["status.connecting"];
         _activeSceneText = catalog["status.no_scene"];
+        _lastSampleTimeText = catalog["monitor.waiting_ellipsis"];
+        _coreClocksStatusText = catalog["tuning.clocks_waiting"];
+        _processorLoadsStatusText = catalog["monitor.processor_loads_empty"];
 
         RefreshCommand = new AsyncRelayCommand(RefreshAllAsync, () => IsConnected);
         DismissNoticeCommand = new RelayCommand(() => NoticeText = null);
@@ -179,6 +186,25 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<string> Themes { get; } = ["dark", "light"];
 
     public IReadOnlyList<string> Accents { get; } = ["blue", "violet", "teal", "amber"];
+
+    public IReadOnlyList<DensityOption> DensityOptions =>
+    [
+        new(UiDensityService.Comfortable, _catalog["settings.density.comfortable"]),
+        new(UiDensityService.Standard, _catalog["settings.density.standard"]),
+        new(UiDensityService.Compact, _catalog["settings.density.compact"]),
+    ];
+
+    public string SelectedDensity
+    {
+        get => _selectedDensity;
+        set
+        {
+            if (Set(ref _selectedDensity, value))
+            {
+                UiDensityService.Apply(value);
+            }
+        }
+    }
 
     public IReadOnlyList<double> ScaleOptions { get; } = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
 
@@ -583,9 +609,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string PlanSpecHint => NewPlanKind switch
     {
-        "cpuTuning" => "格式：default=-15, ccd0=-20, 0=-10, 1=auto, fmax=5250, intel=-50",
-        "power" => "格式：目标 Windows 电源方案 GUID（可在「Windows 电源方案」页查看）",
-        _ => "格式：进程名=掩码:优先级[:cpusets]（如 game.exe=0xFF:High:0-7）",
+        "cpuTuning" => _catalog["plans.spec_hint.cpu"],
+        "power" => _catalog["plans.spec_hint.power"],
+        _ => _catalog["plans.spec_hint.scheduling"],
     };
 
     public string NewPlanId
@@ -650,10 +676,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public string TriggerArgHint => NewSceneTriggerKind switch
     {
-        SceneTriggerKinds.Process => "触发参数：进程名（如 game.exe，进程运行期间保持激活）",
-        SceneTriggerKinds.ProcessExited => "触发参数：进程名（该进程退出时触发一次并保持激活）",
-        SceneTriggerKinds.PowerSource => "触发参数：ac（交流电）或 dc（电池）",
-        _ => "手动场景无需填写触发参数",
+        SceneTriggerKinds.Process => _catalog["scenes.trigger_hint.process"],
+        SceneTriggerKinds.ProcessExited => _catalog["scenes.trigger_hint.process_exited"],
+        SceneTriggerKinds.PowerSource => _catalog["scenes.trigger_hint.power_source"],
+        _ => _catalog["scenes.trigger_hint.manual"],
     };
 
     public string NewSceneTriggerArg
@@ -756,7 +782,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 _ui.Post(_ =>
                 {
                     ApplySettings(settings);
-                    EffectiveTelemetrySummary = $"推送 {ack.IntervalMs} ms · 传感器 {ack.SensorIntervalMs} ms";
+                    EffectiveTelemetrySummary = _catalog.Get("settings.telemetry_effective_fmt", ack.IntervalMs, ack.SensorIntervalMs);
                     if (history is { Samples.Count: > 0 })
                     {
                         LoadHistorySamples(history.Samples);
@@ -830,13 +856,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var selectedBackupId = SelectedPowerBackup?.Id;
 
             Replace(Capabilities, capabilities.Select(static c => new CapabilityRow(c.Id, c.State, c.Detail ?? string.Empty)));
-            Replace(Modules, modules.Select(static m => new ModuleRow(m.Id, m.Name, m.State, m.Detail ?? string.Empty, m.Optional, m.Enabled)));
+            Replace(Modules, modules.Select(BuildModuleRow));
             SelectedModule = Modules.FirstOrDefault(m => m.Id == selectedModuleId) ?? Modules.FirstOrDefault();
             ShowPowerLimits = modules.Any(static m => string.Equals(m.Id, "power-limits", StringComparison.OrdinalIgnoreCase) && m.Enabled);
             Replace(Plans, plans.Select(BuildPlanRow));
             Replace(PlanIds, plans.Select(static p => p.Id));
-            Replace(PowerSchemes, powerSchemes.Select(static s => new PowerSchemeRow(s.Guid, s.Name, s.Active, s.BuiltIn, s.Visible)));
-            Replace(PowerBackups, powerBackups.Select(static b => new PowerBackupRow(b.Id, b.Name, b.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), b.SettingCount, b.PortablePath is not null)));
+            Replace(PowerSchemes, powerSchemes.Select(BuildPowerSchemeRow));
+            Replace(PowerBackups, powerBackups.Select(BuildPowerBackupRow));
             SelectedPowerScheme = PowerSchemes.FirstOrDefault(s => s.Guid == selectedSchemeGuid) ?? PowerSchemes.FirstOrDefault();
             SelectedPowerBackup = PowerBackups.FirstOrDefault(b => b.Id == selectedBackupId) ?? PowerBackups.FirstOrDefault();
             Replace(Scenes, scenes.Select(BuildSceneRow));
@@ -844,10 +870,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Replace(LedgerEntries, ledger.Select(BuildLedgerRow));
             Replace(Logs, logs.Select(static l => new LogRow(l.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), l.Level, l.Message)));
             DeploymentModeText = doctor.RunningAsService
-                ? (doctor.Elevated ? "已注册系统服务（管理员）" : "已注册系统服务")
-                : (doctor.Elevated ? "便携 / 控制台模式（管理员）" : "便携 / 控制台模式（标准权限）");
-            AgentVersionText = $"v{doctor.Version} · 协议 v{doctor.ProtocolVersion} · 已运行 {FormatUptime(doctor.UptimeSeconds)}";
-            StateCountsText = $"方案 {doctor.PlanCount} · 场景 {doctor.SceneCount} · 账本 {doctor.LedgerEntryCount}";
+                ? (doctor.Elevated ? _catalog["settings.deploy_mode_service_admin"] : _catalog["settings.deploy_mode_service"])
+                : (doctor.Elevated ? _catalog["settings.deploy_mode_console_admin"] : _catalog["settings.deploy_mode_console"]);
+            AgentVersionText = _catalog.Get("settings.deploy_version_fmt", doctor.Version, doctor.ProtocolVersion, FormatUptime(doctor.UptimeSeconds));
+            StateCountsText = _catalog.Get("settings.deploy_counts_fmt", doctor.PlanCount, doctor.SceneCount, doctor.LedgerEntryCount);
             Replace(RecentErrors, doctor.RecentErrors.Select(static l => new LogRow(l.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), l.Level, l.Message)));
             DataDirectoryText = doctor.DataDirectory;
             StatePathText = doctor.StatePath;
@@ -917,7 +943,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             NewPlanName = string.Empty;
             NewPlanSpec = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已保存方案 {saved.Name} (rev {saved.Revision})。", isError: false);
+            ShowNotice(_catalog.Get("plans.notice.saved", saved.Name, saved.Revision), isError: false);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -932,7 +958,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var spec = NewPlanSpec.Trim();
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("方案 ID 和名称不能为空。");
+            throw new ArgumentException(_catalog["plans.err.id_name_required"]);
         }
 
         var now = DateTimeOffset.Now;
@@ -950,7 +976,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     var parts = token.Split('=', 2);
                     if (parts.Length != 2)
                     {
-                        throw new FormatException($"无法解析 CO 配置 \"{token}\"，请使用 default=-15, ccd0=-20, 0=-10 或 1=auto。");
+                        throw new FormatException(_catalog.Get("plans.err.co_token", token));
                     }
 
                     var key = parts[0].Trim();
@@ -959,7 +985,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var def))
                         {
-                            throw new FormatException($"无法解析 default CO 值 \"{val}\"。");
+                            throw new FormatException(_catalog.Get("plans.err.co_default", val));
                         }
 
                         defaultCo = def;
@@ -970,7 +996,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedFmax))
                         {
-                            throw new FormatException($"无法解析 fmax 值 \"{val}\"。");
+                            throw new FormatException(_catalog.Get("plans.err.fmax", val));
                         }
 
                         fmax = parsedFmax;
@@ -981,7 +1007,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMv))
                         {
-                            throw new FormatException($"无法解析 intel 电压偏移 \"{val}\"。");
+                            throw new FormatException(_catalog.Get("plans.err.intel_mv", val));
                         }
 
                         intelMv = parsedMv;
@@ -994,7 +1020,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ccdVal))
                         {
-                            throw new FormatException($"无法解析 {key} 的 CO 值 \"{val}\"。");
+                            throw new FormatException(_catalog.Get("plans.err.co_ccd", key, val));
                         }
 
                         ccdOffsets[ccd] = ccdVal;
@@ -1003,7 +1029,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                     if (!int.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var core))
                     {
-                        throw new FormatException($"无法解析核配置 \"{token}\"，请使用 default=-15, ccd0=-20, 0=-10 或 1=auto。");
+                        throw new FormatException(_catalog.Get("plans.err.co_core", token));
                     }
 
                     if (string.Equals(val, "auto", StringComparison.OrdinalIgnoreCase))
@@ -1014,7 +1040,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                     if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
                     {
-                        throw new FormatException($"无法解析核 {core} 的 CO 值 \"{val}\"。");
+                        throw new FormatException(_catalog.Get("plans.err.co_offset", core, val));
                     }
 
                     cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
@@ -1022,7 +1048,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                 if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0 && fmax is null && intelMv is null)
                 {
-                    throw new ArgumentException("CPU 调校方案至少需要一个 CO 配置（如 default=-15, ccd0=-20, 0=-10 或 1=auto）。");
+                    throw new ArgumentException(_catalog["plans.err.cpu_empty"]);
                 }
 
                 return new CpuTuningPlan
@@ -1042,7 +1068,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 if (!Guid.TryParse(spec, out var schemeGuid))
                 {
-                    throw new FormatException("电源方案参数请输入目标电源方案 GUID。");
+                    throw new FormatException(_catalog["plans.err.power_guid"]);
                 }
 
                 return new PowerPlan
@@ -1059,7 +1085,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 var assignment = spec.Split('=', 2);
                 if (assignment.Length != 2 || string.IsNullOrWhiteSpace(assignment[0]))
                 {
-                    throw new FormatException("调度方案参数请使用 进程名=掩码:优先级[:cpusets]（如 game=0xF:High:0-3）。");
+                    throw new FormatException(_catalog["plans.err.sched_format"]);
                 }
 
                 var parts = assignment[1].Split(':', 3);
@@ -1068,7 +1094,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 var cpuSets = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : null;
                 if (mask is null && priority is null && cpuSets is null)
                 {
-                    throw new ArgumentException("调度规则至少需要掩码、优先级或 CPU Sets。");
+                    throw new ArgumentException(_catalog["plans.err.sched_empty"]);
                 }
 
                 return new SchedulingPlan
@@ -1215,7 +1241,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeletePlanAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已删除方案 {selected.Id}。", isError: false);
+            ShowNotice(_catalog.Get("plans.notice.deleted", selected.Id), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1238,12 +1264,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var planId = NewScenePlanId.Trim();
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(planId))
             {
-                throw new ArgumentException("场景 ID、名称和关联方案 ID 不能为空。");
+                throw new ArgumentException(_catalog["scenes.err.required"]);
             }
 
             if (!int.TryParse(NewScenePriority.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var priority))
             {
-                throw new FormatException("优先级必须为整数。");
+                throw new FormatException(_catalog["scenes.err.priority"]);
             }
 
             var triggerArg = NewSceneTriggerKind == SceneTriggerKinds.Manual
@@ -1268,7 +1294,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             NewSceneName = string.Empty;
             NewSceneTriggerArg = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已保存场景 {saved.Name}。", isError: false);
+            ShowNotice(_catalog.Get("scenes.notice.saved", saved.Name), isError: false);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1384,7 +1410,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeleteSceneAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已删除场景 {selected.Id}。", isError: false);
+            ShowNotice(_catalog.Get("scenes.notice.deleted", selected.Id), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1405,7 +1431,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var released = await connection.ReleaseLedgerAsync(selected.Target, _cts.Token).ConfigureAwait(false);
             await RefreshTuningAndLedgerAsync().ConfigureAwait(false);
-            ShowNotice(released ? $"已释放 {selected.Target} 的用户接管。" : $"{selected.Target} 当前非用户接管。", isError: !released);
+            ShowNotice(
+                released
+                    ? _catalog.Get("tuning.notice.released", selected.Target)
+                    : _catalog.Get("tuning.notice.not_user_owned", selected.Target),
+                isError: !released);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1444,6 +1474,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     internal void ApplySample(TelemetryDto sample)
     {
+        _hasSample = true;
         _cpuPercent = sample.CpuTotalPercent;
         _memoryPercent = sample.MemoryTotalBytes == 0
             ? 0d
@@ -1454,7 +1485,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _packagePowerWatts = sample.PackagePowerWatts;
         _peakClockMhz = sample.CoreClocks is { Count: > 0 } clocks ? clocks.Max(static c => c.Megahertz) : null;
         SensorDetailText = sample.SensorDetail ?? string.Empty;
-        LastSampleTimeText = $"服务端采样 {sample.Timestamp.ToLocalTime():HH:mm:ss}";
+        LastSampleTimeText = _catalog.Get("monitor.sampled_at", sample.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture));
 
         Raise(nameof(CpuText));
         Raise(nameof(MemoryText));
@@ -1472,22 +1503,25 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (sample.CoreClocks is { Count: > 0 } liveClocks)
         {
+            _hasSensorClocks = true;
             Replace(CoreClocks, liveClocks
                 .OrderBy(static c => c.Ccd)
                 .ThenBy(static c => c.Core)
                 .Select(static c => new CoreClockRow(c.Ccd, c.Core, c.Megahertz)));
-            CoreClocksStatusText = $"活跃物理核 {liveClocks.Count} 个（睡眠核已省略）";
+            CoreClocksStatusText = _catalog.Get("tuning.clocks_active", liveClocks.Count);
         }
         else
         {
+            _hasSensorClocks = false;
             CoreClocks.Clear();
             CoreClocksStatusText = string.IsNullOrWhiteSpace(sample.SensorDetail)
-                ? "当前无活跃核心频率数据"
+                ? _catalog["tuning.clocks_empty"]
                 : sample.SensorDetail;
         }
 
         if (sample.ProcessorUtilization is { Count: > 0 } utilization)
         {
+            _hasProcessorLoads = true;
             if (ProcessorLoads.Count == utilization.Count)
             {
                 for (var index = 0; index < utilization.Count; index++)
@@ -1504,12 +1538,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Replace(ProcessorLoads, utilization.Select(static (pct, idx) => new ProcessorLoadRow(idx, pct)));
             }
 
-            ProcessorLoadsStatusText = $"逻辑处理器 {utilization.Count} 个（OS 序号，含 SMT）";
+            ProcessorLoadsStatusText = _catalog.Get("monitor.processor_loads_count", utilization.Count);
         }
         else
         {
+            _hasProcessorLoads = false;
             ProcessorLoads.Clear();
-            ProcessorLoadsStatusText = "等待基线采样…（首帧或处理器数变化时为空）";
+            ProcessorLoadsStatusText = _catalog["monitor.processor_loads_baseline"];
         }
 
         HistoryChanged?.Invoke([.. _history]);
@@ -1583,7 +1618,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 if (resubscribeTelemetry)
                 {
                     var ack = await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
-                    _ui.Post(_ => EffectiveTelemetrySummary = $"推送 {ack.IntervalMs} ms · 传感器 {ack.SensorIntervalMs} ms", null);
+                    _ui.Post(_ => EffectiveTelemetrySummary = _catalog.Get("settings.telemetry_effective_fmt", ack.IntervalMs, ack.SensorIntervalMs), null);
                 }
             }
             catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
@@ -1611,7 +1646,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 var selectedId = module.Id;
-                Replace(Modules, updated.Select(static m => new ModuleRow(m.Id, m.Name, m.State, m.Detail ?? string.Empty, m.Optional, m.Enabled)));
+                Replace(Modules, updated.Select(BuildModuleRow));
                 SelectedModule = Modules.FirstOrDefault(m => m.Id == selectedId) ?? Modules.FirstOrDefault();
                 ShowPowerLimits = updated.Any(static m => string.Equals(m.Id, "power-limits", StringComparison.OrdinalIgnoreCase) && m.Enabled);
             }, null);
@@ -1641,9 +1676,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 PowerLimitCurrentText = state.Available
-                    ? $"FAST {FormatWatts(state.FastWatts)} · SLOW {FormatWatts(state.SlowWatts)} · STAPM {FormatWatts(state.StapmWatts)}"
-                    : "不可用";
-                PowerLimitFusedText = $"熔断上限：FAST {FormatWatts(state.FusedFastWatts)} · SLOW {FormatWatts(state.FusedSlowWatts)} · TDC {FormatAmps(state.FusedTdcAmps)}";
+                    ? _catalog.Get("tuning.power_limits_current_fmt", FormatWatts(state.FastWatts), FormatWatts(state.SlowWatts), FormatWatts(state.StapmWatts))
+                    : _catalog["tuning.power_limits_unavailable"];
+                PowerLimitFusedText = _catalog.Get("tuning.power_limits_fused_fmt", FormatWatts(state.FusedFastWatts), FormatWatts(state.FusedSlowWatts), FormatAmps(state.FusedTdcAmps));
                 PowerLimitStatusDetail = state.Error ?? state.FusedDetail ?? string.Empty;
             }, null);
         }
@@ -1668,19 +1703,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (fast is null && slow is null && tdc is null && edc is null)
         {
-            ShowNotice("请至少填写一项功耗墙参数（FAST / SLOW / TDC / EDC）。", isError: true);
+            ShowNotice(_catalog["tuning.power_limits_err_empty"], isError: true);
             return;
         }
 
         try
         {
             var result = await connection.ApplyPowerLimitsAsync(new PowerLimitApplyRequest(fast, slow, tdc, edc), _cts.Token).ConfigureAwait(false);
-            var lines = result.Items.Select(static item =>
+            var lines = result.Items.Select(item =>
             {
                 var unit = item.Item is "tdc" or "edc" ? "A" : "W";
                 return item.State == "diverged"
-                    ? $"{item.Item.ToUpperInvariant()} [折算] 请求 {item.Requested} {unit} → 实际 {item.Actual} {unit}"
-                    : $"{item.Item.ToUpperInvariant()} [{item.State}] {item.Requested} {unit}{(item.Actual is int a ? $" (回读 {a} {unit})" : string.Empty)}";
+                    ? _catalog.Get("tuning.power_limits_diverged_fmt", item.Item.ToUpperInvariant(), item.Requested, unit, item.Actual ?? 0)
+                    : $"{item.Item.ToUpperInvariant()} [{item.State}] {item.Requested} {unit}{(item.Actual is int a ? _catalog.Get("tuning.power_limits_readback_fmt", a, unit) : string.Empty)}";
             });
             var summary = string.Join("；", lines);
             if (!string.IsNullOrWhiteSpace(result.Note))
@@ -1738,7 +1773,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var created = await connection.CreatePowerSchemeAsync(template.Guid, name, _cts.Token).ConfigureAwait(false);
             NewPowerSchemeName = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已派生电源方案 {created.Name}。", isError: false);
+            ShowNotice(_catalog.Get("plans.power_notice.created", created.Name), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1761,7 +1796,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var renamed = await connection.RenamePowerSchemeAsync(selected.Guid, name, _cts.Token).ConfigureAwait(false);
             NewPowerSchemeName = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已将电源方案重命名为 {renamed.Name}。", isError: false);
+            ShowNotice(_catalog.Get("plans.power_notice.renamed", renamed.Name), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1782,7 +1817,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var backup = await connection.BackupPowerSchemeAsync(selected.Guid, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已备份电源方案 {backup.Name}（{backup.SettingCount} 项）。", isError: false);
+            ShowNotice(_catalog.Get("plans.power_notice.backed_up", backup.Name, backup.SettingCount), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1803,7 +1838,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeletePowerSchemeAsync(selected.Guid, keepBackup: true, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已删除电源方案 {selected.Name}（已自动备份）。", isError: false);
+            ShowNotice(_catalog.Get("plans.power_notice.deleted", selected.Name), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1824,7 +1859,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         NewPlanName = selected.Name;
         NewPlanSpec = selected.GuidText;
         IsCreatePlanOpen = true;
-        ShowNotice($"已将电源方案「{selected.Name}」带入新建表单，请切回「方案」页保存。", isError: false);
+        ShowNotice(_catalog.Get("plans.power_notice.used_for_plan", selected.Name), isError: false);
     }
 
     private static string FormatUptime(long seconds)
@@ -1848,7 +1883,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var result = await connection.RestorePowerSchemeAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已从备份恢复方案 {result.Scheme.Name}（成功 {result.Applied} 项，失败 {result.Failed} 项）。", isError: result.Failed > 0);
+            ShowNotice(_catalog.Get("plans.power_notice.restored", result.Scheme.Name, result.Applied, result.Failed), isError: result.Failed > 0);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1878,6 +1913,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             UpdateStatusText();
             UpdateActiveSceneText();
+            Raise(nameof(PlanSpecHint));
+            Raise(nameof(TriggerArgHint));
+            Raise(nameof(DensityOptions));
+            if (!_hasSample)
+            {
+                LastSampleTimeText = _catalog["monitor.waiting_ellipsis"];
+            }
+
+            if (!_hasSensorClocks)
+            {
+                CoreClocksStatusText = _catalog["tuning.clocks_waiting"];
+            }
+
+            if (!_hasProcessorLoads)
+            {
+                ProcessorLoadsStatusText = _catalog["monitor.processor_loads_empty"];
+            }
         }, null);
     }
 
@@ -1905,16 +1957,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void UpdateHardwareSummaries(AgentStatusDto status, TuningSnapshotDto amd, IntelTuningSnapshotDto intel)
     {
         var active = string.IsNullOrEmpty(status.ActiveSceneId) ? _catalog["status.no_scene"] : status.ActiveSceneId;
-        HardwareSummary =
-            $"{status.MachineName} · {status.PhysicalCoreCount}C/{status.ProcessorCount}T · {active} · 账本 {status.LedgerEntryCount} 项 · AMD {amd.Availability}";
+        HardwareSummary = _catalog.Get(
+            "monitor.hw_summary_fmt",
+            status.MachineName,
+            status.PhysicalCoreCount,
+            status.ProcessorCount,
+            active,
+            status.LedgerEntryCount,
+            amd.Availability);
 
-        var amdPersistence = amd.PersistsAcrossReboot ? "固件持久" : "会话有效";
-        TuningSummary = $"AMD SMU: {amd.Availability} ({amd.Platform ?? "-"}, {amdPersistence}) — {amd.Detail ?? "-"}";
+        var amdPersistence = amd.PersistsAcrossReboot ? _catalog["tuning.persist_firmware"] : _catalog["tuning.persist_session"];
+        TuningSummary = _catalog.Get("tuning.amd_summary_fmt", amd.Availability, amd.Platform ?? "-", amdPersistence, amd.Detail ?? "-");
 
         var intelDetail = intel.VoltageOffsetMillivolts is { } mv
-            ? $"电压偏移 {mv} mV · 睿频 1C {intel.TurboRatio1Core}x / 8C {intel.TurboRatio8Cores}x"
+            ? _catalog.Get("tuning.intel_voltage_fmt", mv, intel.TurboRatio1Core ?? 0, intel.TurboRatio8Cores ?? 0)
             : intel.Detail ?? "-";
-        IntelTuningSummary = $"Intel MSR: {intel.Availability} ({intel.Platform ?? "-"}) — {intelDetail}";
+        IntelTuningSummary = _catalog.Get("tuning.intel_summary_fmt", intel.Availability, intel.Platform ?? "-", intelDetail);
     }
 
     private void ShowNotice(string text, bool isError)
@@ -1950,7 +2008,37 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RestorePowerBackupCommand.RaiseCanExecuteChanged();
     }
 
-    private static PlanRow BuildPlanRow(Plan plan)
+    private ModuleRow BuildModuleRow(ModuleDto m) => new(
+        m.Id,
+        m.Name,
+        m.State,
+        m.Detail ?? string.Empty,
+        m.Optional,
+        m.Enabled,
+        m.Optional ? (m.Enabled ? _catalog["settings.module.disable"] : _catalog["settings.module.enable"]) : _catalog["settings.module.builtin"],
+        m.Optional ? (m.Enabled ? _catalog["settings.module.badge_enabled"] : _catalog["settings.module.badge_disabled"]) : _catalog["settings.module.badge_core"]);
+
+    private PowerSchemeRow BuildPowerSchemeRow(PowerSchemeDto s)
+    {
+        var badges = string.Join(" · ", new[]
+        {
+            s.Active ? _catalog["plans.power_badge.active"] : string.Empty,
+            s.BuiltIn ? _catalog["plans.power_badge.builtin"] : _catalog["plans.power_badge.custom"],
+            s.Visible ? string.Empty : _catalog["plans.power_badge.hidden"],
+        }.Where(static x => x.Length > 0));
+        return new PowerSchemeRow(s.Guid, s.Name, s.Active, s.BuiltIn, s.Visible, badges);
+    }
+
+    private PowerBackupRow BuildPowerBackupRow(PowerSchemeBackupDto b)
+    {
+        var created = b.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        var hasPortable = b.PortablePath is not null;
+        var summary = _catalog.Get("plans.power_backup_summary", created, b.SettingCount)
+            + (hasPortable ? _catalog["plans.power_backup_portable"] : string.Empty);
+        return new PowerBackupRow(b.Id, b.Name, created, b.SettingCount, hasPortable, summary);
+    }
+
+    private PlanRow BuildPlanRow(Plan plan)
     {
         var state = plan.LastApply?.State switch
         {
@@ -1962,7 +2050,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var detail = plan switch
         {
             CpuTuningPlan cpu => CurveOptimizerConfig.FormatPlanSummary(cpu),
-            PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? $"设置 {power.Settings.Count} 项",
+            PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? _catalog.Get("plans.power_settings_count", power.Settings.Count),
             SchedulingPlan sched => string.Join(", ", sched.Rules.Select(static r => r.CpuSets is null ? $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"})" : $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"}:{r.CpuSets})")),
             _ => string.Empty,
         };
@@ -2025,6 +2113,8 @@ internal static class ExceptionTextExtensions
         ex is AgentRequestException req ? req.Detail ?? req.Message : ex.Message;
 }
 
+public sealed record DensityOption(string Id, string Label);
+
 public sealed record CapabilityRow(string Id, string State, string Detail);
 
 public sealed record PlanRow(
@@ -2066,11 +2156,9 @@ public sealed record ModuleRow(
     string State,
     string Detail,
     bool Optional,
-    bool Enabled)
-{
-    public string ActionLabel => Optional ? (Enabled ? "停用" : "启用") : "内置";
-    public string OptionalBadge => Optional ? (Enabled ? "可选 · 已启用" : "可选 · 未启用") : "核心模块";
-}
+    bool Enabled,
+    string ActionLabel = "",
+    string OptionalBadge = "");
 
 public sealed record LogRow(string TimeText, string Level, string Message);
 
@@ -2091,15 +2179,9 @@ public sealed record PowerSchemeRow(
     string Name,
     bool Active,
     bool BuiltIn,
-    bool Visible)
+    bool Visible,
+    string Badges = "")
 {
-    public string Badges => string.Join(" · ", new[]
-    {
-        Active ? "当前活动" : string.Empty,
-        BuiltIn ? "系统内置" : "自定义",
-        Visible ? string.Empty : "隐藏",
-    }.Where(static x => x.Length > 0));
-
     public string GuidText => Guid.ToString("D");
 }
 
@@ -2108,7 +2190,5 @@ public sealed record PowerBackupRow(
     string Name,
     string CreatedAtText,
     int SettingCount,
-    bool HasPortable)
-{
-    public string Summary => $"{CreatedAtText} · {SettingCount} 项{(HasPortable ? " · 含 .pow" : string.Empty)}";
-}
+    bool HasPortable,
+    string Summary = "");
