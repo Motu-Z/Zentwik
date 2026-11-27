@@ -40,6 +40,34 @@ internal static partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetSystemTimes(out FileTime idleTime, out FileTime kernelTime, out FileTime userTime);
 
+    /// <summary>SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION，每个逻辑处理器一份，计数单位 100 ns。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ProcessorPerformance
+    {
+        public long IdleTime;
+
+        /// <summary>KernelTime 含 IdleTime，算占用率时必须减掉。</summary>
+        public long KernelTime;
+
+        public long UserTime;
+        public long DpcTime;
+        public long InterruptTime;
+        public uint InterruptCount;
+    }
+
+    internal const int SystemProcessorPerformanceInformation = 8;
+
+    internal const int StatusInfoLengthMismatch = unchecked((int)0xC0000004);
+
+    [LibraryImport("ntdll.dll")]
+    internal static partial int NtQuerySystemInformation(
+        int systemInformationClass,
+        nint buffer,
+        uint length,
+        out uint returnLength);
+
+    internal static bool IsSuccess(int status) => status >= 0;
+
     [LibraryImport("kernel32.dll", SetLastError = true, EntryPoint = "GlobalMemoryStatusEx")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
