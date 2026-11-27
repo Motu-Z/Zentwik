@@ -5,6 +5,7 @@ using Zentwik.Core.Diagnostics;
 using Zentwik.Core.State;
 using Zentwik.Domain.Persistence;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Settings;
 
 namespace Zentwik.Core.Tests;
 
@@ -43,6 +44,29 @@ public sealed class StateMigrationTests : IDisposable
 
         var plan = Assert.IsType<CpuTuningPlan>(Assert.Single(store.Current.Plans));
         Assert.Equal(-25, Assert.Single(plan.Cores).Offset);
+    }
+
+    [Fact]
+    public async Task Missing_Interval_Settings_Fall_Back_To_Defaults()
+    {
+        Directory.CreateDirectory(_directory);
+
+        // 旧状态文件没有这两个字段：STJ 填 0，加载时要回落默认值，不能当成用户把间隔调成 0。
+        const string json = """
+            {
+              "schemaVersion": 1,
+              "settings": { "language": "zh-CN", "theme": "dark", "accent": "blue", "uiScale": 1 }
+            }
+            """;
+
+        await File.WriteAllTextAsync(Path.Combine(_directory, "state.json"), json);
+
+        using var log = new DiagnosticLog(_directory, echoToConsole: false);
+        var store = new StateStore(_directory, log);
+        await store.LoadAsync();
+
+        Assert.Equal(UserSettingsRules.DefaultMonitorIntervalMs, store.Current.Settings.MonitorIntervalMs);
+        Assert.Equal(UserSettingsRules.DefaultSensorIntervalMs, store.Current.Settings.SensorIntervalMs);
     }
 
     [Fact]
