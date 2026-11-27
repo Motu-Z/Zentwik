@@ -13,7 +13,8 @@ public static class WindowsCapabilityProbes
         IProcessScheduler scheduler,
         IPowerPolicyService power,
         IPowerLimitProvider? powerLimits = null,
-        Func<bool>? powerLimitsEnabled = null)
+        Func<bool>? powerLimitsEnabled = null,
+        ICpuSensorSource? cpuSensors = null)
     {
         yield return new PowerPolicyProbe(power);
         yield return new TelemetryProbe(telemetry);
@@ -21,6 +22,11 @@ public static class WindowsCapabilityProbes
         yield return new SchedulingProbe();
         yield return new IntelMsrProbe(intel);
         yield return new SceneEngineProbe();
+
+        if (cpuSensors is not null)
+        {
+            yield return new CpuSensorProbe(cpuSensors);
+        }
 
         if (powerLimits is not null)
         {
@@ -97,6 +103,33 @@ internal sealed class CpuTuningProbe(ICpuTuningProvider tuning) : ICapabilityPro
             Id = CapabilityId,
             State = state,
             Detail = status.Simulated ? $"模拟：{status.Detail}" : status.Detail,
+        };
+    }
+}
+
+internal sealed class CpuSensorProbe(ICpuSensorSource sensors) : ICapabilityProbe
+{
+    public string CapabilityId => CapabilityIds.TelemetryCpuSensors;
+
+    public CapabilityDescriptor Probe()
+    {
+        var (availability, detail) = sensors.ProbeCpuSensors();
+        var state = availability switch
+        {
+            HardwareAvailability.Available => CapabilityState.Running,
+            HardwareAvailability.NotSupported => CapabilityState.Unavailable,
+            // 驱动、模块、权限属于「装了但这次用不了」，不是通道不存在。
+            HardwareAvailability.DriverUnavailable
+                or HardwareAvailability.ModuleMissing
+                or HardwareAvailability.PrivilegeMissing => CapabilityState.Installed,
+            _ => CapabilityState.Failed,
+        };
+
+        return new CapabilityDescriptor
+        {
+            Id = CapabilityId,
+            State = state,
+            Detail = detail,
         };
     }
 }
