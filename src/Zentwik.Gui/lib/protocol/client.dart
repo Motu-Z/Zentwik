@@ -13,11 +13,11 @@ import 'models/models.dart';
 class ProtocolClient {
   ProtocolClient(
     this._channel, {
-    Duration requestTimeout = const Duration(seconds: 15),
-  }) : _requestTimeout = requestTimeout;
+    this.requestTimeout = const Duration(seconds: 15),
+  });
 
   final FrameChannel _channel;
-  final Duration _requestTimeout;
+  final Duration requestTimeout;
 
   final Map<int, Completer<ResponseEnvelope>> _pending = {};
   final StreamController<TelemetryDto> _telemetryController =
@@ -77,10 +77,10 @@ class ProtocolClient {
     }
 
     final response = await completer.future.timeout(
-      _requestTimeout,
+      requestTimeout,
       onTimeout: () {
         _pending.remove(id);
-        throw TimeoutException('请求超时：$op', _requestTimeout);
+        throw TimeoutException('请求超时：$op', requestTimeout);
       },
     );
 

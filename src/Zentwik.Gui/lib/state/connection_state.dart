@@ -1,123 +1,237 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'dart:math' as math;
 
 import '../protocol/protocol.dart';
 
-enum ConnectionPhase {
-  disconnected,
-  connecting,
-  connected,
-  error,
+/// 连接状态字符串常量（对外契约）。
+abstract final class ConnectionStatuses {
+  static const String disconnected = 'disconnected';
+  static const String connecting = 'connecting';
+  static const String connected = 'connected';
+  static const String reconnecting = 'reconnecting';
+  static const String failed = 'failed';
 }
 
-/// 管理与后台服务的连接生命周期以及基础状态（服务状态、能力、模块、设置）。
-class AgentConnectionState extends ChangeNotifier {
-  AgentConnectionState(this._client);
+typedef BackoffStrategy = Duration Function(int attempt);
+typedef DelayRunner = Future<void> Function(Duration delay);
 
-  final ProtocolClient _client;
+Duration defaultReconnectBackoff(int attempt) {
+  final exponent = attempt <= 1 ? 0 : attempt - 1;
+  final ms = math.min(30000, 200 * (1 << exponent));
+  return Duration(milliseconds: ms);
+}
 
-  ConnectionPhase _phase = ConnectionPhase.disconnected;
-  AgentStatusDto? _status;
-  List<CapabilityDto> _capabilities = const [];
-  List<ModuleDto> _modules = const [];
-  SettingsDto? _settings;
-  String? _errorMessage;
+/// 连接状态机：`disconnected -> connecting -> connected -> reconnecting -> failed`。
+class AgentConnectionState {
+  AgentConnectionState(
+    this._clientFactory, {
+    BackoffStrategy? backoff,
+    DelayRunner? sleep,
+  })  : _backoff = backoff ?? defaultReconnectBackoff,
+        _sleep = sleep;
 
-  ConnectionPhase get phase => _phase;
-  AgentStatusDto? get status => _status;
-  List<CapabilityDto> get capabilities => _capabilities;
-  List<ModuleDto> get modules => _modules;
-  SettingsDto? get settings => _settings;
-  String? get errorMessage => _errorMessage;
-  bool get isConnected => _phase == ConnectionPhase.connected;
+  static const int maxReconnectAttempts = 6;
 
-  Future<void> connect() async {
-    if (_phase == ConnectionPhase.connecting ||
-        _phase == ConnectionPhase.connected) {
-      return;
+  final ProtocolClient Function() _clientFactory;
+  final BackoffStrategy _backoff;
+  final DelayRunner? _sleep;
+
+  final StreamController<String> _changesController =
+      StreamController<String>.broadcast();
+
+  String _status = ConnectionStatuses.disconnected;
+  int _attempt = 0;
+  ProtocolClient? _client;
+  Future<void>? _connectFuture;
+  StreamSubscription<TelemetryDto>? _telemetrySub;
+  Timer? _backoffTimer;
+  Completer<bool>? _backoffCompleter;
+  bool _manualDisconnect = false;
+  bool _disposed = false;
+
+  String get status => _status;
+  int get attempt => _attempt;
+  Stream<String> get changes => _changesController.stream;
+  ProtocolClient? get client => _client;
+
+  Future<void> connect() {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    if (_status == ConnectionStatuses.connected) {
+      return Future<void>.value();
+    }
+    if (_status == ConnectionStatuses.connecting && _connectFuture != null) {
+      return _connectFuture!;
     }
 
-    _phase = ConnectionPhase.connecting;
-    _errorMessage = null;
-    notifyListeners();
+    _manualDisconnect = false;
+    _cancelBackoffWait();
+    _attempt = 0;
+    _setStatus(ConnectionStatuses.connecting);
 
-    try {
-      await _client.connect();
-      _phase = ConnectionPhase.connected;
-      notifyListeners();
-      await refreshAll();
-    } on ProtocolException catch (error) {
-      _phase = ConnectionPhase.error;
-      _errorMessage = error.userMessage;
-      notifyListeners();
-    } catch (error) {
-      _phase = ConnectionPhase.error;
-      _errorMessage = error.toString();
-      notifyListeners();
-    }
+    final future = _connectInternal();
+    _connectFuture = future;
+    return future;
   }
 
-  Future<void> refreshAll() async {
-    if (!_client.isConnected) {
-      return;
-    }
-
+  Future<void> _connectInternal() async {
     try {
-      final results = await Future.wait([
-        _client.getStatus(),
-        _client.listCapabilities(),
-        _client.listModules(),
-        _client.getSettings(),
-      ]);
-
-      _status = results[0] as AgentStatusDto;
-      _capabilities = results[1] as List<CapabilityDto>;
-      _modules = results[2] as List<ModuleDto>;
-      _settings = results[3] as SettingsDto;
-      _errorMessage = null;
-      notifyListeners();
-    } on ProtocolException catch (error) {
-      if (error.code == ErrorCodes.connectionClosed) {
-        _phase = ConnectionPhase.disconnected;
-      } else {
-        _errorMessage = error.userMessage;
+      final client = _clientFactory();
+      await client.connect();
+      if (_manualDisconnect || _disposed) {
+        await client.close();
+        return;
       }
-      notifyListeners();
+      _client = client;
+      _attempt = 0;
+      _attachClient(client);
+      _setStatus(ConnectionStatuses.connected);
+    } catch (_) {
+      if (_manualDisconnect || _disposed) {
+        return;
+      }
+      _startReconnect();
+    } finally {
+      _connectFuture = null;
     }
   }
 
-  Future<void> updateSettings(SettingsPatch patch) async {
-    try {
-      _settings = await _client.setSettings(patch);
-      _errorMessage = null;
-      notifyListeners();
-    } on ProtocolException catch (error) {
-      _errorMessage = error.userMessage;
-      notifyListeners();
+  void _attachClient(ProtocolClient client) {
+    _telemetrySub?.cancel();
+    _telemetrySub = client.telemetry.listen(
+      (_) {},
+      onDone: _handleUnexpectedDisconnect,
+    );
+  }
+
+  void _handleUnexpectedDisconnect() {
+    if (_manualDisconnect || _disposed) {
+      return;
+    }
+    if (_status == ConnectionStatuses.reconnecting ||
+        _status == ConnectionStatuses.disconnected) {
+      return;
+    }
+    _client = null;
+    _startReconnect();
+  }
+
+  void _startReconnect() {
+    if (_manualDisconnect || _disposed) {
+      return;
+    }
+    _setStatus(ConnectionStatuses.reconnecting);
+    unawaited(_reconnectLoop());
+  }
+
+  Future<void> _reconnectLoop() async {
+    for (var i = 1; i <= maxReconnectAttempts; i++) {
+      if (_manualDisconnect || _disposed) {
+        return;
+      }
+      _attempt = i;
+      final delay = _backoff(i);
+      final cancelled = await _waitBackoff(delay);
+      if (cancelled || _manualDisconnect || _disposed) {
+        return;
+      }
+
+      try {
+        final client = _clientFactory();
+        await client.connect();
+        if (_manualDisconnect || _disposed) {
+          await client.close();
+          return;
+        }
+        _client = client;
+        _attempt = 0;
+        _attachClient(client);
+        _setStatus(ConnectionStatuses.connected);
+        return;
+      } catch (_) {
+        // 继续下一次退避重试
+      }
+    }
+
+    if (!_manualDisconnect && !_disposed) {
+      _setStatus(ConnectionStatuses.failed);
     }
   }
 
-  Future<void> setModuleEnabled(String id, {required bool enabled}) async {
-    try {
-      _modules = enabled
-          ? await _client.enableModule(id)
-          : await _client.disableModule(id);
-      _errorMessage = null;
-      notifyListeners();
-    } on ProtocolException catch (error) {
-      _errorMessage = error.userMessage;
-      notifyListeners();
+  Future<bool> _waitBackoff(Duration delay) {
+    final completer = Completer<bool>();
+    _backoffCompleter = completer;
+
+    final customSleep = _sleep;
+    if (customSleep != null) {
+      customSleep(delay).then((_) {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      }).catchError((Object _) {
+        if (!completer.isCompleted) {
+          completer.complete(true);
+        }
+      });
+    } else {
+      _backoffTimer = Timer(delay, () {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      });
+    }
+
+    return completer.future.whenComplete(() {
+      if (identical(_backoffCompleter, completer)) {
+        _backoffCompleter = null;
+      }
+      _backoffTimer?.cancel();
+      _backoffTimer = null;
+    });
+  }
+
+  void _cancelBackoffWait() {
+    _backoffTimer?.cancel();
+    _backoffTimer = null;
+    final completer = _backoffCompleter;
+    _backoffCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(true);
     }
   }
 
   Future<void> disconnect() async {
-    await _client.close();
-    _phase = ConnectionPhase.disconnected;
-    notifyListeners();
+    _manualDisconnect = true;
+    _connectFuture = null;
+    _cancelBackoffWait();
+    await _telemetrySub?.cancel();
+    _telemetrySub = null;
+    final currentClient = _client;
+    _client = null;
+    if (currentClient != null) {
+      await currentClient.close();
+    }
+    _attempt = 0;
+    _setStatus(ConnectionStatuses.disconnected);
   }
 
-  @override
-  void dispose() {
-    _client.close();
-    super.dispose();
+  Future<void> dispose() async {
+    if (_disposed) {
+      return;
+    }
+    await disconnect();
+    _disposed = true;
+    await _changesController.close();
+  }
+
+  void _setStatus(String next) {
+    if (_status == next) {
+      return;
+    }
+    _status = next;
+    if (!_changesController.isClosed) {
+      _changesController.add(next);
+    }
   }
 }

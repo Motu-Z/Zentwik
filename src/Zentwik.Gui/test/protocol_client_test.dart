@@ -12,7 +12,7 @@ Uint8List _encodeJson(Map<String, Object?> json) =>
 /// 可控异步内存通道：继承 [InMemoryFrameChannel]，在队列为空时挂起等待新帧或对端关闭，
 /// 便于在测试中验证并发乱序响应、超时与对端断线。
 class _ControllableFrameChannel extends InMemoryFrameChannel {
-  _ControllableFrameChannel({super.replies});
+  _ControllableFrameChannel();
 
   final List<Uint8List> _asyncQueue = [];
   Completer<Uint8List?>? _waiter;
