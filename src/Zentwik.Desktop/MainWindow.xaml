@@ -113,12 +113,19 @@
                     <Border Style="{StaticResource GlassFlyoutBorder}" Width="260" Margin="0,4,0,0">
                         <StackPanel>
                             <DockPanel Margin="4,2,4,6">
-                                <Button DockPanel.Dock="Right"
-                                        Style="{StaticResource FlatButton}"
-                                        Padding="8,3"
-                                        Content="{DynamicResource String.ScenesDeactivate}"
-                                        AutomationProperties.Name="{DynamicResource String.ScenesDeactivate}"
-                                        Command="{Binding DeactivateSceneCommand}" />
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Style="{StaticResource AccentButton}"
+                                            Padding="8,3"
+                                            Margin="0,0,6,0"
+                                            Content="{DynamicResource String.ScenesActivate}"
+                                            AutomationProperties.Name="激活选中场景"
+                                            Command="{Binding ActivateSceneCommand}" />
+                                    <Button Style="{StaticResource FlatButton}"
+                                            Padding="8,3"
+                                            Content="{DynamicResource String.ScenesDeactivate}"
+                                            AutomationProperties.Name="{DynamicResource String.ScenesDeactivate}"
+                                            Command="{Binding DeactivateSceneCommand}" />
+                                </StackPanel>
                                 <TextBlock Text="{DynamicResource String.ScenesTitle}"
                                            Style="{StaticResource Text.Secondary}"
                                            VerticalAlignment="Center" />
