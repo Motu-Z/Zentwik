@@ -35,6 +35,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130" />
@@ -75,6 +76,11 @@
                         Content="{DynamicResource String.PlansSave}"
                         AutomationProperties.Name="{DynamicResource String.PlansSave}"
                         Command="{Binding CreatePlanCommand}" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5"
+                           Text="{Binding PlanSpecHint}"
+                           Style="{StaticResource Text.Secondary}"
+                           FontSize="11.5"
+                           Margin="0,6,0,0" />
             </Grid>
         </Border>
 
@@ -143,6 +149,11 @@
                             Command="{Binding ApplyPlanCommand}"
                             Margin="0,0,8,0" />
                     <Button Style="{StaticResource FlatButton}"
+                            Content="编辑选中"
+                            AutomationProperties.Name="编辑选中方案"
+                            Command="{Binding EditPlanCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Style="{StaticResource FlatButton}"
                             Content="{DynamicResource String.PlansRevert}"
                             AutomationProperties.Name="{DynamicResource String.PlansRevert}"
                             Command="{Binding RevertPlanCommand}"
@@ -184,6 +195,11 @@
                                 Content="派生新方案"
                                 AutomationProperties.Name="派生新方案"
                                 Command="{Binding CreatePowerSchemeCommand}" />
+                        <Button Style="{StaticResource FlatButton}"
+                                Margin="0,0,8,0"
+                                Content="重命名"
+                                AutomationProperties.Name="重命名电源方案"
+                                Command="{Binding RenamePowerSchemeCommand}" />
                         <Button Style="{StaticResource FlatButton}"
                                 Margin="0,0,8,0"
                                 Content="备份"
