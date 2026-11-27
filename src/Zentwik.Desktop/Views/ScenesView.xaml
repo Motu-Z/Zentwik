@@ -39,6 +39,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130" />
@@ -99,6 +100,11 @@
                         Content="{DynamicResource String.ScenesSave}"
                         AutomationProperties.Name="{DynamicResource String.ScenesSave}"
                         Command="{Binding CreateSceneCommand}" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5"
+                           Text="{Binding TriggerArgHint}"
+                           Style="{StaticResource Text.Secondary}"
+                           FontSize="11.5"
+                           Margin="0,6,0,0" />
             </Grid>
         </Border>
 
@@ -160,6 +166,11 @@
                             Content="{DynamicResource String.ScenesActivate}"
                             AutomationProperties.Name="{DynamicResource String.ScenesActivate}"
                             Command="{Binding ActivateSceneCommand}"
+                            Margin="0,0,8,0" />
+                    <Button Style="{StaticResource FlatButton}"
+                            Content="编辑选中"
+                            AutomationProperties.Name="编辑选中场景"
+                            Command="{Binding EditSceneCommand}"
                             Margin="0,0,8,0" />
                     <Button Style="{StaticResource FlatButton}"
                             Content="{DynamicResource String.ScenesToggle}"
