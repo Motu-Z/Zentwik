@@ -63,6 +63,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _powerLimitTdcInput = string.Empty;
     private string _powerLimitEdcInput = string.Empty;
     private string _powerLimitApplySummary = string.Empty;
+    private string _deploymentModeText = "—";
+    private string _dataDirectoryText = "—";
+    private string _statePathText = "—";
+    private string _logDirectoryText = "—";
 
     private string? _noticeText;
     private bool _noticeIsError;
@@ -119,6 +123,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ToggleSelectedModuleCommand = new AsyncRelayCommand(ToggleSelectedModuleAsync, () => IsConnected && SelectedModule is { Optional: true });
         RefreshPowerLimitsCommand = new AsyncRelayCommand(RefreshPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
         ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
+        RefreshLogsCommand = new AsyncRelayCommand(RefreshLogsAsync, () => IsConnected);
 
         catalog.CultureChanged += OnCultureChanged;
     }
@@ -137,6 +142,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<LedgerRow> LedgerEntries { get; } = [];
 
     public ObservableCollection<ModuleRow> Modules { get; } = [];
+
+    public ObservableCollection<LogRow> Logs { get; } = [];
 
     public IReadOnlyList<string> Languages => LocalizationCatalog.SupportedCultures;
 
@@ -177,6 +184,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand ToggleSelectedModuleCommand { get; }
     public AsyncRelayCommand RefreshPowerLimitsCommand { get; }
     public AsyncRelayCommand ApplyPowerLimitsCommand { get; }
+    public AsyncRelayCommand RefreshLogsCommand { get; }
 
     public bool IsConnected
     {
@@ -352,6 +360,30 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _powerLimitApplySummary;
         private set => Set(ref _powerLimitApplySummary, value);
+    }
+
+    public string DeploymentModeText
+    {
+        get => _deploymentModeText;
+        private set => Set(ref _deploymentModeText, value);
+    }
+
+    public string DataDirectoryText
+    {
+        get => _dataDirectoryText;
+        private set => Set(ref _dataDirectoryText, value);
+    }
+
+    public string StatePathText
+    {
+        get => _statePathText;
+        private set => Set(ref _statePathText, value);
+    }
+
+    public string LogDirectoryText
+    {
+        get => _logDirectoryText;
+        private set => Set(ref _logDirectoryText, value);
     }
 
     public string? NoticeText
@@ -625,6 +657,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var ledger = await connection.ListLedgerAsync(ct).ConfigureAwait(false);
         var amdTuning = await connection.ReadTuningAsync(ct).ConfigureAwait(false);
         var intelTuning = await connection.ReadIntelTuningAsync(ct).ConfigureAwait(false);
+        var doctor = await connection.GetDoctorAsync(ct).ConfigureAwait(false);
+        var logs = await connection.GetLogAsync(80, ct).ConfigureAwait(false);
 
         _ui.Post(_ =>
         {
@@ -641,6 +675,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             Replace(Scenes, scenes.Select(BuildSceneRow));
             Replace(CoreOffsets, amdTuning.Cores.Select(static c => new CoreOffsetRow(c.Core, c.Offset)));
             Replace(LedgerEntries, ledger.Select(BuildLedgerRow));
+            Replace(Logs, logs.Select(static l => new LogRow(l.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), l.Level, l.Message)));
+            DeploymentModeText = doctor.RunningAsService
+                ? (doctor.Elevated ? "已注册系统服务（管理员）" : "已注册系统服务")
+                : (doctor.Elevated ? "便携 / 控制台模式（管理员）" : "便携 / 控制台模式（标准权限）");
+            DataDirectoryText = doctor.DataDirectory;
+            StatePathText = doctor.StatePath;
+            LogDirectoryText = doctor.LogDirectory;
 
             SelectedPlan = Plans.FirstOrDefault(p => p.Id == selectedPlanId) ?? Plans.FirstOrDefault();
             SelectedScene = Scenes.FirstOrDefault(s => s.Id == selectedSceneId) ?? Scenes.FirstOrDefault();
@@ -1293,6 +1334,25 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private static string FormatAmps(int? value) => value.HasValue ? $"{value} A" : "—";
 
+    private async Task RefreshLogsAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var logs = await connection.GetLogAsync(80, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ => Replace(Logs, logs.Select(static l => new LogRow(l.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), l.Level, l.Message))), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
     private void OnConnectionClosed(Exception? error)
     {
         _ = error;
@@ -1377,6 +1437,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ToggleSelectedModuleCommand.RaiseCanExecuteChanged();
         RefreshPowerLimitsCommand.RaiseCanExecuteChanged();
         ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
+        RefreshLogsCommand.RaiseCanExecuteChanged();
     }
 
     private static PlanRow BuildPlanRow(Plan plan)
@@ -1500,3 +1561,5 @@ public sealed record ModuleRow(
     public string ActionLabel => Optional ? (Enabled ? "停用" : "启用") : "内置";
     public string OptionalBadge => Optional ? (Enabled ? "可选 · 已启用" : "可选 · 未启用") : "核心模块";
 }
+
+public sealed record LogRow(string TimeText, string Level, string Message);
