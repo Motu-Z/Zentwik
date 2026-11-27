@@ -225,7 +225,12 @@
                             CornerRadius="8"
                             Padding="{TemplateBinding Padding}">
                         <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
                             <Border x:Name="ActiveBar"
+                                    Grid.Column="0"
                                     Width="2.5"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Stretch"
@@ -233,7 +238,20 @@
                                     CornerRadius="2"
                                     Background="{DynamicResource Brush.Accent}"
                                     Visibility="Collapsed" />
+                            <Path x:Name="NavIcon"
+                                  Grid.Column="0"
+                                  Width="14" Height="14"
+                                  Stretch="Uniform"
+                                  Margin="0,0,10,0"
+                                  VerticalAlignment="Center"
+                                  Data="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"
+                                  StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" />
                             <ContentPresenter x:Name="Content"
+                                              Grid.Column="1"
                                               ContentSource="Header"
                                               RecognizesAccessKey="True"
                                               VerticalAlignment="Center" />
