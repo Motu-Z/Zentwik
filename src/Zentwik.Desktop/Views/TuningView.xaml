@@ -61,14 +61,26 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <TextBlock Text="{DynamicResource String.TuningCores_empty}" FontSize="11.5" Margin="4,4,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CoreOffsets.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Margin="10,0,0,0">
                 <DockPanel Margin="0,0,0,6">
                     <TextBlock DockPanel.Dock="Right" Text="{Binding CoreClocksStatusText}" Style="{StaticResource Text.Secondary}" FontSize="11" VerticalAlignment="Center" />
-                    <TextBlock Text="逐核实时频率 (APERF)" Style="{StaticResource Text.Primary}" />
+                    <TextBlock Text="{DynamicResource String.TuningClocks_title}" Style="{StaticResource Text.Primary}" />
                 </DockPanel>
-                <ListBox AutomationProperties.Name="逐核实时频率"
+                <ListBox AutomationProperties.Name="{DynamicResource String.TuningClocks_title}"
                          ItemsSource="{Binding CoreClocks}"
                          MaxHeight="148"
                          Background="Transparent"
@@ -91,6 +103,18 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <TextBlock Text="{DynamicResource String.TuningClocks_empty}" FontSize="11.5" Margin="4,4,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding CoreClocks.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StackPanel>
         </Grid>
 
@@ -105,10 +129,10 @@
                     <Button DockPanel.Dock="Right"
                             Style="{StaticResource FlatButton}"
                             Padding="10,4"
-                            Content="读取功耗墙"
-                            AutomationProperties.Name="读取功耗墙"
+                            Content="{DynamicResource String.TuningPower_limits_read}"
+                            AutomationProperties.Name="{DynamicResource String.TuningPower_limits_read}"
                             Command="{Binding RefreshPowerLimitsCommand}" />
-                    <TextBlock Text="硬件功耗墙 (PPT / TDC / EDC)" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="{DynamicResource String.TuningPower_limits_title}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
                 <TextBlock Text="{Binding PowerLimitCurrentText}" Style="{StaticResource Text.Primary}" />
                 <TextBlock Text="{Binding PowerLimitFusedText}" Style="{StaticResource Text.Secondary}" FontSize="11.5" Margin="0,2,0,0" />
@@ -121,11 +145,11 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="FAST 功耗 (W)" ToolTip="FAST (W)" Text="{Binding PowerLimitFastInput, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBox Grid.Column="1" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="SLOW 功耗 (W)" ToolTip="SLOW (W)" Text="{Binding PowerLimitSlowInput, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBox Grid.Column="2" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="TDC 电流 (A)" ToolTip="TDC (A)" Text="{Binding PowerLimitTdcInput, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBox Grid.Column="3" Margin="0,0,8,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="EDC 电流 (A)" ToolTip="EDC (A)" Text="{Binding PowerLimitEdcInput, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Grid.Column="4" Style="{StaticResource AccentButton}" Content="应用功耗墙" AutomationProperties.Name="应用功耗墙" Command="{Binding ApplyPowerLimitsCommand}" />
+                    <TextBox Grid.Column="0" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="{DynamicResource String.TuningPower_limits_fast}" ToolTip="FAST (W)" Text="{Binding PowerLimitFastInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="1" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="{DynamicResource String.TuningPower_limits_slow}" ToolTip="SLOW (W)" Text="{Binding PowerLimitSlowInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="2" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="{DynamicResource String.TuningPower_limits_tdc}" ToolTip="TDC (A)" Text="{Binding PowerLimitTdcInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="3" Margin="0,0,8,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="{DynamicResource String.TuningPower_limits_edc}" ToolTip="EDC (A)" Text="{Binding PowerLimitEdcInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Column="4" Style="{StaticResource AccentButton}" Content="{DynamicResource String.TuningPower_limits_apply}" AutomationProperties.Name="{DynamicResource String.TuningPower_limits_apply}" Command="{Binding ApplyPowerLimitsCommand}" />
                 </Grid>
                 <TextBlock Text="{Binding PowerLimitApplySummary}" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
             </StackPanel>
@@ -176,6 +200,18 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+            <TextBlock Grid.Row="1" Text="{DynamicResource String.TuningLedger_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding LedgerEntries.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
         </Grid>
 
         <DockPanel Grid.Row="5" Margin="0,10,0,0">
