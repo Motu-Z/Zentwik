@@ -199,10 +199,19 @@
 
                     <DockPanel Grid.Row="5" Margin="0,10,0,0">
                         <Button DockPanel.Dock="Right"
-                                Style="{StaticResource FlatButton}"
-                                Content="{Binding SelectedModule.ActionLabel, FallbackValue='切换可选组件'}"
                                 AutomationProperties.Name="{DynamicResource String.SettingsModules_toggle}"
-                                Command="{Binding ToggleSelectedModuleCommand}" />
+                                Command="{Binding ToggleSelectedModuleCommand}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+                                    <Setter Property="Content" Value="{Binding SelectedModule.ActionLabel}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedModule}" Value="{x:Null}">
+                                            <Setter Property="Content" Value="{DynamicResource String.SettingsModules_toggle}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         <TextBlock Text="{DynamicResource String.SettingsModules_hint}"
                                    Style="{StaticResource Text.Secondary}"
                                    VerticalAlignment="Center" />
