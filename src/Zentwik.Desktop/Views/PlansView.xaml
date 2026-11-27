@@ -28,7 +28,7 @@
                 Visibility="{Binding IsCreatePlanOpen, Converter={StaticResource BoolToVisibility}}"
                 Style="{StaticResource Card}"
                 Margin="0,0,0,12"
-                Padding="14,12">
+                Padding="{DynamicResource DensityCardPadding}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -85,13 +85,13 @@
                  ItemContainerStyle="{StaticResource RowItem}">
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Grid Margin="14,11">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <StackPanel Orientation="Horizontal">
+                    <StackPanel Margin="{DynamicResource DensityRowMargin}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
                                 <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
                                 <Border Background="{DynamicResource Brush.Hover}"
                                         CornerRadius="4"
@@ -101,13 +101,29 @@
                                     <TextBlock Text="{Binding Kind}" Style="{StaticResource Text.Secondary}" FontSize="11" />
                                 </Border>
                             </StackPanel>
-                            <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <TextBlock Text="{Binding Caption}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
-                            <TextBlock Text="{Binding Outcome}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,2,0,0" />
-                        </StackPanel>
-                    </Grid>
+                            <TextBlock Grid.Column="1" Text="{Binding Caption}" Style="{StaticResource Text.Secondary}" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- 选中行下方直接展开参数与执行结果明细 -->
+                        <Border x:Name="InlineDetail"
+                                Visibility="Collapsed"
+                                Margin="0,8,0,2"
+                                Padding="10,8"
+                                CornerRadius="8"
+                                Background="{DynamicResource Brush.RowAlt}"
+                                BorderBrush="{DynamicResource Brush.Border}"
+                                BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Detail}" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding Outcome}" Style="{StaticResource Text.Secondary}" FontSize="11.5" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                            <Setter TargetName="InlineDetail" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
@@ -134,10 +150,10 @@
                             AutomationProperties.Name="{DynamicResource String.PlansDelete}"
                             Command="{Binding DeletePlanCommand}" />
                 </StackPanel>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{Binding SelectedPlan.Name, FallbackValue='—'}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding SelectedPlan.Outcome, FallbackValue=''}" Style="{StaticResource Text.Secondary}" />
-                </StackPanel>
+                <TextBlock Text="{Binding SelectedPlan.Name, FallbackValue='—'}"
+                           Style="{StaticResource Text.Primary}"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
             </DockPanel>
         </Border>
     </Grid>
