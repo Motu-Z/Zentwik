@@ -18,6 +18,10 @@ public sealed record CapabilityDto(
     string? Detail,
     IReadOnlyList<string> Requires);
 
+/// <summary>
+/// 一帧遥测。ProcessorUtilization 是逐逻辑处理器的占用率（索引即操作系统处理器序号，与 CoreClocks 的核号不是同一编号）；
+/// 它每拍都读，CoreClocks 按传感器间隔读，两段节奏不同所以分开。
+/// </summary>
 public sealed record TelemetryDto(
     DateTimeOffset Timestamp,
     double CpuTotalPercent,
@@ -28,7 +32,8 @@ public sealed record TelemetryDto(
     double? TemperatureCelsius = null,
     double? PackagePowerWatts = null,
     string? SensorDetail = null,
-    IReadOnlyList<TelemetryCoreClockDto>? CoreClocks = null);
+    IReadOnlyList<TelemetryCoreClockDto>? CoreClocks = null,
+    IReadOnlyList<double>? ProcessorUtilization = null);
 
 /// <summary>
 /// 一个物理核在采样窗口内的平均频率。Ccd 与 Core 是 SMU 核掩码字段，与 CO 的核编号同源。

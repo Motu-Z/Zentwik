@@ -16,7 +16,8 @@ public sealed record TelemetrySample(
     double? TemperatureCelsius = null,
     double? PackagePowerWatts = null,
     string? SensorDetail = null,
-    IReadOnlyList<CpuCoreClock>? CoreClocks = null);
+    IReadOnlyList<CpuCoreClock>? CoreClocks = null,
+    IReadOnlyList<double>? ProcessorUtilization = null);
 
 public interface ITelemetrySource
 {

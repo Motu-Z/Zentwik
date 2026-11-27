@@ -134,9 +134,10 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> MonitorAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval", "--clocks");
+        args.EnsureOnly("--pipe", "--count", "--interval", "--sensor-interval", "--clocks", "--per-core");
         var count = ParseInt(args.Value("--count"), 5, 1, 100000);
         var showClocks = args.Flag("--clocks");
+        var showPerCore = args.Flag("--per-core");
 
         // 不传就用设置里的默认值：间隔是用户偏好，不该在每个命令上都重复指定。
         var interval = args.Value("--interval") is null
@@ -186,6 +187,11 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                             .Select(static item => $"c{item.Core}:{item.Megahertz:0}"));
                         Console.WriteLine($"  ccd{group.Key} {values}");
                     }
+                }
+
+                if (showPerCore && sample.ProcessorUtilization is { } utilization)
+                {
+                    PrintProcessorUtilization(utilization);
                 }
 
                 // 传感器不可用与首帧缺基线都走这里，同一句只提示一次。
@@ -1192,6 +1198,25 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
         var high = clocks.Max(static item => item.Megahertz) / 1000d;
         return $"  clk {high:0.00}G";
+    }
+
+    /// <summary>
+    /// 逐逻辑处理器占用率，每 16 个一行。索引是操作系统处理器序号（含 SMT），
+    /// 与 --clocks 的核号（SMU 掩码字段）不是同一编号。
+    /// </summary>
+    private static void PrintProcessorUtilization(IReadOnlyList<double> utilization)
+    {
+        for (var row = 0; row < utilization.Count; row += 16)
+        {
+            var end = Math.Min(row + 16, utilization.Count);
+            var values = new string[end - row];
+            for (var index = row; index < end; index++)
+            {
+                values[index - row] = $"{utilization[index],3:0}";
+            }
+
+            Console.WriteLine($"  load[{row,2}-{end - 1,2}] {string.Join(' ', values)}");
+        }
     }
 
     private async Task<int> DoctorAsync(CancellationToken ct)

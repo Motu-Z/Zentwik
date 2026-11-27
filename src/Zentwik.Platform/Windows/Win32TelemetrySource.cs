@@ -14,6 +14,9 @@ public sealed class Win32TelemetrySource : ITelemetrySource
     private DateTime _processCountAt = DateTime.MinValue;
     private static readonly TimeSpan ProcessCountTtl = TimeSpan.FromSeconds(2);
 
+    // 逐逻辑处理器占用率：一次系统调用拿整表，不绑核、不遍历进程。
+    private readonly ProcessorLoadReader _processorLoad = new();
+
     public TelemetrySample Sample()
     {
         lock (_gate)
@@ -30,7 +33,8 @@ public sealed class Win32TelemetrySource : ITelemetrySource
                 memoryOk ? memory.TotalPhys : 0,
                 memoryOk ? memory.AvailPhys : 0,
                 CountProcesses(),
-                Environment.ProcessorCount);
+                Environment.ProcessorCount,
+                ProcessorUtilization: _processorLoad.Read());
             _last = sample;
             return sample;
         }
