@@ -6,6 +6,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -56,8 +57,45 @@
             </ListBox>
         </StackPanel>
 
+        <!-- 硬件功耗墙（可选组件启用后可见） -->
+        <Border Grid.Row="3"
+                Visibility="{Binding ShowPowerLimits, Converter={StaticResource BoolToVisibility}}"
+                Style="{StaticResource Card}"
+                Margin="0,0,0,12"
+                Padding="{DynamicResource DensityCardPadding}">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,6">
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource FlatButton}"
+                            Padding="10,4"
+                            Content="读取功耗墙"
+                            AutomationProperties.Name="读取功耗墙"
+                            Command="{Binding RefreshPowerLimitsCommand}" />
+                    <TextBlock Text="硬件功耗墙 (PPT / TDC / EDC)" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </DockPanel>
+                <TextBlock Text="{Binding PowerLimitCurrentText}" Style="{StaticResource Text.Primary}" />
+                <TextBlock Text="{Binding PowerLimitFusedText}" Style="{StaticResource Text.Secondary}" FontSize="11.5" Margin="0,2,0,0" />
+                <TextBlock Text="{Binding PowerLimitStatusDetail}" Style="{StaticResource Text.Secondary}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,8" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="FAST 功耗 (W)" ToolTip="FAST (W)" Text="{Binding PowerLimitFastInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="1" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="SLOW 功耗 (W)" ToolTip="SLOW (W)" Text="{Binding PowerLimitSlowInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="2" Margin="0,0,6,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="TDC 电流 (A)" ToolTip="TDC (A)" Text="{Binding PowerLimitTdcInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="3" Margin="0,0,8,0" Style="{StaticResource FlatTextBox}" AutomationProperties.Name="EDC 电流 (A)" ToolTip="EDC (A)" Text="{Binding PowerLimitEdcInput, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Column="4" Style="{StaticResource AccentButton}" Content="应用功耗墙" AutomationProperties.Name="应用功耗墙" Command="{Binding ApplyPowerLimitsCommand}" />
+                </Grid>
+                <TextBlock Text="{Binding PowerLimitApplySummary}" Style="{StaticResource Text.Secondary}" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+        </Border>
+
         <!-- 无边框 StateLedger 账本流 -->
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -103,7 +141,7 @@
             </ListBox>
         </Grid>
 
-        <DockPanel Grid.Row="4" Margin="0,10,0,0">
+        <DockPanel Grid.Row="5" Margin="0,10,0,0">
             <Button DockPanel.Dock="Right"
                     Style="{StaticResource FlatButton}"
                     Content="{DynamicResource String.TuningRelease}"
