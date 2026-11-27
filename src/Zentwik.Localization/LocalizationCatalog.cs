@@ -120,6 +120,12 @@ public sealed class LocalizationCatalog
         return args.Length == 0 ? template : string.Format(CultureInfo.CurrentCulture, template, args);
     }
 
+    public string Format(string key, params object?[] args)
+    {
+        var template = Get(key);
+        return args.Length == 0 ? template : string.Format(CultureInfo.CurrentCulture, template, args);
+    }
+
     public void Merge(string culture, IReadOnlyDictionary<string, string> entries)
     {
         if (entries.Count == 0)
