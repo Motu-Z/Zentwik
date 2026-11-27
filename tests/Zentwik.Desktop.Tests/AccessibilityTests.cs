@@ -23,8 +23,9 @@ public sealed class AccessibilityTests
             using var host = TestWindow.Create();
             foreach (var element in host.Descendants())
             {
-                // 页签的容器 peer 读不到标题，Narrator 走的是 TabControlAutomationPeer 的子项。
-                if (!IsInteractive(element) || element is TabItem)
+                // 页签的容器 peer 读不到标题，Narrator 走的是 TabControlAutomationPeer 的子项；
+                // ComboBox 内部的 DropToggle 是非聚焦模板部件，由宿主 ComboBox 承担无障碍名称。
+                if (!IsInteractive(element) || element is TabItem || element is ToggleButton { TemplatedParent: ComboBox })
                 {
                     continue;
                 }
@@ -69,7 +70,7 @@ public sealed class AccessibilityTests
                 host.SelectTab(index);
                 foreach (var element in host.Descendants())
                 {
-                    if (!IsInteractive(element) || element is TabItem)
+                    if (!IsInteractive(element) || element is TabItem || element is ToggleButton { TemplatedParent: ComboBox })
                     {
                         continue;
                     }
