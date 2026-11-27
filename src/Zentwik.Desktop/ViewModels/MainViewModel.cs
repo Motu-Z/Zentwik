@@ -45,6 +45,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private double? _packagePowerWatts;
     private double? _peakClockMhz;
     private string _sensorDetailText = string.Empty;
+    private string _lastSampleTimeText = "等待采样…";
 
     private string _selectedLanguage;
     private string _selectedTheme;
@@ -114,6 +115,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPlanCommand = new AsyncRelayCommand(ApplySelectedPlanAsync, () => IsConnected && SelectedPlan is { Id.Length: > 0 });
         RevertPlanCommand = new AsyncRelayCommand(RevertSelectedPlanAsync, () => IsConnected && SelectedPlan is { CanRevert: true });
         DeletePlanCommand = new AsyncRelayCommand(DeleteSelectedPlanAsync, () => IsConnected && SelectedPlan is { Id.Length: > 0 });
+        EditPlanCommand = new AsyncRelayCommand(EditSelectedPlanAsync, () => IsConnected && SelectedPlan is { Id.Length: > 0 });
 
         ToggleCreateSceneCommand = new RelayCommand(() => IsCreateSceneOpen = !IsCreateSceneOpen);
         CreateSceneCommand = new AsyncRelayCommand(CreateSceneAsync, () => IsConnected);
@@ -121,6 +123,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DeactivateSceneCommand = new AsyncRelayCommand(DeactivateSceneAsync, () => IsConnected && !string.IsNullOrEmpty(_activeSceneId));
         ToggleSceneEnabledCommand = new AsyncRelayCommand(ToggleSelectedSceneAsync, () => IsConnected && SelectedScene is not null);
         DeleteSceneCommand = new AsyncRelayCommand(DeleteSelectedSceneAsync, () => IsConnected && SelectedScene is not null);
+        EditSceneCommand = new AsyncRelayCommand(EditSelectedSceneAsync, () => IsConnected && SelectedScene is not null);
 
         RefreshTuningCommand = new AsyncRelayCommand(RefreshTuningAndLedgerAsync, () => IsConnected);
         ReleaseTakeoverCommand = new AsyncRelayCommand(ReleaseSelectedTakeoverAsync, () => IsConnected && SelectedLedger is { IsUserOwned: true });
@@ -129,6 +132,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
         RefreshLogsCommand = new AsyncRelayCommand(RefreshLogsAsync, () => IsConnected);
         CreatePowerSchemeCommand = new AsyncRelayCommand(CreatePowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null && !string.IsNullOrWhiteSpace(NewPowerSchemeName));
+        RenamePowerSchemeCommand = new AsyncRelayCommand(RenameSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false } && !string.IsNullOrWhiteSpace(NewPowerSchemeName));
         BackupPowerSchemeCommand = new AsyncRelayCommand(BackupSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null);
         DeletePowerSchemeCommand = new AsyncRelayCommand(DeleteSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false, Active: false });
         RestorePowerBackupCommand = new AsyncRelayCommand(RestoreSelectedPowerBackupAsync, () => IsConnected && SelectedPowerBackup is not null);
@@ -190,12 +194,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand ApplyPlanCommand { get; }
     public AsyncRelayCommand RevertPlanCommand { get; }
     public AsyncRelayCommand DeletePlanCommand { get; }
+    public AsyncRelayCommand EditPlanCommand { get; }
     public RelayCommand ToggleCreateSceneCommand { get; }
     public AsyncRelayCommand CreateSceneCommand { get; }
     public AsyncRelayCommand ActivateSceneCommand { get; }
     public AsyncRelayCommand DeactivateSceneCommand { get; }
     public AsyncRelayCommand ToggleSceneEnabledCommand { get; }
     public AsyncRelayCommand DeleteSceneCommand { get; }
+    public AsyncRelayCommand EditSceneCommand { get; }
     public AsyncRelayCommand RefreshTuningCommand { get; }
     public AsyncRelayCommand ReleaseTakeoverCommand { get; }
     public AsyncRelayCommand ToggleSelectedModuleCommand { get; }
@@ -203,6 +209,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand ApplyPowerLimitsCommand { get; }
     public AsyncRelayCommand RefreshLogsCommand { get; }
     public AsyncRelayCommand CreatePowerSchemeCommand { get; }
+    public AsyncRelayCommand RenamePowerSchemeCommand { get; }
     public AsyncRelayCommand BackupPowerSchemeCommand { get; }
     public AsyncRelayCommand DeletePowerSchemeCommand { get; }
     public AsyncRelayCommand RestorePowerBackupCommand { get; }
@@ -278,6 +285,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _sensorDetailText;
         private set => Set(ref _sensorDetailText, value);
+    }
+
+    public string LastSampleTimeText
+    {
+        get => _lastSampleTimeText;
+        private set => Set(ref _lastSampleTimeText, value);
     }
 
     public int SelectedMonitorIntervalMs
@@ -421,6 +434,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             if (Set(ref _selectedPowerScheme, value))
             {
                 CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+                RenamePowerSchemeCommand.RaiseCanExecuteChanged();
                 BackupPowerSchemeCommand.RaiseCanExecuteChanged();
                 DeletePowerSchemeCommand.RaiseCanExecuteChanged();
             }
@@ -447,6 +461,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             if (Set(ref _newPowerSchemeName, value))
             {
                 CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+                RenamePowerSchemeCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -481,6 +496,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 ApplyPlanCommand.RaiseCanExecuteChanged();
                 RevertPlanCommand.RaiseCanExecuteChanged();
                 DeletePlanCommand.RaiseCanExecuteChanged();
+                EditPlanCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -495,6 +511,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 ActivateSceneCommand.RaiseCanExecuteChanged();
                 ToggleSceneEnabledCommand.RaiseCanExecuteChanged();
                 DeleteSceneCommand.RaiseCanExecuteChanged();
+                EditSceneCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -520,8 +537,21 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string NewPlanKind
     {
         get => _newPlanKind;
-        set => Set(ref _newPlanKind, value);
+        set
+        {
+            if (Set(ref _newPlanKind, value))
+            {
+                Raise(nameof(PlanSpecHint));
+            }
+        }
     }
+
+    public string PlanSpecHint => NewPlanKind switch
+    {
+        "cpuTuning" => "格式：default=-15, ccd0=-20, 0=-10, 1=auto, fmax=5250, intel=-50",
+        "power" => "格式：目标 Windows 电源方案 GUID（可在「Windows 电源方案」页查看）",
+        _ => "格式：进程名=掩码:优先级[:cpusets]（如 game.exe=0xFF:High:0-7）",
+    };
 
     public string NewPlanId
     {
@@ -574,8 +604,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string NewSceneTriggerKind
     {
         get => _newSceneTriggerKind;
-        set => Set(ref _newSceneTriggerKind, value);
+        set
+        {
+            if (Set(ref _newSceneTriggerKind, value))
+            {
+                Raise(nameof(TriggerArgHint));
+            }
+        }
     }
+
+    public string TriggerArgHint => NewSceneTriggerKind switch
+    {
+        SceneTriggerKinds.Process => "触发参数：进程名（如 game.exe，进程运行期间保持激活）",
+        SceneTriggerKinds.ProcessExited => "触发参数：进程名（该进程退出时触发一次并保持激活）",
+        SceneTriggerKinds.PowerSource => "触发参数：ac（交流电）或 dc（电池）",
+        _ => "手动场景无需填写触发参数",
+    };
 
     public string NewSceneTriggerArg
     {
@@ -1030,6 +1074,82 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task EditSelectedPlanAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPlan;
+        if (connection is null || selected is null || string.IsNullOrEmpty(selected.Id))
+        {
+            return;
+        }
+
+        try
+        {
+            var plan = await connection.GetPlanAsync(selected.Id, _cts.Token).ConfigureAwait(false);
+            var spec = FormatPlanSpecForEdit(plan);
+            var kind = plan switch
+            {
+                CpuTuningPlan => "cpuTuning",
+                PowerPlan => "power",
+                _ => "scheduling",
+            };
+
+            _ui.Post(_ =>
+            {
+                NewPlanKind = kind;
+                NewPlanId = plan.Id;
+                NewPlanName = plan.Name;
+                NewPlanSpec = spec;
+                IsCreatePlanOpen = true;
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private static string FormatPlanSpecForEdit(Plan plan) => plan switch
+    {
+        CpuTuningPlan cpu => string.Join(", ", BuildCpuTokens(cpu)),
+        PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? string.Empty,
+        SchedulingPlan sched => sched.Rules.FirstOrDefault() is { } r
+            ? $"{r.ProcessMatch}={r.CpuMask ?? string.Empty}:{r.Priority ?? string.Empty}{(r.CpuSets is not null ? $":{r.CpuSets}" : string.Empty)}"
+            : string.Empty,
+        _ => string.Empty,
+    };
+
+    private static IEnumerable<string> BuildCpuTokens(CpuTuningPlan cpu)
+    {
+        if (cpu.DefaultOffset is { } def)
+        {
+            yield return $"default={def}";
+        }
+
+        if (cpu.CcdOffsets is not null)
+        {
+            foreach (var kv in cpu.CcdOffsets.OrderBy(static k => k.Key))
+            {
+                yield return $"ccd{kv.Key}={kv.Value}";
+            }
+        }
+
+        foreach (var c in cpu.Cores.OrderBy(static x => x.CoreIndex))
+        {
+            yield return c.Auto ? $"{c.CoreIndex}=auto" : $"{c.CoreIndex}={c.Offset}";
+        }
+
+        if (cpu.FMaxLimitMhz is { } fmax)
+        {
+            yield return $"fmax={fmax}";
+        }
+
+        if (cpu.IntelVoltageOffsetMillivolts is { } intel)
+        {
+            yield return $"intel={intel}";
+        }
+    }
+
     private async Task DeleteSelectedPlanAsync()
     {
         var connection = _connection;
@@ -1166,6 +1286,39 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task EditSelectedSceneAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedScene;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var scene = await connection.GetSceneAsync(selected.Id, _cts.Token).ConfigureAwait(false);
+            var trigger = scene.Triggers.FirstOrDefault();
+            var action = scene.Actions.FirstOrDefault();
+
+            _ui.Post(_ =>
+            {
+                NewSceneId = scene.Id;
+                NewSceneName = scene.Name;
+                NewScenePriority = scene.Priority.ToString(CultureInfo.InvariantCulture);
+                NewScenePlanId = action?.PlanId ?? string.Empty;
+                NewSceneTriggerKind = trigger?.Kind ?? SceneTriggerKinds.Manual;
+                NewSceneTriggerArg = trigger?.Argument ?? string.Empty;
+                NewSceneRestoreOnExit = scene.RestoreOnExit;
+                IsCreateSceneOpen = true;
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
     private async Task DeleteSelectedSceneAsync()
     {
         var connection = _connection;
@@ -1249,6 +1402,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _packagePowerWatts = sample.PackagePowerWatts;
         _peakClockMhz = sample.CoreClocks is { Count: > 0 } clocks ? clocks.Max(static c => c.Megahertz) : null;
         SensorDetailText = sample.SensorDetail ?? string.Empty;
+        LastSampleTimeText = $"服务端采样 {sample.Timestamp.ToLocalTime():HH:mm:ss}";
 
         Raise(nameof(CpuText));
         Raise(nameof(MemoryText));
@@ -1492,6 +1646,29 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task RenameSelectedPowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        var name = NewPowerSchemeName.Trim();
+        if (connection is null || selected is null || selected.BuiltIn || string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        try
+        {
+            var renamed = await connection.RenamePowerSchemeAsync(selected.Guid, name, _cts.Token).ConfigureAwait(false);
+            NewPowerSchemeName = string.Empty;
+            await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            ShowNotice($"已将电源方案重命名为 {renamed.Name}。", isError: false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
     private async Task BackupSelectedPowerSchemeAsync()
     {
         var connection = _connection;
@@ -1629,11 +1806,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPlanCommand.RaiseCanExecuteChanged();
         RevertPlanCommand.RaiseCanExecuteChanged();
         DeletePlanCommand.RaiseCanExecuteChanged();
+        EditPlanCommand.RaiseCanExecuteChanged();
         CreateSceneCommand.RaiseCanExecuteChanged();
         ActivateSceneCommand.RaiseCanExecuteChanged();
         DeactivateSceneCommand.RaiseCanExecuteChanged();
         ToggleSceneEnabledCommand.RaiseCanExecuteChanged();
         DeleteSceneCommand.RaiseCanExecuteChanged();
+        EditSceneCommand.RaiseCanExecuteChanged();
         RefreshTuningCommand.RaiseCanExecuteChanged();
         ReleaseTakeoverCommand.RaiseCanExecuteChanged();
         ToggleSelectedModuleCommand.RaiseCanExecuteChanged();
@@ -1641,6 +1820,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
         RefreshLogsCommand.RaiseCanExecuteChanged();
         CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+        RenamePowerSchemeCommand.RaiseCanExecuteChanged();
         BackupPowerSchemeCommand.RaiseCanExecuteChanged();
         DeletePowerSchemeCommand.RaiseCanExecuteChanged();
         RestorePowerBackupCommand.RaiseCanExecuteChanged();
