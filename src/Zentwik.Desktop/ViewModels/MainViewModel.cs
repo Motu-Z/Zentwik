@@ -782,7 +782,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 _ui.Post(_ =>
                 {
                     ApplySettings(settings);
-                    EffectiveTelemetrySummary = _catalog.Get("settings.telemetry_effective_fmt", ack.IntervalMs, ack.SensorIntervalMs);
+                    EffectiveTelemetrySummary = _catalog.Format("settings.telemetry_effective_fmt", ack.IntervalMs, ack.SensorIntervalMs);
                     if (history is { Samples.Count: > 0 })
                     {
                         LoadHistorySamples(history.Samples);
@@ -872,8 +872,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             DeploymentModeText = doctor.RunningAsService
                 ? (doctor.Elevated ? _catalog["settings.deploy_mode_service_admin"] : _catalog["settings.deploy_mode_service"])
                 : (doctor.Elevated ? _catalog["settings.deploy_mode_console_admin"] : _catalog["settings.deploy_mode_console"]);
-            AgentVersionText = _catalog.Get("settings.deploy_version_fmt", doctor.Version, doctor.ProtocolVersion, FormatUptime(doctor.UptimeSeconds));
-            StateCountsText = _catalog.Get("settings.deploy_counts_fmt", doctor.PlanCount, doctor.SceneCount, doctor.LedgerEntryCount);
+            AgentVersionText = _catalog.Format("settings.deploy_version_fmt", doctor.Version, doctor.ProtocolVersion, FormatUptime(doctor.UptimeSeconds));
+            StateCountsText = _catalog.Format("settings.deploy_counts_fmt", doctor.PlanCount, doctor.SceneCount, doctor.LedgerEntryCount);
             Replace(RecentErrors, doctor.RecentErrors.Select(static l => new LogRow(l.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), l.Level, l.Message)));
             DataDirectoryText = doctor.DataDirectory;
             StatePathText = doctor.StatePath;
@@ -943,7 +943,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             NewPlanName = string.Empty;
             NewPlanSpec = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.notice.saved", saved.Name, saved.Revision), isError: false);
+            ShowNotice(_catalog.Format("plans.notice.saved", saved.Name, saved.Revision), isError: false);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -976,7 +976,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     var parts = token.Split('=', 2);
                     if (parts.Length != 2)
                     {
-                        throw new FormatException(_catalog.Get("plans.err.co_token", token));
+                        throw new FormatException(_catalog.Format("plans.err.co_token", token));
                     }
 
                     var key = parts[0].Trim();
@@ -985,7 +985,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var def))
                         {
-                            throw new FormatException(_catalog.Get("plans.err.co_default", val));
+                            throw new FormatException(_catalog.Format("plans.err.co_default", val));
                         }
 
                         defaultCo = def;
@@ -996,7 +996,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedFmax))
                         {
-                            throw new FormatException(_catalog.Get("plans.err.fmax", val));
+                            throw new FormatException(_catalog.Format("plans.err.fmax", val));
                         }
 
                         fmax = parsedFmax;
@@ -1007,7 +1007,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMv))
                         {
-                            throw new FormatException(_catalog.Get("plans.err.intel_mv", val));
+                            throw new FormatException(_catalog.Format("plans.err.intel_mv", val));
                         }
 
                         intelMv = parsedMv;
@@ -1020,7 +1020,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ccdVal))
                         {
-                            throw new FormatException(_catalog.Get("plans.err.co_ccd", key, val));
+                            throw new FormatException(_catalog.Format("plans.err.co_ccd", key, val));
                         }
 
                         ccdOffsets[ccd] = ccdVal;
@@ -1029,7 +1029,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                     if (!int.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var core))
                     {
-                        throw new FormatException(_catalog.Get("plans.err.co_core", token));
+                        throw new FormatException(_catalog.Format("plans.err.co_core", token));
                     }
 
                     if (string.Equals(val, "auto", StringComparison.OrdinalIgnoreCase))
@@ -1040,7 +1040,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                     if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
                     {
-                        throw new FormatException(_catalog.Get("plans.err.co_offset", core, val));
+                        throw new FormatException(_catalog.Format("plans.err.co_offset", core, val));
                     }
 
                     cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
@@ -1241,7 +1241,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeletePlanAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.notice.deleted", selected.Id), isError: false);
+            ShowNotice(_catalog.Format("plans.notice.deleted", selected.Id), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1294,7 +1294,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             NewSceneName = string.Empty;
             NewSceneTriggerArg = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("scenes.notice.saved", saved.Name), isError: false);
+            ShowNotice(_catalog.Format("scenes.notice.saved", saved.Name), isError: false);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1410,7 +1410,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeleteSceneAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("scenes.notice.deleted", selected.Id), isError: false);
+            ShowNotice(_catalog.Format("scenes.notice.deleted", selected.Id), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1433,8 +1433,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             await RefreshTuningAndLedgerAsync().ConfigureAwait(false);
             ShowNotice(
                 released
-                    ? _catalog.Get("tuning.notice.released", selected.Target)
-                    : _catalog.Get("tuning.notice.not_user_owned", selected.Target),
+                    ? _catalog.Format("tuning.notice.released", selected.Target)
+                    : _catalog.Format("tuning.notice.not_user_owned", selected.Target),
                 isError: !released);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
@@ -1485,7 +1485,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _packagePowerWatts = sample.PackagePowerWatts;
         _peakClockMhz = sample.CoreClocks is { Count: > 0 } clocks ? clocks.Max(static c => c.Megahertz) : null;
         SensorDetailText = sample.SensorDetail ?? string.Empty;
-        LastSampleTimeText = _catalog.Get("monitor.sampled_at", sample.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+        LastSampleTimeText = _catalog.Format("monitor.sampled_at", sample.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture));
 
         Raise(nameof(CpuText));
         Raise(nameof(MemoryText));
@@ -1508,7 +1508,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 .OrderBy(static c => c.Ccd)
                 .ThenBy(static c => c.Core)
                 .Select(static c => new CoreClockRow(c.Ccd, c.Core, c.Megahertz)));
-            CoreClocksStatusText = _catalog.Get("tuning.clocks_active", liveClocks.Count);
+            CoreClocksStatusText = _catalog.Format("tuning.clocks_active", liveClocks.Count);
         }
         else
         {
@@ -1538,7 +1538,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Replace(ProcessorLoads, utilization.Select(static (pct, idx) => new ProcessorLoadRow(idx, pct)));
             }
 
-            ProcessorLoadsStatusText = _catalog.Get("monitor.processor_loads_count", utilization.Count);
+            ProcessorLoadsStatusText = _catalog.Format("monitor.processor_loads_count", utilization.Count);
         }
         else
         {
@@ -1618,7 +1618,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 if (resubscribeTelemetry)
                 {
                     var ack = await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
-                    _ui.Post(_ => EffectiveTelemetrySummary = _catalog.Get("settings.telemetry_effective_fmt", ack.IntervalMs, ack.SensorIntervalMs), null);
+                    _ui.Post(_ => EffectiveTelemetrySummary = _catalog.Format("settings.telemetry_effective_fmt", ack.IntervalMs, ack.SensorIntervalMs), null);
                 }
             }
             catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
@@ -1676,9 +1676,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 PowerLimitCurrentText = state.Available
-                    ? _catalog.Get("tuning.power_limits_current_fmt", FormatWatts(state.FastWatts), FormatWatts(state.SlowWatts), FormatWatts(state.StapmWatts))
+                    ? _catalog.Format("tuning.power_limits_current_fmt", FormatWatts(state.FastWatts), FormatWatts(state.SlowWatts), FormatWatts(state.StapmWatts))
                     : _catalog["tuning.power_limits_unavailable"];
-                PowerLimitFusedText = _catalog.Get("tuning.power_limits_fused_fmt", FormatWatts(state.FusedFastWatts), FormatWatts(state.FusedSlowWatts), FormatAmps(state.FusedTdcAmps));
+                PowerLimitFusedText = _catalog.Format("tuning.power_limits_fused_fmt", FormatWatts(state.FusedFastWatts), FormatWatts(state.FusedSlowWatts), FormatAmps(state.FusedTdcAmps));
                 PowerLimitStatusDetail = state.Error ?? state.FusedDetail ?? string.Empty;
             }, null);
         }
@@ -1714,8 +1714,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 var unit = item.Item is "tdc" or "edc" ? "A" : "W";
                 return item.State == "diverged"
-                    ? _catalog.Get("tuning.power_limits_diverged_fmt", item.Item.ToUpperInvariant(), item.Requested, unit, item.Actual ?? 0)
-                    : $"{item.Item.ToUpperInvariant()} [{item.State}] {item.Requested} {unit}{(item.Actual is int a ? _catalog.Get("tuning.power_limits_readback_fmt", a, unit) : string.Empty)}";
+                    ? _catalog.Format("tuning.power_limits_diverged_fmt", item.Item.ToUpperInvariant(), item.Requested, unit, item.Actual ?? 0)
+                    : $"{item.Item.ToUpperInvariant()} [{item.State}] {item.Requested} {unit}{(item.Actual is int a ? _catalog.Format("tuning.power_limits_readback_fmt", a, unit) : string.Empty)}";
             });
             var summary = string.Join("；", lines);
             if (!string.IsNullOrWhiteSpace(result.Note))
@@ -1773,7 +1773,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var created = await connection.CreatePowerSchemeAsync(template.Guid, name, _cts.Token).ConfigureAwait(false);
             NewPowerSchemeName = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.power_notice.created", created.Name), isError: false);
+            ShowNotice(_catalog.Format("plans.power_notice.created", created.Name), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1796,7 +1796,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var renamed = await connection.RenamePowerSchemeAsync(selected.Guid, name, _cts.Token).ConfigureAwait(false);
             NewPowerSchemeName = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.power_notice.renamed", renamed.Name), isError: false);
+            ShowNotice(_catalog.Format("plans.power_notice.renamed", renamed.Name), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1817,7 +1817,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var backup = await connection.BackupPowerSchemeAsync(selected.Guid, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.power_notice.backed_up", backup.Name, backup.SettingCount), isError: false);
+            ShowNotice(_catalog.Format("plans.power_notice.backed_up", backup.Name, backup.SettingCount), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1838,7 +1838,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeletePowerSchemeAsync(selected.Guid, keepBackup: true, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.power_notice.deleted", selected.Name), isError: false);
+            ShowNotice(_catalog.Format("plans.power_notice.deleted", selected.Name), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1859,7 +1859,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         NewPlanName = selected.Name;
         NewPlanSpec = selected.GuidText;
         IsCreatePlanOpen = true;
-        ShowNotice(_catalog.Get("plans.power_notice.used_for_plan", selected.Name), isError: false);
+        ShowNotice(_catalog.Format("plans.power_notice.used_for_plan", selected.Name), isError: false);
     }
 
     private static string FormatUptime(long seconds)
@@ -1883,7 +1883,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var result = await connection.RestorePowerSchemeAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice(_catalog.Get("plans.power_notice.restored", result.Scheme.Name, result.Applied, result.Failed), isError: result.Failed > 0);
+            ShowNotice(_catalog.Format("plans.power_notice.restored", result.Scheme.Name, result.Applied, result.Failed), isError: result.Failed > 0);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1957,7 +1957,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void UpdateHardwareSummaries(AgentStatusDto status, TuningSnapshotDto amd, IntelTuningSnapshotDto intel)
     {
         var active = string.IsNullOrEmpty(status.ActiveSceneId) ? _catalog["status.no_scene"] : status.ActiveSceneId;
-        HardwareSummary = _catalog.Get(
+        HardwareSummary = _catalog.Format(
             "monitor.hw_summary_fmt",
             status.MachineName,
             status.PhysicalCoreCount,
@@ -1967,12 +1967,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             amd.Availability);
 
         var amdPersistence = amd.PersistsAcrossReboot ? _catalog["tuning.persist_firmware"] : _catalog["tuning.persist_session"];
-        TuningSummary = _catalog.Get("tuning.amd_summary_fmt", amd.Availability, amd.Platform ?? "-", amdPersistence, amd.Detail ?? "-");
+        TuningSummary = _catalog.Format("tuning.amd_summary_fmt", amd.Availability, amd.Platform ?? "-", amdPersistence, amd.Detail ?? "-");
 
         var intelDetail = intel.VoltageOffsetMillivolts is { } mv
-            ? _catalog.Get("tuning.intel_voltage_fmt", mv, intel.TurboRatio1Core ?? 0, intel.TurboRatio8Cores ?? 0)
+            ? _catalog.Format("tuning.intel_voltage_fmt", mv, intel.TurboRatio1Core ?? 0, intel.TurboRatio8Cores ?? 0)
             : intel.Detail ?? "-";
-        IntelTuningSummary = _catalog.Get("tuning.intel_summary_fmt", intel.Availability, intel.Platform ?? "-", intelDetail);
+        IntelTuningSummary = _catalog.Format("tuning.intel_summary_fmt", intel.Availability, intel.Platform ?? "-", intelDetail);
     }
 
     private void ShowNotice(string text, bool isError)
@@ -2033,7 +2033,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var created = b.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
         var hasPortable = b.PortablePath is not null;
-        var summary = _catalog.Get("plans.power_backup_summary", created, b.SettingCount)
+        var summary = _catalog.Format("plans.power_backup_summary", created, b.SettingCount)
             + (hasPortable ? _catalog["plans.power_backup_portable"] : string.Empty);
         return new PowerBackupRow(b.Id, b.Name, created, b.SettingCount, hasPortable, summary);
     }
@@ -2050,7 +2050,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var detail = plan switch
         {
             CpuTuningPlan cpu => CurveOptimizerConfig.FormatPlanSummary(cpu),
-            PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? _catalog.Get("plans.power_settings_count", power.Settings.Count),
+            PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? _catalog.Format("plans.power_settings_count", power.Settings.Count),
             SchedulingPlan sched => string.Join(", ", sched.Rules.Select(static r => r.CpuSets is null ? $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"})" : $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"}:{r.CpuSets})")),
             _ => string.Empty,
         };
