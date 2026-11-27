@@ -165,6 +165,60 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task ApplySample_Maps_ProcessorUtilization_And_Clears_On_Null()
+    {
+        var vm = CreateViewModel();
+        try
+        {
+            var t0 = new DateTimeOffset(2026, 11, 26, 21, 0, 0, TimeSpan.Zero);
+            vm.ApplySample(new TelemetryDto(t0, 10d, 1000, 500, 100, 2, ProcessorUtilization: null));
+            Assert.Empty(vm.ProcessorLoads);
+
+            vm.ApplySample(new TelemetryDto(t0.AddSeconds(1), 50d, 1000, 500, 100, 2, ProcessorUtilization: [12.3, 87.6]));
+            Assert.Equal(2, vm.ProcessorLoads.Count);
+            Assert.Equal("CPU 0", vm.ProcessorLoads[0].Label);
+            Assert.Equal("12%", vm.ProcessorLoads[0].PercentText);
+            Assert.Equal("CPU 1", vm.ProcessorLoads[1].Label);
+            Assert.Equal("88%", vm.ProcessorLoads[1].PercentText);
+
+            vm.ApplySample(new TelemetryDto(t0.AddSeconds(2), 20d, 1000, 500, 100, 2, ProcessorUtilization: null));
+            Assert.Empty(vm.ProcessorLoads);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task LoadHistorySamples_Populates_History_And_Applies_Latest_Sample()
+    {
+        var vm = CreateViewModel();
+        try
+        {
+            double[]? latestHistory = null;
+            vm.HistoryChanged += points => latestHistory = points;
+
+            var t0 = new DateTimeOffset(2026, 11, 26, 21, 5, 0, TimeSpan.Zero);
+            vm.LoadHistorySamples(
+            [
+                new TelemetryDto(t0, 10d, 1000, 500, 100, 4),
+                new TelemetryDto(t0.AddSeconds(1), 25d, 1000, 500, 100, 4),
+                new TelemetryDto(t0.AddSeconds(2), 50d, 1000, 500, 100, 4, ProcessorUtilization: [40d, 60d, 50d, 50d]),
+            ]);
+
+            Assert.NotNull(latestHistory);
+            Assert.Equal([10d, 25d, 50d], latestHistory);
+            Assert.Equal("50%", vm.CpuText);
+            Assert.Equal(4, vm.ProcessorLoads.Count);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public void LocalizationCatalog_Supports_All_Cultures_Without_Empty_Values()
     {
         var catalog = LocalizationCatalog.CreateDefault();
