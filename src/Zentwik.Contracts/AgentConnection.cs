@@ -302,10 +302,10 @@ public sealed class AgentConnection : IAsyncDisposable
                 ct)
             .ConfigureAwait(false);
 
-    public async Task<SubscriptionAck> SubscribeTelemetryAsync(int intervalMs, CancellationToken ct = default) =>
+    public async Task<SubscriptionAck> SubscribeTelemetryAsync(int? intervalMs, int? sensorIntervalMs = null, CancellationToken ct = default) =>
         await InvokeAsync(
                 Ops.TelemetrySubscribe,
-                new SubscriptionRequest(intervalMs),
+                new SubscriptionRequest(intervalMs ?? 0, sensorIntervalMs),
                 ZentwikJson.Default.SubscriptionRequest,
                 ZentwikJson.Default.SubscriptionAck,
                 ct)
