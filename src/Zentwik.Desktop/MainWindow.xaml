@@ -269,16 +269,18 @@
                     ItemContainerStyle="{StaticResource NavTab}">
 
             <!-- 0: 首页总览与监控 -->
-            <TabItem Header="{DynamicResource String.NavMonitor}">
+            <TabItem Header="{DynamicResource String.NavMonitor}" Tag="M3 13 H7 L10 5 L14 19 L17 13 H21">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <DockPanel Grid.Row="0" Margin="0,0,0,16">
+                    <DockPanel Grid.Row="0" Margin="0,0,0,14">
                         <Button DockPanel.Dock="Right"
                                 Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
@@ -287,42 +289,70 @@
                         <TextBlock Text="{DynamicResource String.NavMonitor}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                     </DockPanel>
 
-                    <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,16">
-                        <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                    <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,10">
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource String.MonitorCpu}" Style="{StaticResource Text.Secondary}" />
-                                <TextBlock Text="{Binding CpuText}" Style="{StaticResource Text.Metric}" Margin="0,6,0,0" />
+                                <TextBlock Text="{Binding CpuText}" Style="{StaticResource Text.Metric}" Margin="0,5,0,0" />
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource String.MonitorMemory}" Style="{StaticResource Text.Secondary}" />
-                                <TextBlock Text="{Binding MemoryText}" Style="{StaticResource Text.Metric}" Margin="0,6,0,0" />
+                                <TextBlock Text="{Binding MemoryText}" Style="{StaticResource Text.Metric}" Margin="0,5,0,0" />
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource String.MonitorProcesses}" Style="{StaticResource Text.Secondary}" />
-                                <TextBlock Text="{Binding ProcessText}" Style="{StaticResource Text.Metric}" Margin="0,6,0,0" />
+                                <TextBlock Text="{Binding ProcessText}" Style="{StaticResource Text.Metric}" Margin="0,5,0,0" />
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource Card}">
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}">
                             <StackPanel>
                                 <TextBlock Text="{DynamicResource String.MonitorCores}" Style="{StaticResource Text.Secondary}" />
-                                <TextBlock Text="{Binding CoreText}" Style="{StaticResource Text.Metric}" Margin="0,6,0,0" />
+                                <TextBlock Text="{Binding CoreText}" Style="{StaticResource Text.Metric}" Margin="0,5,0,0" />
                             </StackPanel>
                         </Border>
                     </UniformGrid>
 
-                    <Border Grid.Row="2" Style="{StaticResource Card}" Padding="16,12,16,8">
+                    <!-- CPU 传感器通道（按 SensorIntervalMs 采样） -->
+                    <UniformGrid Grid.Row="2" Columns="3" Margin="0,0,0,12">
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
+                            <StackPanel>
+                                <TextBlock Text="封装温度 (Tctl)" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{Binding TemperatureText}" Style="{StaticResource Text.Metric}" FontSize="20" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
+                            <StackPanel>
+                                <TextBlock Text="封装功耗 (间隔均值)" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{Binding PackagePowerText}" Style="{StaticResource Text.Metric}" FontSize="20" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}">
+                            <StackPanel>
+                                <TextBlock Text="峰值核心频率" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{Binding PeakClockText}" Style="{StaticResource Text.Metric}" FontSize="20" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <Border Grid.Row="3" Style="{StaticResource Card}" Padding="16,12,16,8">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0"
-                                       Text="{DynamicResource String.MonitorCpu}"
-                                       Style="{StaticResource Text.Secondary}" />
+                            <DockPanel Grid.Row="0">
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding SensorDetailText}"
+                                           Style="{StaticResource Text.Secondary}"
+                                           FontSize="11"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{DynamicResource String.MonitorCpu}"
+                                           Style="{StaticResource Text.Secondary}" />
+                            </DockPanel>
                             <Canvas Grid.Row="1"
                                     x:Name="ChartCanvas"
                                     ClipToBounds="True"
@@ -335,7 +365,38 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="14,10">
+                    <!-- 模块快捷入口 -->
+                    <UniformGrid Grid.Row="4" Columns="4" Margin="0,10,0,0">
+                        <Button Style="{StaticResource FlatButton}"
+                                Margin="0,0,10,0"
+                                Padding="12,8"
+                                Tag="1"
+                                Content="{DynamicResource String.NavPlans}"
+                                AutomationProperties.Name="{DynamicResource String.NavPlans}"
+                                Click="OnQuickNavClick" />
+                        <Button Style="{StaticResource FlatButton}"
+                                Margin="0,0,10,0"
+                                Padding="12,8"
+                                Tag="2"
+                                Content="{DynamicResource String.NavScenes}"
+                                AutomationProperties.Name="{DynamicResource String.NavScenes}"
+                                Click="OnQuickNavClick" />
+                        <Button Style="{StaticResource FlatButton}"
+                                Margin="0,0,10,0"
+                                Padding="12,8"
+                                Tag="3"
+                                Content="{DynamicResource String.NavTuning}"
+                                AutomationProperties.Name="{DynamicResource String.NavTuning}"
+                                Click="OnQuickNavClick" />
+                        <Button Style="{StaticResource FlatButton}"
+                                Padding="12,8"
+                                Tag="4"
+                                Content="{DynamicResource String.NavSettings}"
+                                AutomationProperties.Name="{DynamicResource String.NavSettings}"
+                                Click="OnQuickNavClick" />
+                    </UniformGrid>
+
+                    <Border Grid.Row="5" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="{DynamicResource DensityCardPadding}">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource String.MonitorHardware_summary}" Style="{StaticResource Text.Secondary}" />
                             <TextBlock Text="{Binding HardwareSummary}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
@@ -345,22 +406,22 @@
             </TabItem>
 
             <!-- 1: 方案（索引必须保持 1，供无障碍与虚拟化测试定位） -->
-            <TabItem Header="{DynamicResource String.NavPlans}">
+            <TabItem Header="{DynamicResource String.NavPlans}" Tag="M3 3 H10 V10 H3 Z M14 3 H21 V10 H14 Z M14 14 H21 V21 H14 Z M3 14 H10 V21 H3 Z">
                 <views:PlansView />
             </TabItem>
 
             <!-- 2: 场景 -->
-            <TabItem Header="{DynamicResource String.NavScenes}">
+            <TabItem Header="{DynamicResource String.NavScenes}" Tag="M13 2 L3 14 L12 14 L11 22 L21 10 L12 10 Z">
                 <views:ScenesView />
             </TabItem>
 
             <!-- 3: 调校与状态账本 -->
-            <TabItem Header="{DynamicResource String.NavTuning}">
+            <TabItem Header="{DynamicResource String.NavTuning}" Tag="M3 21 V14 M3 10 V3 M11 21 V12 M11 8 V3 M19 21 V16 M19 12 V3 M1 14 H5 M9 8 H13 M17 16 H21">
                 <views:TuningView />
             </TabItem>
 
             <!-- 4: 设置 -->
-            <TabItem Header="{DynamicResource String.NavSettings}">
+            <TabItem Header="{DynamicResource String.NavSettings}" Tag="M4 6 H20 M4 12 H20 M4 18 H20 M8 4 V8 M16 10 V14 M10 16 V20">
                 <views:SettingsView />
             </TabItem>
         </TabControl>
