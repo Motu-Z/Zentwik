@@ -60,6 +60,15 @@ public static class Help
                     响应行里的 interval/sensors 是服务端实际生效的值，请求值可能被夹到上下限。
                     """);
                 break;
+            case "history":
+                Console.WriteLine("""
+                    zentwik history [--limit N]
+
+                    查询服务端最近采样的遥测历史（时间升序）。历史只在订阅期间积累，
+                    无订阅者时不采样、也不落盘，因此服务重启或长时间没开监控后为空。
+                    --limit 最大返回帧数，默认 60；缓冲上限约 3600 帧（1 秒推送约 1 小时）。
+                    """);
+                break;
             case "ledger":
                 Console.WriteLine("""
                     zentwik ledger [release <target>]
@@ -150,6 +159,7 @@ public static class Help
               caps                      能力清单
               modules                   模块状态与可选组件开关
               monitor                   持续采样 CPU 与内存
+              history                   查询最近采样的遥测历史
               tuning                    读取 CPU 电压偏移
               plans                     方案管理
               scenes                    场景管理

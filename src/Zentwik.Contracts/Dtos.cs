@@ -102,6 +102,12 @@ public sealed record SubscriptionRequest(int IntervalMs, int? SensorIntervalMs =
 /// <summary>返回实际生效的间隔：请求值可能被抬到下限，客户端须按这里算超时。</summary>
 public sealed record SubscriptionAck(int IntervalMs, int SensorIntervalMs = 0);
 
+/// <summary>查询监控历史：Limit 是返回的最大帧数（从最新往前取）。</summary>
+public sealed record HistoryRequest(int Limit);
+
+/// <summary>监控历史快照。Samples 时间升序；Capacity 是缓冲上限，Count 是当前帧数，Count &lt; Capacity 说明缓冲尚未填满。</summary>
+public sealed record HistoryDto(int Capacity, int Count, IReadOnlyList<TelemetryDto> Samples);
+
 public sealed record EmptyPayload;
 
 public sealed record IdRequest(string Id);

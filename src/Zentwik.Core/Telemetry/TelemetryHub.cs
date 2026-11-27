@@ -10,7 +10,19 @@ public sealed class TelemetryHub(ITelemetrySource source, ICpuSensorSource? sens
     private CpuSensorReading _sensorReading = new(null, null);
     private string? _sensorError;
 
+    // 历史缓冲：只在采样时写入。无订阅者时完全不采样，因此历史随订阅积累、断连/重启后清空。
+    private readonly TelemetryRingBuffer _history = new(TelemetryRingBuffer.DefaultCapacity);
+
     public TelemetrySample? Last => Volatile.Read(ref _last);
+
+    /// <summary>历史缓冲容量（帧）。</summary>
+    public int HistoryCapacity => _history.Capacity;
+
+    /// <summary>当前缓冲里的帧数。</summary>
+    public int HistoryCount => _history.Count;
+
+    /// <summary>最近 <paramref name="limit"/> 帧，时间升序。</summary>
+    public TelemetrySample[] HistorySnapshot(int limit) => _history.Snapshot(limit);
 
     /// <summary>系统遥测可用但传感器通道缺席时，仅温度与封装功耗为空。</summary>
     public bool HasSensors => sensors is not null;
@@ -33,6 +45,7 @@ public sealed class TelemetryHub(ITelemetrySource source, ICpuSensorSource? sens
             }
 
             Volatile.Write(ref _last, sample);
+            _history.Add(sample);
             return sample;
         }
         finally

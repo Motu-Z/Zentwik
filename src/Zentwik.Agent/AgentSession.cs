@@ -417,6 +417,9 @@ internal sealed class AgentSession : IAsyncDisposable
                 StopTelemetry();
                 return Ok(request, null);
 
+            case Ops.TelemetryHistory:
+                return ReadHistory(request);
+
             default:
                 return ResponseEnvelope.Failure(
                     request.Id,
@@ -620,21 +623,7 @@ internal sealed class AgentSession : IAsyncDisposable
                             return true;
                         }
 
-                        var dto = new TelemetryDto(
-                            sample.Timestamp,
-                            sample.CpuTotalPercent,
-                            sample.MemoryTotalBytes,
-                            sample.MemoryAvailableBytes,
-                            sample.ProcessCount,
-                            sample.ProcessorCount,
-                            sample.TemperatureCelsius,
-                            sample.PackagePowerWatts,
-                            sample.SensorDetail,
-                            sample.CoreClocks?.Select(static clock => new TelemetryCoreClockDto(
-                                clock.Ccd,
-                                clock.Core,
-                                Math.Round(clock.Megahertz))).ToArray(),
-                            sample.ProcessorUtilization?.ToArray());
+                        var dto = ToDto(sample);
 
                         Enqueue(ResponseEnvelope.Event(
                             Events.TelemetrySample,
@@ -670,6 +659,33 @@ internal sealed class AgentSession : IAsyncDisposable
         cts.Cancel();
         cts.Dispose();
     }
+
+    /// <summary>历史是采样期间积累的环形缓冲快照：无订阅时为空，这正是「不常驻采样」的取舍。</summary>
+    private ResponseEnvelope ReadHistory(RequestEnvelope request)
+    {
+        var limit = RequirePayload(request, ZentwikJson.Default.HistoryRequest).Limit;
+        var samples = _server.Hub.HistorySnapshot(limit)
+            .Select(ToDto)
+            .ToArray();
+        var dto = new HistoryDto(_server.Hub.HistoryCapacity, _server.Hub.HistoryCount, samples);
+        return Ok(request, JsonSerializer.SerializeToElement(dto, ZentwikJson.Default.HistoryDto));
+    }
+
+    private static TelemetryDto ToDto(TelemetrySample sample) => new(
+        sample.Timestamp,
+        sample.CpuTotalPercent,
+        sample.MemoryTotalBytes,
+        sample.MemoryAvailableBytes,
+        sample.ProcessCount,
+        sample.ProcessorCount,
+        sample.TemperatureCelsius,
+        sample.PackagePowerWatts,
+        sample.SensorDetail,
+        sample.CoreClocks?.Select(static clock => new TelemetryCoreClockDto(
+            clock.Ccd,
+            clock.Core,
+            Math.Round(clock.Megahertz))).ToArray(),
+        sample.ProcessorUtilization?.ToArray());
 
     private TuningSnapshotDto ReadTuning()
     {
