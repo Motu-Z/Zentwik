@@ -10,9 +10,10 @@ namespace Zentwik.Desktop.Tests;
 
 public sealed class MainViewModelTests
 {
-    private static MainViewModel CreateViewModel()
+    private static MainViewModel CreateViewModel(string culture = "zh-CN")
     {
         var catalog = LocalizationCatalog.CreateDefault();
+        catalog.CurrentCulture = culture;
         var themes = new ThemeService();
         return new MainViewModel(catalog, themes);
     }
@@ -109,7 +110,7 @@ public sealed class MainViewModelTests
     [Fact]
     public async Task Clamping_And_Dynamic_Hints_Work_As_Expected()
     {
-        var vm = CreateViewModel();
+        var vm = CreateViewModel("zh-CN");
         try
         {
             vm.SelectedMonitorIntervalMs = 100;
@@ -132,6 +133,10 @@ public sealed class MainViewModelTests
 
             vm.NewSceneTriggerKind = SceneTriggerKinds.ProcessExited;
             Assert.Contains("退出", vm.TriggerArgHint);
+
+            vm.SelectedLanguage = "en-US";
+            Assert.Contains("exit", vm.TriggerArgHint);
+            Assert.Equal("Comfortable", vm.DensityOptions[0].Label);
         }
         finally
         {
