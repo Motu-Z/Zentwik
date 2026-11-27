@@ -903,7 +903,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private Plan BuildPlanFromForm()
+    internal Plan BuildPlanFromForm()
     {
         var id = NewPlanId.Trim();
         var name = NewPlanName.Trim();
@@ -1139,7 +1139,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private static string FormatPlanSpecForEdit(Plan plan) => plan switch
+    internal static string FormatPlanSpecForEdit(Plan plan) => plan switch
     {
         CpuTuningPlan cpu => string.Join(", ", BuildCpuTokens(cpu)),
         PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? string.Empty,
@@ -1420,7 +1420,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void ApplySample(TelemetryDto sample)
+    internal void ApplySample(TelemetryDto sample)
     {
         _cpuPercent = sample.CpuTotalPercent;
         _memoryPercent = sample.MemoryTotalBytes == 0
