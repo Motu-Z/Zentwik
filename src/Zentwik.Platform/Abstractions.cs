@@ -4,18 +4,58 @@ using Zentwik.Domain.Power;
 namespace Zentwik.Platform;
 
 /// <summary>时间戳由采样源给出，接收端不得用本地时钟替代。</summary>
+/// <param name="TemperatureCelsius">CPU 封装温度（Tctl 口径）；通道不可用时为 null。</param>
+/// <param name="PackagePowerWatts">封装功耗；需要两帧能量计数器差分，首帧为 null。</param>
 public sealed record TelemetrySample(
     DateTimeOffset Timestamp,
     double CpuTotalPercent,
     ulong MemoryTotalBytes,
     ulong MemoryAvailableBytes,
     int ProcessCount,
-    int ProcessorCount);
+    int ProcessorCount,
+    double? TemperatureCelsius = null,
+    double? PackagePowerWatts = null,
+    string? SensorDetail = null,
+    IReadOnlyList<CpuCoreClock>? CoreClocks = null);
 
 public interface ITelemetrySource
 {
     /// <summary>实现不得外泄异常；失败返回上一帧。</summary>
     TelemetrySample Sample();
+}
+
+/// <summary>CPU 封装级读数。null 表示该项本次读不到，不拿 0 充数。</summary>
+/// <param name="CoreClocks">逐物理核频率；映射不可用或本次读不到时为 null。</param>
+public sealed record CpuSensorReading(
+    double? TemperatureCelsius,
+    double? PackagePowerWatts,
+    IReadOnlyList<CpuCoreClock>? CoreClocks = null,
+    string? Detail = null);
+
+/// <summary>
+/// 一个物理核在采样窗口内的平均频率。<see cref="Ccd"/> 与 <see cref="Core"/> 是 SMU 核掩码字段，
+/// 与 CO 的核编号同源，不是操作系统枚举序号。
+/// </summary>
+/// <param name="Megahertz">窗口内平均频率；睡眠核不给值，不会出现在列表里。</param>
+public sealed record CpuCoreClock(int Ccd, int Core, double Megahertz);
+
+/// <summary>
+/// CPU 传感器通道：封装温度、封装功耗与逐核频率。只读，不改变任何硬件状态。
+/// </summary>
+/// <remarks>
+/// 温度来自 SMN 的 THM_TCON_CUR_TMP，功耗来自 RAPL 封装能量计数器差分，频率来自逐核 APERF 计数器差分；
+/// 都不走 PM 表——PM 表每次读取要先触发传输并等 20–30 ms，不适合按订阅节拍采。
+/// </remarks>
+public interface ICpuSensorSource
+{
+    /// <summary>探测模块、权限与平台。只建会话，不采样。</summary>
+    (HardwareAvailability Availability, string? Detail) ProbeCpuSensors();
+
+    /// <summary>
+    /// 采一帧。封装功耗与逐核频率靠相邻两帧计数器差分，首帧或间隔过短时这两项为空。
+    /// 实现不得抛异常；整帧失败返回 false 并给出原因。
+    /// </summary>
+    bool TrySampleCpuSensors(out CpuSensorReading reading, out string? error);
 }
 
 public sealed record PowerSchemeInfo(Guid Guid, string FriendlyName);
