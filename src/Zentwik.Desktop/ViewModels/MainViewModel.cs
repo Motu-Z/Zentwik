@@ -65,6 +65,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _powerLimitEdcInput = string.Empty;
     private string _powerLimitApplySummary = string.Empty;
     private string _deploymentModeText = "—";
+    private string _agentVersionText = "—";
+    private string _stateCountsText = "—";
+    private string _effectiveTelemetrySummary = "—";
     private string _dataDirectoryText = "—";
     private string _statePathText = "—";
     private string _logDirectoryText = "—";
@@ -136,6 +139,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         BackupPowerSchemeCommand = new AsyncRelayCommand(BackupSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null);
         DeletePowerSchemeCommand = new AsyncRelayCommand(DeleteSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false, Active: false });
         RestorePowerBackupCommand = new AsyncRelayCommand(RestoreSelectedPowerBackupAsync, () => IsConnected && SelectedPowerBackup is not null);
+        UsePowerSchemeForPlanCommand = new RelayCommand(UseSelectedPowerSchemeForPlan, () => SelectedPowerScheme is not null);
 
         catalog.CultureChanged += OnCultureChanged;
     }
@@ -156,6 +160,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<ModuleRow> Modules { get; } = [];
 
     public ObservableCollection<LogRow> Logs { get; } = [];
+
+    public ObservableCollection<LogRow> RecentErrors { get; } = [];
 
     public ObservableCollection<CoreClockRow> CoreClocks { get; } = [];
 
@@ -213,6 +219,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand BackupPowerSchemeCommand { get; }
     public AsyncRelayCommand DeletePowerSchemeCommand { get; }
     public AsyncRelayCommand RestorePowerBackupCommand { get; }
+    public RelayCommand UsePowerSchemeForPlanCommand { get; }
 
     public bool IsConnected
     {
@@ -402,6 +409,24 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         private set => Set(ref _deploymentModeText, value);
     }
 
+    public string AgentVersionText
+    {
+        get => _agentVersionText;
+        private set => Set(ref _agentVersionText, value);
+    }
+
+    public string StateCountsText
+    {
+        get => _stateCountsText;
+        private set => Set(ref _stateCountsText, value);
+    }
+
+    public string EffectiveTelemetrySummary
+    {
+        get => _effectiveTelemetrySummary;
+        private set => Set(ref _effectiveTelemetrySummary, value);
+    }
+
     public string DataDirectoryText
     {
         get => _dataDirectoryText;
@@ -437,6 +462,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 RenamePowerSchemeCommand.RaiseCanExecuteChanged();
                 BackupPowerSchemeCommand.RaiseCanExecuteChanged();
                 DeletePowerSchemeCommand.RaiseCanExecuteChanged();
+                UsePowerSchemeForPlanCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -708,11 +734,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 _connection = connection;
 
                 var settings = await connection.GetSettingsAsync(_cts.Token).ConfigureAwait(false);
-                await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
+                var ack = await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
 
                 _ui.Post(_ =>
                 {
                     ApplySettings(settings);
+                    EffectiveTelemetrySummary = $"推送 {ack.IntervalMs} ms · 传感器 {ack.SensorIntervalMs} ms";
                     IsConnected = true;
                 }, null);
 
@@ -797,6 +824,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             DeploymentModeText = doctor.RunningAsService
                 ? (doctor.Elevated ? "已注册系统服务（管理员）" : "已注册系统服务")
                 : (doctor.Elevated ? "便携 / 控制台模式（管理员）" : "便携 / 控制台模式（标准权限）");
+            AgentVersionText = $"v{doctor.Version} · 协议 v{doctor.ProtocolVersion} · 已运行 {FormatUptime(doctor.UptimeSeconds)}";
+            StateCountsText = $"方案 {doctor.PlanCount} · 场景 {doctor.SceneCount} · 账本 {doctor.LedgerEntryCount}";
+            Replace(RecentErrors, doctor.RecentErrors.Select(static l => new LogRow(l.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), l.Level, l.Message)));
             DataDirectoryText = doctor.DataDirectory;
             StatePathText = doctor.StatePath;
             LogDirectoryText = doctor.LogDirectory;
@@ -1483,7 +1513,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 await connection.SetSettingsAsync(patch, _cts.Token).ConfigureAwait(false);
                 if (resubscribeTelemetry)
                 {
-                    await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
+                    var ack = await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
+                    _ui.Post(_ => EffectiveTelemetrySummary = $"推送 {ack.IntervalMs} ms · 传感器 {ack.SensorIntervalMs} ms", null);
                 }
             }
             catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
@@ -1711,6 +1742,30 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private void UseSelectedPowerSchemeForPlan()
+    {
+        var selected = SelectedPowerScheme;
+        if (selected is null)
+        {
+            return;
+        }
+
+        NewPlanKind = "power";
+        NewPlanId = $"power-{selected.Guid:N}"[..16];
+        NewPlanName = selected.Name;
+        NewPlanSpec = selected.GuidText;
+        IsCreatePlanOpen = true;
+        ShowNotice($"已将电源方案「{selected.Name}」带入新建表单，请切回「方案」页保存。", isError: false);
+    }
+
+    private static string FormatUptime(long seconds)
+    {
+        var span = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return span.TotalHours >= 1
+            ? $"{(int)span.TotalHours}h {span.Minutes}m"
+            : $"{span.Minutes}m {span.Seconds}s";
+    }
+
     private async Task RestoreSelectedPowerBackupAsync()
     {
         var connection = _connection;
@@ -1824,6 +1879,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         BackupPowerSchemeCommand.RaiseCanExecuteChanged();
         DeletePowerSchemeCommand.RaiseCanExecuteChanged();
         RestorePowerBackupCommand.RaiseCanExecuteChanged();
+        UsePowerSchemeForPlanCommand.RaiseCanExecuteChanged();
     }
 
     private static PlanRow BuildPlanRow(Plan plan)
