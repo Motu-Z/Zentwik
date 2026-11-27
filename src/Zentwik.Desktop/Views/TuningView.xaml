@@ -20,7 +20,7 @@
         </DockPanel>
 
         <!-- 能力与硬件通道摘要 -->
-        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,14" Padding="14,12">
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,14" Padding="{DynamicResource DensityCardPadding}">
             <StackPanel>
                 <TextBlock Text="{DynamicResource String.TuningChannel}" Style="{StaticResource Text.Secondary}" />
                 <TextBlock Text="{Binding TuningSummary}" Style="{StaticResource Text.Primary}" TextWrapping="Wrap" Margin="0,4,0,0" />
@@ -72,20 +72,32 @@
                      ItemContainerStyle="{StaticResource RowItem}">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid Margin="14,10">
+                        <Grid Margin="{DynamicResource DensityRowMargin}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding ValuesSummary}" Style="{StaticResource Text.Secondary}" Margin="0,3,0,0" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="OwnerDot"
+                                             Width="5" Height="5"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0"
+                                             Fill="{DynamicResource Brush.Good}" />
+                                    <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding ValuesSummary}" Style="{StaticResource Text.Secondary}" Margin="13,3,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                                 <TextBlock Text="{Binding Owner}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" />
-                                <TextBlock Text="{Binding Status}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,3,0,0" />
+                                <TextBlock Text="{Binding Status}" Style="{StaticResource Text.Secondary}" HorizontalAlignment="Right" Margin="0,2,0,0" />
                             </StackPanel>
                         </Grid>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsUserOwned}" Value="True">
+                                <Setter TargetName="OwnerDot" Property="Fill" Value="{DynamicResource Brush.Warn}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
