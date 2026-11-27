@@ -1930,13 +1930,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPlanCommand.RaiseCanExecuteChanged();
         RevertPlanCommand.RaiseCanExecuteChanged();
         DeletePlanCommand.RaiseCanExecuteChanged();
-                EditPlanCommand.RaiseCanExecuteChanged();
+        EditPlanCommand.RaiseCanExecuteChanged();
         CreateSceneCommand.RaiseCanExecuteChanged();
         ActivateSceneCommand.RaiseCanExecuteChanged();
         DeactivateSceneCommand.RaiseCanExecuteChanged();
         ToggleSceneEnabledCommand.RaiseCanExecuteChanged();
         DeleteSceneCommand.RaiseCanExecuteChanged();
-                EditSceneCommand.RaiseCanExecuteChanged();
+        EditSceneCommand.RaiseCanExecuteChanged();
         RefreshTuningCommand.RaiseCanExecuteChanged();
         ReleaseTakeoverCommand.RaiseCanExecuteChanged();
         ToggleSelectedModuleCommand.RaiseCanExecuteChanged();
@@ -1944,6 +1944,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
         RefreshLogsCommand.RaiseCanExecuteChanged();
         CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+        RenamePowerSchemeCommand.RaiseCanExecuteChanged();
         BackupPowerSchemeCommand.RaiseCanExecuteChanged();
         DeletePowerSchemeCommand.RaiseCanExecuteChanged();
         RestorePowerBackupCommand.RaiseCanExecuteChanged();
