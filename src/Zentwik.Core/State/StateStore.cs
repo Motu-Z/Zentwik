@@ -62,9 +62,10 @@ public sealed class StateStore
             }
 
             // 旧文件可能缺少后加的集合字段，反序列化会得到 null；缺失按空集合处理，不当作损坏。
+            // 数值设置项缺失会得到 0，须回落默认值，否则会被当成"间隔调成 0"。
             Current = document with
             {
-                Settings = document.Settings ?? new UserSettings(),
+                Settings = UserSettingsRules.Normalize(document.Settings ?? new UserSettings()),
                 Plans = document.Plans ?? [],
                 Scenes = document.Scenes ?? [],
                 Ledger = document.Ledger ?? [],
