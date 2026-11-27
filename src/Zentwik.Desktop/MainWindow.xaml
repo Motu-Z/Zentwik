@@ -118,7 +118,7 @@
                                             Padding="8,3"
                                             Margin="0,0,6,0"
                                             Content="{DynamicResource String.ScenesActivate}"
-                                            AutomationProperties.Name="激活选中场景"
+                                            AutomationProperties.Name="{DynamicResource String.ScenesActivate_selected_a11y}"
                                             Command="{Binding ActivateSceneCommand}" />
                                     <Button Style="{StaticResource FlatButton}"
                                             Padding="8,3"
@@ -130,7 +130,8 @@
                                            Style="{StaticResource Text.Secondary}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
-                            <ListBox ItemsSource="{Binding Scenes}"
+                            <ListBox AutomationProperties.Name="{DynamicResource String.ScenesTitle}"
+                                     ItemsSource="{Binding Scenes}"
                                      SelectedItem="{Binding SelectedScene, Mode=TwoWay}"
                                      MaxHeight="220"
                                      Background="Transparent"
@@ -192,7 +193,8 @@
                                            Style="{StaticResource Text.Secondary}"
                                            VerticalAlignment="Center" />
                             </DockPanel>
-                            <ListBox ItemsSource="{Binding LedgerEntries}"
+                            <ListBox AutomationProperties.Name="{DynamicResource String.TuningLedger_title}"
+                                     ItemsSource="{Binding LedgerEntries}"
                                      SelectedItem="{Binding SelectedLedger, Mode=TwoWay}"
                                      MaxHeight="240"
                                      Background="Transparent"
@@ -362,19 +364,19 @@
                     <UniformGrid Grid.Row="2" Columns="3" Margin="0,0,0,12">
                         <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
                             <StackPanel>
-                                <TextBlock Text="封装温度 (Tctl)" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{DynamicResource String.MonitorTemperature}" Style="{StaticResource Text.Secondary}" />
                                 <TextBlock Text="{Binding TemperatureText}" Style="{StaticResource Text.Metric}" FontSize="20" Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}" Margin="0,0,10,0">
                             <StackPanel>
-                                <TextBlock Text="封装功耗 (间隔均值)" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{DynamicResource String.MonitorPackage_power}" Style="{StaticResource Text.Secondary}" />
                                 <TextBlock Text="{Binding PackagePowerText}" Style="{StaticResource Text.Metric}" FontSize="20" Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}" Padding="{DynamicResource DensityCardPadding}">
                             <StackPanel>
-                                <TextBlock Text="峰值核心频率" Style="{StaticResource Text.Secondary}" />
+                                <TextBlock Text="{DynamicResource String.MonitorPeak_clock}" Style="{StaticResource Text.Secondary}" />
                                 <TextBlock Text="{Binding PeakClockText}" Style="{StaticResource Text.Metric}" FontSize="20" Margin="0,4,0,0" />
                             </StackPanel>
                         </Border>
