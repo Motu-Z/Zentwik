@@ -140,7 +140,21 @@
                                     <DataTemplate>
                                         <DockPanel Margin="8,6">
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding Priority}" Style="{StaticResource Text.Secondary}" />
-                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse Width="5" Height="5" VerticalAlignment="Center" Margin="0,0,7,0">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Fill" Value="{DynamicResource Brush.Text.Muted}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Active}" Value="True">
+                                                                    <Setter Property="Fill" Value="{DynamicResource Brush.Good}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
+                                                <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Primary}" />
+                                            </StackPanel>
                                         </DockPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -189,7 +203,21 @@
                                         <StackPanel Margin="8,6">
                                             <DockPanel>
                                                 <TextBlock DockPanel.Dock="Right" Text="{Binding Owner}" Style="{StaticResource Text.Secondary}" />
-                                                <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="5" Height="5" VerticalAlignment="Center" Margin="0,0,7,0">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Fill" Value="{DynamicResource Brush.Good}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsUserOwned}" Value="True">
+                                                                        <Setter Property="Fill" Value="{DynamicResource Brush.Warn}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <TextBlock Text="{Binding Target}" Style="{StaticResource Text.Primary}" />
+                                                </StackPanel>
                                             </DockPanel>
                                             <TextBlock Text="{Binding ValuesSummary}" Style="{StaticResource Text.Secondary}" FontSize="11" TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
