@@ -116,5 +116,7 @@
   "settings.deploy_state_path": "状态文件 (state.json)",
   "settings.deploy_log_dir": "日志目录",
   "settings.deploy_errors": "最近错误",
-  "settings.deploy_errors_empty": "无最近错误"
+  "settings.deploy_errors_empty": "无最近错误",
+  "monitor.processor_loads": "逐逻辑处理器占用率",
+  "monitor.processor_loads_empty": "等待基线采样…"
 }
