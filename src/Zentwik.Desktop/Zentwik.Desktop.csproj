@@ -16,4 +16,8 @@
     <ProjectReference Include="..\Zentwik.Localization\Zentwik.Localization.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Zentwik.Desktop.Tests" />
+  </ItemGroup>
+
 </Project>
