@@ -311,6 +311,15 @@ public sealed class AgentConnection : IAsyncDisposable
                 ct)
             .ConfigureAwait(false);
 
+    public async Task<HistoryDto> GetTelemetryHistoryAsync(int limit, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.TelemetryHistory,
+                new HistoryRequest(limit),
+                ZentwikJson.Default.HistoryRequest,
+                ZentwikJson.Default.HistoryDto,
+                ct)
+            .ConfigureAwait(false);
+
     private async Task<T> InvokeAsync<T>(string op, JsonTypeInfo<T> resultInfo, CancellationToken ct)
     {
         var data = await InvokeAsync(op, ct).ConfigureAwait(false);
