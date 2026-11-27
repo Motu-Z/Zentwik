@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Zentwik.Domain.Plans;
 using Zentwik.Domain.Power;
 using Zentwik.Platform;
@@ -762,32 +762,8 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     /// 映射优先取 APOB 固件表（由 ZENTWIK_APOB_TABLE 提供），否则由 CPUID 核号与 L3 缓存域推导。
     /// 两种来源都要求通过校验；都不可用时返回不可用，不退回按序号推算。
     /// </summary>
-    private AmdCoreMap ResolveCoreMap(uint family, out string? error)
-    {
-        error = null;
-
-        if (AmdApobSource.TryLoad(out var table, out var loadError))
-        {
-            if (AmdApobCoreMap.TryParse(table!, family, _info.ProcessorCount, out var map, out var parseError))
-            {
-                return map;
-            }
-
-            // 指定了 APOB 表却不能解析：说明映射假设不成立，不能改用别的来源掩盖。
-            error = parseError;
-            return AmdCoreMap.Empty;
-        }
-
-        if (loadError is not null)
-        {
-            error = loadError;
-            return AmdCoreMap.Empty;
-        }
-
-        var topology = AmdWindowsTopology.Resolve(family, _info.PhysicalCoreCount, _info.ProcessorCount, out var topologyError);
-        error = topologyError;
-        return topology;
-    }
+    private AmdCoreMap ResolveCoreMap(uint family, out string? error) =>
+        AmdCoreMapResolver.Resolve(_info, family, out error);
 
     /// <summary>
     /// 只读探测：按映射逐个核发读命令，任一成功即认为通道可用。单个核（例如掩码为 0 的核 0）被拒
