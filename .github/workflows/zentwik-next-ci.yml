@@ -1,0 +1,77 @@
+name: Zentwik Next | CI
+
+on:
+  push:
+    branches: [feat/ui-redesign]
+  pull_request:
+    branches: [feat/ui-redesign]
+  workflow_dispatch:
+
+concurrency:
+  group: zentwik-next-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore Zentwik.slnx
+
+      - name: Build solution (Release)
+        run: dotnet build Zentwik.slnx --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test Zentwik.slnx --configuration Release --no-build --verbosity normal
+
+  cli-aot-probe:
+    name: Publish CLI (Native AOT)
+    runs-on: windows-latest
+    needs: build-and-test
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish CLI (Native AOT; treat warnings as errors)
+        run: >
+          dotnet publish src/Zentwik.Cli/Zentwik.Cli.csproj
+          -c Release
+          -r win-x64
+          -p:PublishAot=true
+          -p:TrimmerSingleWarn=false
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -warnaserror
+          -o publish-cli
+
+      - name: Verify Native AOT output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ./publish-cli/zentwik.exe)) { throw "zentwik.exe is missing." }
+          if (Test-Path ./publish-cli/zentwik.dll) { throw "Managed output detected (.dll exists); Native AOT was not applied." }
+          if (Test-Path ./publish-cli/zentwik.runtimeconfig.json) { throw "runtimeconfig.json exists; Native AOT was not applied." }
+          $exe = Get-Item ./publish-cli/zentwik.exe
+          Write-Host ("Native CLI executable: {0:N2} MB" -f ($exe.Length / 1MB))
+
+      - name: Upload Native AOT CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-aot-win-x64
+          path: publish-cli/
+          retention-days: 14
