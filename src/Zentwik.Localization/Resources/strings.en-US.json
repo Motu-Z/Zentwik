@@ -116,5 +116,7 @@
   "settings.deploy_state_path": "State file (state.json)",
   "settings.deploy_log_dir": "Log directory",
   "settings.deploy_errors": "Recent errors",
-  "settings.deploy_errors_empty": "No recent errors"
+  "settings.deploy_errors_empty": "No recent errors",
+  "monitor.processor_loads": "Logical processor utilization",
+  "monitor.processor_loads_empty": "Waiting for baseline sample…"
 }
