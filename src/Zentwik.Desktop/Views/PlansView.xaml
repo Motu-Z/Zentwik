@@ -135,6 +135,18 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
+        <TextBlock Grid.Row="2" Text="{DynamicResource String.PlansEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Plans.Count}" Value="0">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
 
         <Border Grid.Row="3"
                 BorderBrush="{DynamicResource Brush.Border}"
@@ -149,8 +161,8 @@
                             Command="{Binding ApplyPlanCommand}"
                             Margin="0,0,8,0" />
                     <Button Style="{StaticResource FlatButton}"
-                            Content="编辑选中"
-                            AutomationProperties.Name="编辑选中方案"
+                            Content="{DynamicResource String.PlansEdit_selected}"
+                            AutomationProperties.Name="{DynamicResource String.PlansEdit_selected_a11y}"
                             Command="{Binding EditPlanCommand}"
                             Margin="0,0,8,0" />
                     <Button Style="{StaticResource FlatButton}"
@@ -172,7 +184,7 @@
             </Grid>
         </TabItem>
 
-        <TabItem Header="Windows 电源方案">
+        <TabItem Header="{DynamicResource String.PlansPower_schemes_title}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -187,39 +199,44 @@
                         <TextBox Width="150"
                                  Margin="0,0,8,0"
                                  Style="{StaticResource FlatTextBox}"
-                                 AutomationProperties.Name="新电源方案名称"
-                                 ToolTip="基于选中方案派生新方案的名称"
+                                 AutomationProperties.Name="{DynamicResource String.PlansPower_scheme_name}"
+                                 ToolTip="{DynamicResource String.PlansPower_scheme_name_tip}"
                                  Text="{Binding NewPowerSchemeName, UpdateSourceTrigger=PropertyChanged}" />
                         <Button Style="{StaticResource AccentButton}"
                                 Margin="0,0,8,0"
-                                Content="派生新方案"
-                                AutomationProperties.Name="派生新方案"
+                                Content="{DynamicResource String.PlansPower_scheme_derive}"
+                                AutomationProperties.Name="{DynamicResource String.PlansPower_scheme_derive}"
                                 Command="{Binding CreatePowerSchemeCommand}" />
                         <Button Style="{StaticResource FlatButton}"
                                 Margin="0,0,8,0"
-                                Content="重命名"
-                                AutomationProperties.Name="重命名电源方案"
+                                Content="{DynamicResource String.PlansPower_scheme_rename}"
+                                AutomationProperties.Name="{DynamicResource String.PlansPower_scheme_rename}"
                                 Command="{Binding RenamePowerSchemeCommand}" />
                         <Button Style="{StaticResource FlatButton}"
                                 Margin="0,0,8,0"
-                                Content="备份"
-                                AutomationProperties.Name="备份电源方案"
+                                Content="{DynamicResource String.PlansPower_scheme_backup}"
+                                AutomationProperties.Name="{DynamicResource String.PlansPower_scheme_backup}"
                                 Command="{Binding BackupPowerSchemeCommand}" />
                         <Button Style="{StaticResource FlatButton}"
                                 Margin="0,0,8,0"
-                                Content="删除"
-                                AutomationProperties.Name="删除电源方案"
+                                Content="{DynamicResource String.PlansPower_scheme_delete}"
+                                AutomationProperties.Name="{DynamicResource String.PlansPower_scheme_delete}"
                                 Command="{Binding DeletePowerSchemeCommand}" />
                         <Button Style="{StaticResource FlatButton}"
+                                Margin="0,0,8,0"
+                                Content="{DynamicResource String.PlansPower_scheme_use_for_plan}"
+                                AutomationProperties.Name="{DynamicResource String.PlansPower_scheme_use_for_plan}"
+                                Command="{Binding UsePowerSchemeForPlanCommand}" />
+                        <Button Style="{StaticResource FlatButton}"
                                 Content="{DynamicResource String.CommonRefresh}"
-                                AutomationProperties.Name="刷新电源方案"
+                                AutomationProperties.Name="{DynamicResource String.CommonRefresh}"
                                 Command="{Binding RefreshCommand}" />
                     </StackPanel>
-                    <TextBlock Text="Windows 电源方案" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
+                    <TextBlock Text="{DynamicResource String.PlansPower_schemes_title}" Style="{StaticResource Text.Title}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <ListBox Grid.Row="1"
-                         AutomationProperties.Name="Windows 电源方案列表"
+                         AutomationProperties.Name="{DynamicResource String.PlansPower_schemes_title}"
                          ItemsSource="{Binding PowerSchemes}"
                          SelectedItem="{Binding SelectedPowerScheme, Mode=TwoWay}"
                          Background="Transparent"
@@ -241,18 +258,30 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <TextBlock Grid.Row="1" Text="{DynamicResource String.PlansPower_schemes_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding PowerSchemes.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
 
                 <DockPanel Grid.Row="3" Margin="0,12,0,6">
                     <Button DockPanel.Dock="Right"
                             Style="{StaticResource FlatButton}"
-                            Content="从备份恢复"
-                            AutomationProperties.Name="从备份恢复"
+                            Content="{DynamicResource String.PlansPower_backups_restore}"
+                            AutomationProperties.Name="{DynamicResource String.PlansPower_backups_restore}"
                             Command="{Binding RestorePowerBackupCommand}" />
-                    <TextBlock Text="电源方案备份库" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="{DynamicResource String.PlansPower_backups_title}" Style="{StaticResource Text.Primary}" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <ListBox Grid.Row="4"
-                         AutomationProperties.Name="电源方案备份列表"
+                         AutomationProperties.Name="{DynamicResource String.PlansPower_backups_title}"
                          ItemsSource="{Binding PowerBackups}"
                          SelectedItem="{Binding SelectedPowerBackup, Mode=TwoWay}"
                          Background="Transparent"
@@ -271,6 +300,18 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+                <TextBlock Grid.Row="4" Text="{DynamicResource String.PlansPower_backups_empty}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Secondary}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding PowerBackups.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </Grid>
         </TabItem>
     </TabControl>
