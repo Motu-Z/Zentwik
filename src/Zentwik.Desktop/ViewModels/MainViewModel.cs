@@ -41,11 +41,28 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private int _processCount;
     private int _coreCount;
     private int _physicalCoreCount;
+    private double? _temperatureCelsius;
+    private double? _packagePowerWatts;
+    private double? _peakClockMhz;
+    private string _sensorDetailText = string.Empty;
 
     private string _selectedLanguage;
     private string _selectedTheme;
     private string _selectedAccent;
     private double _uiScale = 1d;
+    private int _selectedMonitorIntervalMs = 1000;
+    private int _selectedSensorIntervalMs = 1000;
+
+    private ModuleRow? _selectedModule;
+    private bool _showPowerLimits;
+    private string _powerLimitCurrentText = "—";
+    private string _powerLimitFusedText = "—";
+    private string _powerLimitStatusDetail = string.Empty;
+    private string _powerLimitFastInput = string.Empty;
+    private string _powerLimitSlowInput = string.Empty;
+    private string _powerLimitTdcInput = string.Empty;
+    private string _powerLimitEdcInput = string.Empty;
+    private string _powerLimitApplySummary = string.Empty;
 
     private string? _noticeText;
     private bool _noticeIsError;
@@ -99,6 +116,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         RefreshTuningCommand = new AsyncRelayCommand(RefreshTuningAndLedgerAsync, () => IsConnected);
         ReleaseTakeoverCommand = new AsyncRelayCommand(ReleaseSelectedTakeoverAsync, () => IsConnected && SelectedLedger is { IsUserOwned: true });
+        ToggleSelectedModuleCommand = new AsyncRelayCommand(ToggleSelectedModuleAsync, () => IsConnected && SelectedModule is { Optional: true });
+        RefreshPowerLimitsCommand = new AsyncRelayCommand(RefreshPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
+        ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected && ShowPowerLimits);
 
         catalog.CultureChanged += OnCultureChanged;
     }
@@ -116,6 +136,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<LedgerRow> LedgerEntries { get; } = [];
 
+    public ObservableCollection<ModuleRow> Modules { get; } = [];
+
     public IReadOnlyList<string> Languages => LocalizationCatalog.SupportedCultures;
 
     public IReadOnlyList<string> Themes { get; } = ["dark", "light"];
@@ -123,6 +145,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<string> Accents { get; } = ["blue", "violet", "teal", "amber"];
 
     public IReadOnlyList<double> ScaleOptions { get; } = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
+
+    public IReadOnlyList<int> MonitorIntervalOptions { get; } = [500, 1000, 2000, 5000];
+
+    public IReadOnlyList<int> SensorIntervalOptions { get; } = [500, 1000, 2000, 5000, 10000, 30000];
 
     public IReadOnlyList<string> PlanKinds { get; } = ["cpuTuning", "power", "scheduling"];
 
@@ -148,6 +174,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand DeleteSceneCommand { get; }
     public AsyncRelayCommand RefreshTuningCommand { get; }
     public AsyncRelayCommand ReleaseTakeoverCommand { get; }
+    public AsyncRelayCommand ToggleSelectedModuleCommand { get; }
+    public AsyncRelayCommand RefreshPowerLimitsCommand { get; }
+    public AsyncRelayCommand ApplyPowerLimitsCommand { get; }
 
     public bool IsConnected
     {
@@ -209,6 +238,121 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         : _physicalCoreCount > 0 && _physicalCoreCount != _coreCount
             ? $"{_physicalCoreCount}C / {_coreCount}T"
             : _coreCount.ToString(CultureInfo.InvariantCulture);
+
+    public string TemperatureText => _temperatureCelsius is { } t ? $"{t:0.0} °C" : "—";
+
+    public string PackagePowerText => _packagePowerWatts is { } w ? $"{w:0.0} W" : "—";
+
+    public string PeakClockText => _peakClockMhz is { } mhz ? $"{mhz / 1000d:0.00} GHz" : "—";
+
+    public string SensorDetailText
+    {
+        get => _sensorDetailText;
+        private set => Set(ref _sensorDetailText, value);
+    }
+
+    public int SelectedMonitorIntervalMs
+    {
+        get => _selectedMonitorIntervalMs;
+        set
+        {
+            var clamped = Math.Clamp(value, 500, 5000);
+            if (!Set(ref _selectedMonitorIntervalMs, clamped))
+            {
+                return;
+            }
+
+            PersistSettingsAsync(resubscribeTelemetry: true);
+        }
+    }
+
+    public int SelectedSensorIntervalMs
+    {
+        get => _selectedSensorIntervalMs;
+        set
+        {
+            var clamped = Math.Clamp(value, 500, 30000);
+            if (!Set(ref _selectedSensorIntervalMs, clamped))
+            {
+                return;
+            }
+
+            PersistSettingsAsync(resubscribeTelemetry: true);
+        }
+    }
+
+    public ModuleRow? SelectedModule
+    {
+        get => _selectedModule;
+        set
+        {
+            if (Set(ref _selectedModule, value))
+            {
+                ToggleSelectedModuleCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool ShowPowerLimits
+    {
+        get => _showPowerLimits;
+        private set
+        {
+            if (Set(ref _showPowerLimits, value))
+            {
+                RefreshPowerLimitsCommand.RaiseCanExecuteChanged();
+                ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string PowerLimitCurrentText
+    {
+        get => _powerLimitCurrentText;
+        private set => Set(ref _powerLimitCurrentText, value);
+    }
+
+    public string PowerLimitFusedText
+    {
+        get => _powerLimitFusedText;
+        private set => Set(ref _powerLimitFusedText, value);
+    }
+
+    public string PowerLimitStatusDetail
+    {
+        get => _powerLimitStatusDetail;
+        private set => Set(ref _powerLimitStatusDetail, value);
+    }
+
+    public string PowerLimitFastInput
+    {
+        get => _powerLimitFastInput;
+        set => Set(ref _powerLimitFastInput, value);
+    }
+
+    public string PowerLimitSlowInput
+    {
+        get => _powerLimitSlowInput;
+        set => Set(ref _powerLimitSlowInput, value);
+    }
+
+    public string PowerLimitTdcInput
+    {
+        get => _powerLimitTdcInput;
+        set => Set(ref _powerLimitTdcInput, value);
+    }
+
+    public string PowerLimitEdcInput
+    {
+        get => _powerLimitEdcInput;
+        set => Set(ref _powerLimitEdcInput, value);
+    }
+
+    public string PowerLimitApplySummary
+    {
+        get => _powerLimitApplySummary;
+        private set => Set(ref _powerLimitApplySummary, value);
+    }
 
     public string? NoticeText
     {
@@ -423,7 +567,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 _connection = connection;
 
                 var settings = await connection.GetSettingsAsync(_cts.Token).ConfigureAwait(false);
-                await connection.SubscribeTelemetryAsync(SampleIntervalMs, _cts.Token).ConfigureAwait(false);
+                await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
 
                 _ui.Post(_ =>
                 {
@@ -475,6 +619,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var status = await connection.GetStatusAsync(ct).ConfigureAwait(false);
         var capabilities = await connection.ListCapabilitiesAsync(ct).ConfigureAwait(false);
+        var modules = await connection.ListModulesAsync(ct).ConfigureAwait(false);
         var plans = await connection.ListPlansAsync(ct).ConfigureAwait(false);
         var scenes = await connection.ListScenesAsync(ct).ConfigureAwait(false);
         var ledger = await connection.ListLedgerAsync(ct).ConfigureAwait(false);
@@ -486,8 +631,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var selectedPlanId = SelectedPlan?.Id;
             var selectedSceneId = SelectedScene?.Id;
             var selectedLedgerTarget = SelectedLedger?.Target;
+            var selectedModuleId = SelectedModule?.Id;
 
             Replace(Capabilities, capabilities.Select(static c => new CapabilityRow(c.Id, c.State, c.Detail ?? string.Empty)));
+            Replace(Modules, modules.Select(static m => new ModuleRow(m.Id, m.Name, m.State, m.Detail ?? string.Empty, m.Optional, m.Enabled)));
+            SelectedModule = Modules.FirstOrDefault(m => m.Id == selectedModuleId) ?? Modules.FirstOrDefault();
+            ShowPowerLimits = modules.Any(static m => string.Equals(m.Id, "power-limits", StringComparison.OrdinalIgnoreCase) && m.Enabled);
             Replace(Plans, plans.Select(BuildPlanRow));
             Replace(Scenes, scenes.Select(BuildSceneRow));
             Replace(CoreOffsets, amdTuning.Cores.Select(static c => new CoreOffsetRow(c.Core, c.Offset)));
@@ -955,11 +1104,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             : (1d - (double)sample.MemoryAvailableBytes / sample.MemoryTotalBytes) * 100d;
         _processCount = sample.ProcessCount;
         _coreCount = sample.ProcessorCount;
+        _temperatureCelsius = sample.TemperatureCelsius;
+        _packagePowerWatts = sample.PackagePowerWatts;
+        _peakClockMhz = sample.CoreClocks is { Count: > 0 } clocks ? clocks.Max(static c => c.Megahertz) : null;
+        SensorDetailText = sample.SensorDetail ?? string.Empty;
 
         Raise(nameof(CpuText));
         Raise(nameof(MemoryText));
         Raise(nameof(ProcessText));
         Raise(nameof(CoreText));
+        Raise(nameof(TemperatureText));
+        Raise(nameof(PackagePowerText));
+        Raise(nameof(PeakClockText));
 
         _history.Enqueue(_cpuPercent);
         while (_history.Count > HistoryLength)
@@ -979,6 +1135,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SelectedTheme = settings.Theme;
             SelectedAccent = settings.Accent;
             UiScale = settings.UiScale;
+            SelectedMonitorIntervalMs = settings.MonitorIntervalMs;
+            SelectedSensorIntervalMs = settings.SensorIntervalMs;
         }
         finally
         {
@@ -986,7 +1144,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void PersistSettingsAsync()
+    private void PersistSettingsAsync(bool resubscribeTelemetry = false)
     {
         if (_suppressPersist)
         {
@@ -999,12 +1157,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var patch = new SettingsPatch(_selectedLanguage, _selectedTheme, _selectedAccent, _uiScale);
+        var patch = new SettingsPatch(
+            _selectedLanguage,
+            _selectedTheme,
+            _selectedAccent,
+            _uiScale,
+            _selectedMonitorIntervalMs,
+            _selectedSensorIntervalMs);
+
         _ = Task.Run(async () =>
         {
             try
             {
                 await connection.SetSettingsAsync(patch, _cts.Token).ConfigureAwait(false);
+                if (resubscribeTelemetry)
+                {
+                    await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
             {
@@ -1012,6 +1181,117 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             }
         });
     }
+
+    private async Task ToggleSelectedModuleAsync()
+    {
+        var connection = _connection;
+        var module = SelectedModule;
+        if (connection is null || module is null || !module.Optional)
+        {
+            return;
+        }
+
+        try
+        {
+            var updated = module.Enabled
+                ? await connection.DisableModuleAsync(module.Id, _cts.Token).ConfigureAwait(false)
+                : await connection.EnableModuleAsync(module.Id, _cts.Token).ConfigureAwait(false);
+
+            _ui.Post(_ =>
+            {
+                var selectedId = module.Id;
+                Replace(Modules, updated.Select(static m => new ModuleRow(m.Id, m.Name, m.State, m.Detail ?? string.Empty, m.Optional, m.Enabled)));
+                SelectedModule = Modules.FirstOrDefault(m => m.Id == selectedId) ?? Modules.FirstOrDefault();
+                ShowPowerLimits = updated.Any(static m => string.Equals(m.Id, "power-limits", StringComparison.OrdinalIgnoreCase) && m.Enabled);
+            }, null);
+
+            if (string.Equals(module.Id, "power-limits", StringComparison.OrdinalIgnoreCase) && !module.Enabled)
+            {
+                await RefreshPowerLimitsAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private async Task RefreshPowerLimitsAsync()
+    {
+        var connection = _connection;
+        if (connection is null || !ShowPowerLimits)
+        {
+            return;
+        }
+
+        try
+        {
+            var state = await connection.ReadPowerLimitsAsync(_cts.Token).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                PowerLimitCurrentText = state.Available
+                    ? $"FAST {FormatWatts(state.FastWatts)} · SLOW {FormatWatts(state.SlowWatts)} · STAPM {FormatWatts(state.StapmWatts)}"
+                    : "不可用";
+                PowerLimitFusedText = $"熔断上限：FAST {FormatWatts(state.FusedFastWatts)} · SLOW {FormatWatts(state.FusedSlowWatts)} · TDC {FormatAmps(state.FusedTdcAmps)}";
+                PowerLimitStatusDetail = state.Error ?? state.FusedDetail ?? string.Empty;
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private async Task ApplyPowerLimitsAsync()
+    {
+        var connection = _connection;
+        if (connection is null || !ShowPowerLimits)
+        {
+            return;
+        }
+
+        int? fast = ParseOptionalInt(PowerLimitFastInput);
+        int? slow = ParseOptionalInt(PowerLimitSlowInput);
+        int? tdc = ParseOptionalInt(PowerLimitTdcInput);
+        int? edc = ParseOptionalInt(PowerLimitEdcInput);
+
+        if (fast is null && slow is null && tdc is null && edc is null)
+        {
+            ShowNotice("请至少填写一项功耗墙参数（FAST / SLOW / TDC / EDC）。", isError: true);
+            return;
+        }
+
+        try
+        {
+            var result = await connection.ApplyPowerLimitsAsync(new PowerLimitApplyRequest(fast, slow, tdc, edc), _cts.Token).ConfigureAwait(false);
+            var lines = result.Items.Select(static item =>
+            {
+                var unit = item.Item is "tdc" or "edc" ? "A" : "W";
+                return item.State == "diverged"
+                    ? $"{item.Item.ToUpperInvariant()} [折算] 请求 {item.Requested} {unit} → 实际 {item.Actual} {unit}"
+                    : $"{item.Item.ToUpperInvariant()} [{item.State}] {item.Requested} {unit}{(item.Actual is int a ? $" (回读 {a} {unit})" : string.Empty)}";
+            });
+            var summary = string.Join("；", lines);
+            if (!string.IsNullOrWhiteSpace(result.Note))
+            {
+                summary = $"{summary} | {result.Note}";
+            }
+
+            _ui.Post(_ => PowerLimitApplySummary = summary, null);
+            await RefreshPowerLimitsAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            ShowNotice(ex.DetailOrMessage(), isError: true);
+        }
+    }
+
+    private static int? ParseOptionalInt(string text) =>
+        int.TryParse(text?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    private static string FormatWatts(int? value) => value.HasValue ? $"{value} W" : "—";
+
+    private static string FormatAmps(int? value) => value.HasValue ? $"{value} A" : "—";
 
     private void OnConnectionClosed(Exception? error)
     {
@@ -1094,6 +1374,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DeleteSceneCommand.RaiseCanExecuteChanged();
         RefreshTuningCommand.RaiseCanExecuteChanged();
         ReleaseTakeoverCommand.RaiseCanExecuteChanged();
+        ToggleSelectedModuleCommand.RaiseCanExecuteChanged();
+        RefreshPowerLimitsCommand.RaiseCanExecuteChanged();
+        ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
     }
 
     private static PlanRow BuildPlanRow(Plan plan)
@@ -1205,3 +1488,15 @@ public sealed record LedgerRow(
     string ValuesSummary,
     string Failure,
     bool IsUserOwned);
+
+public sealed record ModuleRow(
+    string Id,
+    string Name,
+    string State,
+    string Detail,
+    bool Optional,
+    bool Enabled)
+{
+    public string ActionLabel => Optional ? (Enabled ? "停用" : "启用") : "内置";
+    public string OptionalBadge => Optional ? (Enabled ? "可选 · 已启用" : "可选 · 未启用") : "核心模块";
+}
