@@ -501,7 +501,7 @@ internal static partial class NativeService
 
     private static void ApplyDescription(nint service)
     {
-        var text = Marshal.StringToHGlobalUni("Zentwik Next 系统服务：设备访问、场景自动化与状态账本。");
+        var text = Marshal.StringToHGlobalUni("Zentwik 系统服务：设备访问、场景自动化与状态账本。");
         var buffer = Marshal.AllocHGlobal(Marshal.SizeOf<ServiceDescription>());
         try
         {

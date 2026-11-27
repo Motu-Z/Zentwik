@@ -10,7 +10,7 @@ public static class ProtocolInfo
 {
     public const int Version = 2;
 
-    public const string PipeName = "zentwik-next-agent";
+    public const string PipeName = "zentwik-agent";
 
     public const int MaxFrameBytes = 4 * 1024 * 1024;
 

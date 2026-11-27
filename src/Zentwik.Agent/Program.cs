@@ -18,6 +18,22 @@ using Zentwik.Platform.Windows;
 
 var options = AgentOptions.Parse(args);
 
+// 数据目录改名后的一次性搬迁。必须早于任何 StateStore 创建：
+// 安装阶段会读状态文件写可选模块，先落下空 state.json 就会让「目标已有状态」的守卫把搬迁挡掉。
+// 也必须早于日志创建：目标目录里先有同名日志文件会让逐文件复制失败。
+var migration = options.Mode is AgentMode.Run or AgentMode.InstallService
+    ? DataDirectoryMigration.TryMigrate(options.LegacyDataDirectory, options.DataDirectory)
+    : DataMigrationOutcome.NotNeeded;
+
+if (migration.Executed)
+{
+    Console.WriteLine($"已迁移数据目录：{migration.Source} → {options.DataDirectory}");
+}
+else if (migration.Error is not null)
+{
+    Console.Error.WriteLine($"数据目录迁移失败：{migration.Error}");
+}
+
 if (options.Mode == AgentMode.InstallService)
 {
     return NativeService.Install(options);
@@ -39,6 +55,15 @@ if (options.Mode == AgentMode.StopService)
 }
 
 using var log = new DiagnosticLog(options.DataDirectory, options.EchoLog);
+
+if (migration.Executed)
+{
+    log.Info($"已迁移数据目录：{migration.Source} → {options.DataDirectory}");
+}
+else if (migration.Error is not null)
+{
+    log.Warn($"数据目录迁移失败：{migration.Error}。将以空状态启动。");
+}
 
 var store = new StateStore(options.DataDirectory, log);
 await store.LoadAsync().ConfigureAwait(false);

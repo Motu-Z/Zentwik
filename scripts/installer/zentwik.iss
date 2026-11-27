@@ -1,16 +1,16 @@
-﻿; Zentwik Next 安装包脚本
+﻿; Zentwik 安装包脚本
 ; 由 scripts/build-installer.ps1 调用，版本通过 /DMyAppVersion 传入。
 ;
 ; 设计取舍：安装器只做三件事——放文件、停服务、调 Agent 自己的 --install-service。
 ; 服务的创建/升级/删除逻辑只存在于 C#（src/Zentwik.Agent/Service/ServiceInstaller.cs），
 ; 安装器不重复实现一份，换打包器时服务行为不变。
 
-#define MyAppName "Zentwik Next"
+#define MyAppName "Zentwik"
 #define MyAppShortName "Zentwik"
 #define MyAppPublisher "Motu"
 #define AgentExe "Zentwik.Agent.exe"
 #define CliExe "zentwik.exe"
-#define DataDirName "ZentwikNext"
+#define DataDirName "Zentwik"
 
 ; 与旧版 Zentwik 使用不同 AppId：两者可以并存，互不覆盖。
 #define MyAppId "{{6F3A9C21-7D84-4B16-9E52-3C0D8A5F1B47}"
@@ -38,7 +38,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 OutputDir=..\..\dist
-OutputBaseFilename=Zentwik-Next-{#MyAppVersion}-Setup
+OutputBaseFilename=Zentwik-{#MyAppVersion}-Setup
 UninstallDisplayIcon={app}\{#CliExe}
 UninstallDisplayName={#MyAppName}
 Compression=lzma2/max

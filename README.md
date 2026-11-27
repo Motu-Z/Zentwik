@@ -1,4 +1,4 @@
-# Zentwik Next
+# Zentwik
 
 Windows 下的 CPU 调校、电源与进程调度管理器。当前阶段以 CLI 为正式产品入口，WPF 界面暂停开发。
 
@@ -39,7 +39,7 @@ pwsh -File scripts/build-installer.ps1 -SkipPublish  # 复用 pkg\ 重新打包
 - 装到 `%ProgramFiles%\Zentwik`，服务名 `ZentwikAgent`（LocalSystem、自动启动、失败重启 5s/15s/60s）。
 - 可选组件页勾选「硬件功耗墙」等价于安装时传 `--enable-module power-limits`；不勾选**不会**关闭已启用的模块，升级保留用户选择。
 - PawnIO 不是必需项：未检测到只弹一次提示，其余功能照常。
-- 卸载默认保留 `%ProgramData%\ZentwikNext`，在卸载结束时询问。
+- 卸载默认保留 `%ProgramData%\Zentwik`，在卸载结束时询问。
 - 安装包未签名，首次运行会触发 SmartScreen。
 
 ## 运行
@@ -69,7 +69,7 @@ dotnet run --project src/Zentwik.Cli -- status
 dotnet run --project src/Zentwik.Cli -- tuning --json
 ```
 
-数据目录：控制台模式 `%APPDATA%\ZentwikNext`，服务或安装模式 `%ProgramData%\ZentwikNext`。可用 `--data-dir` 覆盖。含 `state.json`、`owner.sid`、`logs\`、`power-backups\`。
+数据目录：控制台模式 `%LOCALAPPDATA%\Zentwik`，服务或安装模式 `%ProgramData%\Zentwik`。可用 `--data-dir` 覆盖。含 `state.json`、`owner.sid`、`logs\`、`power-backups\`。首次启动时若新目录还没有 `state.json`、而旧目录 `ZentwikNext` 存在，会自动搬迁一次（日志记一行）。控制台模式不用 `%APPDATA%`：那是旧版 Zentwik 的配置目录，同名会互相覆盖。
 
 ## CLI
 

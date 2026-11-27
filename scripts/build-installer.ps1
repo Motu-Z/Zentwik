@@ -1,9 +1,9 @@
-﻿# 构建 Zentwik Next 安装包。
+﻿# 构建 Zentwik 安装包。
 #
 #   pwsh -File scripts/build-installer.ps1
 #   pwsh -File scripts/build-installer.ps1 -SkipPublish        # 复用上次 pkg/ 快速重打包
 #
-# 产物：dist\Zentwik-Next-<version>-Setup.exe
+# 产物：dist\Zentwik-<version>-Setup.exe
 
 param(
     [string]$Configuration = "Release",
@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $pkg = Join-Path $root "pkg"
 $dist = Join-Path $root "dist"
-$iss = Join-Path $root "scripts\installer\zentwik-next.iss"
+$iss = Join-Path $root "scripts\installer\zentwik.iss"
 
 if (-not $Version) {
     $props = [xml](Get-Content (Join-Path $root "Directory.Build.props"))
@@ -78,7 +78,7 @@ if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Nul
 & $iscc "/DMyAppVersion=$Version" "/DMyAppVersionNumeric=$numeric" $iss
 if ($LASTEXITCODE -ne 0) { throw "ISCC 编译失败。" }
 
-$output = Join-Path $dist "Zentwik-Next-$Version-Setup.exe"
+$output = Join-Path $dist "Zentwik-$Version-Setup.exe"
 if (-not (Test-Path $output)) { throw "未找到预期产物：$output" }
 
 $size = [math]::Round((Get-Item $output).Length / 1MB, 1)

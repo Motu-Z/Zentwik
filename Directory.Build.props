@@ -9,7 +9,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Company>Zentwik</Company>
-    <Product>Zentwik Next</Product>
+    <Product>Zentwik</Product>
     <Version>0.1.0-alpha</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>

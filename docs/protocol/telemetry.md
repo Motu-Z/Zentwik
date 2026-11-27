@@ -6,7 +6,7 @@
 
 - 所有跨进程 JSON 都是 **camelCase**（`PropertyNamingPolicy = CamelCase`），字段名即 record 构造参数名转小写首字母。
 - **值为 null 的字段整段省略**（`DefaultIgnoreCondition = WhenWritingNull`）。所以客户端读不到某个 key，等价于该项是 null，不要当成 0。
-- 管道名 `zentwik-next-agent`，协议版本 2，单帧上限 4 MiB。
+- 管道名 `zentwik-agent`，协议版本 2，单帧上限 4 MiB。
 - 表现层只依赖 `Zentwik.Contracts`，不得引用 `Platform`，不得持有设备句柄。
 
 ## 遥测
