@@ -75,6 +75,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private PowerBackupRow? _selectedPowerBackup;
     private string _newPowerSchemeName = string.Empty;
     private string _coreClocksStatusText = "等待传感器采样…";
+    private string _processorLoadsStatusText = "等待基线采样…";
 
     private string? _noticeText;
     private bool _noticeIsError;
@@ -164,6 +165,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<LogRow> RecentErrors { get; } = [];
 
     public ObservableCollection<CoreClockRow> CoreClocks { get; } = [];
+
+    public ObservableCollection<ProcessorLoadRow> ProcessorLoads { get; } = [];
 
     public ObservableCollection<PowerSchemeRow> PowerSchemes { get; } = [];
 
@@ -451,6 +454,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         private set => Set(ref _coreClocksStatusText, value);
     }
 
+    public string ProcessorLoadsStatusText
+    {
+        get => _processorLoadsStatusText;
+        private set => Set(ref _processorLoadsStatusText, value);
+    }
+
     public PowerSchemeRow? SelectedPowerScheme
     {
         get => _selectedPowerScheme;
@@ -735,11 +744,24 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                 var settings = await connection.GetSettingsAsync(_cts.Token).ConfigureAwait(false);
                 var ack = await connection.SubscribeTelemetryAsync(null, null, _cts.Token).ConfigureAwait(false);
+                HistoryDto? history = null;
+                try
+                {
+                    history = await connection.GetTelemetryHistoryAsync(HistoryLength, _cts.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is AgentRequestException or TimeoutException or IpcTransportException)
+                {
+                }
 
                 _ui.Post(_ =>
                 {
                     ApplySettings(settings);
                     EffectiveTelemetrySummary = $"推送 {ack.IntervalMs} ms · 传感器 {ack.SensorIntervalMs} ms";
+                    if (history is { Samples.Count: > 0 })
+                    {
+                        LoadHistorySamples(history.Samples);
+                    }
+
                     IsConnected = true;
                 }, null);
 
@@ -1464,7 +1486,54 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 : sample.SensorDetail;
         }
 
+        if (sample.ProcessorUtilization is { Count: > 0 } utilization)
+        {
+            if (ProcessorLoads.Count == utilization.Count)
+            {
+                for (var index = 0; index < utilization.Count; index++)
+                {
+                    var pct = utilization[index];
+                    if (Math.Abs(ProcessorLoads[index].Percent - pct) > 0.05)
+                    {
+                        ProcessorLoads[index] = new ProcessorLoadRow(index, pct);
+                    }
+                }
+            }
+            else
+            {
+                Replace(ProcessorLoads, utilization.Select(static (pct, idx) => new ProcessorLoadRow(idx, pct)));
+            }
+
+            ProcessorLoadsStatusText = $"逻辑处理器 {utilization.Count} 个（OS 序号，含 SMT）";
+        }
+        else
+        {
+            ProcessorLoads.Clear();
+            ProcessorLoadsStatusText = "等待基线采样…（首帧或处理器数变化时为空）";
+        }
+
         HistoryChanged?.Invoke([.. _history]);
+    }
+
+    internal void LoadHistorySamples(IReadOnlyList<TelemetryDto> samples)
+    {
+        _history.Clear();
+        if (samples.Count == 0)
+        {
+            HistoryChanged?.Invoke([]);
+            return;
+        }
+
+        for (var index = 0; index < samples.Count - 1; index++)
+        {
+            _history.Enqueue(samples[index].CpuTotalPercent);
+            while (_history.Count > HistoryLength)
+            {
+                _history.Dequeue();
+            }
+        }
+
+        ApplySample(samples[^1]);
     }
 
     private void ApplySettings(SettingsDto settings)
@@ -1861,13 +1930,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPlanCommand.RaiseCanExecuteChanged();
         RevertPlanCommand.RaiseCanExecuteChanged();
         DeletePlanCommand.RaiseCanExecuteChanged();
-        EditPlanCommand.RaiseCanExecuteChanged();
+                EditPlanCommand.RaiseCanExecuteChanged();
         CreateSceneCommand.RaiseCanExecuteChanged();
         ActivateSceneCommand.RaiseCanExecuteChanged();
         DeactivateSceneCommand.RaiseCanExecuteChanged();
         ToggleSceneEnabledCommand.RaiseCanExecuteChanged();
         DeleteSceneCommand.RaiseCanExecuteChanged();
-        EditSceneCommand.RaiseCanExecuteChanged();
+                EditSceneCommand.RaiseCanExecuteChanged();
         RefreshTuningCommand.RaiseCanExecuteChanged();
         ReleaseTakeoverCommand.RaiseCanExecuteChanged();
         ToggleSelectedModuleCommand.RaiseCanExecuteChanged();
@@ -1875,11 +1944,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
         RefreshLogsCommand.RaiseCanExecuteChanged();
         CreatePowerSchemeCommand.RaiseCanExecuteChanged();
-        RenamePowerSchemeCommand.RaiseCanExecuteChanged();
         BackupPowerSchemeCommand.RaiseCanExecuteChanged();
         DeletePowerSchemeCommand.RaiseCanExecuteChanged();
         RestorePowerBackupCommand.RaiseCanExecuteChanged();
-        UsePowerSchemeForPlanCommand.RaiseCanExecuteChanged();
     }
 
     private static PlanRow BuildPlanRow(Plan plan)
@@ -2010,6 +2077,12 @@ public sealed record CoreClockRow(int Ccd, int Core, double Megahertz)
 {
     public string Label => $"CCD{Ccd} · C{Core}";
     public string ValueText => $"{Megahertz:0} MHz";
+}
+
+public sealed record ProcessorLoadRow(int Index, double Percent)
+{
+    public string Label => $"CPU {Index}";
+    public string PercentText => $"{Percent:0}%";
 }
 
 public sealed record PowerSchemeRow(
