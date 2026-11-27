@@ -63,6 +63,17 @@ internal static partial class Native
     [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial UIntPtr SetThreadAffinityMask(nint thread, UIntPtr mask);
 
+    internal const int ThreadPriorityNormal = 0;
+
+    internal const int ThreadPriorityHighest = 2;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial int GetThreadPriority(nint thread);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetThreadPriority(nint thread, int priority);
+
     internal static readonly nint InvalidHandleValue = -1;
 
     [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
