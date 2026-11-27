@@ -32,6 +32,8 @@ namespace Zentwik.Contracts.Json;
 [JsonSerializable(typeof(SettingsPatch))]
 [JsonSerializable(typeof(SubscriptionRequest))]
 [JsonSerializable(typeof(SubscriptionAck))]
+[JsonSerializable(typeof(HistoryRequest))]
+[JsonSerializable(typeof(HistoryDto))]
 [JsonSerializable(typeof(IdRequest))]
 [JsonSerializable(typeof(LogRequest))]
 [JsonSerializable(typeof(PowerSchemeDto))]
