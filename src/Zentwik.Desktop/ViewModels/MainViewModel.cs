@@ -5,7 +5,6 @@ using System.Text.Json;
 using Zentwik.Contracts.Dto;
 using Zentwik.Contracts.Json;
 using Zentwik.Contracts.Protocol;
-using Zentwik.Desktop.Services;
 using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Plans;
 using Zentwik.Domain.Scenes;
@@ -20,7 +19,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private const int SampleIntervalMs = 500;
 
     private readonly LocalizationCatalog _catalog;
-    private readonly ThemeService _themes;
     private readonly SynchronizationContext _ui;
     private readonly Queue<double> _history = new();
     private readonly CancellationTokenSource _cts = new();
@@ -43,8 +41,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private int _physicalCoreCount;
 
     private string _selectedLanguage;
-    private string _selectedTheme;
-    private string _selectedAccent;
+
+    // 协议里的 settings 仍有 theme / accent / uiScale 三个字段。界面不再提供入口，
+    // 但读取后原样留存、原样回写，避免把后台已有的配置擦成默认值。
+    private string _selectedTheme = "dark";
+    private string _selectedAccent = "blue";
     private double _uiScale = 1d;
 
     private string? _noticeText;
@@ -69,15 +70,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _newSceneTriggerArg = string.Empty;
     private bool _newSceneRestoreOnExit = true;
 
-    public MainViewModel(LocalizationCatalog catalog, ThemeService themes)
+    public MainViewModel(LocalizationCatalog catalog)
     {
         _catalog = catalog;
-        _themes = themes;
         _ui = SynchronizationContext.Current ?? new SynchronizationContext();
 
         _selectedLanguage = catalog.CurrentCulture;
-        _selectedTheme = themes.Theme;
-        _selectedAccent = themes.Accent;
         _statusText = catalog["status.connecting"];
         _activeSceneText = catalog["status.no_scene"];
 
@@ -117,12 +115,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<LedgerRow> LedgerEntries { get; } = [];
 
     public IReadOnlyList<string> Languages => LocalizationCatalog.SupportedCultures;
-
-    public IReadOnlyList<string> Themes { get; } = ["dark", "light"];
-
-    public IReadOnlyList<string> Accents { get; } = ["blue", "violet", "teal", "amber"];
-
-    public IReadOnlyList<double> ScaleOptions { get; } = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5];
 
     public IReadOnlyList<string> PlanKinds { get; } = ["cpuTuning", "power", "scheduling"];
 
@@ -359,51 +351,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             _catalog.CurrentCulture = value;
-            PersistSettingsAsync();
-        }
-    }
-
-    public string SelectedTheme
-    {
-        get => _selectedTheme;
-        set
-        {
-            if (!Set(ref _selectedTheme, value))
-            {
-                return;
-            }
-
-            _themes.Apply(value, _selectedAccent);
-            PersistSettingsAsync();
-        }
-    }
-
-    public string SelectedAccent
-    {
-        get => _selectedAccent;
-        set
-        {
-            if (!Set(ref _selectedAccent, value))
-            {
-                return;
-            }
-
-            _themes.Apply(_selectedTheme, value);
-            PersistSettingsAsync();
-        }
-    }
-
-    public double UiScale
-    {
-        get => _uiScale;
-        set
-        {
-            var clamped = Math.Clamp(Math.Round(value, 2), 0.8, 1.6);
-            if (!Set(ref _uiScale, clamped))
-            {
-                return;
-            }
-
             PersistSettingsAsync();
         }
     }
@@ -976,9 +923,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             SelectedLanguage = settings.Language;
-            SelectedTheme = settings.Theme;
-            SelectedAccent = settings.Accent;
-            UiScale = settings.UiScale;
+            _selectedTheme = settings.Theme;
+            _selectedAccent = settings.Accent;
+            _uiScale = Math.Clamp(settings.UiScale, 0.8, 1.6);
         }
         finally
         {

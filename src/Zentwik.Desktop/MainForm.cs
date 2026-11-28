@@ -4,29 +4,25 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Windows.Input;
-using Zentwik.Desktop.Services;
 using Zentwik.Desktop.ViewModels;
 using Zentwik.Localization;
 
 namespace Zentwik.Desktop;
 
 /// <summary>
-/// 裸控件主窗口：一个 TabControl 五页，只用 Label / Button / DataGridView / ComboBox / TextBox。
+/// 裸控件主窗口：一个 TabControl 四页，只用 Label / Button / DataGridView / ComboBox / TextBox。
 ///
 /// 约定（这一版刻意为之）：
-/// - 不写自绘、不写布局引擎、不加动画、不做设计系统；
-/// - 颜色只分「深色 / 浅色」两套系统色，不做逐控件换肤；
+/// - 不写自绘、不写布局引擎、不加动画、不做设计系统、不换肤；
+/// - 颜色一律交给系统默认，只有「系统色」，没有主题、强调色、缩放；
 /// - 所有交互都是「点按钮 → 调命令 → 命令跑完 → 属性变了 → 重填控件」。
 ///
 /// 视图模型本身不引用任何控件类型，所以将来换成别的外壳时这一层可以直接扔掉。
 /// </summary>
 public sealed class MainForm : Form
 {
-    private const string UiFont = "Microsoft YaHei UI";
-
     private readonly MainViewModel _vm;
     private readonly LocalizationCatalog _catalog;
-    private readonly ThemeService _themes;
 
     /// <summary>是否在窗口显示后自动连接代理。测试构造时传 false。</summary>
     private readonly bool _autoConnect;
@@ -34,14 +30,13 @@ public sealed class MainForm : Form
     private readonly List<(Button Button, ICommand Command)> _commands = [];
     private readonly List<(Control Target, string Key)> _texts = [];
     private readonly List<(DataGridViewColumn Column, string Key)> _headers = [];
-    private readonly List<DataGridView> _grids = [];
 
     /// <summary>重建列表行时置位，避免 SelectionChanged 把视图模型的选中项刷成 null。</summary>
     private bool _syncing;
 
     // 顶栏
     private readonly Label _statusLabel = new() { AutoSize = true, Padding = new Padding(0, 4, 16, 4) };
-    private readonly Label _runtimeLabel = new() { AutoSize = true, Padding = new Padding(0, 4, 16, 4) };
+    private readonly Label _runtimeLabel = new() { AutoSize = true };
     private readonly Label _sceneLabel = new() { AutoSize = true, Padding = new Padding(0, 4, 0, 4) };
     private readonly Panel _noticePanel = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly Label _noticeLabel = new() { Dock = DockStyle.Fill, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
@@ -52,10 +47,10 @@ public sealed class MainForm : Form
     private readonly Label _memValue = MetricValue();
     private readonly Label _procValue = MetricValue();
     private readonly Label _coreValue = MetricValue();
-    private readonly Label _cpuCaption = MetricCaption();
-    private readonly Label _memCaption = MetricCaption();
-    private readonly Label _procCaption = MetricCaption();
-    private readonly Label _coreCaption = MetricCaption();
+    private readonly Label _cpuCaption = Caption();
+    private readonly Label _memCaption = Caption();
+    private readonly Label _procCaption = Caption();
+    private readonly Label _coreCaption = Caption();
     private readonly DataGridView _capsGrid = NewGrid(("能力", 60), ("状态", 30), ("详情", 110));
     private Button _refreshButton = null!;
 
@@ -110,24 +105,22 @@ public sealed class MainForm : Form
     private Button _releaseButton = null!;
     private SplitContainer? _tuningSplit;
 
-    // 设置
-    private readonly ComboBox _languageCombo = NewCombo();
-    private readonly ComboBox _themeCombo = NewCombo();
-    private readonly ComboBox _accentCombo = NewCombo();
-    private readonly ComboBox _scaleCombo = NewCombo();
-    private Label _languageCaption = Caption();
-    private Label _themeCaption = Caption();
-    private Label _accentCaption = Caption();
-    private Label _scaleCaption = Caption();
+    // 语言（顶栏右侧，唯一保留的界面选项）
+    private readonly ComboBox _languageCombo = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 120,
+        Anchor = AnchorStyles.Left,
+    };
+    private readonly Label _languageCaption = Caption();
 
     // 页签
-    private readonly TabPage _monitorPage = new();    private readonly TabPage _plansPage = new();
+    private readonly TabPage _monitorPage = new();
+    private readonly TabPage _plansPage = new();
     private readonly TabPage _scenesPage = new();
     private readonly TabPage _tuningPage = new();
-    private readonly TabPage _settingsPage = new();
 
     // 分组框
-    private readonly GroupBox _runtimeBox = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly GroupBox _metricBox = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly GroupBox _capsBox = new() { Dock = DockStyle.Fill };
     private readonly GroupBox _coresBox = new() { Dock = DockStyle.Fill };
@@ -136,30 +129,29 @@ public sealed class MainForm : Form
     private readonly GroupBox _planFormBox = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly GroupBox _sceneFormBox = new() { Dock = DockStyle.Top, AutoSize = true };
 
-    public MainForm(MainViewModel viewModel, LocalizationCatalog catalog, ThemeService themes, bool autoConnect = true)
+    public MainForm(MainViewModel viewModel, LocalizationCatalog catalog, bool autoConnect = true)
     {
         _vm = viewModel;
         _catalog = catalog;
-        _themes = themes;
         _autoConnect = autoConnect;
 
         SuspendLayout();
 
         Text = "Zentwik";
-        Font = new Font(UiFont, 9f);
+        // 不设自定义字体，用系统默认；缩放只按 DPI 走，避免按字体度量再算一遍把整窗缩小。
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleDimensions = new SizeF(96F, 96F);
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(880, 580);
         ClientSize = new Size(1120, 760);
 
-        BuildStatusBar();
         BuildMonitorPage();
         BuildPlansPage();
         BuildScenesPage();
         BuildTuningPage();
-        BuildSettingsPage();
 
-        var tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(14, 4) };
-        tabs.TabPages.AddRange([_monitorPage, _plansPage, _scenesPage, _tuningPage, _settingsPage]);
+        var tabs = new TabControl { Dock = DockStyle.Fill };
+        tabs.TabPages.AddRange([_monitorPage, _plansPage, _scenesPage, _tuningPage]);
 
         var root = new TableLayoutPanel
         {
@@ -168,10 +160,12 @@ public sealed class MainForm : Form
             RowCount = 3,
             Padding = new Padding(8),
         };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.Controls.Add(BuildStatusBar(), 0, 0);
+        var statusBar = BuildStatusBar();
+        root.Controls.Add(statusBar, 0, 0);
         root.Controls.Add(_noticePanel, 0, 1);
         root.Controls.Add(tabs, 0, 2);
         Controls.Add(root);
@@ -180,7 +174,6 @@ public sealed class MainForm : Form
 
         WireUp();
         ApplyTexts();
-        ApplyTheme();
         RefreshCommandStates();
         ReloadAll();
     }
@@ -189,17 +182,42 @@ public sealed class MainForm : Form
 
     private Control BuildStatusBar()
     {
-        var bar = new FlowLayoutPanel
+        var bar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(2, 2, 2, 6),
+        };
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var labels = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Padding = new Padding(2, 2, 2, 6),
         };
-        bar.Controls.Add(_statusLabel);
-        bar.Controls.Add(_runtimeLabel);
-        bar.Controls.Add(_sceneLabel);
+        labels.Controls.Add(_statusLabel);
+        labels.Controls.Add(_sceneLabel);
+
+        var language = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+        };
+        _languageCaption.Margin = new Padding(0, 6, 6, 0);
+        _languageCombo.Margin = new Padding(0, 2, 0, 0);
+        language.Controls.Add(_languageCaption);
+        language.Controls.Add(_languageCombo);
+
+        bar.Controls.Add(labels, 0, 0);
+        bar.Controls.Add(language, 1, 0);
         return bar;
     }
 
@@ -232,38 +250,38 @@ public sealed class MainForm : Form
     {
         _monitorPage.Padding = new Padding(8);
 
-        var metrics = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 4, RowCount = 1 };
-        for (var i = 0; i < 4; i++)
+        var info = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 5 };
+        info.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
+        info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < 5; i++)
         {
-            metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            info.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
 
-        metrics.Controls.Add(MetricCell(_cpuCaption, _cpuValue), 0, 0);
-        metrics.Controls.Add(MetricCell(_memCaption, _memValue), 1, 0);
-        metrics.Controls.Add(MetricCell(_procCaption, _procValue), 2, 0);
-        metrics.Controls.Add(MetricCell(_coreCaption, _coreValue), 3, 0);
-        _metricBox.Controls.Add(metrics);
+        _runtimeLabel.Margin = new Padding(0, 2, 0, 10);
+        info.Controls.Add(_runtimeLabel, 0, 0);
+        info.SetColumnSpan(_runtimeLabel, 2);
+        AddMetricRow(info, 1, _cpuCaption, _cpuValue);
+        AddMetricRow(info, 2, _memCaption, _memValue);
+        AddMetricRow(info, 3, _procCaption, _procValue);
+        AddMetricRow(info, 4, _coreCaption, _coreValue);
+        _metricBox.Controls.Add(info);
 
-        _refreshButton = new Button { Text = "刷新", AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
-
-        var runtime = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        runtime.Controls.Add(_runtimeLabel);
-        _runtimeBox.Controls.Add(runtime);
+        _refreshButton = new Button { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
 
         _capsBox.Controls.Add(_capsGrid);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         buttons.Controls.Add(_refreshButton);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(_runtimeBox, 0, 0);
-        root.Controls.Add(_metricBox, 0, 1);
-        root.Controls.Add(_capsBox, 0, 2);
-        root.Controls.Add(buttons, 0, 3);
+        root.Controls.Add(_metricBox, 0, 0);
+        root.Controls.Add(_capsBox, 0, 1);
+        root.Controls.Add(buttons, 0, 2);
         _monitorPage.Controls.Add(root);
     }
 
@@ -297,6 +315,7 @@ public sealed class MainForm : Form
         _planForm.Controls.Add(_planFormBox);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -340,6 +359,7 @@ public sealed class MainForm : Form
         _sceneForm.Controls.Add(_sceneFormBox);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -359,6 +379,9 @@ public sealed class MainForm : Form
         _releaseButton = new Button { AutoSize = true };
 
         var summaries = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2 };
+        summaries.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        summaries.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        summaries.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         summaries.Controls.Add(_tuningSummaryLabel, 0, 0);
         summaries.Controls.Add(_intelSummaryLabel, 0, 1);
         _tuningBox.Controls.Add(summaries);
@@ -380,6 +403,7 @@ public sealed class MainForm : Form
         split.Panel2.Controls.Add(_ledgerBox);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -387,22 +411,6 @@ public sealed class MainForm : Form
         root.Controls.Add(split, 0, 1);
         root.Controls.Add(buttons, 0, 2);
         _tuningPage.Controls.Add(root);
-    }
-
-    // ---------------------------------------------------------------- 设置页
-
-    private void BuildSettingsPage()
-    {
-        _settingsPage.Padding = new Padding(8);
-
-        var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, RowCount = 4 };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
-        AddRow(grid, 0, _languageCaption, _languageCombo);
-        AddRow(grid, 1, _themeCaption, _themeCombo);
-        AddRow(grid, 2, _accentCaption, _accentCombo);
-        AddRow(grid, 3, _scaleCaption, _scaleCombo);
-        _settingsPage.Controls.Add(grid);
     }
 
     // ---------------------------------------------------------------- 事件挂接
@@ -417,14 +425,11 @@ public sealed class MainForm : Form
         _vm.Scenes.CollectionChanged += (_, _) => ReloadScenes();
         _vm.CoreOffsets.CollectionChanged += (_, _) => ReloadCores();
         _vm.LedgerEntries.CollectionChanged += (_, _) => ReloadLedger();
-        _themes.Changed += ApplyTheme;
 
         _capsGrid.SelectionChanged += (_, _) => { };
         _plansGrid.SelectionChanged += OnPlansSelected;
         _scenesGrid.SelectionChanged += OnScenesSelected;
         _ledgerGrid.SelectionChanged += OnLedgerSelected;
-
-        _grids.AddRange([_capsGrid, _plansGrid, _scenesGrid, _coresGrid, _ledgerGrid]);
 
         Bind(_refreshButton, _vm.RefreshCommand);
         Bind(_applyPlanButton, _vm.ApplyPlanCommand);
@@ -475,27 +480,6 @@ public sealed class MainForm : Form
                 _vm.SelectedLanguage = culture;
             }
         };
-        _themeCombo.SelectedIndexChanged += (_, _) =>
-        {
-            if (!_syncing && _themeCombo.SelectedIndex >= 0)
-            {
-                _vm.SelectedTheme = _vm.Themes[_themeCombo.SelectedIndex];
-            }
-        };
-        _accentCombo.SelectedIndexChanged += (_, _) =>
-        {
-            if (!_syncing && _accentCombo.SelectedIndex >= 0)
-            {
-                _vm.SelectedAccent = _vm.Accents[_accentCombo.SelectedIndex];
-            }
-        };
-        _scaleCombo.SelectedIndexChanged += (_, _) =>
-        {
-            if (!_syncing && _scaleCombo.SelectedIndex >= 0)
-            {
-                _vm.UiScale = _vm.ScaleOptions[_scaleCombo.SelectedIndex];
-            }
-        };
 
         _catalog.CultureChanged += OnCultureChanged;
 
@@ -509,13 +493,12 @@ public sealed class MainForm : Form
         Register(_plansPage, "nav.plans");
         Register(_scenesPage, "nav.scenes");
         Register(_tuningPage, "nav.tuning");
-        Register(_settingsPage, "nav.settings");
 
         Register(_cpuCaption, "monitor.cpu");
         Register(_memCaption, "monitor.memory");
         Register(_procCaption, "monitor.processes");
         Register(_coreCaption, "monitor.cores");
-        Register(_runtimeBox, "monitor.hardware_summary");
+        Register(_metricBox, "monitor.title");
         Register(_capsBox, "caps.title");
         Register(_refreshButton, "common.refresh");
         Register(_dismissButton, "common.dismiss");
@@ -555,16 +538,20 @@ public sealed class MainForm : Form
         Register(_releaseButton, "tuning.release");
 
         Register(_languageCaption, "settings.language");
-        Register(_themeCaption, "settings.theme");
-        Register(_accentCaption, "settings.accent");
-        Register(_scaleCaption, "settings.scale");
 
-        _headers.Add((_capsGrid.Columns[0], "caps.title"));
-        _headers.Add((_plansGrid.Columns[0], "plans.kind"));
-        _headers.Add((_plansGrid.Columns[1], "plans.name"));
-        _headers.Add((_scenesGrid.Columns[0], "scenes.name"));
-        _headers.Add((_scenesGrid.Columns[1], "scenes.priority"));
-        _headers.Add((_ledgerGrid.Columns[0], "tuning.ledger_title"));
+        AddHeaders(_capsGrid, "caps.id", "caps.state", "caps.detail");
+        AddHeaders(_plansGrid, "plans.kind", "plans.name", "plans.caption", "plans.state");
+        AddHeaders(_scenesGrid, "scenes.name", "scenes.priority", "scenes.target", "scenes.enabled", "scenes.active", "scenes.outcome");
+        AddHeaders(_coresGrid, "tuning.core", "tuning.offset");
+        AddHeaders(_ledgerGrid, "ledger.target", "ledger.owner", "ledger.status", "ledger.values", "ledger.failure");
+    }
+
+    private void AddHeaders(DataGridView grid, params string[] keys)
+    {
+        for (var i = 0; i < keys.Length && i < grid.Columns.Count; i++)
+        {
+            _headers.Add((grid.Columns[i], keys[i]));
+        }
     }
 
     private void Register(Control target, string key) => _texts.Add((target, key));
@@ -586,7 +573,7 @@ public sealed class MainForm : Form
         {
             RebuildPlanKinds();
             RebuildTriggerKinds();
-            RebuildSettingsCombos();
+            RebuildLanguageCombo();
         }
         finally
         {
@@ -616,33 +603,11 @@ public sealed class MainForm : Form
         _sceneTriggerCombo.SelectedIndex = index < 0 ? 0 : index;
     }
 
-    private void RebuildSettingsCombos()
+    private void RebuildLanguageCombo()
     {
         _languageCombo.Items.Clear();
         _languageCombo.Items.AddRange([.. _vm.Languages]);
         _languageCombo.SelectedItem = _vm.SelectedLanguage;
-
-        _themeCombo.Items.Clear();
-        foreach (var theme in _vm.Themes)
-        {
-            _themeCombo.Items.Add(_catalog["theme." + theme]);
-        }
-
-        var themeIndex = _vm.Themes.ToList().IndexOf(_vm.SelectedTheme);
-        _themeCombo.SelectedIndex = themeIndex < 0 ? 0 : themeIndex;
-
-        _accentCombo.Items.Clear();
-        _accentCombo.Items.AddRange([.. _vm.Accents]);
-        _accentCombo.SelectedItem = _vm.SelectedAccent;
-
-        _scaleCombo.Items.Clear();
-        foreach (var scale in _vm.ScaleOptions)
-        {
-            _scaleCombo.Items.Add($"{scale:0.##}×");
-        }
-
-        var scaleIndex = _vm.ScaleOptions.ToList().IndexOf(_vm.UiScale);
-        _scaleCombo.SelectedIndex = scaleIndex < 0 ? 0 : scaleIndex;
     }
 
     private void OnCultureChanged()
@@ -721,10 +686,6 @@ public sealed class MainForm : Form
             case nameof(MainViewModel.NewSceneRestoreOnExit):
                 SyncSceneForm();
                 break;
-            case nameof(MainViewModel.SelectedTheme):
-            case nameof(MainViewModel.SelectedAccent):
-                ApplyTheme();
-                break;
         }
 
         RefreshCommandStates();
@@ -733,9 +694,8 @@ public sealed class MainForm : Form
     private void UpdateNotice()
     {
         _noticePanel.Visible = _vm.HasNotice;
-        _noticeLabel.Text = _vm.NoticeText ?? string.Empty;
-        _noticePanel.BackColor = _vm.NoticeIsError ? Color.FromArgb(0x5A, 0x1E, 0x1E) : Color.FromArgb(0x1E, 0x40, 0x2A);
-        _noticeLabel.ForeColor = Color.White;
+        var text = _vm.NoticeText ?? string.Empty;
+        _noticeLabel.Text = _vm.NoticeIsError ? _catalog["common.error_prefix"] + text : text;
     }
 
     private void SyncPlanForm()
@@ -863,7 +823,7 @@ public sealed class MainForm : Form
                     scene.Name,
                     scene.Priority,
                     scene.Targets,
-                    scene.Enabled ? "是" : "否",
+                    scene.Enabled ? _catalog["common.yes"] : _catalog["common.no"],
                     scene.Active ? "●" : string.Empty,
                     scene.LastOutcome);
                 _scenesGrid.Rows[index].Tag = scene;
@@ -953,39 +913,6 @@ public sealed class MainForm : Form
         }
     }
 
-    // ---------------------------------------------------------------- 主题
-
-    private void ApplyTheme()
-    {
-        var back = _themes.WindowBack;
-        var fore = _themes.WindowFore;
-
-        BackColor = back;
-        ForeColor = fore;
-
-        foreach (var grid in _grids)
-        {
-            StyleGrid(grid, back, fore);
-        }
-
-        _noticePanel.BackColor = _vm.NoticeIsError ? Color.FromArgb(0x5A, 0x1E, 0x1E) : Color.FromArgb(0x1E, 0x40, 0x2A);
-        _noticeLabel.ForeColor = Color.White;
-        _dismissButton.ForeColor = Color.White;
-    }
-
-    private static void StyleGrid(DataGridView grid, Color back, Color fore)
-    {
-        grid.BackgroundColor = back;
-        grid.GridColor = ControlPaint.Light(back, 0.15f);
-        grid.DefaultCellStyle.BackColor = back;
-        grid.DefaultCellStyle.ForeColor = fore;
-        grid.DefaultCellStyle.SelectionBackColor = SystemColors.Highlight;
-        grid.DefaultCellStyle.SelectionForeColor = SystemColors.HighlightText;
-        grid.ColumnHeadersDefaultCellStyle.BackColor = ControlPaint.Light(back, 0.12f);
-        grid.ColumnHeadersDefaultCellStyle.ForeColor = fore;
-        grid.EnableHeadersVisualStyles = false;
-    }
-
     // ---------------------------------------------------------------- 辅助
 
     private Button Bind(Button button, ICommand command)
@@ -1020,24 +947,15 @@ public sealed class MainForm : Form
         table.Controls.Add(input, 1, row);
     }
 
-    private static Control MetricCell(Label caption, Label value)
+    private static void AddMetricRow(TableLayoutPanel table, int row, Label caption, Label value)
     {
-        var cell = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2 };
-        cell.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        cell.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        cell.Controls.Add(caption, 0, 0);
-        cell.Controls.Add(value, 0, 1);
-        return cell;
+        caption.Margin = new Padding(0, 4, 10, 4);
+        value.Margin = new Padding(0, 4, 0, 4);
+        table.Controls.Add(caption, 0, row);
+        table.Controls.Add(value, 1, row);
     }
 
-    private static Label MetricCaption() => new() { AutoSize = true };
-
-    private static Label MetricValue() => new()
-    {
-        AutoSize = true,
-        Font = new Font(UiFont, 20f, FontStyle.Regular),
-        Text = "—",
-    };
+    private static Label MetricValue() => new() { AutoSize = true, Text = "—" };
 
     private static Label Caption() => new() { AutoSize = true };
 
@@ -1099,7 +1017,6 @@ public sealed class MainForm : Form
         if (disposing)
         {
             _catalog.CultureChanged -= OnCultureChanged;
-            _themes.Changed -= ApplyTheme;
         }
 
         base.Dispose(disposing);

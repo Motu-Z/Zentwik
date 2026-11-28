@@ -1,4 +1,3 @@
-using Zentwik.Desktop.Services;
 using Zentwik.Desktop.ViewModels;
 using Zentwik.Localization;
 
@@ -16,10 +15,9 @@ internal static class Program
         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
 
         var catalog = LocalizationCatalog.CreateDefault();
-        var themes = new ThemeService();
-        var viewModel = new MainViewModel(catalog, themes);
+        var viewModel = new MainViewModel(catalog);
 
-        using (var form = new MainForm(viewModel, catalog, themes))
+        using (var form = new MainForm(viewModel, catalog))
         {
             Application.Run(form);
         }
