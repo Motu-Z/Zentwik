@@ -1351,9 +1351,10 @@ public sealed class PlanCoordinator
                     _ledger.Commit(item.Target, FormatInt(value)!);
                     break;
                 case PowerLimitWriteState.Diverged when write.Actual is { } diverged:
-                    // 回读与请求不符：账本记下真实值并判未生效，不把固件折算说成成功。
+                    // 固件按自身比例折算：写下去的值确实变了，但没到请求值。
+                    // 这不是失败（硬件改了），也不是成功（没到期望），按「结果未知」持有，才回退得回去。
                     _ledger.Commit(item.Target, FormatInt(diverged)!);
-                    _ledger.Fail(item.Target, $"固件折算：{detail}");
+                    _ledger.MarkUnknown(item.Target, $"固件折算：{detail}");
                     break;
                 case PowerLimitWriteState.Accepted:
                     _ledger.MarkUnknown(item.Target, $"该通道无回读，SMU 已接受请求：{detail}");
@@ -1375,6 +1376,65 @@ public sealed class PlanCoordinator
         }
 
         return outcomes;
+    }
+
+    /// <summary>
+    /// 把某一项写回目标值。目标值是 PM 表里的读数，而写入接口吃的是请求值：
+    /// 固件会按自身比例折算（本机实测请求 125 W 回读 100 W），直接把回读值当请求写会欠写。
+    /// 所以按本次观测到的比例反推下一次请求，最多 3 次，收敛不了就如实报失败。
+    /// </summary>
+    private (string? Actual, string? Error) RestorePowerLimit(string field, int target)
+    {
+        if (_powerLimits is null)
+        {
+            return (null, "未装配硬件功耗墙通道。");
+        }
+
+        if (_powerLimitsEnabled is not null && !_powerLimitsEnabled())
+        {
+            return (null, "可选模块 power-limits 未启用。");
+        }
+
+        var request = target;
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            var result = _powerLimits.ApplyPowerLimits(RequestFor(field, request));
+            if (result.RejectedReason is { } rejected)
+            {
+                return (null, rejected);
+            }
+
+            var write = result.Items.FirstOrDefault(item => string.Equals(item.Item, field, StringComparison.OrdinalIgnoreCase));
+            if (write is null)
+            {
+                return (null, "提供者没有回报该项结果。");
+            }
+
+            if (write.Actual is not { } actual)
+            {
+                return (null, write.Detail ?? "该通道无回读，无法确认是否恢复。");
+            }
+
+            if (actual == target)
+            {
+                return (FormatInt(actual), null);
+            }
+
+            if (request <= 0 || actual <= 0)
+            {
+                break;
+            }
+
+            var next = (int)Math.Round(target * (double)request / actual, MidpointRounding.AwayFromZero);
+            if (next == request)
+            {
+                break;
+            }
+
+            request = Math.Clamp(next, PowerLimitBounds.MinWatts, PowerLimitBounds.MaxWatts);
+        }
+
+        return (null, $"回退后回读仍不等于 {target}（最后一次请求 {request}）。");
     }
 
     private static TargetOutcome PowerLimitSkipped(string reason) =>
@@ -1889,7 +1949,7 @@ public sealed class PlanCoordinator
                 return (null, "功耗墙前值未知，无法回退。");
             }
 
-            return WritePowerLimit(limitField, prevLimit);
+            return RestorePowerLimit(limitField, prevLimit);
         }
 
         if (string.Equals(entry.Target, "power.active", StringComparison.Ordinal))

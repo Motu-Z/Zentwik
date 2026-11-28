@@ -1311,7 +1311,20 @@ public sealed class MainForm : Form
                 _processGrid.Rows[index].Tag = row;
             }
 
+            // 刷新后把选中行恢复回去：视图模型仍按这一行做单查，界面不标出来会让人以为没选中。
+            var selectedPid = _vm.SelectedProcess?.Pid;
             _processGrid.ClearSelection();
+            if (selectedPid is { } pid)
+            {
+                foreach (DataGridViewRow gridRow in _processGrid.Rows)
+                {
+                    if (gridRow.Tag is ProcessRowView tagged && tagged.Pid == pid)
+                    {
+                        gridRow.Selected = true;
+                        break;
+                    }
+                }
+            }
         }
         finally
         {

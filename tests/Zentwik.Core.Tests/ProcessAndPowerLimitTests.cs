@@ -113,17 +113,26 @@ public sealed class ProcessAndPowerLimitTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Diverged_Readback_Is_Not_Reported_As_Applied()
+    public async Task Diverged_Readback_Is_Unknown_And_Revert_Converges_Through_Scaling()
     {
+        // 本机实测比例：请求 125 W 回读 100 W。回退不能把回读值当请求直接写，否则会欠写到 80。
         _limits.WriteScale = 0.8;
-        var plan = await SeedAsync(new PowerLimitRequest(120, null, null, null));
+        var plan = await SeedAsync(new PowerLimitRequest(125, 85, null, null));
 
         var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
 
+        Assert.Equal(PlanApplyState.Unknown, outcome.State);
         var fast = _plans.Entries.Single(entry => entry.Target == "cpu.power.limit.fast");
-        Assert.Equal(LedgerStatus.Failed, fast.Status);
-        Assert.Equal("96", fast.ActualValue);
-        Assert.Equal(PlanApplyState.Failed, outcome.State);
+        Assert.Equal(LedgerStatus.Unknown, fast.Status);
+        Assert.Equal("100", fast.ActualValue);
+        Assert.Equal("100", fast.PreviousValue);
+
+        var reverted = await _plans.RevertPlanAsync(plan.Id);
+
+        Assert.All(reverted, static target => Assert.Equal(LedgerStatus.Reverted, target.Status));
+        Assert.True(_limits.TryReadCurrentPowerLimits(out var current, out _));
+        Assert.Equal(100, current.FastWatts);
+        Assert.Equal(90, current.SlowWatts);
     }
 
     [Fact]
