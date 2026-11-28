@@ -31,24 +31,26 @@ Flutter 外壳（`src/Zentwik.Gui`，约 8000 行 Dart + 925 MB 构建残留）�
 | 方案 | `Plans` | 应用 / 回退 / 删除 / 新建 |
 | 场景 | `Scenes` | 激活 / 停用 / 启用停用 / 删除 / 新建 |
 | 调校与账本 | `CoreOffsets` / `LedgerEntries` / `TuningSummary` / `IntelTuningSummary` | 刷新 / 释放接管 |
-| 设置 | 语言 / 主题 / 强调色 / 缩放 | 写入 `SettingsPatch` |
+| ~~设置~~ | 5bb787e 已整页删除，语言暂挂顶栏右侧 | — |
 
 ## 测试
 
 `tests/Zentwik.Desktop.Tests/MainFormSmokeTests.cs`（3 例，全绿）：
-窗口能在 STA 线程建出来、五个页签齐全、所有按钮有文案、五个表格都有列、切语言后页签标题真的变了、
-`ThemeService` 会夹取非法值。
+窗口能在 STA 线程建出来、四个页签齐全、所有按钮有文案、五个表格都有列、
+没有主题/强调色/缩放入口（设置页已删）、切语言后页签标题真的变了。
 
 ## 下一步（按优先级）
 
-1. **实机逐页手验**：五个页签在真代理上跑一遍，记录哪条 op 报错。
+0. **任务 10 已交 Gemini**：见 `gemini-task-10.md` —— 顶栏只留代理状态（靠右）、
+   活动场景与硬件摘要全删、设置页回归且语言只留简体中文、按后端已实现的能力补
+   模块 / 电源 / 日志 / 诊断等页面。接手前先读该文件第 4 节的四个坑。
+1. **实机逐页手验**：四个页签在真代理上跑一遍，记录哪条 op 报错。
 2. **补齐 `MainViewModel` 未暴露的能力**：`AgentConnection` 里有但 VM 没接的 op 先列清单
    （`CreatePowerSchemeAsync` / `RenamePowerSchemeAsync` / `DisableModuleAsync` 等），
    再决定哪些进 UI。
 3. **监控页折线**：`MainViewModel.HistoryChanged` 事件已经在了，视图现在没用。
    裸控件做法就是 `System.Windows.Forms.DataVisualization.Charting` 或自绘 `Panel`，先不着急。
-4. **深色主题**：现在只改窗口底色，DataGridView 表头是手工刷的。
-   要么彻底不做，要么接受 WinForms 深色不完美的现实。
+4. ~~深色主题~~：已决定不做。界面全部用系统默认控件与系统色，不再有主题/强调色/缩放。
 
 ## 纪律
 
