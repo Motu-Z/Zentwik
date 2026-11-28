@@ -1,49 +1,64 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'palette.dart';
 import 'tokens.dart';
 
+export 'palette.dart';
 export 'tokens.dart';
 
-/// 构建基于 [ZentwikTokens] 的暗色 Material 3 主题。
-ThemeData buildZentwikTheme() {
-  const colorScheme = ColorScheme.dark(
-    primary: ZentwikTokens.accent,
-    onPrimary: ZentwikTokens.textPrimary,
-    secondary: ZentwikTokens.accent,
-    onSecondary: ZentwikTokens.textPrimary,
-    surface: ZentwikTokens.surface,
-    onSurface: ZentwikTokens.textPrimary,
-    onSurfaceVariant: ZentwikTokens.textSecondary,
-    error: ZentwikTokens.danger,
-    onError: ZentwikTokens.textPrimary,
-    outline: ZentwikTokens.border,
+/// 构建基于 [ZentwikPalette] 与 [ZentwikTokens] 的 Material 3 主题。
+ThemeData buildZentwikTheme({
+  Brightness brightness = Brightness.dark,
+  String accent = 'blue',
+  double textScale = 1.0,
+}) {
+  final palette = ZentwikPalette.resolve(
+    brightness: brightness,
+    accent: accent,
+  );
+  final onAccent =
+      brightness == Brightness.dark ? palette.textPrimary : Colors.white;
+
+  final colorScheme = ColorScheme(
+    brightness: brightness,
+    primary: palette.accent,
+    onPrimary: onAccent,
+    secondary: palette.accent,
+    onSecondary: onAccent,
+    error: palette.danger,
+    onError: onAccent,
+    surface: palette.surface,
+    onSurface: palette.textPrimary,
+    onSurfaceVariant: palette.textSecondary,
+    outline: palette.border,
   );
 
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: brightness,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: ZentwikTokens.background,
-    cardColor: ZentwikTokens.surface,
-    dividerColor: ZentwikTokens.border,
-    textTheme: const TextTheme(
+    scaffoldBackgroundColor: palette.background,
+    cardColor: palette.surface,
+    dividerColor: palette.border,
+    extensions: [palette],
+    textTheme: TextTheme(
       titleLarge: TextStyle(
-        fontSize: ZentwikTokens.fontTitle,
+        fontSize: ZentwikTokens.fontTitle * textScale,
         fontWeight: FontWeight.w600,
-        color: ZentwikTokens.textPrimary,
+        color: palette.textPrimary,
       ),
       titleMedium: TextStyle(
-        fontSize: ZentwikTokens.fontSubtitle,
+        fontSize: ZentwikTokens.fontSubtitle * textScale,
         fontWeight: FontWeight.w600,
-        color: ZentwikTokens.textPrimary,
+        color: palette.textPrimary,
       ),
       bodyMedium: TextStyle(
-        fontSize: ZentwikTokens.fontBody,
-        color: ZentwikTokens.textPrimary,
+        fontSize: ZentwikTokens.fontBody * textScale,
+        color: palette.textPrimary,
       ),
       bodySmall: TextStyle(
-        fontSize: ZentwikTokens.fontCaption,
-        color: ZentwikTokens.textSecondary,
+        fontSize: ZentwikTokens.fontCaption * textScale,
+        color: palette.textSecondary,
       ),
     ),
   );

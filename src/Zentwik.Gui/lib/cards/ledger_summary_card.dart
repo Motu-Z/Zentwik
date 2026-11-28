@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../format/units.dart';
 import '../protocol/models/ledger_entry.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
 
 class LedgerSummaryCard extends StatelessWidget {
@@ -15,6 +15,7 @@ class LedgerSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final list = entries;
     if (list == null) {
       return const CardEmptyHint('暂无数据');
@@ -36,10 +37,10 @@ class LedgerSummaryCard extends StatelessWidget {
       children: [
         Text(
           formatCount(list.length),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: ZentwikTokens.fontTitle,
             fontWeight: FontWeight.w600,
-            color: ZentwikTokens.textPrimary,
+            color: palette.textPrimary,
           ),
         ),
         if (grouped.isNotEmpty) ...[
@@ -52,16 +53,16 @@ class LedgerSummaryCard extends StatelessWidget {
                 children: [
                   Text(
                     item.key,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: ZentwikTokens.fontCaption,
-                      color: ZentwikTokens.textSecondary,
+                      color: palette.textSecondary,
                     ),
                   ),
                   Text(
                     formatCount(item.value),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: ZentwikTokens.fontCaption,
-                      color: ZentwikTokens.textPrimary,
+                      color: palette.textPrimary,
                     ),
                   ),
                 ],

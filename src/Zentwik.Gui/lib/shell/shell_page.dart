@@ -10,7 +10,7 @@ import '../protocol/models/agent_status_dto.dart';
 import '../protocol/models/module_dto.dart';
 import '../protocol/models/settings_dto.dart';
 import '../state/connection_state.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import 'connection_banner.dart';
 
 class _ShellDestination {
@@ -70,6 +70,7 @@ class ShellPage extends StatelessWidget {
   final String? errorMessage;
   final List<ModuleDto>? modules;
   final String? busyModuleId;
+
   /// 第二参数是「点击后应处的状态」。
   final void Function(String id, bool enable)? onToggleModule;
   final SettingsDto? settings;
@@ -77,7 +78,7 @@ class ShellPage extends StatelessWidget {
   final bool settingsReadOnly;
   final AgentStatusDto? agentStatus;
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
     return switch (selectedIndex) {
       0 => DashboardPage(
           layout: layout,
@@ -99,12 +100,12 @@ class ShellPage extends StatelessWidget {
           status: agentStatus,
           connectionStatus: connectionStatus,
         ),
-      _ => const Center(
+      _ => Center(
           child: Text(
             '该页面尚未接入',
             style: TextStyle(
               fontSize: ZentwikTokens.fontBody,
-              color: ZentwikTokens.textSecondary,
+              color: context.palette.textSecondary,
             ),
           ),
         ),
@@ -113,6 +114,7 @@ class ShellPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -141,16 +143,16 @@ class ShellPage extends StatelessWidget {
                           horizontal: ZentwikTokens.spaceLg,
                           vertical: ZentwikTokens.spaceSm,
                         ),
-                        color: ZentwikTokens.danger.withValues(alpha: 0.12),
+                        color: palette.danger.withValues(alpha: 0.12),
                         child: Text(
                           message,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: ZentwikTokens.fontCaption,
-                            color: ZentwikTokens.danger,
+                            color: palette.danger,
                           ),
                         ),
                       ),
-                    Expanded(child: _buildContent()),
+                    Expanded(child: _buildContent(context)),
                   ],
                 ),
               ),
@@ -177,7 +179,7 @@ class _ShellNavRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: extended ? 168 : 56,
-      color: ZentwikTokens.surface,
+      color: context.palette.surface,
       padding: const EdgeInsets.symmetric(vertical: ZentwikTokens.spaceMd),
       child: Column(
         children: [
@@ -209,8 +211,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        selected ? ZentwikTokens.accent : ZentwikTokens.textSecondary;
+    final palette = context.palette;
+    final color = selected ? palette.accent : palette.textSecondary;
 
     return InkWell(
       onTap: onTap,
@@ -222,7 +224,7 @@ class _NavItem extends StatelessWidget {
         alignment: extended ? Alignment.centerLeft : Alignment.center,
         decoration: BoxDecoration(
           color: selected
-              ? ZentwikTokens.accent.withValues(alpha: 0.12)
+              ? palette.accent.withValues(alpha: 0.12)
               : Colors.transparent,
         ),
         child: extended
@@ -236,8 +238,8 @@ class _NavItem extends StatelessWidget {
                       style: TextStyle(
                         fontSize: ZentwikTokens.fontBody,
                         color: selected
-                            ? ZentwikTokens.textPrimary
-                            : ZentwikTokens.textSecondary,
+                            ? palette.textPrimary
+                            : palette.textSecondary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),

@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/errors.dart';
 import '../protocol/models/module_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 
 /// 模块管理页：纯展示与切换回调，不直接发起协议请求。
 ///
@@ -23,15 +23,15 @@ class ModulesPage extends StatelessWidget {
   final void Function(String id, bool enable)? onToggle;
   final String? busyModuleId;
 
-  Color _dotColor(ModuleDto module) {
+  Color _dotColor(ZentwikPalette palette, ModuleDto module) {
     if (module.enabled == false) {
-      return ZentwikTokens.textSecondary;
+      return palette.textSecondary;
     }
     return switch (module.state) {
-      ModuleStates.ready => ZentwikTokens.success,
-      ModuleStates.degraded => ZentwikTokens.accent,
-      ModuleStates.unavailable => ZentwikTokens.textSecondary,
-      _ => ZentwikTokens.textSecondary,
+      ModuleStates.ready => palette.success,
+      ModuleStates.degraded => palette.accent,
+      ModuleStates.unavailable => palette.textSecondary,
+      _ => palette.textSecondary,
     };
   }
 
@@ -49,26 +49,27 @@ class ModulesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final list = modules;
     if (list == null) {
-      return const Center(
+      return Center(
         child: Text(
           kMissingValue,
           style: TextStyle(
             fontSize: ZentwikTokens.fontTitle,
-            color: ZentwikTokens.textSecondary,
+            color: palette.textSecondary,
           ),
         ),
       );
     }
 
     if (list.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           '无模块',
           style: TextStyle(
             fontSize: ZentwikTokens.fontBody,
-            color: ZentwikTokens.textSecondary,
+            color: palette.textSecondary,
           ),
         ),
       );
@@ -92,9 +93,9 @@ class ModulesPage extends StatelessWidget {
             vertical: ZentwikTokens.spaceMd,
           ),
           decoration: BoxDecoration(
-            color: ZentwikTokens.surface,
+            color: palette.surface,
             borderRadius: BorderRadius.circular(ZentwikTokens.radiusMd),
-            border: Border.all(color: ZentwikTokens.border),
+            border: Border.all(color: palette.border),
           ),
           child: Row(
             children: [
@@ -102,7 +103,7 @@ class ModulesPage extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: _dotColor(module),
+                  color: _dotColor(palette, module),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -113,18 +114,18 @@ class ModulesPage extends StatelessWidget {
                   children: [
                     Text(
                       module.name ?? id ?? kMissingValue,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: ZentwikTokens.fontSubtitle,
                         fontWeight: FontWeight.w600,
-                        color: ZentwikTokens.textPrimary,
+                        color: palette.textPrimary,
                       ),
                     ),
                     const SizedBox(height: ZentwikTokens.spaceXs),
                     Text(
                       _statusLabel(module),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: ZentwikTokens.fontCaption,
-                        color: ZentwikTokens.textSecondary,
+                        color: palette.textSecondary,
                       ),
                     ),
                     if (module.detail case final detail?
@@ -132,9 +133,9 @@ class ModulesPage extends StatelessWidget {
                       const SizedBox(height: ZentwikTokens.spaceXs),
                       Text(
                         detail,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: ZentwikTokens.fontCaption,
-                          color: ZentwikTokens.textTertiary,
+                          color: palette.textTertiary,
                         ),
                       ),
                     ],
@@ -142,11 +143,11 @@ class ModulesPage extends StatelessWidget {
                 ),
               ),
               if (!isOptional)
-                const Text(
+                Text(
                   '内置',
                   style: TextStyle(
                     fontSize: ZentwikTokens.fontCaption,
-                    color: ZentwikTokens.textTertiary,
+                    color: palette.textTertiary,
                   ),
                 )
               else if (isBusy)

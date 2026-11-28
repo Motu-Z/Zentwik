@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/errors.dart';
 import '../protocol/models/module_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
 
 class ModuleStatusCard extends StatelessWidget {
@@ -14,15 +14,15 @@ class ModuleStatusCard extends StatelessWidget {
 
   final List<ModuleDto>? modules;
 
-  Color _dotColor(ModuleDto module) {
+  Color _dotColor(ZentwikPalette palette, ModuleDto module) {
     if (module.enabled == false) {
-      return ZentwikTokens.textSecondary;
+      return palette.textSecondary;
     }
     return switch (module.state) {
-      ModuleStates.ready => ZentwikTokens.success,
-      ModuleStates.degraded => ZentwikTokens.accent,
-      ModuleStates.unavailable => ZentwikTokens.textSecondary,
-      _ => ZentwikTokens.textSecondary,
+      ModuleStates.ready => palette.success,
+      ModuleStates.degraded => palette.accent,
+      ModuleStates.unavailable => palette.textSecondary,
+      _ => palette.textSecondary,
     };
   }
 
@@ -40,6 +40,7 @@ class ModuleStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final list = modules;
     if (list == null) {
       return const CardEmptyHint('暂无数据');
@@ -59,7 +60,7 @@ class ModuleStatusCard extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: _dotColor(list[i]),
+                  color: _dotColor(palette, list[i]),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -67,17 +68,17 @@ class ModuleStatusCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   list[i].name ?? list[i].id ?? kMissingValue,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: ZentwikTokens.fontBody,
-                    color: ZentwikTokens.textPrimary,
+                    color: palette.textPrimary,
                   ),
                 ),
               ),
               Text(
                 _statusLabel(list[i]),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: ZentwikTokens.fontCaption,
-                  color: ZentwikTokens.textSecondary,
+                  color: palette.textSecondary,
                 ),
               ),
             ],

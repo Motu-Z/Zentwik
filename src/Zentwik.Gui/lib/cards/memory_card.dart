@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
 
 class MemoryCard extends StatelessWidget {
@@ -15,6 +15,7 @@ class MemoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final current = telemetry;
     if (current == null) {
       return const CardEmptyHint('暂无数据');
@@ -23,12 +24,12 @@ class MemoryCard extends StatelessWidget {
     final total = current.memoryTotalBytes;
     final available = current.memoryAvailableBytes;
     if (total == null || total <= 0 || available == null || available < 0) {
-      return const Text(
+      return Text(
         kMissingValue,
         style: TextStyle(
           fontSize: ZentwikTokens.fontTitle,
           fontWeight: FontWeight.w600,
-          color: ZentwikTokens.textSecondary,
+          color: palette.textSecondary,
         ),
       );
     }
@@ -47,17 +48,17 @@ class MemoryCard extends StatelessWidget {
           children: [
             Text(
               summary,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: ZentwikTokens.fontSubtitle,
                 fontWeight: FontWeight.w600,
-                color: ZentwikTokens.textPrimary,
+                color: palette.textPrimary,
               ),
             ),
             Text(
               formatPercent(percent),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: ZentwikTokens.fontCaption,
-                color: ZentwikTokens.textSecondary,
+                color: palette.textSecondary,
               ),
             ),
           ],
@@ -66,8 +67,8 @@ class MemoryCard extends StatelessWidget {
         LinearProgressIndicator(
           value: ratio,
           minHeight: 4,
-          backgroundColor: ZentwikTokens.border,
-          color: ZentwikTokens.accent,
+          backgroundColor: palette.border,
+          color: palette.accent,
         ),
       ],
     );

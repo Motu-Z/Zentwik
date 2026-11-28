@@ -2,9 +2,9 @@ import 'package:material_ui/material_ui.dart';
 
 import '../format/units.dart';
 import '../protocol/models/settings_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 
-/// 设置页：支持遥测间隔、语言、主题、强调色与界面缩放编辑。
+/// 设置页：支持遥测间隔、语言、主题、强调色与文字缩放编辑。
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
@@ -213,14 +213,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final current = widget.settings;
     if (current == null) {
-      return const Center(
+      return Center(
         child: Text(
           kMissingValue,
           style: TextStyle(
             fontSize: ZentwikTokens.fontTitle,
-            color: ZentwikTokens.textSecondary,
+            color: palette.textSecondary,
           ),
         ),
       );
@@ -246,12 +247,12 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '设置',
             style: TextStyle(
               fontSize: ZentwikTokens.fontTitle,
               fontWeight: FontWeight.w600,
-              color: ZentwikTokens.textPrimary,
+              color: palette.textPrimary,
             ),
           ),
           const SizedBox(height: ZentwikTokens.spaceLg),
@@ -274,9 +275,9 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: ZentwikTokens.spaceSm),
             Text(
               _clampNotice!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: ZentwikTokens.fontCaption,
-                color: ZentwikTokens.accent,
+                color: palette.accent,
               ),
             ),
           ],
@@ -291,6 +292,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 widget.onChange?.call(SettingsPatch(language: value));
               }
             },
+          ),
+          const SizedBox(height: ZentwikTokens.spaceXs),
+          Text(
+            '界面文案暂只有中文，该选项会写入配置供后续版本使用。',
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontCaption,
+              color: palette.textTertiary,
+            ),
           ),
           const SizedBox(height: ZentwikTokens.spaceMd),
           _EnumDropdownRow(
@@ -320,23 +329,31 @@ class _SettingsPageState extends State<SettingsPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                '界面缩放',
+              Text(
+                '文字缩放',
                 style: TextStyle(
                   fontSize: ZentwikTokens.fontBody,
-                  color: ZentwikTokens.textSecondary,
+                  color: palette.textSecondary,
                 ),
               ),
               Text(
                 current.uiScale == null && _draggingScale == null
                     ? kMissingValue
                     : sliderValue.toStringAsFixed(2),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: ZentwikTokens.fontBody,
-                  color: ZentwikTokens.textPrimary,
+                  color: palette.textPrimary,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: ZentwikTokens.spaceXs),
+          Text(
+            '影响字号与行高，不影响布局比例',
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontCaption,
+              color: palette.textTertiary,
+            ),
           ),
           Slider(
             value: sliderValue,
@@ -355,17 +372,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     setState(() => _draggingScale = null);
                     widget.onChange?.call(SettingsPatch(uiScale: rounded));
                   },
-          ),
-          const SizedBox(height: ZentwikTokens.spaceSm),
-          // 说实话比好看重要：这四项确实只写进了配置，界面渲染还没接上。
-          // 不说清楚，用户点「亮色」发现没反应，只会认为软件坏了。
-          const Text(
-            '语言、主题、强调色与界面缩放会写入配置，但界面渲染尚未接入——'
-            '目前改动不会立刻改变外观。上面两个推送间隔是即时生效的。',
-            style: TextStyle(
-              fontSize: ZentwikTokens.fontCaption,
-              color: ZentwikTokens.textTertiary,
-            ),
           ),
         ],
       ),
@@ -422,14 +428,15 @@ class _EnumDropdownRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: ZentwikTokens.fontBody,
-            color: ZentwikTokens.textSecondary,
+            color: palette.textSecondary,
           ),
         ),
         DropdownButton<String>(

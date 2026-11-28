@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../state/connection_state.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 
 /// 根据连接状态机状态展示顶部提示横幅；`connected` 与 `disconnected` 保持静默。
 class ConnectionBanner extends StatelessWidget {
@@ -23,9 +23,9 @@ class ConnectionBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final palette = context.palette;
     final isFailed = status == ConnectionStatuses.failed;
-    final accentColor =
-        isFailed ? ZentwikTokens.danger : ZentwikTokens.accent;
+    final accentColor = isFailed ? palette.danger : palette.accent;
     final message = switch (status) {
       ConnectionStatuses.connecting => '正在连接后台服务…',
       ConnectionStatuses.reconnecting => attempt > 0
@@ -45,10 +45,10 @@ class ConnectionBanner extends StatelessWidget {
         horizontal: ZentwikTokens.spaceLg,
         vertical: ZentwikTokens.spaceSm,
       ),
-      decoration: const BoxDecoration(
-        color: ZentwikTokens.surface,
+      decoration: BoxDecoration(
+        color: palette.surface,
         border: Border(
-          bottom: BorderSide(color: ZentwikTokens.border),
+          bottom: BorderSide(color: palette.border),
         ),
       ),
       child: Row(
@@ -62,9 +62,9 @@ class ConnectionBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: ZentwikTokens.fontBody,
-                color: ZentwikTokens.textPrimary,
+                color: palette.textPrimary,
               ),
             ),
           ),

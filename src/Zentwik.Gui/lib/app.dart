@@ -25,7 +25,7 @@ class AppStateScope extends InheritedNotifier<AppState> {
   }
 }
 
-/// 应用根组件：装配暗色主题与 [AppStateScope]。
+/// 应用根组件：响应 [AppState.settings] 实时切换主题、强调色与文字缩放。
 class ZentwikApp extends StatelessWidget {
   const ZentwikApp({
     super.key,
@@ -40,10 +40,33 @@ class ZentwikApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppStateScope(
       appState: appState,
-      child: MaterialApp(
-        title: 'Zentwik',
-        theme: buildZentwikTheme(),
-        home: home ?? const Scaffold(body: SizedBox.shrink()),
+      child: AnimatedBuilder(
+        animation: appState,
+        builder: (context, _) {
+          final settings = appState.settings;
+          final brightness = settings?.theme == 'light'
+              ? Brightness.light
+              : Brightness.dark;
+          final accent = settings?.accent ?? 'blue';
+          final scale = (settings?.uiScale ?? 1.0).clamp(0.8, 1.6).toDouble();
+
+          return MaterialApp(
+            title: 'Zentwik',
+            theme: buildZentwikTheme(
+              brightness: brightness,
+              accent: accent,
+            ),
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                ),
+                child: child ?? const SizedBox.shrink(),
+              );
+            },
+            home: home ?? const Scaffold(body: SizedBox.shrink()),
+          );
+        },
       ),
     );
   }

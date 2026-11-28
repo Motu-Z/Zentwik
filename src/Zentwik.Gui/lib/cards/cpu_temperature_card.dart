@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
 
 class CpuTemperatureCard extends StatelessWidget {
@@ -13,21 +13,22 @@ class CpuTemperatureCard extends StatelessWidget {
 
   final TelemetryDto? telemetry;
 
-  Color _colorForTemperature(double? value) {
+  Color _colorForTemperature(ZentwikPalette palette, double? value) {
     if (value == null || !value.isFinite) {
-      return ZentwikTokens.textSecondary;
+      return palette.textSecondary;
     }
     if (value < 70) {
-      return ZentwikTokens.success;
+      return palette.success;
     }
     if (value < 85) {
-      return ZentwikTokens.accent;
+      return palette.accent;
     }
-    return ZentwikTokens.danger;
+    return palette.danger;
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final current = telemetry;
     if (current == null) {
       return const CardEmptyHint('暂无数据');
@@ -39,7 +40,7 @@ class CpuTemperatureCard extends StatelessWidget {
       style: TextStyle(
         fontSize: ZentwikTokens.fontTitle,
         fontWeight: FontWeight.w600,
-        color: _colorForTemperature(temp),
+        color: _colorForTemperature(palette, temp),
       ),
     );
   }

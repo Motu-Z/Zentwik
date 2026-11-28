@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../dashboard/card_registry.dart';
 import '../dashboard/dashboard_grid.dart';
 import '../dashboard/dashboard_layout.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 
 /// 统一卡片外壳：背景、圆角、边框、内边距与标题行（右侧支持 resize 与隐藏按钮）。
 class DashboardCardShell extends StatelessWidget {
@@ -24,11 +24,13 @@ class DashboardCardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
+
     return Container(
       decoration: BoxDecoration(
-        color: ZentwikTokens.surface,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(ZentwikTokens.radiusMd),
-        border: Border.all(color: ZentwikTokens.border),
+        border: Border.all(color: palette.border),
       ),
       padding: const EdgeInsets.all(ZentwikTokens.spaceLg),
       child: Column(
@@ -44,10 +46,10 @@ class DashboardCardShell extends StatelessWidget {
               Expanded(
                 child: Text(
                   card.kind.label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: ZentwikTokens.fontSubtitle,
                     fontWeight: FontWeight.w600,
-                    color: ZentwikTokens.textPrimary,
+                    color: palette.textPrimary,
                   ),
                 ),
               ),
@@ -60,10 +62,10 @@ class DashboardCardShell extends StatelessWidget {
                     minHeight: 28,
                   ),
                   padding: EdgeInsets.zero,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.open_in_full,
                     size: 14,
-                    color: ZentwikTokens.textSecondary,
+                    color: palette.textSecondary,
                   ),
                 ),
               if (onHide != null)
@@ -75,10 +77,10 @@ class DashboardCardShell extends StatelessWidget {
                     minHeight: 28,
                   ),
                   padding: EdgeInsets.zero,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.visibility_off_outlined,
                     size: 14,
-                    color: ZentwikTokens.textSecondary,
+                    color: palette.textSecondary,
                   ),
                 ),
             ],
@@ -144,14 +146,14 @@ class DashboardPage extends StatelessWidget {
           ),
         Expanded(
           child: visibleCards.isEmpty
-              ? const Center(
+              ? Center(
                   child: Padding(
-                    padding: EdgeInsets.all(ZentwikTokens.spaceXl),
+                    padding: const EdgeInsets.all(ZentwikTokens.spaceXl),
                     child: Text(
                       '暂无可显示的仪表盘卡片',
                       style: TextStyle(
                         fontSize: ZentwikTokens.fontBody,
-                        color: ZentwikTokens.textSecondary,
+                        color: context.palette.textSecondary,
                       ),
                     ),
                   ),
@@ -207,10 +209,10 @@ class DashboardPage extends StatelessWidget {
                 card: card,
                 onResize: () => _cycleResize(card),
                 onHide: () => _hideCard(card),
-                dragHandle: const Icon(
+                dragHandle: Icon(
                   Icons.drag_indicator,
                   size: 16,
-                  color: ZentwikTokens.textSecondary,
+                  color: context.palette.textSecondary,
                 ),
                 child: registry.buildCard(context, card),
               ),
@@ -251,7 +253,6 @@ class DashboardPage extends StatelessWidget {
       padding: const EdgeInsets.all(ZentwikTokens.spaceLg),
       buildDefaultDragHandles: false,
       itemCount: visibleCards.length,
-      // onReorderItem 内部已处理「移除后目标下标前移」，不要再手工减一。
       onReorderItem: (oldIndex, newIndex) {
         _reorderVisible(visibleCards, oldIndex, newIndex);
       },
@@ -265,10 +266,10 @@ class DashboardPage extends StatelessWidget {
             onHide: () => _hideCard(card),
             dragHandle: ReorderableDragStartListener(
               index: index,
-              child: const Icon(
+              child: Icon(
                 Icons.drag_indicator,
                 size: 16,
-                color: ZentwikTokens.textSecondary,
+                color: context.palette.textSecondary,
               ),
             ),
             child: registry.buildCard(context, card),
@@ -313,15 +314,17 @@ class _HiddenCardsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: ZentwikTokens.spaceLg,
         vertical: ZentwikTokens.spaceSm,
       ),
-      decoration: const BoxDecoration(
-        color: ZentwikTokens.surface,
+      decoration: BoxDecoration(
+        color: palette.surface,
         border: Border(
-          bottom: BorderSide(color: ZentwikTokens.border),
+          bottom: BorderSide(color: palette.border),
         ),
       ),
       child: Wrap(
@@ -329,11 +332,11 @@ class _HiddenCardsBar extends StatelessWidget {
         runSpacing: ZentwikTokens.spaceXs,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          const Text(
+          Text(
             '已隐藏的卡片：',
             style: TextStyle(
               fontSize: ZentwikTokens.fontCaption,
-              color: ZentwikTokens.textSecondary,
+              color: palette.textSecondary,
             ),
           ),
           for (final card in hiddenCards)

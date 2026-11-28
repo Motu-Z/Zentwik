@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/models/agent_status_dto.dart';
 import '../state/connection_state.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 
 /// 关于页：客观展示代理版本、运行时长、命名管道与当前连接状态。
 class AboutPage extends StatelessWidget {
@@ -46,17 +46,18 @@ class AboutPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(ZentwikTokens.spaceLg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '关于',
             style: TextStyle(
               fontSize: ZentwikTokens.fontTitle,
               fontWeight: FontWeight.w600,
-              color: ZentwikTokens.textPrimary,
+              color: palette.textPrimary,
             ),
           ),
           const SizedBox(height: ZentwikTokens.spaceLg),
@@ -93,6 +94,7 @@ class _AboutRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return Padding(
       padding: const EdgeInsets.only(bottom: ZentwikTokens.spaceSm),
       child: Row(
@@ -100,16 +102,16 @@ class _AboutRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: ZentwikTokens.fontBody,
-              color: ZentwikTokens.textSecondary,
+              color: palette.textSecondary,
             ),
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: ZentwikTokens.fontBody,
-              color: ZentwikTokens.textPrimary,
+              color: palette.textPrimary,
             ),
           ),
         ],

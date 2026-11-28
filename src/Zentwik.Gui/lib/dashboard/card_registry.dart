@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import 'dashboard_layout.dart';
 
 typedef DashboardCardBuilder = Widget Function(
@@ -21,13 +21,13 @@ class PlaceholderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: ZentwikTokens.spaceSm),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: ZentwikTokens.spaceSm),
       child: Text(
         '尚未接入',
         style: TextStyle(
           fontSize: ZentwikTokens.fontCaption,
-          color: ZentwikTokens.textSecondary,
+          color: context.palette.textSecondary,
         ),
       ),
     );

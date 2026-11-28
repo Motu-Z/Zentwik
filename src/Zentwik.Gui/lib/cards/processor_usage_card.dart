@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
 
 class ProcessorUsageCard extends StatelessWidget {
@@ -15,6 +15,7 @@ class ProcessorUsageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final current = telemetry;
     if (current == null) {
       return const CardEmptyHint('暂无数据');
@@ -22,11 +23,11 @@ class ProcessorUsageCard extends StatelessWidget {
 
     final usage = current.processorUtilization;
     if (usage == null || usage.isEmpty) {
-      return const Text(
+      return Text(
         kMissingValue,
         style: TextStyle(
           fontSize: ZentwikTokens.fontTitle,
-          color: ZentwikTokens.textSecondary,
+          color: palette.textSecondary,
         ),
       );
     }
@@ -48,6 +49,7 @@ class _ProcessorBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     const double totalHeight = 28.0;
     final ratio = !percent.isFinite ? 0.0 : (percent / 100.0).clamp(0.0, 1.0);
     final fillHeight = totalHeight * ratio;
@@ -57,14 +59,14 @@ class _ProcessorBar extends StatelessWidget {
       height: totalHeight,
       alignment: Alignment.bottomCenter,
       decoration: BoxDecoration(
-        color: ZentwikTokens.border,
+        color: palette.border,
         borderRadius: BorderRadius.circular(2),
       ),
       child: Container(
         width: 8,
         height: fillHeight,
         decoration: BoxDecoration(
-          color: ZentwikTokens.accent,
+          color: palette.accent,
           borderRadius: BorderRadius.circular(2),
         ),
       ),

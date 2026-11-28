@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
-import '../theme/tokens.dart';
+import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
 
 class CoreClocksCard extends StatelessWidget {
@@ -17,6 +17,7 @@ class CoreClocksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final current = telemetry;
     if (current == null) {
       return const CardEmptyHint('暂无数据');
@@ -24,11 +25,11 @@ class CoreClocksCard extends StatelessWidget {
 
     final clocks = current.coreClocks;
     if (clocks.isEmpty) {
-      return const Text(
+      return Text(
         kMissingValue,
         style: TextStyle(
           fontSize: ZentwikTokens.fontTitle,
-          color: ZentwikTokens.textSecondary,
+          color: palette.textSecondary,
         ),
       );
     }
@@ -56,6 +57,7 @@ class _CoreClockRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final ccd = clock.ccd ?? 0;
     final core = (clock.core ?? 0).toString().padLeft(2, '0');
     final mhz = clock.megahertz;
@@ -69,9 +71,9 @@ class _CoreClockRow extends StatelessWidget {
           width: 76,
           child: Text(
             'CCD$ccd-C$core',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: ZentwikTokens.fontCaption,
-              color: ZentwikTokens.textSecondary,
+              color: palette.textSecondary,
             ),
           ),
         ),
@@ -79,8 +81,8 @@ class _CoreClockRow extends StatelessWidget {
           child: LinearProgressIndicator(
             value: ratio,
             minHeight: 6,
-            backgroundColor: ZentwikTokens.border,
-            color: ZentwikTokens.accent,
+            backgroundColor: palette.border,
+            color: palette.accent,
           ),
         ),
         const SizedBox(width: ZentwikTokens.spaceSm),
@@ -89,9 +91,9 @@ class _CoreClockRow extends StatelessWidget {
           child: Text(
             formatGigahertz(mhz),
             textAlign: TextAlign.right,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: ZentwikTokens.fontCaption,
-              color: ZentwikTokens.textPrimary,
+              color: palette.textPrimary,
             ),
           ),
         ),
