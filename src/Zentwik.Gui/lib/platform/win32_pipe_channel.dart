@@ -15,6 +15,10 @@ const int _errorPipeBusy = 231;
 const int _invalidHandleValue = -1;
 const int _readChunk = 64 * 1024;
 
+/// 读 isolate 的轮询间隔（毫秒）。只在管道里有待读字节时才 ReadFile，
+/// 空转时靠 Sleep 让出 CPU。8ms 对 1s/2s 的遥测节奏完全不构成延迟。
+const int _peekIntervalMs = 8;
+
 // ---- 主 isolate 侧绑定的 kernel32 符号（只查一次）----
 final DynamicLibrary _kernel32 = DynamicLibrary.open('kernel32.dll');
 
@@ -66,8 +70,9 @@ Pointer<Uint16> _toUtf16(String value) {
 
 /// 通过命名管道连 Windows 服务。
 ///
-/// 读用**独立 isolate 里的阻塞 ReadFile**：没有数据时该 isolate 睡在系统调用里，
-/// 不轮询、不空转，CPU 为 0。写在本 isolate 串行排队，避免两帧字节交错。
+/// 读在**独立 isolate** 里做，且是"先 PeekNamedPipe 探、有数据才 ReadFile"：
+/// 同步句柄不能让读挂着，否则同句柄上的写会被串行化卡住（见 [_readLoop]）。
+/// 没数据时用 Sleep 让出 CPU，不空转。写在本 isolate 串行排队，避免两帧字节交错。
 class Win32PipeChannel implements FrameChannel {
   Win32PipeChannel({this.pipeName = r'\\.\pipe\zentwik-agent'});
 
@@ -278,7 +283,12 @@ final class _ReaderRequest {
   final int handle;
 }
 
-/// 读循环：阻塞 ReadFile，整块回传。
+/// 读循环：**先 PeekNamedPipe 探，确有数据才 ReadFile**。
+///
+/// 为什么不直接挂一个阻塞 ReadFile：同步句柄上的 I/O 是串行的，一个还没完成的读
+/// 会把同一句柄上的 WriteFile 挡在门外；而服务端又在等我们发请求，于是互锁。
+/// 实际症状是主 isolate 冻死在 `WriteFile` 里 → 首帧永远画不完 → 窗口不出现。
+/// 改成"有数据才读"，句柄上就不会留下未完成的读。
 ///
 /// 必须是顶层函数：isolate 内重新查符号，FFI 句柄不跨 isolate 共享。
 void _readLoop(_ReaderRequest request) {
@@ -286,20 +296,49 @@ void _readLoop(_ReaderRequest request) {
   final readFile = lib.lookupFunction<
       Int32 Function(IntPtr, Pointer<Uint8>, Uint32, Pointer<Uint32>, Pointer<Void>),
       int Function(int, Pointer<Uint8>, int, Pointer<Uint32>, Pointer<Void>)>('ReadFile');
+  final peekNamedPipe = lib.lookupFunction<
+      Int32 Function(IntPtr, Pointer<Uint8>, Uint32, Pointer<Uint32>, Pointer<Uint32>,
+          Pointer<Uint32>),
+      int Function(int, Pointer<Uint8>, int, Pointer<Uint32>, Pointer<Uint32>,
+          Pointer<Uint32>)>('PeekNamedPipe');
+  final sleep = lib.lookupFunction<Void Function(Uint32), void Function(int)>('Sleep');
 
   final buffer = _allocBytes(_readChunk);
   final readPtr = _allocBytes(4).cast<Uint32>();
+  final availPtr = _allocBytes(4).cast<Uint32>();
 
   try {
     while (true) {
-      final ok = readFile(request.handle, buffer, _readChunk, readPtr, nullptr);
+      // 探一眼：不阻塞，也不会在句柄上留下未完成的读。
+      final peekOk = peekNamedPipe(
+        request.handle,
+        nullptr,
+        0,
+        nullptr,
+        availPtr,
+        nullptr,
+      );
+      if (peekOk == 0) {
+        // 句柄已关或对端断开（ERROR_BROKEN_PIPE），读循环收工。
+        break;
+      }
+
+      final available = availPtr.value;
+      if (available == 0) {
+        sleep(_peekIntervalMs);
+        continue;
+      }
+
+      // 只按"当前确实有的字节数"读，保证这次 ReadFile 立刻返回。
+      final want = available < _readChunk ? available : _readChunk;
+      final ok = readFile(request.handle, buffer, want, readPtr, nullptr);
       if (ok == 0) {
         break;
       }
 
       final read = readPtr.value;
       if (read == 0) {
-        break;
+        continue;
       }
 
       request.port.send(Uint8List.fromList(buffer.asTypedList(read)));
@@ -307,6 +346,7 @@ void _readLoop(_ReaderRequest request) {
   } finally {
     _free(buffer.cast<Void>());
     _free(readPtr.cast<Void>());
+    _free(availPtr.cast<Void>());
     request.port.send(null);
   }
 }
