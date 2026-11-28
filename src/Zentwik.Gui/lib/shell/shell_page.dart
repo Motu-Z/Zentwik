@@ -2,7 +2,13 @@ import 'package:material_ui/material_ui.dart';
 
 import '../dashboard/card_registry.dart';
 import '../dashboard/dashboard_layout.dart';
+import '../pages/about_page.dart';
 import '../pages/dashboard_page.dart';
+import '../pages/modules_page.dart';
+import '../pages/settings_page.dart';
+import '../protocol/models/agent_status_dto.dart';
+import '../protocol/models/module_dto.dart';
+import '../protocol/models/settings_dto.dart';
 import '../state/connection_state.dart';
 import '../theme/tokens.dart';
 import 'connection_banner.dart';
@@ -38,6 +44,13 @@ class ShellPage extends StatelessWidget {
     this.connectionStatus = ConnectionStatuses.disconnected,
     this.reconnectAttempt = 0,
     this.onRetry,
+    this.modules,
+    this.busyModuleId,
+    this.onToggleModule,
+    this.settings,
+    this.onSettingsChanged,
+    this.settingsReadOnly = false,
+    this.agentStatus,
   });
 
   static const double wideBreakpoint = 900.0;
@@ -51,6 +64,47 @@ class ShellPage extends StatelessWidget {
   final String connectionStatus;
   final int reconnectAttempt;
   final VoidCallback? onRetry;
+  final List<ModuleDto>? modules;
+  final String? busyModuleId;
+  final ValueChanged<String>? onToggleModule;
+  final SettingsDto? settings;
+  final ValueChanged<SettingsPatch>? onSettingsChanged;
+  final bool settingsReadOnly;
+  final AgentStatusDto? agentStatus;
+
+  Widget _buildContent() {
+    return switch (selectedIndex) {
+      0 => DashboardPage(
+          layout: layout,
+          onLayoutChanged: onLayoutChanged,
+          registry: registry,
+          onResizeCard: onResizeCard,
+        ),
+      5 => ModulesPage(
+          modules: modules,
+          busyModuleId: busyModuleId,
+          onToggle: onToggleModule,
+        ),
+      6 => SettingsPage(
+          settings: settings,
+          onChange: onSettingsChanged,
+          readOnly: settingsReadOnly,
+        ),
+      7 => AboutPage(
+          status: agentStatus,
+          connectionStatus: connectionStatus,
+        ),
+      _ => const Center(
+          child: Text(
+            '该页面尚未接入',
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontBody,
+              color: ZentwikTokens.textSecondary,
+            ),
+          ),
+        ),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,24 +128,7 @@ class ShellPage extends StatelessWidget {
                       attempt: reconnectAttempt,
                       onRetry: onRetry,
                     ),
-                    Expanded(
-                      child: selectedIndex == 0
-                          ? DashboardPage(
-                              layout: layout,
-                              onLayoutChanged: onLayoutChanged,
-                              registry: registry,
-                              onResizeCard: onResizeCard,
-                            )
-                          : const Center(
-                              child: Text(
-                                '该页面尚未接入',
-                                style: TextStyle(
-                                  fontSize: ZentwikTokens.fontBody,
-                                  color: ZentwikTokens.textSecondary,
-                                ),
-                              ),
-                            ),
-                    ),
+                    Expanded(child: _buildContent()),
                   ],
                 ),
               ),
