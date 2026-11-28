@@ -1,9 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../dashboard/card_metrics.dart';
 import '../format/units.dart';
 import '../protocol/models/ledger_entry.dart';
 import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
+import 'card_layout.dart';
 
 class LedgerSummaryCard extends StatelessWidget {
   const LedgerSummaryCard({
@@ -31,43 +33,90 @@ class LedgerSummaryCard extends StatelessWidget {
       grouped[namespace] = (grouped[namespace] ?? 0) + 1;
     }
 
-    return Column(
+    final metrics = CardMetrics.of(context);
+    final layout = resolveLedgerSummary(
+      metrics: metrics,
+      groupCount: grouped.length,
+    );
+
+    final countWidget = Text(
+      formatCount(list.length),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: metrics.heightClass == CardHeightClass.tall
+            ? ZentwikTokens.fontDisplay
+            : ZentwikTokens.fontTitle,
+        fontWeight: FontWeight.w600,
+        color: palette.textPrimary,
+      ),
+    );
+
+    final shown = grouped.entries.take(layout.maxGroups).toList(growable: false);
+    final groupList = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          formatCount(list.length),
-          style: TextStyle(
-            fontSize: ZentwikTokens.fontTitle,
-            fontWeight: FontWeight.w600,
-            color: palette.textPrimary,
-          ),
-        ),
-        if (grouped.isNotEmpty) ...[
-          const SizedBox(height: ZentwikTokens.spaceSm),
-          for (final item in grouped.entries)
-            Padding(
-              padding: const EdgeInsets.only(bottom: ZentwikTokens.spaceXs),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
+        for (final item in shown)
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZentwikTokens.spaceXs),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
                     item.key,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: ZentwikTokens.fontCaption,
                       color: palette.textSecondary,
                     ),
                   ),
-                  Text(
-                    formatCount(item.value),
-                    style: TextStyle(
-                      fontSize: ZentwikTokens.fontCaption,
-                      color: palette.textPrimary,
-                    ),
+                ),
+                const SizedBox(width: ZentwikTokens.spaceSm),
+                Text(
+                  formatCount(item.value),
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: ZentwikTokens.fontCaption,
+                    color: palette.textPrimary,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+        if (layout.hiddenGroups > 0 && layout.maxGroups > 0)
+          Text(
+            '还有 ${layout.hiddenGroups} 类',
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontCaption,
+              color: palette.textTertiary,
+            ),
+          ),
+      ],
+    );
+
+    if (layout.splitColumns && (shown.isNotEmpty || layout.hiddenGroups > 0)) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 88, child: countWidget),
+          const SizedBox(width: ZentwikTokens.spaceLg),
+          Expanded(child: groupList),
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        countWidget,
+        if (shown.isNotEmpty || (layout.hiddenGroups > 0 && layout.maxGroups > 0)) ...[
+          const SizedBox(height: ZentwikTokens.spaceSm),
+          groupList,
         ],
       ],
     );

@@ -1,10 +1,12 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../dashboard/card_metrics.dart';
 import '../format/units.dart';
 import '../protocol/errors.dart';
 import '../protocol/models/module_dto.dart';
 import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
+import 'card_layout.dart';
 
 class ModuleStatusCard extends StatelessWidget {
   const ModuleStatusCard({
@@ -49,10 +51,19 @@ class ModuleStatusCard extends StatelessWidget {
       return const CardEmptyHint('无模块');
     }
 
+    final metrics = CardMetrics.of(context);
+    final layout = resolveModuleStatus(
+      metrics: metrics,
+      moduleCount: list.length,
+    );
+
+    final shown = list.take(layout.visibleRows).toList(growable: false);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < list.length; i++) ...[
+        for (var i = 0; i < shown.length; i++) ...[
           if (i > 0) const SizedBox(height: ZentwikTokens.spaceXs),
           Row(
             children: [
@@ -60,28 +71,43 @@ class ModuleStatusCard extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: _dotColor(palette, list[i]),
+                  color: _dotColor(palette, shown[i]),
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: ZentwikTokens.spaceSm),
               Expanded(
                 child: Text(
-                  list[i].name ?? list[i].id ?? kMissingValue,
+                  shown[i].name ?? shown[i].id ?? kMissingValue,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: ZentwikTokens.fontBody,
                     color: palette.textPrimary,
                   ),
                 ),
               ),
+              const SizedBox(width: ZentwikTokens.spaceSm),
               Text(
-                _statusLabel(list[i]),
+                _statusLabel(shown[i]),
+                maxLines: 1,
                 style: TextStyle(
                   fontSize: ZentwikTokens.fontCaption,
                   color: palette.textSecondary,
                 ),
               ),
             ],
+          ),
+        ],
+        if (layout.hiddenModules > 0) ...[
+          const SizedBox(height: ZentwikTokens.spaceXs),
+          Text(
+            '还有 ${layout.hiddenModules} 个模块',
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontCaption,
+              color: palette.textTertiary,
+            ),
           ),
         ],
       ],

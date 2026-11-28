@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../theme/theme.dart';
 import 'board.dart';
+import 'card_metrics.dart';
 
 /// 首页卡片的统一外壳：背景、圆角、标题行。
 ///
@@ -71,15 +72,31 @@ class DashboardCardShell extends StatelessWidget {
       ),
     );
 
-    final body = fixedHeight
-        // 显式高度下内容可能超出：宁可让它滚，也不要裁掉半行数字。
-        ? Expanded(
-            child: SingleChildScrollView(
-              primary: false,
-              child: child,
-            ),
-          )
-        : child;
+    final measuredBody = LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
+        final height =
+            fixedHeight && constraints.hasBoundedHeight ? constraints.maxHeight : null;
+        final metrics = CardMetrics(
+          bodyWidth: width,
+          bodyHeight: height,
+        );
+        final content = CardMetrics.scope(
+          metrics: metrics,
+          child: child,
+        );
+        if (!fixedHeight) {
+          return content;
+        }
+        // 显式高度下若极小边界仍超出：宁可让它滚，也不要裁掉半行数字。
+        return SingleChildScrollView(
+          primary: false,
+          child: content,
+        );
+      },
+    );
+
+    final body = fixedHeight ? Expanded(child: measuredBody) : measuredBody;
 
     return Opacity(
       opacity: dimmed ? 0.4 : 1,

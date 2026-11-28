@@ -14,6 +14,8 @@ class CardEmptyHint extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: ZentwikTokens.spaceSm),
       child: Text(
         message,
+        maxLines: 3,
+        softWrap: true,
         style: TextStyle(
           fontSize: ZentwikTokens.fontBody,
           color: context.palette.textTertiary,

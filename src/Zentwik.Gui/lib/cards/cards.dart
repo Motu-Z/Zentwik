@@ -1,3 +1,4 @@
+export 'card_layout.dart';
 export 'core_clocks_card.dart';
 export 'cpu_temperature_card.dart';
 export 'cpu_usage_card.dart';

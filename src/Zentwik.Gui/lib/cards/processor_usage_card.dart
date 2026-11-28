@@ -1,9 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../format/units.dart';
+import '../dashboard/card_metrics.dart';
 import '../protocol/models/telemetry_dto.dart';
 import '../theme/theme.dart';
 import '../widgets/card_empty.dart';
+import 'card_layout.dart';
 
 class ProcessorUsageCard extends StatelessWidget {
   const ProcessorUsageCard({
@@ -23,47 +24,74 @@ class ProcessorUsageCard extends StatelessWidget {
 
     final usage = current.processorUtilization;
     if (usage == null || usage.isEmpty) {
-      return Text(
-        kMissingValue,
-        style: TextStyle(
-          fontSize: ZentwikTokens.fontTitle,
-          color: palette.textSecondary,
-        ),
-      );
+      return const CardEmptyHint('无处理器数据');
     }
 
-    return Wrap(
-      spacing: ZentwikTokens.spaceXs,
-      runSpacing: ZentwikTokens.spaceXs,
+    final metrics = CardMetrics.of(context);
+    final layout = resolveProcessorUsage(
+      metrics: metrics,
+      count: usage.length,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final pct in usage) _ProcessorBar(percent: pct),
+        Wrap(
+          spacing: ZentwikTokens.spaceXs,
+          runSpacing: ZentwikTokens.spaceXs,
+          children: [
+            for (final pct in usage.take(layout.visibleCount))
+              _ProcessorBar(
+                percent: pct,
+                width: layout.barWidth,
+                height: layout.barHeight,
+              ),
+          ],
+        ),
+        if (layout.hiddenCount > 0) ...[
+          const SizedBox(height: ZentwikTokens.spaceXs),
+          Text(
+            '+${layout.hiddenCount}',
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontCaption,
+              color: palette.textTertiary,
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
 class _ProcessorBar extends StatelessWidget {
-  const _ProcessorBar({required this.percent});
+  const _ProcessorBar({
+    required this.percent,
+    required this.width,
+    required this.height,
+  });
 
   final double percent;
+  final double width;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    const double totalHeight = 28.0;
     final ratio = !percent.isFinite ? 0.0 : (percent / 100.0).clamp(0.0, 1.0);
-    final fillHeight = totalHeight * ratio;
+    final fillHeight = height * ratio;
 
     return Container(
-      width: 8,
-      height: totalHeight,
+      width: width,
+      height: height,
       alignment: Alignment.bottomCenter,
       decoration: BoxDecoration(
         color: palette.border,
         borderRadius: BorderRadius.circular(2),
       ),
       child: Container(
-        width: 8,
+        width: width,
         height: fillHeight,
         decoration: BoxDecoration(
           color: palette.accent,
