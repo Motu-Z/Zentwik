@@ -32,8 +32,9 @@ class ProcessCountCard extends StatelessWidget {
     final valueFontSize =
         layout.displayFont ? ZentwikTokens.fontDisplay : ZentwikTokens.fontTitle;
 
+    // 大数字已经是进程数，副行再写一遍「进程 N」是同一信息画两次。
     final subtitle = layout.showProcessorCount
-        ? '进程 ${formatCount(current.processCount)} · 逻辑处理器 ${formatCount(procCount)}'
+        ? '含受保护进程 · 逻辑处理器 ${formatCount(procCount)}'
         : '含受保护进程';
 
     return Column(

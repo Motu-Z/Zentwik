@@ -99,7 +99,7 @@ class ModuleStatusCard extends StatelessWidget {
             ],
           ),
         ],
-        if (layout.hiddenModules > 0) ...[
+        if (layout.showFooter) ...[
           const SizedBox(height: ZentwikTokens.spaceXs),
           Text(
             '还有 ${layout.hiddenModules} 个模块',

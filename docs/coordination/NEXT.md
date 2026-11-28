@@ -39,3 +39,38 @@ GUI 通道断的时候，把下面这段粘给 Gemini 就行，其余内容都�
   `Analyze` 与 `Test` 都绿才算交付。红了改到绿，别写「未执行」。
 
 交付：能推就继续推到 `feat/gui-protocol`，不能推就按文件输出完整内容。
+
+---
+
+## 任务 09（当前）
+
+先 `git pull`。首页布局（跨列 masonry、自由排列、独立调宽高、持久化、独立时间线）
+已由我方完成并合入 `feat/gui-protocol`，**不要重做这部分**。
+
+本轮只做一件事：**卡片内部按自己拿到的实际尺寸改变信息组织方式**。
+只定逻辑，不调风格——不换字体、不调配色、不加动画。
+
+读 `docs/coordination/gemini-task-09.md`。三条最容易踩的：
+
+1. **不能按 span 判断档位。** 同一个 span=2，4 列窗口是 ~706px、2 列窗口是 ~345px。
+   必须由 `DashboardCardShell` 经 `LayoutBuilder` 下发真实 `bodyWidth/bodyHeight`
+   （`CardMetrics`），卡片按**正文宽**分 compact(<220) / regular / wide(≥380) 三档。
+2. **不能用 `MediaQuery` 判断宽度。** 时间线可以从 260 拖到 520 或直接隐藏，
+   窗口尺寸不变但主工作区宽度变了。这条有专门的回归测试（F.3）。
+3. **决策逻辑要抽成纯函数**（`resolveCoreClocks(...)` 这类），Widget 只做分支。
+   断点、取整、夹取都在纯函数里，用纯 Dart 单测逐档覆盖，别全靠 widget 测试。
+
+高度方向的统一规则（B 节）：不足时按「压间距 → 减条目(+N) → 隐藏解释文字 → 才允许滚动」
+逐级降级；富余时只允许「多显示真实条目」或「数值升 `fontDisplay`」，
+**严禁**用装饰元素填空白。
+
+九张卡的具体契约在 D 节，逐张写清。空态/缺数据三种情形不要混用（E 节）。
+
+纪律：不得动 `lib/protocol/**`、`lib/state/**`、`lib/platform/**`、`lib/runtime/**`、
+`lib/main.dart`、`board.dart` 的 JSON 结构、`pubspec.yaml`、任何 `.cs`；
+不得改 `DashboardKind` 的 span 上下限；`ZentwikTokens` 只允许新增 `fontDisplay = 28`；
+不新增依赖；一律 `package:material_ui/material_ui.dart`。
+
+验收：`flutter analyze` 无 issue；`flutter test` 全绿且不少于现有 82 例；
+`flutter build windows --debug` 通过；实机按 F.5 五条逐项手验并写结论。
+验证优先走 GitHub Actions（workflow `Zentwik Next | GUI (Flutter)`），红了改到绿。

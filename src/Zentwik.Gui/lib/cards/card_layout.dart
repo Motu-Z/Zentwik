@@ -420,10 +420,14 @@ LedgerSummaryLayout resolveLedgerSummary({
     final headerCost = splitColumns ? 0.0 : 36.0;
     final fit = math.max(0, ((bodyHeight - headerCost) / kSummaryListRowHeight).floor());
     final target = math.min(widthCap, groupCount);
-    if (fit >= target) {
+    // 被**宽度上限**截断时同样会追加「还有 N 类」尾注，尾注也是一行。
+    // 只看 fit >= target 会漏算这一行，于是尾注被挤出可视区（被外壳的
+    // 滚动兜住，不会报 overflow，所以 widget 测试查不出来）。按总行数预算。
+    final requiredRows = target + (target < groupCount ? 1 : 0);
+    if (requiredRows <= fit) {
       maxGroups = target;
     } else {
-      // 需要显示「还有 N 类」尾注时，预留 1 行。
+      // 放不下就整行让给尾注，宁少显示一组也不让尾注越界。
       maxGroups = math.max(0, fit - 1);
     }
   }
@@ -441,10 +445,17 @@ class ModuleStatusLayout {
   const ModuleStatusLayout({
     required this.visibleRows,
     required this.hiddenModules,
+    required this.showFooter,
   });
 
   final int visibleRows;
   final int hiddenModules;
+
+  /// 尾注「还有 N 个模块」是否真的画得下。
+  ///
+  /// 高度只够一行时，一条真实模块比一行「还有 N 个」更有用，尾注让位。
+  /// 不能让卡片自己用 `hiddenModules > 0` 判断——那会把尾注挤出可视区。
+  final bool showFooter;
 }
 
 ModuleStatusLayout resolveModuleStatus({
@@ -452,7 +463,11 @@ ModuleStatusLayout resolveModuleStatus({
   required int moduleCount,
 }) {
   if (moduleCount <= 0) {
-    return const ModuleStatusLayout(visibleRows: 0, hiddenModules: 0);
+    return const ModuleStatusLayout(
+      visibleRows: 0,
+      hiddenModules: 0,
+      showFooter: false,
+    );
   }
 
   final bodyHeight = metrics.bodyHeight;
@@ -460,6 +475,7 @@ ModuleStatusLayout resolveModuleStatus({
     return ModuleStatusLayout(
       visibleRows: moduleCount,
       hiddenModules: 0,
+      showFooter: false,
     );
   }
 
@@ -468,12 +484,17 @@ ModuleStatusLayout resolveModuleStatus({
     return ModuleStatusLayout(
       visibleRows: moduleCount,
       hiddenModules: 0,
+      showFooter: false,
     );
   }
 
-  final visibleRows = (fit - 1).clamp(1, moduleCount);
+  final canAffordFooter = fit >= 2;
+  final visibleRows = canAffordFooter
+      ? math.min(fit - 1, moduleCount)
+      : fit.clamp(0, moduleCount);
   return ModuleStatusLayout(
     visibleRows: visibleRows,
-    hiddenModules: (moduleCount - visibleRows).clamp(0, moduleCount),
+    hiddenModules: moduleCount - visibleRows,
+    showFooter: canAffordFooter,
   );
 }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zentwik_gui/cards/cards.dart';
@@ -339,6 +341,47 @@ void main() {
       expect(limited.visibleRows, greaterThanOrEqualTo(1));
       expect(limited.hiddenModules, 6 - limited.visibleRows);
     });
+
+    // 这两条锁一个不变量：**内容行数 + 尾注行数 必须 ≤ 可容纳行数**。
+    //
+    // 此前账本只在「高度不够」时给尾注留行，被**宽度上限**截断时漏算，
+    // 于是尾注被挤出可视区；模块状态在 fit == 1 时强制塞 1 行再叠尾注，
+    // 96px 最小高度下必超。两者都被外壳的 SingleChildScrollView 静默吸收，
+    // widget 层的 takeException 查不出来，只能在这里扫高度区间。
+    test('resolveLedgerSummary 尾注行必须计入可用高度', () {
+      for (var h = 40.0; h <= 400.0; h += 4.0) {
+        final layout = resolveLedgerSummary(
+          metrics: CardMetrics(bodyWidth: 200, bodyHeight: h),
+          groupCount: 6,
+        );
+        final fit = math.max(0, ((h - 36.0) / kSummaryListRowHeight).floor());
+        final footerRows =
+            (layout.hiddenGroups > 0 && layout.maxGroups > 0) ? 1 : 0;
+        expect(
+          layout.maxGroups + footerRows,
+          lessThanOrEqualTo(fit),
+          reason: 'h=$h 时显示 ${layout.maxGroups} 组 + 尾注 $footerRows 行，'
+              '超出可容纳的 $fit 行',
+        );
+      }
+    });
+
+    test('resolveModuleStatus 尾注行必须计入可用高度', () {
+      for (var h = 0.0; h <= 400.0; h += 4.0) {
+        final layout = resolveModuleStatus(
+          metrics: CardMetrics(bodyWidth: 200, bodyHeight: h),
+          moduleCount: 6,
+        );
+        final fit = (h / kSummaryListRowHeight).floor();
+        final footerRows = layout.showFooter ? 1 : 0;
+        expect(
+          layout.visibleRows + footerRows,
+          lessThanOrEqualTo(fit),
+          reason: 'h=$h 时显示 ${layout.visibleRows} 行 + 尾注 $footerRows 行，'
+              '超出可容纳的 $fit 行',
+        );
+      }
+    });
   });
 
   group('F.2 全矩阵 Widget 不溢出验证', () {
@@ -433,10 +476,16 @@ void main() {
       final registry = CardRegistry({
         for (final kind in DashboardKind.values)
           kind.wire: (context, item) {
-            if (kind == DashboardKind.cpuUsage) {
-              measuredWidth = CardMetrics.of(context).bodyWidth;
-            }
-            return Text('probe:${kind.wire}');
+            // 必须在**卡片自身**的 build context 里读：注册表拿到的 context 在
+            // `_CardMetricsScope` 之上，读到的永远是 unknown(0)，这条断言会假绿/假红。
+            return Builder(
+              builder: (inner) {
+                if (kind == DashboardKind.cpuUsage) {
+                  measuredWidth = CardMetrics.of(inner).bodyWidth;
+                }
+                return Text('probe:${kind.wire}');
+              },
+            );
           },
       });
 
