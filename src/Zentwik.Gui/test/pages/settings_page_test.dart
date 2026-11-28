@@ -48,6 +48,52 @@ void main() {
     expect(find.textContaining('允许范围为 500–5000 ms'), findsOneWidget);
   });
 
+  testWidgets('非数字输入回退到原值并提示，不提交任何设置', (tester) async {
+    SettingsPatch? captured;
+    const settings = SettingsDto(monitorIntervalMs: 1000, sensorIntervalMs: 2000);
+
+    await tester.pumpWidget(
+      wrap(
+        SettingsPage(
+          settings: settings,
+          onChange: (patch) => captured = patch,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'abc');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(captured, isNull);
+    expect(find.text('1000'), findsOneWidget);
+    expect(find.textContaining('需为 500–5000 之间的整数'), findsOneWidget);
+  });
+
+  testWidgets('失焦即提交，不必按回车', (tester) async {
+    SettingsPatch? captured;
+    const settings = SettingsDto(monitorIntervalMs: 1000, sensorIntervalMs: 2000);
+
+    await tester.pumpWidget(
+      wrap(
+        SettingsPage(
+          settings: settings,
+          onChange: (patch) => captured = patch,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField).first, '1500');
+    await tester.pump();
+    expect(captured, isNull);
+
+    // 焦点移到另一个输入框 => 第一个失焦 => 应提交。
+    await tester.tap(find.byType(TextField).last);
+    await tester.pump();
+
+    expect(captured?.monitorIntervalMs, 1500);
+  });
+
   testWidgets('readOnly 为 true 时输入框禁用', (tester) async {
     const settings = SettingsDto(
       monitorIntervalMs: 1000,

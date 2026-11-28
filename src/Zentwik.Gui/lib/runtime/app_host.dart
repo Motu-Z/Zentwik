@@ -53,6 +53,7 @@ class _ZentwikRootState extends State<ZentwikRoot> {
           return DashboardDataProvider(
             telemetry: appState.telemetry,
             modules: appState.modules,
+            ledgerEntries: appState.ledger,
             child: ShellPage(
               selectedIndex: _selectedIndex,
               onDestinationSelected: (index) =>
@@ -63,6 +64,15 @@ class _ZentwikRootState extends State<ZentwikRoot> {
               connectionStatus: widget.runtime.status,
               reconnectAttempt: widget.runtime.reconnectAttempt,
               onRetry: () => unawaited(widget.runtime.retry()),
+              errorMessage: appState.errorMessage,
+              modules: appState.modules,
+              busyModuleId: appState.busyModuleId,
+              onToggleModule: (id, enable) =>
+                  unawaited(appState.setModuleEnabled(id, enable)),
+              settings: appState.settings,
+              onSettingsChanged: (patch) =>
+                  unawaited(appState.saveSettings(patch)),
+              agentStatus: appState.status,
             ),
           );
         },

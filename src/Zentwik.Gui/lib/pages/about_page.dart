@@ -24,11 +24,11 @@ class AboutPage extends StatelessWidget {
     }
     final uptime = current.uptimeSeconds;
     if (uptime != null) {
-      return '$uptime 秒';
+      return formatUptime(uptime);
     }
     final startedAt = current.startedAt;
     if (startedAt != null) {
-      return startedAt.toIso8601String();
+      return startedAt.toLocal().toString().split('.').first;
     }
     return kMissingValue;
   }

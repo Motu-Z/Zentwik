@@ -247,7 +247,7 @@ void main() {
       final refreshFuture = appState.refresh();
       await Future<void>.delayed(Duration.zero);
 
-      expect(channel.sent, hasLength(3));
+      expect(channel.sent, hasLength(5));
       for (var i = 0; i < channel.sent.length; i++) {
         final req = jsonDecode(utf8.decode(channel.sent[i]))
             as Map<String, Object?>;
@@ -290,6 +290,30 @@ void main() {
               'isEvent': false,
             }),
           );
+        } else if (op == 'settings.get') {
+          channel.push(
+            _jsonBytes({
+              'v': 2,
+              'id': id,
+              'op': op,
+              'ok': true,
+              'data': {'monitorIntervalMs': 1000, 'sensorIntervalMs': 2000},
+              'isEvent': false,
+            }),
+          );
+        } else if (op == 'ledger.list') {
+          channel.push(
+            _jsonBytes({
+              'v': 2,
+              'id': id,
+              'op': op,
+              'ok': true,
+              'data': [
+                {'target': 'power.scheme', 'status': 1},
+              ],
+              'isEvent': false,
+            }),
+          );
         }
       }
 
@@ -297,6 +321,8 @@ void main() {
       expect(appState.status?.machineName, 'MOTUIC-LAPTOP');
       expect(appState.capabilities, hasLength(1));
       expect(appState.modules, hasLength(1));
+      expect(appState.settings?.monitorIntervalMs, 1000);
+      expect(appState.ledger, hasLength(1));
       expect(appState.lastError, isNull);
 
       appState.dispose();
@@ -409,7 +435,7 @@ void main() {
       final f2 = appState.refresh();
       expect(identical(f1, f2), isTrue);
       await Future<void>.delayed(Duration.zero);
-      expect(channel.sent, hasLength(3));
+      expect(channel.sent, hasLength(5));
 
       for (final raw in channel.sent) {
         final req = jsonDecode(utf8.decode(raw)) as Map<String, Object?>;
@@ -488,6 +514,76 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(notifications, 0);
+      await client.close();
+    });
+
+    test('13. setModuleEnabled 成功时用后端回传列表替换缓存，失败时记错误并复位 busy',
+        () async {
+      final channel = _TestFrameChannel();
+      final client = ProtocolClient(channel);
+      await client.connect();
+      final appState = AppState(client);
+
+      // 成功：后端回整份模块列表，enable/disable 都不该由前端自己拼。
+      final okFuture = appState.setModuleEnabled('power-limits', true);
+      await Future<void>.delayed(Duration.zero);
+      expect(appState.busyModuleId, 'power-limits');
+      expect(channel.sent, hasLength(1));
+      final enableReq =
+          jsonDecode(utf8.decode(channel.sent.first)) as Map<String, Object?>;
+      expect(enableReq['op'], 'modules.enable');
+      expect(enableReq['payload'], {'id': 'power-limits'});
+      channel.push(
+        _jsonBytes({
+          'v': 2,
+          'id': (enableReq['id'] as num).toInt(),
+          'op': 'modules.enable',
+          'ok': true,
+          'isEvent': false,
+          'data': [
+            {
+              'id': 'power-limits',
+              'name': '硬件功耗墙',
+              'state': 'unavailable',
+              'optional': true,
+              'enabled': true,
+            },
+          ],
+        }),
+      );
+
+      expect(await okFuture, isTrue);
+      expect(appState.busyModuleId, isNull);
+      expect(appState.modules, hasLength(1));
+      expect(appState.modules.single.enabled, isTrue);
+      expect(appState.lastError, isNull);
+
+      // 失败：内置模块后端回 module.not_optional，界面要拿到错误码而不是空列表。
+      final failFuture = appState.setModuleEnabled('monitoring', false);
+      await Future<void>.delayed(Duration.zero);
+      final disableReq =
+          jsonDecode(utf8.decode(channel.sent.last)) as Map<String, Object?>;
+      channel.push(
+        _jsonBytes({
+          'v': 2,
+          'id': (disableReq['id'] as num).toInt(),
+          'op': 'modules.disable',
+          'ok': false,
+          'isEvent': false,
+          'error': ErrorCodes.moduleNotOptional,
+          'detail': '模块 monitoring（监控）是内置组件，始终启用，不能单独关闭。',
+        }),
+      );
+
+      expect(await failFuture, isFalse);
+      expect(appState.busyModuleId, isNull);
+      expect(appState.lastError?.code, ErrorCodes.moduleNotOptional);
+      // errorMessage 优先用后端 detail，它比错误码文案具体。
+      expect(appState.errorMessage, contains('内置组件'));
+      // 失败时缓存不能被清空或改写。
+      expect(appState.modules.single.enabled, isTrue);
+
+      appState.dispose();
       await client.close();
     });
   });

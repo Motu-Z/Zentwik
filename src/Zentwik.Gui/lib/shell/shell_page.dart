@@ -44,6 +44,7 @@ class ShellPage extends StatelessWidget {
     this.connectionStatus = ConnectionStatuses.disconnected,
     this.reconnectAttempt = 0,
     this.onRetry,
+    this.errorMessage,
     this.modules,
     this.busyModuleId,
     this.onToggleModule,
@@ -64,9 +65,13 @@ class ShellPage extends StatelessWidget {
   final String connectionStatus;
   final int reconnectAttempt;
   final VoidCallback? onRetry;
+
+  /// 最近一次操作失败的提示；为空表示没有待展示的错误。
+  final String? errorMessage;
   final List<ModuleDto>? modules;
   final String? busyModuleId;
-  final ValueChanged<String>? onToggleModule;
+  /// 第二参数是「点击后应处的状态」。
+  final void Function(String id, bool enable)? onToggleModule;
   final SettingsDto? settings;
   final ValueChanged<SettingsPatch>? onSettingsChanged;
   final bool settingsReadOnly;
@@ -128,6 +133,23 @@ class ShellPage extends StatelessWidget {
                       attempt: reconnectAttempt,
                       onRetry: onRetry,
                     ),
+                    if (errorMessage case final message?
+                        when message.trim().isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZentwikTokens.spaceLg,
+                          vertical: ZentwikTokens.spaceSm,
+                        ),
+                        color: ZentwikTokens.danger.withValues(alpha: 0.12),
+                        child: Text(
+                          message,
+                          style: const TextStyle(
+                            fontSize: ZentwikTokens.fontCaption,
+                            color: ZentwikTokens.danger,
+                          ),
+                        ),
+                      ),
                     Expanded(child: _buildContent()),
                   ],
                 ),

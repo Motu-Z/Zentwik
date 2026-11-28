@@ -48,5 +48,16 @@ void main() {
       expect(formatCount(0), '0');
       expect(formatCount(312), '312');
     });
+
+    test('formatUptime 按天/时/分折算并省略前导零段', () {
+      expect(formatUptime(null), kMissingValue);
+      expect(formatUptime(-1), kMissingValue);
+      expect(formatUptime(0), '0 秒');
+      expect(formatUptime(59), '59 秒');
+      expect(formatUptime(60), '1 分');
+      expect(formatUptime(6879), '1 小时 54 分');
+      expect(formatUptime(86400), '1 天 0 小时');
+      expect(formatUptime(90061), '1 天 1 小时');
+    });
   });
 }

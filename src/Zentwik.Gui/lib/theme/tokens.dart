@@ -8,6 +8,8 @@ abstract final class ZentwikTokens {
   static const Color border = Color(0xFF2B313B);
   static const Color textPrimary = Color(0xFFE6EDF3);
   static const Color textSecondary = Color(0xFF8B949E);
+  /// 第三级文字：说明、补充细节。比 [textSecondary] 再暗一档，用于不与主信息抢注意力。
+  static const Color textTertiary = Color(0xFF6E7681);
   static const Color accent = Color(0xFF4C8DFF);
   static const Color danger = Color(0xFFF85149);
   static const Color success = Color(0xFF3FB950);

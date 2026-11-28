@@ -6,6 +6,9 @@ import '../protocol/models/module_dto.dart';
 import '../theme/tokens.dart';
 
 /// 模块管理页：纯展示与切换回调，不直接发起协议请求。
+///
+/// 只有 `optional` 模块能启停——内置模块后端直接回 `module_not_optional`，
+/// 所以这里不给它们画开关（按了必然失败，等于骗用户）。
 class ModulesPage extends StatelessWidget {
   const ModulesPage({
     super.key,
@@ -15,7 +18,9 @@ class ModulesPage extends StatelessWidget {
   });
 
   final List<ModuleDto>? modules;
-  final ValueChanged<String>? onToggle;
+
+  /// 第二参数是「点击后应处的状态」，不是当前状态。
+  final void Function(String id, bool enable)? onToggle;
   final String? busyModuleId;
 
   Color _dotColor(ModuleDto module) {
@@ -77,7 +82,9 @@ class ModulesPage extends StatelessWidget {
         final module = list[index];
         final id = module.id;
         final isBusy = busyModuleId != null && busyModuleId == id;
-        final canToggle = !isBusy && onToggle != null && id != null;
+        final isOptional = module.optional == true;
+        final enabled = module.enabled ?? false;
+        final canToggle = isBusy == false && onToggle != null && id != null;
 
         return Container(
           padding: const EdgeInsets.symmetric(
@@ -120,10 +127,29 @@ class ModulesPage extends StatelessWidget {
                         color: ZentwikTokens.textSecondary,
                       ),
                     ),
+                    if (module.detail case final detail?
+                        when detail.trim().isNotEmpty) ...[
+                      const SizedBox(height: ZentwikTokens.spaceXs),
+                      Text(
+                        detail,
+                        style: const TextStyle(
+                          fontSize: ZentwikTokens.fontCaption,
+                          color: ZentwikTokens.textTertiary,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (isBusy)
+              if (!isOptional)
+                const Text(
+                  '内置',
+                  style: TextStyle(
+                    fontSize: ZentwikTokens.fontCaption,
+                    color: ZentwikTokens.textTertiary,
+                  ),
+                )
+              else if (isBusy)
                 const SizedBox(
                   width: 20,
                   height: 20,
@@ -131,8 +157,8 @@ class ModulesPage extends StatelessWidget {
                 )
               else
                 Switch(
-                  value: module.enabled ?? false,
-                  onChanged: canToggle ? (_) => onToggle!(id) : null,
+                  value: enabled,
+                  onChanged: canToggle ? (_) => onToggle!(id, !enabled) : null,
                 ),
             ],
           ),

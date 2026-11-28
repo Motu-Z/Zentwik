@@ -40,7 +40,7 @@ void main() {
     );
 
     expect(find.text('0.1.0'), findsOneWidget);
-    expect(find.text('6879 秒'), findsOneWidget);
+    expect(find.text('1 小时 54 分'), findsOneWidget);
     expect(find.text('zentwik-agent'), findsOneWidget);
     expect(find.text('已连接'), findsOneWidget);
   });

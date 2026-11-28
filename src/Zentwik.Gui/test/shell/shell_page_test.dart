@@ -10,6 +10,7 @@ void main() {
     required int selectedIndex,
     required ValueChanged<int> onSelected,
     SettingsDto? settings,
+    String? errorMessage,
   }) {
     return MaterialApp(
       theme: buildZentwikTheme(),
@@ -19,6 +20,7 @@ void main() {
         layout: DashboardLayout.defaults,
         onLayoutChanged: (_) {},
         settings: settings,
+        errorMessage: errorMessage,
       ),
     );
   }
@@ -98,5 +100,17 @@ void main() {
 
     expect(find.text('该页面尚未接入'), findsNothing);
     expect(find.text('设置'), findsNWidgets(2));
+  });
+
+  testWidgets('errorMessage 非空时在横幅下方显示错误条', (tester) async {
+    await tester.pumpWidget(
+      buildShell(
+        selectedIndex: 0,
+        onSelected: (_) {},
+        errorMessage: '模块 monitoring 是内置组件，始终启用。',
+      ),
+    );
+
+    expect(find.text('模块 monitoring 是内置组件，始终启用。'), findsOneWidget);
   });
 }

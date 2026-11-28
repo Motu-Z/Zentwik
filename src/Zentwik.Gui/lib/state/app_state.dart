@@ -27,12 +27,20 @@ class AppState extends ChangeNotifier {
   AgentStatusDto? _status;
   List<CapabilityDto> _capabilities = const [];
   List<ModuleDto> _modules = const [];
+  SettingsDto? _settings;
+  List<LedgerEntry> _ledger = const [];
+  String? _busyModuleId;
   ProtocolException? _lastError;
   String? _lastErrorMessage;
 
   AgentStatusDto? get status => _status;
   List<CapabilityDto> get capabilities => _capabilities;
   List<ModuleDto> get modules => _modules;
+  SettingsDto? get settings => _settings;
+  List<LedgerEntry> get ledger => _ledger;
+
+  /// 正在等待后端回应的模块 id；界面据此显示行内进度并禁止重复点击。
+  String? get busyModuleId => _busyModuleId;
   TelemetryDto? get telemetry =>
       _telemetryHistory.isEmpty ? null : _telemetryHistory.last;
   List<TelemetryDto> get telemetryHistory =>
@@ -41,6 +49,22 @@ class AppState extends ChangeNotifier {
 
   /// 非协议层错误（超时、客户端已关闭等）的文本描述，与 [lastError] 互补。
   String? get lastErrorMessage => _lastErrorMessage;
+
+  /// 面向界面的一句话错误提示。
+  ///
+  /// 优先用后端 `detail`（例如「模块 monitoring 是内置组件，始终启用」），
+  /// 它比错误码文案具体；没有 detail 才退回错误码映射。
+  String? get errorMessage {
+    final protocol = _lastError;
+    if (protocol != null) {
+      final detail = protocol.detail;
+      if (detail != null && detail.trim().isNotEmpty) {
+        return detail;
+      }
+      return protocol.userMessage;
+    }
+    return _lastErrorMessage;
+  }
 
   /// 切到新的客户端并立刻拉一轮快照。
   ///
@@ -56,7 +80,7 @@ class AppState extends ChangeNotifier {
     unawaited(refresh());
   }
 
-  /// 并发刷新 `agent.status`、`capabilities.list`、`modules.list`。
+  /// 并发刷新状态、能力、模块、设置与账本快照。
   ///
   /// 单个请求失败不影响其余项更新，失败项保留旧缓存并记录 `lastError`；
   /// 并发多次调用去重，同一时刻只跑一轮。
@@ -91,6 +115,12 @@ class AppState extends ChangeNotifier {
         client.listModules().then((value) {
           _modules = value;
         }).catchError(capture),
+        client.getSettings().then((value) {
+          _settings = value;
+        }).catchError(capture),
+        client.listLedger().then((value) {
+          _ledger = value;
+        }).catchError(capture),
       ]);
 
       _lastError = roundError;
@@ -98,6 +128,66 @@ class AppState extends ChangeNotifier {
       _notify();
     } finally {
       _refreshFuture = null;
+    }
+  }
+
+  /// 启停可选模块，并用后端回传的完整模块列表替换本地缓存。
+  ///
+  /// 只有 `optional == true` 的模块能被启停：后端对内置模块直接回
+  /// `module_not_optional`，所以调用方要自己判 `optional`，别把错误当网络故障。
+  /// 同一时刻只允许一个模块切换，[busyModuleId] 表达进行中的那一个。
+  Future<bool> setModuleEnabled(String id, bool enable) async {
+    final client = _client;
+    if (_disposed || client == null || _busyModuleId != null) {
+      return false;
+    }
+
+    _busyModuleId = id;
+    _notify();
+
+    try {
+      final modules = enable
+          ? await client.enableModule(id)
+          : await client.disableModule(id);
+      _modules = modules;
+      _lastError = null;
+      _lastErrorMessage = null;
+      return true;
+    } catch (error) {
+      _captureError(error);
+      return false;
+    } finally {
+      _busyModuleId = null;
+      _notify();
+    }
+  }
+
+  /// 写入设置增量，并用后端回传的整份设置替换本地缓存。
+  Future<bool> saveSettings(SettingsPatch patch) async {
+    final client = _client;
+    if (_disposed || client == null) {
+      return false;
+    }
+
+    try {
+      _settings = await client.setSettings(patch);
+      _lastError = null;
+      _lastErrorMessage = null;
+      _notify();
+      return true;
+    } catch (error) {
+      _captureError(error);
+      _notify();
+      return false;
+    }
+  }
+
+  void _captureError(Object error) {
+    if (error is ProtocolException) {
+      _lastError = error;
+      _lastErrorMessage = null;
+    } else {
+      _lastErrorMessage = error.toString();
     }
   }
 
