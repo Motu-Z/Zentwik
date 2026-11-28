@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
 import '../theme/tokens.dart';
+import '../widgets/card_empty.dart';
 
 class ProcessCountCard extends StatelessWidget {
   const ProcessCountCard({
@@ -14,12 +15,17 @@ class ProcessCountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final current = telemetry;
+    if (current == null) {
+      return const CardEmptyHint('暂无数据');
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          formatCount(telemetry?.processCount),
+          formatCount(current.processCount),
           style: const TextStyle(
             fontSize: ZentwikTokens.fontTitle,
             fontWeight: FontWeight.w600,

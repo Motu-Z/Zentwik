@@ -4,7 +4,7 @@ import '../format/units.dart';
 import '../protocol/models/settings_dto.dart';
 import '../theme/tokens.dart';
 
-/// 设置页：展示 `SettingsDto` 全部已有字段并对遥测间隔做范围夹取。
+/// 设置页：支持遥测间隔、语言、主题、强调色与界面缩放编辑。
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
@@ -17,6 +17,27 @@ class SettingsPage extends StatefulWidget {
   static const int maxMonitorIntervalMs = 5000;
   static const int minSensorIntervalMs = 500;
   static const int maxSensorIntervalMs = 30000;
+  static const double minUiScale = 0.8;
+  static const double maxUiScale = 1.6;
+  static const int uiScaleDivisions = 16;
+
+  static const Map<String, String> languageOptions = {
+    'zh-CN': '简体中文',
+    'zh-TW': '繁體中文',
+    'en-US': 'English',
+  };
+
+  static const Map<String, String> themeOptions = {
+    'dark': '暗色',
+    'light': '亮色',
+  };
+
+  static const Map<String, String> accentOptions = {
+    'blue': '蓝色',
+    'violet': '紫色',
+    'teal': '青色',
+    'amber': '琥珀色',
+  };
 
   final SettingsDto? settings;
   final ValueChanged<SettingsPatch>? onChange;
@@ -31,9 +52,9 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _sensorController;
   late final FocusNode _monitorFocus;
   late final FocusNode _sensorFocus;
-  /// 已经提交出去的间隔值，用来吸收「回车 + 失焦 + 销毁」三路重复触发。
   int? _sentMonitor;
   int? _sentSensor;
+  double? _draggingScale;
   String? _clampNotice;
 
   @override
@@ -47,8 +68,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     _sentMonitor = widget.settings?.monitorIntervalMs;
     _sentSensor = widget.settings?.sensorIntervalMs;
-    // 桌面用户输完数字通常是直接点别处，不会按回车：失焦必须提交，
-    // 否则改动静默丢失。onSubmitted 只覆盖「按回车」这一条路径。
     _monitorFocus = FocusNode(debugLabel: 'settings.monitorInterval')
       ..addListener(() {
         if (!_monitorFocus.hasFocus && mounted) {
@@ -78,11 +97,13 @@ class _SettingsPageState extends State<SettingsPage> {
           widget.settings?.sensorIntervalMs?.toString() ?? '';
       _sentSensor = widget.settings?.sensorIntervalMs;
     }
+    if (widget.settings?.uiScale != oldWidget.settings?.uiScale) {
+      _draggingScale = null;
+    }
   }
 
   @override
   void dispose() {
-    // 切页会直接销毁本 State，此时失焦回调可能来不及跑；在这里补一次。
     _flushPendingEdits();
     _monitorFocus.dispose();
     _sensorFocus.dispose();
@@ -91,7 +112,6 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  /// 把输入框里与服务端不同、且合法的值提交出去；不碰 UI，可在 dispose 里调用。
   void _flushPendingEdits() {
     final monitor = _readInterval(
       _monitorController.text,
@@ -146,15 +166,13 @@ class _SettingsPageState extends State<SettingsPage> {
     const max = SettingsPage.maxMonitorIntervalMs;
     final parsed = int.tryParse(raw.trim());
     if (parsed == null) {
-      // 非数字直接退回到服务端已知值，不要把它当 0 或保留在框里骗人。
-      _monitorController.text = widget.settings?.monitorIntervalMs?.toString() ?? '';
+      _monitorController.text =
+          widget.settings?.monitorIntervalMs?.toString() ?? '';
       _setNotice('遥测推送间隔需为 $min–$max 之间的整数，已恢复为原值。');
       return;
     }
 
     final clamped = parsed.clamp(min, max).toInt();
-    // 回车、失焦、销毁三路都会走到这里；值没变就别重复发请求，
-    // 也别把刚才的越界提示当成「用户又改好了」清掉。
     if (clamped == _sentMonitor) {
       return;
     }
@@ -173,7 +191,8 @@ class _SettingsPageState extends State<SettingsPage> {
     const max = SettingsPage.maxSensorIntervalMs;
     final parsed = int.tryParse(raw.trim());
     if (parsed == null) {
-      _sensorController.text = widget.settings?.sensorIntervalMs?.toString() ?? '';
+      _sensorController.text =
+          widget.settings?.sensorIntervalMs?.toString() ?? '';
       _setNotice('CPU 传感器间隔需为 $min–$max 之间的整数，已恢复为原值。');
       return;
     }
@@ -206,6 +225,21 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
     }
+
+    final languageValue =
+        SettingsPage.languageOptions.containsKey(current.language)
+            ? current.language
+            : null;
+    final themeValue = SettingsPage.themeOptions.containsKey(current.theme)
+        ? current.theme
+        : null;
+    final accentValue = SettingsPage.accentOptions.containsKey(current.accent)
+        ? current.accent
+        : null;
+    final rawScale = _draggingScale ?? current.uiScale ?? 1.0;
+    final sliderValue = rawScale
+        .clamp(SettingsPage.minUiScale, SettingsPage.maxUiScale)
+        .toDouble();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(ZentwikTokens.spaceLg),
@@ -247,21 +281,80 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ],
           const SizedBox(height: ZentwikTokens.spaceXl),
-          _ReadOnlyRow(
-            label: '语言（language）',
-            value: current.language ?? kMissingValue,
+          _EnumDropdownRow(
+            label: '语言',
+            value: languageValue,
+            options: SettingsPage.languageOptions,
+            enabled: !widget.readOnly,
+            onChanged: (value) {
+              if (value != null) {
+                widget.onChange?.call(SettingsPatch(language: value));
+              }
+            },
           ),
-          _ReadOnlyRow(
-            label: '主题（theme）',
-            value: current.theme ?? kMissingValue,
+          const SizedBox(height: ZentwikTokens.spaceMd),
+          _EnumDropdownRow(
+            label: '主题',
+            value: themeValue,
+            options: SettingsPage.themeOptions,
+            enabled: !widget.readOnly,
+            onChanged: (value) {
+              if (value != null) {
+                widget.onChange?.call(SettingsPatch(theme: value));
+              }
+            },
           ),
-          _ReadOnlyRow(
-            label: '强调色（accent）',
-            value: current.accent ?? kMissingValue,
+          const SizedBox(height: ZentwikTokens.spaceMd),
+          _EnumDropdownRow(
+            label: '强调色',
+            value: accentValue,
+            options: SettingsPage.accentOptions,
+            enabled: !widget.readOnly,
+            onChanged: (value) {
+              if (value != null) {
+                widget.onChange?.call(SettingsPatch(accent: value));
+              }
+            },
           ),
-          _ReadOnlyRow(
-            label: '界面缩放（uiScale）',
-            value: current.uiScale?.toString() ?? kMissingValue,
+          const SizedBox(height: ZentwikTokens.spaceMd),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '界面缩放',
+                style: TextStyle(
+                  fontSize: ZentwikTokens.fontBody,
+                  color: ZentwikTokens.textSecondary,
+                ),
+              ),
+              Text(
+                current.uiScale == null && _draggingScale == null
+                    ? kMissingValue
+                    : sliderValue.toStringAsFixed(2),
+                style: const TextStyle(
+                  fontSize: ZentwikTokens.fontBody,
+                  color: ZentwikTokens.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: sliderValue,
+            min: SettingsPage.minUiScale,
+            max: SettingsPage.maxUiScale,
+            divisions: SettingsPage.uiScaleDivisions,
+            label: sliderValue.toStringAsFixed(2),
+            onChanged: widget.readOnly
+                ? null
+                : (value) => setState(() => _draggingScale = value),
+            onChangeEnd: widget.readOnly
+                ? null
+                : (value) {
+                    final rounded =
+                        double.parse(value.toStringAsFixed(2));
+                    setState(() => _draggingScale = null);
+                    widget.onChange?.call(SettingsPatch(uiScale: rounded));
+                  },
           ),
         ],
       ),
@@ -301,38 +394,46 @@ class _IntervalField extends StatelessWidget {
   }
 }
 
-class _ReadOnlyRow extends StatelessWidget {
-  const _ReadOnlyRow({
+class _EnumDropdownRow extends StatelessWidget {
+  const _EnumDropdownRow({
     required this.label,
     required this.value,
+    required this.options,
+    required this.enabled,
+    required this.onChanged,
   });
 
   final String label;
-  final String value;
+  final String? value;
+  final Map<String, String> options;
+  final bool enabled;
+  final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: ZentwikTokens.spaceSm),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: ZentwikTokens.fontBody,
-              color: ZentwikTokens.textSecondary,
-            ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: ZentwikTokens.fontBody,
+            color: ZentwikTokens.textSecondary,
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: ZentwikTokens.fontBody,
-              color: ZentwikTokens.textPrimary,
-            ),
-          ),
-        ],
-      ),
+        ),
+        DropdownButton<String>(
+          value: value,
+          hint: const Text(kMissingValue),
+          items: [
+            for (final entry in options.entries)
+              DropdownMenuItem<String>(
+                value: entry.key,
+                child: Text(entry.value),
+              ),
+          ],
+          onChanged: enabled ? onChanged : null,
+        ),
+      ],
     );
   }
 }

@@ -4,6 +4,7 @@ import '../format/units.dart';
 import '../protocol/errors.dart';
 import '../protocol/models/module_dto.dart';
 import '../theme/tokens.dart';
+import '../widgets/card_empty.dart';
 
 class ModuleStatusCard extends StatelessWidget {
   const ModuleStatusCard({
@@ -14,8 +15,6 @@ class ModuleStatusCard extends StatelessWidget {
   final List<ModuleDto>? modules;
 
   Color _dotColor(ModuleDto module) {
-    // 后端语义：可选组件未启用时同样报 unavailable（见 ModuleCatalog），
-    // 所以先看 enabled 再判 state，避免把「没装的组件」标成故障色。
     if (module.enabled == false) {
       return ZentwikTokens.textSecondary;
     }
@@ -42,14 +41,11 @@ class ModuleStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final list = modules;
-    if (list == null || list.isEmpty) {
-      return const Text(
-        kMissingValue,
-        style: TextStyle(
-          fontSize: ZentwikTokens.fontTitle,
-          color: ZentwikTokens.textSecondary,
-        ),
-      );
+    if (list == null) {
+      return const CardEmptyHint('暂无数据');
+    }
+    if (list.isEmpty) {
+      return const CardEmptyHint('无模块');
     }
 
     return Column(

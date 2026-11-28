@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
 import '../theme/tokens.dart';
+import '../widgets/card_empty.dart';
 
 class CoreClocksCard extends StatelessWidget {
   const CoreClocksCard({
@@ -16,8 +17,13 @@ class CoreClocksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final clocks = telemetry?.coreClocks;
-    if (clocks == null || clocks.isEmpty) {
+    final current = telemetry;
+    if (current == null) {
+      return const CardEmptyHint('暂无数据');
+    }
+
+    final clocks = current.coreClocks;
+    if (clocks.isEmpty) {
       return const Text(
         kMissingValue,
         style: TextStyle(

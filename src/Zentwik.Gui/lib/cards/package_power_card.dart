@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/models/telemetry_dto.dart';
 import '../theme/tokens.dart';
+import '../widgets/card_empty.dart';
 
 class PackagePowerCard extends StatelessWidget {
   const PackagePowerCard({
@@ -14,7 +15,12 @@ class PackagePowerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final detail = telemetry?.sensorDetail;
+    final current = telemetry;
+    if (current == null) {
+      return const CardEmptyHint('暂无数据');
+    }
+
+    final detail = current.sensorDetail;
     final subtitle =
         (detail != null && detail.isNotEmpty) ? detail : '封装总功耗（单位：瓦特）';
 
@@ -23,7 +29,7 @@ class PackagePowerCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          formatWatts(telemetry?.packagePowerWatts),
+          formatWatts(current.packagePowerWatts),
           style: const TextStyle(
             fontSize: ZentwikTokens.fontTitle,
             fontWeight: FontWeight.w600,

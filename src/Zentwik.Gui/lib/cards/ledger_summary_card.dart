@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../format/units.dart';
 import '../protocol/models/ledger_entry.dart';
 import '../theme/tokens.dart';
+import '../widgets/card_empty.dart';
 
 class LedgerSummaryCard extends StatelessWidget {
   const LedgerSummaryCard({
@@ -16,20 +17,16 @@ class LedgerSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final list = entries;
     if (list == null) {
-      return const Text(
-        kMissingValue,
-        style: TextStyle(
-          fontSize: ZentwikTokens.fontTitle,
-          color: ZentwikTokens.textSecondary,
-        ),
-      );
+      return const CardEmptyHint('暂无数据');
     }
 
     final grouped = <String, int>{};
     for (final entry in list) {
       final target = entry.target ?? '';
       final dot = target.indexOf('.');
-      final namespace = dot > 0 ? target.substring(0, dot) : (target.isEmpty ? 'other' : target);
+      final namespace = dot > 0
+          ? target.substring(0, dot)
+          : (target.isEmpty ? 'other' : target);
       grouped[namespace] = (grouped[namespace] ?? 0) + 1;
     }
 

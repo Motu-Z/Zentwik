@@ -6,6 +6,7 @@ import 'package:zentwik_gui/dashboard/dashboard_layout.dart';
 import 'package:zentwik_gui/format/units.dart';
 import 'package:zentwik_gui/protocol/models/models.dart';
 import 'package:zentwik_gui/theme/theme.dart';
+import 'package:zentwik_gui/widgets/card_empty.dart';
 
 void main() {
   Widget wrap(Widget child) {
@@ -15,7 +16,8 @@ void main() {
     );
   }
 
-  testWidgets('九张卡在全 null 数据下均显示 — 且不抛异常', (tester) async {
+  testWidgets('九张卡在全 null 数据下均显示 CardEmptyHint 且不画进度条',
+      (tester) async {
     await tester.pumpWidget(
       wrap(
         const Column(
@@ -34,7 +36,17 @@ void main() {
       ),
     );
 
-    expect(find.text(kMissingValue), findsNWidgets(9));
+    expect(find.byType(CardEmptyHint), findsNWidgets(9));
+    expect(find.text('暂无数据'), findsNWidgets(9));
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
+  testWidgets('ModuleStatusCard 区分 null 与空列表空态', (tester) async {
+    await tester.pumpWidget(wrap(const ModuleStatusCard()));
+    expect(find.text('暂无数据'), findsOneWidget);
+
+    await tester.pumpWidget(wrap(const ModuleStatusCard(modules: [])));
+    expect(find.text('无模块'), findsOneWidget);
   });
 
   testWidgets('MemoryCard 在总量为 0 时不除零并显示 —', (tester) async {
@@ -49,8 +61,8 @@ void main() {
       ),
     );
 
-    // 总量为 0 属「无数据」：整卡只出一个缺失标记，不画空进度条。
     expect(find.text(kMissingValue), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 
   testWidgets('九张卡在有数据时关键文案格式正确，defaultCardRegistry 可正常构建',
