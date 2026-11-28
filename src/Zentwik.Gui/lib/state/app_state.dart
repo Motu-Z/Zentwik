@@ -18,11 +18,13 @@ class AppState extends ChangeNotifier {
 
   StreamSubscription<TelemetryDto>? _telemetrySub;
   Future<void>? _refreshFuture;
+  bool _disposed = false;
 
   AgentStatusDto? _status;
   List<CapabilityDto> _capabilities = const [];
   List<ModuleDto> _modules = const [];
   ProtocolException? _lastError;
+  String? _lastErrorMessage;
 
   AgentStatusDto? get status => _status;
   List<CapabilityDto> get capabilities => _capabilities;
@@ -32,6 +34,9 @@ class AppState extends ChangeNotifier {
   List<TelemetryDto> get telemetryHistory =>
       List.unmodifiable(_telemetryHistory);
   ProtocolException? get lastError => _lastError;
+
+  /// 非协议层错误（超时、客户端已关闭等）的文本描述，与 [lastError] 互补。
+  String? get lastErrorMessage => _lastErrorMessage;
 
   /// 并发刷新 `agent.status`、`capabilities.list`、`modules.list`。
   ///
@@ -43,40 +48,41 @@ class AppState extends ChangeNotifier {
 
   Future<void> _refreshInternal() async {
     ProtocolException? roundError;
+    String? roundErrorMessage;
+
+    void capture(Object error) {
+      if (error is ProtocolException) {
+        roundError = error;
+      } else {
+        roundErrorMessage = error.toString();
+      }
+    }
 
     try {
       await Future.wait([
         _client.getStatus().then((value) {
           _status = value;
-        }).catchError((Object error) {
-          if (error is ProtocolException) {
-            roundError = error;
-          }
-        }),
+        }).catchError(capture),
         _client.listCapabilities().then((value) {
           _capabilities = value;
-        }).catchError((Object error) {
-          if (error is ProtocolException) {
-            roundError = error;
-          }
-        }),
+        }).catchError(capture),
         _client.listModules().then((value) {
           _modules = value;
-        }).catchError((Object error) {
-          if (error is ProtocolException) {
-            roundError = error;
-          }
-        }),
+        }).catchError(capture),
       ]);
 
       _lastError = roundError;
-      notifyListeners();
+      _lastErrorMessage = roundErrorMessage;
+      _notify();
     } finally {
       _refreshFuture = null;
     }
   }
 
   void _onTelemetry(TelemetryDto sample) {
+    if (_disposed) {
+      return;
+    }
     _telemetryHistory.add(sample);
     if (_telemetryHistory.length > kAppStateTelemetryCapacity) {
       _telemetryHistory.removeRange(
@@ -84,12 +90,21 @@ class AppState extends ChangeNotifier {
         _telemetryHistory.length - kAppStateTelemetryCapacity,
       );
     }
+    _notify();
+  }
+
+  void _notify() {
+    if (_disposed) {
+      return;
+    }
     notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _telemetrySub?.cancel();
+    _telemetrySub = null;
     super.dispose();
   }
 }

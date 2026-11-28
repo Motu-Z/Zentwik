@@ -462,6 +462,34 @@ void main() {
       appState.dispose();
       await client.close();
     });
+
+    test('12. dispose 后到达的遥测帧不再通知监听者，也不抛异常', () async {
+      final channel = _TestFrameChannel();
+      final client = ProtocolClient(channel);
+      await client.connect();
+      final appState = AppState(client);
+      var notifications = 0;
+      appState.addListener(() => notifications++);
+
+      appState.dispose();
+      channel.push(
+        _jsonBytes({
+          'v': 2,
+          'id': 0,
+          'op': 'telemetry.sample',
+          'ok': true,
+          'isEvent': true,
+          'data': {
+            'timestamp': '2026-11-27T17:44:34.816571+00:00',
+            'cpuTotalPercent': 1.0,
+          },
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(notifications, 0);
+      await client.close();
+    });
   });
 
   group('TelemetryState', () {

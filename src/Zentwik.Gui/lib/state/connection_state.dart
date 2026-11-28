@@ -28,6 +28,8 @@ class AgentConnectionState {
     BackoffStrategy? backoff,
     DelayRunner? sleep,
   })  : _backoff = backoff ?? defaultReconnectBackoff,
+        // 命名形参不能写成 this._sleep（私有命名形参非法），只能显式赋值。
+        // ignore: prefer_initializing_formals
         _sleep = sleep;
 
   static const int maxReconnectAttempts = 6;
