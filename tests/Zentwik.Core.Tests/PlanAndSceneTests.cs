@@ -1019,6 +1019,29 @@ public sealed class PlanAndSceneTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ApplyCpu_Clamps_FMax_And_Records_Readback_Value()
+    {
+        var plan = new CpuTuningPlan
+        {
+            Id = "cpu-fmax-clamp",
+            Name = "CPU FMax Clamp",
+            Revision = 1,
+            FMaxLimitMhz = 9000,
+            CreatedAt = DateTimeOffset.Now,
+            UpdatedAt = DateTimeOffset.Now,
+        };
+        await _store.UpdateAsync(document => document with { Plans = [plan] });
+
+        var outcome = await _plans.ApplyAsync(plan.Id, "plan:" + plan.Id, 0);
+
+        Assert.Equal(PlanApplyState.Applied, outcome.State);
+        var target = Assert.Single(outcome.Targets);
+        Assert.Equal("7000", target.Desired);
+        Assert.Equal("7000", target.Actual);
+        Assert.Equal(7000, _tuning.FMaxMhz);
+    }
+
+    [Fact]
     public async Task ApplyCpu_Skips_Unconfigured_FMax_Write_Without_Blocking_CO()
     {
         _tuning.FMaxWriteSupported = false;

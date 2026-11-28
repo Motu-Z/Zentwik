@@ -828,11 +828,7 @@ internal sealed class AgentSession : IAsyncDisposable
                     }
                 }
 
-                if (cpu.FMaxLimitMhz is { } fmax && fmax is < 1000 or > 7000)
-                {
-                    throw new CoreException(ErrorCodes.PlanInvalid, $"FMax 频率 {fmax} MHz 超出有效范围 [1000, 7000]。");
-                }
-
+                // FMax 是用户指定的绝对频率；越界不在协议层拒绝，交由应用层钳制后写入。
                 if (cpu.IntelVoltageOffsetMillivolts is { } mv && !IntelVoltageOffsetBounds.IsWithinRange(mv))
                 {
                     throw new CoreException(ErrorCodes.PlanInvalid, IntelVoltageOffsetBounds.FormatRejection(mv));

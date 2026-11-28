@@ -38,6 +38,7 @@ public sealed record CpuTuningPlan : Plan
 
     public IReadOnlyList<CoreTuning> Cores { get; init; } = [];
 
+    // Boost 频率上限的绝对频率（MHz），由用户直接指定；不是 FMax Override 的有符号偏移参数。
     public int? FMaxLimitMhz { get; init; }
 
     // Intel MSR 0x150 核心电压偏移（mV，负值为降压，仅当前会话有效）。

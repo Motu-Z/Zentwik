@@ -56,14 +56,14 @@ public sealed class MainForm : Form
     private readonly Label _memCaption = Caption();
     private readonly Label _procCaption = Caption();
     private readonly Label _coreCaption = Caption();
-    private readonly DataGridView _capsGrid = NewGrid(("能力", 60), ("状态", 30), ("详情", 110));
-    private readonly DataGridView _historyGrid = NewGrid(("时间", 40), ("CPU", 25), ("内存", 25), ("进程", 25), ("温度", 30), ("功耗", 30));
+    private readonly DataGridView _capsGrid = NewGrid(60, 30, 110);
+    private readonly DataGridView _historyGrid = NewGrid(40, 25, 25, 25, 30, 30);
     private Button _refreshButton = null!;
     private Button _refreshHistoryButton = null!;
     private SplitContainer? _monitorSplit;
 
     // 方案
-    private readonly DataGridView _plansGrid = NewGrid(("类型", 35), ("名称", 60), ("说明", 110), ("状态", 30));
+    private readonly DataGridView _plansGrid = NewGrid(35, 60, 110, 30);
     private Button _applyPlanButton = null!;
     private Button _revertPlanButton = null!;
     private Button _deletePlanButton = null!;
@@ -81,7 +81,7 @@ public sealed class MainForm : Form
     private readonly Label _planSpecCaption = Caption();
 
     // 场景
-    private readonly DataGridView _scenesGrid = NewGrid(("名称", 60), ("优先级", 25), ("目标", 60), ("启用", 25), ("活动", 25), ("最近结果", 80));
+    private readonly DataGridView _scenesGrid = NewGrid(60, 25, 60, 25, 25, 80);
     private Button _activateSceneButton = null!;
     private Button _deactivateSceneButton = null!;
     private Button _toggleSceneButton = null!;
@@ -107,14 +107,14 @@ public sealed class MainForm : Form
     // 调校与账本
     private readonly Label _tuningSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
     private readonly Label _intelSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
-    private readonly DataGridView _coresGrid = NewGrid(("核心", 40), ("Curve Optimizer", 60));
-    private readonly DataGridView _ledgerGrid = NewGrid(("目标", 60), ("持有者", 40), ("状态", 40), ("取值", 120), ("失败原因", 80));
+    private readonly DataGridView _coresGrid = NewGrid(40, 60);
+    private readonly DataGridView _ledgerGrid = NewGrid(60, 40, 40, 120, 80);
     private Button _refreshTuningButton = null!;
     private Button _releaseButton = null!;
     private SplitContainer? _tuningSplit;
 
     // 模块
-    private readonly DataGridView _modulesGrid = NewGrid(("标识", 45), ("名称", 60), ("状态", 35), ("可选", 25), ("启用", 25), ("能力", 80), ("详情", 90));
+    private readonly DataGridView _modulesGrid = NewGrid(45, 60, 35, 25, 25, 80, 90);
     private Button _refreshModulesButton = null!;
     private Button _enableModuleButton = null!;
     private Button _disableModuleButton = null!;
@@ -131,8 +131,8 @@ public sealed class MainForm : Form
     private readonly TextBox _edcAmpsBox = new() { Width = 70 };
     private Button _readPowerLimitsButton = null!;
     private Button _applyPowerLimitsButton = null!;
-    private readonly DataGridView _powerSchemesGrid = NewGrid(("名称", 70), ("GUID", 110), ("活动", 25), ("内置", 25), ("可见", 25));
-    private readonly DataGridView _powerBackupsGrid = NewGrid(("备份 ID", 80), ("方案名称", 70), ("创建时间", 55), ("设置数", 30));
+    private readonly DataGridView _powerSchemesGrid = NewGrid(70, 110, 25, 25, 25);
+    private readonly DataGridView _powerBackupsGrid = NewGrid(80, 70, 55, 30);
     private readonly Label _powerSchemeNewNameCaption = Caption();
     private readonly TextBox _powerSchemeNewNameBox = new() { Width = 180 };
     private Button _refreshPowerButton = null!;
@@ -144,12 +144,12 @@ public sealed class MainForm : Form
     private SplitContainer? _powerSplit;
 
     // 日志
-    private readonly DataGridView _logGrid = NewGrid(("时间", 55), ("级别", 25), ("内容", 180));
+    private readonly DataGridView _logGrid = NewGrid(55, 25, 180);
     private Button _refreshLogButton = null!;
 
     // 诊断
     private readonly Label _doctorSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
-    private readonly DataGridView _doctorErrorsGrid = NewGrid(("时间", 55), ("级别", 25), ("内容", 180));
+    private readonly DataGridView _doctorErrorsGrid = NewGrid(55, 25, 180);
     private Button _refreshDoctorButton = null!;
 
     // 设置（语言 / 启动 / 后台 / 模块）
@@ -166,8 +166,8 @@ public sealed class MainForm : Form
     private readonly Label _startupHintLabel = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
 
     // 进程（后端还没有 process.* 操作，这一页先摆骨架）
-    private readonly DataGridView _processGrid = NewGrid(("PID", 30), ("进程", 80), ("优先级", 40), ("亲和性", 60), ("规则", 60));
-    private readonly DataGridView _maskGrid = NewGrid(("规则", 60), ("进程名", 80), ("掩码", 60), ("说明", 80));
+    private readonly DataGridView _processGrid = NewGrid(30, 80, 40, 60, 60);
+    private readonly DataGridView _maskGrid = NewGrid(60, 80, 60, 80);
     private readonly Label _processNoteLabel = new() { AutoSize = true, MaximumSize = new Size(900, 0) };
     private Button _refreshProcessButton = null!;
 
@@ -1601,7 +1601,8 @@ public sealed class MainForm : Form
 
     private static ComboBox NewCombo() => new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
 
-    private static DataGridView NewGrid(params (string Header, int Fill)[] columns)
+    // 列头文案由 AddHeaders + ApplyTexts 从本地化表填入，这里只定列数、宽度与初始空标题。
+    private static DataGridView NewGrid(params int[] fills)
     {
         var grid = new DataGridView
         {
@@ -1620,11 +1621,11 @@ public sealed class MainForm : Form
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
         };
 
-        foreach (var (header, fill) in columns)
+        foreach (var fill in fills)
         {
             grid.Columns.Add(new DataGridViewTextBoxColumn
             {
-                HeaderText = header,
+                HeaderText = string.Empty,
                 FillWeight = fill,
                 SortMode = DataGridViewColumnSortMode.NotSortable,
             });

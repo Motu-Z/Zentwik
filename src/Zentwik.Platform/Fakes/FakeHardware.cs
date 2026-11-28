@@ -127,13 +127,9 @@ public sealed class FakeCpuTuningProvider : ICpuTuningProvider, IFMaxTuningProvi
             return FMaxWriteResult.Unsupported;
         }
 
-        if (limitMhz is < 1000 or > 7000)
-        {
-            error = $"FMax 频率 {limitMhz} MHz 超出输入范围 [1000, 7000] MHz（软件输入边界，不是固件限制）。";
-            return FMaxWriteResult.Failed;
-        }
-
-        var rounded = FMaxStepMhz > 1 ? limitMhz / FMaxStepMhz * FMaxStepMhz : limitMhz;
+        // 与真实提供者一致：越界钳到支持范围，不拒绝；真实生效值由回读给出。
+        var clamped = FMaxRange.Clamp(limitMhz);
+        var rounded = FMaxStepMhz > 1 ? clamped / FMaxStepMhz * FMaxStepMhz : clamped;
         FMaxMhz = rounded;
         error = null;
         return FMaxWriteResult.Applied;

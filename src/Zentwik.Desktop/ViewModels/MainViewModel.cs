@@ -209,6 +209,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    // 文案一律走本地化表；单字符串参数必须走 params，避免误命中 Get(key, culture) 重载。
+    private string T(string key, params object[] args) =>
+        args.Length == 0 ? _catalog[key] : string.Format(CultureInfo.CurrentCulture, _catalog[key], args);
+
     public string StatusText
     {
         get => _statusText;
@@ -701,7 +705,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 ApplyModules(modules);
-                ShowNotice($"已启用模块 {selected.Name}。", isError: false);
+                ShowNotice(T("notice.module.enabled", selected.Name), isError: false);
             }, null);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
@@ -725,7 +729,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 ApplyModules(modules);
-                ShowNotice($"已停用模块 {selected.Name}。", isError: false);
+                ShowNotice(T("notice.module.disabled", selected.Name), isError: false);
             }, null);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
@@ -791,7 +795,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 if (!limits.Supported || !limits.Available)
                 {
-                    PowerLimitsSummary = $"unavailable ({limits.Error ?? "当前平台或模块不可用"})";
+                    PowerLimitsSummary = T("power.limits.unavailable_detail", limits.Error ?? T("power.limits.unavailable_unknown"));
                     return;
                 }
 
@@ -821,14 +825,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            var fast = ParseOptionalInt(FastWattsInput, "FAST (W)");
-            var slow = ParseOptionalInt(SlowWattsInput, "SLOW (W)");
-            var tdc = ParseOptionalInt(TdcAmpsInput, "TDC (A)");
-            var edc = ParseOptionalInt(EdcAmpsInput, "EDC (A)");
+            var fast = ParseOptionalInt(FastWattsInput, T("power.limits_fast"));
+            var slow = ParseOptionalInt(SlowWattsInput, T("power.limits_slow"));
+            var tdc = ParseOptionalInt(TdcAmpsInput, T("power.limits_tdc"));
+            var edc = ParseOptionalInt(EdcAmpsInput, T("power.limits_edc"));
 
             if (fast is null && slow is null && tdc is null && edc is null)
             {
-                throw new ArgumentException("请至少填写一项功耗墙参数（FAST / SLOW / TDC / EDC）。");
+                throw new ArgumentException(T("error.power_limits_empty"));
             }
 
             var result = await connection.ApplyPowerLimitsAsync(new PowerLimitApplyRequest(fast, slow, tdc, edc), _cts.Token).ConfigureAwait(false);
@@ -867,7 +871,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 PowerSchemeNewName = string.Empty;
-                ShowNotice($"已派生电源方案 {created.Name}。", isError: false);
+                ShowNotice(T("notice.power.scheme.created", created.Name), isError: false);
             }, null);
             await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
         }
@@ -893,7 +897,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ =>
             {
                 PowerSchemeNewName = string.Empty;
-                ShowNotice($"已重命名电源方案为 {renamed.Name}。", isError: false);
+                ShowNotice(T("notice.power.scheme.renamed", renamed.Name), isError: false);
             }, null);
             await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
         }
@@ -916,7 +920,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var backup = await connection.BackupPowerSchemeAsync(selected.Guid, _cts.Token).ConfigureAwait(false);
             await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            _ui.Post(_ => ShowNotice($"已备份电源方案 {selected.Name} → {backup.Id}。", isError: false), null);
+            _ui.Post(_ => ShowNotice(T("notice.power.scheme.backed_up", selected.Name, backup.Id), isError: false), null);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -937,7 +941,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var result = await connection.DeletePowerSchemeAsync(selected.Guid, keepBackup: true, _cts.Token).ConfigureAwait(false);
             await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            _ui.Post(_ => ShowNotice(result.Deleted ? $"已删除电源方案 {selected.Name}。" : $"未能删除电源方案 {selected.Name}。", isError: !result.Deleted), null);
+            _ui.Post(_ => ShowNotice(result.Deleted
+                ? T("notice.power.scheme.deleted", selected.Name)
+                : T("notice.power.scheme.delete_failed", selected.Name), isError: !result.Deleted), null);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -958,7 +964,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var result = await connection.RestorePowerSchemeAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            _ui.Post(_ => ShowNotice($"已还原电源方案 {result.Scheme.Name}（应用 {result.Applied} 项，失败 {result.Failed} 项）。", isError: result.Failed > 0), null);
+            _ui.Post(_ => ShowNotice(T("notice.power.backup.restored", result.Scheme.Name, result.Applied, result.Failed), isError: result.Failed > 0), null);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1007,11 +1013,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var doc = await connection.GetDoctorAsync(ct).ConfigureAwait(false);
-            var summary =
-                $"版本 {doc.Version} (协议 v{doc.ProtocolVersion}) · 运行 {doc.UptimeSeconds}s · 方案 {doc.PlanCount} / 场景 {doc.SceneCount} / 账本 {doc.LedgerEntryCount}" +
-                $"{Environment.NewLine}数据目录: {doc.DataDirectory}" +
-                $"{Environment.NewLine}状态文件: {doc.StatePath}" +
-                $"{Environment.NewLine}日志目录: {doc.LogDirectory}";
+            var summary = string.Join(Environment.NewLine,
+                T("runtime.summary.line1", doc.Version, doc.ProtocolVersion, doc.UptimeSeconds, doc.PlanCount, doc.SceneCount, doc.LedgerEntryCount),
+                T("runtime.summary.data_dir", doc.DataDirectory),
+                T("runtime.summary.state_path", doc.StatePath),
+                T("runtime.summary.log_dir", doc.LogDirectory));
             var errorRows = doc.RecentErrors.Reverse().Select(BuildLogRow).ToList();
             _ui.Post(_ =>
             {
@@ -1074,7 +1080,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             NewPlanName = string.Empty;
             NewPlanSpec = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已保存方案 {saved.Name} (rev {saved.Revision})。", isError: false);
+            ShowNotice(T("notice.plan.saved", saved.Name, saved.Revision), isError: false);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1089,7 +1095,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var spec = NewPlanSpec.Trim();
         if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("方案 ID 和名称不能为空。");
+            throw new ArgumentException(T("error.plan.id_name_required"));
         }
 
         var now = DateTimeOffset.Now;
@@ -1105,7 +1111,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     var parts = token.Split('=', 2);
                     if (parts.Length != 2)
                     {
-                        throw new FormatException($"无法解析 CO 配置 \"{token}\"，请使用 default=-15, ccd0=-20, 0=-10 或 1=auto。");
+                        throw new FormatException(T("error.plan.co_config_invalid", token));
                     }
 
                     var key = parts[0].Trim();
@@ -1114,7 +1120,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var def))
                         {
-                            throw new FormatException($"无法解析 default CO 值 \"{val}\"。");
+                            throw new FormatException(T("error.plan.co_default_invalid", val));
                         }
 
                         defaultCo = def;
@@ -1127,7 +1133,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                     {
                         if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ccdVal))
                         {
-                            throw new FormatException($"无法解析 {key} 的 CO 值 \"{val}\"。");
+                            throw new FormatException(T("error.plan.co_key_invalid", key, val));
                         }
 
                         ccdOffsets[ccd] = ccdVal;
@@ -1136,7 +1142,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                     if (!int.TryParse(key, NumberStyles.Integer, CultureInfo.InvariantCulture, out var core))
                     {
-                        throw new FormatException($"无法解析核配置 \"{token}\"，请使用 default=-15, ccd0=-20, 0=-10 或 1=auto。");
+                        throw new FormatException(T("error.plan.core_config_invalid", token));
                     }
 
                     if (string.Equals(val, "auto", StringComparison.OrdinalIgnoreCase))
@@ -1147,7 +1153,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                     if (!int.TryParse(val, NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
                     {
-                        throw new FormatException($"无法解析核 {core} 的 CO 值 \"{val}\"。");
+                        throw new FormatException(T("error.plan.core_value_invalid", core, val));
                     }
 
                     cores.Add(new CoreTuning { CoreIndex = core, Offset = offset });
@@ -1155,7 +1161,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
                 if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0)
                 {
-                    throw new ArgumentException("CPU 调校方案至少需要一个 CO 配置（如 default=-15, ccd0=-20, 0=-10 或 1=auto）。");
+                    throw new ArgumentException(T("error.plan.co_required"));
                 }
 
                 return new CpuTuningPlan
@@ -1173,7 +1179,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 if (!Guid.TryParse(spec, out var schemeGuid))
                 {
-                    throw new FormatException("电源方案参数请输入目标电源方案 GUID。");
+                    throw new FormatException(T("error.plan.power_guid_required"));
                 }
 
                 return new PowerPlan
@@ -1190,7 +1196,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 var assignment = spec.Split('=', 2);
                 if (assignment.Length != 2 || string.IsNullOrWhiteSpace(assignment[0]))
                 {
-                    throw new FormatException("调度方案参数请使用 进程名=掩码:优先级[:cpusets]（如 game=0xF:High:0-3）。");
+                    throw new FormatException(T("error.plan.scheduling_format"));
                 }
 
                 var parts = assignment[1].Split(':', 3);
@@ -1199,7 +1205,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 var cpuSets = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : null;
                 if (mask is null && priority is null && cpuSets is null)
                 {
-                    throw new ArgumentException("调度规则至少需要掩码、优先级或 CPU Sets。");
+                    throw new ArgumentException(T("error.plan.scheduling_empty"));
                 }
 
                 return new SchedulingPlan
@@ -1270,7 +1276,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeletePlanAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已删除方案 {selected.Id}。", isError: false);
+            ShowNotice(T("notice.plan.deleted", selected.Id), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1293,12 +1299,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var planId = NewScenePlanId.Trim();
             if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(planId))
             {
-                throw new ArgumentException("场景 ID、名称和关联方案 ID 不能为空。");
+                throw new ArgumentException(T("error.scene.fields_required"));
             }
 
             if (!int.TryParse(NewScenePriority.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var priority))
             {
-                throw new FormatException("优先级必须为整数。");
+                throw new FormatException(T("error.scene.priority_integer"));
             }
 
             var triggerArg = NewSceneTriggerKind == SceneTriggerKinds.Manual
@@ -1323,7 +1329,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             NewSceneName = string.Empty;
             NewSceneTriggerArg = string.Empty;
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已保存场景 {saved.Name}。", isError: false);
+            ShowNotice(T("notice.scene.saved", saved.Name), isError: false);
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1406,7 +1412,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await connection.DeleteSceneAsync(selected.Id, _cts.Token).ConfigureAwait(false);
             await RefreshAllCoreAsync(connection, _cts.Token).ConfigureAwait(false);
-            ShowNotice($"已删除场景 {selected.Id}。", isError: false);
+            ShowNotice(T("notice.scene.deleted", selected.Id), isError: false);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1427,7 +1433,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var released = await connection.ReleaseLedgerAsync(selected.Target, _cts.Token).ConfigureAwait(false);
             await RefreshTuningAndLedgerAsync().ConfigureAwait(false);
-            ShowNotice(released ? $"已释放 {selected.Target} 的用户接管。" : $"{selected.Target} 当前非用户接管。", isError: !released);
+            ShowNotice(released
+                ? T("notice.takeover.released", selected.Target)
+                : T("notice.takeover.not_user_owned", selected.Target), isError: !released);
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
@@ -1585,14 +1593,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void UpdateHardwareSummaries(AgentStatusDto status, TuningSnapshotDto amd, IntelTuningSnapshotDto intel)
     {
         var active = string.IsNullOrEmpty(status.ActiveSceneId) ? _catalog["status.no_scene"] : status.ActiveSceneId;
-        HardwareSummary =
-            $"{status.MachineName} · {status.PhysicalCoreCount}C/{status.ProcessorCount}T · {active} · 账本 {status.LedgerEntryCount} 项 · AMD {amd.Availability}";
+        HardwareSummary = T("status.hardware_summary",
+            status.MachineName, status.PhysicalCoreCount, status.ProcessorCount, active, status.LedgerEntryCount, amd.Availability);
 
-        var amdPersistence = amd.PersistsAcrossReboot ? "固件持久" : "会话有效";
+        var amdPersistence = amd.PersistsAcrossReboot
+            ? T("status.tuning.firmware_persistent")
+            : T("status.tuning.session_only");
         TuningSummary = $"AMD SMU: {amd.Availability} ({amd.Platform ?? "-"}, {amdPersistence}) — {amd.Detail ?? "-"}";
 
         var intelDetail = intel.VoltageOffsetMillivolts is { } mv
-            ? $"电压偏移 {mv} mV · 睿频 1C {intel.TurboRatio1Core}x / 8C {intel.TurboRatio8Cores}x"
+            ? T("status.intel_tuning_detail", mv,
+                intel.TurboRatio1Core?.ToString(CultureInfo.InvariantCulture) ?? "-",
+                intel.TurboRatio8Cores?.ToString(CultureInfo.InvariantCulture) ?? "-")
             : intel.Detail ?? "-";
         IntelTuningSummary = $"Intel MSR: {intel.Availability} ({intel.Platform ?? "-"}) — {intelDetail}";
     }
@@ -1633,7 +1645,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshDoctorCommand.RaiseCanExecuteChanged();
     }
 
-    private static int? ParseOptionalInt(string raw, string label)
+    private int? ParseOptionalInt(string raw, string label)
     {
         var trimmed = raw.Trim();
         if (string.IsNullOrEmpty(trimmed))
@@ -1643,7 +1655,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0)
         {
-            throw new FormatException($"{label} 必须为正整数。");
+            throw new FormatException(T("error.positive_integer", label));
         }
 
         return value;
@@ -1696,7 +1708,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         entry.Level,
         entry.Message);
 
-    private static PlanRow BuildPlanRow(Plan plan)
+    private PlanRow BuildPlanRow(Plan plan)
     {
         var state = plan.LastApply?.State switch
         {
@@ -1708,7 +1720,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var detail = plan switch
         {
             CpuTuningPlan cpu => CurveOptimizerConfig.FormatPlanSummary(cpu),
-            PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? $"设置 {power.Settings.Count} 项",
+            PowerPlan power => power.BaseSchemeGuid?.ToString("D") ?? T("plans.summary.settings_count", power.Settings.Count),
             SchedulingPlan sched => string.Join(", ", sched.Rules.Select(static r => r.CpuSets is null ? $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"})" : $"{r.ProcessMatch}({r.CpuMask ?? "-"}:{r.Priority ?? "-"}:{r.CpuSets})")),
             _ => string.Empty,
         };

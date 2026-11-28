@@ -337,7 +337,7 @@ public sealed class PlanCoordinator
                 return (null, "当前调校通道不支持 FMax 写入。");
             }
 
-            return fmax.TryWriteFMax(value, out var error) == FMaxWriteResult.Applied
+            return fmax.TryWriteFMax(FMaxRange.Clamp(value), out var error) == FMaxWriteResult.Applied
                    && fmax.TryReadFMax(out var actual, out _)
                 ? (actual.ToString(CultureInfo.InvariantCulture), null)
                 : (null, error ?? "FMax 写入未被接受。");
@@ -1086,12 +1086,14 @@ public sealed class PlanCoordinator
 
         if (needsAmd && plan.FMaxLimitMhz is { } desiredFMax)
         {
+            // 用户给的是绝对频率；越界钳到支持范围后再写，账本记钳制后的期望值与回读的真实值。
+            var effectiveFMax = FMaxRange.Clamp(desiredFMax);
             if (_tuning is not IFMaxTuningProvider fmax)
             {
                 outcomes.Add(new TargetOutcome(
                     "cpu.fmax",
                     null,
-                    desiredFMax.ToString(CultureInfo.InvariantCulture),
+                    effectiveFMax.ToString(CultureInfo.InvariantCulture),
                     null,
                     LedgerStatus.Skipped,
                     "当前调校通道不支持 FMax 读写。"));
@@ -1101,7 +1103,7 @@ public sealed class PlanCoordinator
                 outcomes.Add(new TargetOutcome(
                     "cpu.fmax",
                     null,
-                    desiredFMax.ToString(CultureInfo.InvariantCulture),
+                    effectiveFMax.ToString(CultureInfo.InvariantCulture),
                     null,
                     LedgerStatus.Skipped,
                     fmaxReadError ?? "读取当前 FMax 失败，未写入。"));
@@ -1115,10 +1117,10 @@ public sealed class PlanCoordinator
                     source,
                     priority,
                     currentFMax.ToString(CultureInfo.InvariantCulture),
-                    desiredFMax.ToString(CultureInfo.InvariantCulture),
+                    effectiveFMax.ToString(CultureInfo.InvariantCulture),
                     () =>
                     {
-                        writeResult = fmax.TryWriteFMax(desiredFMax, out var writeError);
+                        writeResult = fmax.TryWriteFMax(effectiveFMax, out var writeError);
                         return writeResult == FMaxWriteResult.Applied ? null : writeError;
                     },
                     () => fmax.TryReadFMax(out var actualFMax, out _)
@@ -1126,7 +1128,7 @@ public sealed class PlanCoordinator
                         : null,
                     FMaxTolerance.Within);
 
-                // 平台未实现该消息（未配置写命令或基线为 0）属于能力缺失，按 Skipped 安全降级，不阻断同方案内其他核配置。
+                // 平台未配置写命令属于能力缺失，按 Skipped 安全降级，不阻断同方案内其他核配置。
                 if (writeResult == FMaxWriteResult.Unsupported)
                 {
                     _ledger.Skip("cpu.fmax", outcome.Failure ?? "平台未实现 Boost Limit 消息。");
@@ -1621,7 +1623,7 @@ public sealed class PlanCoordinator
                 return (null, "前值不是整数频率。");
             }
 
-            if (fmax.TryWriteFMax(prevMhz, out var error) != FMaxWriteResult.Applied)
+            if (fmax.TryWriteFMax(FMaxRange.Clamp(prevMhz), out var error) != FMaxWriteResult.Applied)
             {
                 return (null, error);
             }

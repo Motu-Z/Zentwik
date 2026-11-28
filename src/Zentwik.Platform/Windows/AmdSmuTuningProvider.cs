@@ -200,11 +200,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
 
     public FMaxWriteResult TryWriteFMax(int limitMhz, out string? error)
     {
-        if (limitMhz is < 1000 or > 7000)
-        {
-            error = $"FMax 频率 {limitMhz} MHz 超出输入范围 [1000, 7000] MHz（软件输入边界，不是固件限制）。";
-            return FMaxWriteResult.Failed;
-        }
+        // 用户给的是绝对频率；越界不拒绝，钳到工具支持范围后再写，真实生效值由回读给出。
+        var requested = limitMhz;
+        limitMhz = FMaxRange.Clamp(limitMhz);
 
         lock (_gate)
         {
@@ -230,7 +228,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             if (baseline == 0)
             {
                 // 读到 0 不能证明平台不支持：无法区分"命令不存在""通信失败""固件未实现读"，也不能作为回退基线。
-                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 的 Boost Limit 基线读为 0，基线未知，拒绝写入。";
+                error = $"平台 {PlatformName(_commands.Family, _commands.Model)} 的 Boost Limit 基线读为 0，基线未知，拒绝写入（不代表平台不支持）。";
                 return FMaxWriteResult.Failed;
             }
 
@@ -249,7 +247,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             var actual = (int)(scratch[0] & 0xFFFF_FFFFL);
             if (Math.Abs(actual - limitMhz) > IFMaxTuningProvider.ToleranceMhz)
             {
-                error = $"FMax 回读 {actual} MHz，与写入 {limitMhz} MHz 相差超过 {IFMaxTuningProvider.ToleranceMhz} MHz（写前基线 {baseline} MHz）。";
+                error = $"FMax 回读 {actual} MHz，与写入 {limitMhz} MHz 相差超过 {IFMaxTuningProvider.ToleranceMhz} MHz（用户指定 {requested} MHz，写前基线 {baseline} MHz）。";
                 return FMaxWriteResult.Failed;
             }
 
