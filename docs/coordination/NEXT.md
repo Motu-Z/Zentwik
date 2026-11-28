@@ -4,38 +4,38 @@ GUI 通道断的时候，把下面这段粘给 Gemini 就行，其余内容都�
 
 ---
 
-任务 06 我方已复核：`flutter analyze` 无 issue，`flutter test` 59 例全绿，你的 CI 结论也对得上
-——这次没有编译错误，方向没问题。
+任务 07 我方已复核：`flutter analyze` 无 issue，`flutter test` 69 例全绿，CI 结论对得上。
+设置页枚举、卡片调宽隐藏、空态统一都做到位了，`accent: '#4C8DFF'` 那个错夹具也改了。
 
-但三个页面在**真实应用里是空的**：你给 `ShellPage` 加了参数，`lib/runtime/app_host.dart`
-没有人传值，于是 `modules` / `settings` / `agentStatus` 全是 `null`，界面只剩「—」。
-我把这层接线补上了（`AppState` 现在缓存 `settings` 与 `ledger`，新增 `setModuleEnabled` /
-`saveSettings` / `errorMessage`；`app_host` 全部注入；Shell 顶部加了错误条），
-并修了三处你按现有信息判断不了的问题：
+我又补了一个你没看到、但更严重的缺陷：**推送间隔那两个输入框写进 `state.json` 后毫无作用**。
+`AgentRuntime` 订阅遥测时硬编码 `intervalMs: 1000 / sensorIntervalMs: 2000`，
+从来没读过设置。已改成「先 refresh 拿设置 → 按设置订阅；设置变了比较已生效值再重订阅；
+断线清零，重连必重订」，并加了 `test/runtime/agent_runtime_test.dart`（回环假服务端）锁住两条路径。
 
-1. **内置模块的开关按了必然失败。** 后端 `ModuleService.RequireOptional` 对非 `optional`
-   模块直接抛 `module_not_optional`；`ModuleCatalog` 里只有 `power-limits` 是可选的。
-   六张内置卡上的开关等于骗用户。已改为：非 `optional` 显示「内置」，不给开关；
-   `onToggle` 回调签名改成 `(String id, bool enable)`。
-2. **模块页不显示 `detail`。** 用户问「为什么不可用」的答案就在这个字段
-   （「可选组件，未启用。」/「AMDFamily17 未加载。」）。已补一行 `textTertiary` 说明。
-   「可选但未启用」也从「不可用」改成「未启用」——两者原因不同。
-3. **设置页只有按回车才提交。** 桌面用户输完数字通常直接点别处，改动静默丢失。
-   改成回车 + 失焦 + 销毁三条路径都提交，并用 `_sent*` 去重，避免重复 `settings.set`。
+另外三件必须说清楚的现状：
 
-现在 66 例全绿，`flutter build windows --release` 通过。请先 `git pull`，然后做 **任务 07**：
+1. **语言/主题/强调色/界面缩放这四个下拉，改了不会改变外观。** `ZentwikApp` 恒用暗色主题，
+   `ZentwikTokens` 是 `const` 静态字段，颜色编译期定死。我在设置页加了一行说明**如实告知**，
+   不是永久方案。
+2. 因此在真实应用里，现在**唯一立即生效**的设置是两个推送间隔。
+3. 任务 08 就是把这四个变成真的——这是本轮唯一目标，别顺手改别的页面逻辑。
 
-- 读 `docs/coordination/gemini-task-07.md`：设置页三个枚举字段可编辑化（注意 `accent`
-  是 `blue/violet/teal/amber`，**不是**十六进制颜色）、仪表盘卡片调宽与隐藏、
-  九张卡空态统一。
+请先 `git pull`，然后做 **任务 08**：
 
-纪律（和上一轮一致，不再重复解释）：
+- 读 `docs/coordination/gemini-task-08.md`：`ZentwikTokens` 只留尺寸，颜色迁到
+  `ZentwikPalette extends ThemeExtension`（暗/亮 × 4 强调色），
+  `buildZentwikTheme({brightness, accent, textScale})`，
+  全量把 `ZentwikTokens.<颜色>` 换成 `context.palette.<同名>`，
+  `app.dart` 按 `settings` 选主题，`uiScale` 走 `MediaQuery` 的 `textScaler`
+  （标签改成「文字缩放」，它不影响布局比例）。
 
-- **禁止** import `dart:ffi` / `dart:io` / `package:win32` / `package:window_manager`。
+纪律：
+
 - **不得修改** `lib/protocol/**`、`lib/state/**`、`lib/platform/**`、`lib/runtime/**`、
-  `lib/main.dart`、`pubspec.yaml`、任何 `.cs`；不得改既有 66 例测试的断言。
-- 一律 `package:material_ui/material_ui.dart`；不新增依赖；数据缺失一律 `—`。
-- 验证走 GitHub Actions（workflow `Zentwik Next | GUI (Flutter)`）：推完读这次 push 的
-  运行结果，`Analyze` 与 `Test` 都绿才算交付，红了改到绿。别写「未执行」。
+  `lib/main.dart`、`pubspec.yaml`、任何 `.cs`；不得改既有 71 例测试的**语义**。
+- 一律 `package:material_ui/material_ui.dart`；不新增依赖；未知 `accent` 回落 `blue`，不要抛异常。
+- 为了保住 `const` 去造两套颜色是**不接受的**——`const` 掉了就掉了。
+- 验证走 GitHub Actions（workflow `Zentwik Next | GUI (Flutter)`）：推完读这次 push 的结果，
+  `Analyze` 与 `Test` 都绿才算交付。红了改到绿，别写「未执行」。
 
 交付：能推就继续推到 `feat/gui-protocol`，不能推就按文件输出完整内容。
