@@ -1366,7 +1366,9 @@ public sealed class PlanCoordinator
             if (item.Previous is null)
             {
                 // TDC/EDC 没有 PM 表当前值：可以写，但没有可回退的基线，不能让 revert 假装能恢复。
-                _ledger.MarkNotRestorable(item.Target, "该项没有可回退的基线读数。");
+                // 两条信息都要留：写入了什么，以及为什么不能回退。
+                var accepted = (write.Detail ?? "写入已接受").TrimEnd('。', '.');
+                _ledger.MarkNotRestorable(item.Target, $"{accepted}；该项没有可回退的基线读数。");
             }
 
             outcomes.Add(OutcomeFromLedger(item.Target));

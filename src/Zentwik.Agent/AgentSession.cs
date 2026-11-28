@@ -1048,6 +1048,8 @@ internal sealed class AgentSession : IAsyncDisposable
             LedgerStatus.Applied => "applied",
             LedgerStatus.Reverted => "reverted",
             LedgerStatus.Failed => "failed",
+            // 结果未知不能并入 skipped：那是「没写」，这是「写了但确认不了」。
+            LedgerStatus.Unknown => "unknown",
             _ => "skipped",
         },
         target.Failure);
