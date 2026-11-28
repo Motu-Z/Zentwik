@@ -17,6 +17,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private const int HistoryLength = 120;
     private const int SampleIntervalMs = 500;
+    private const int LogFetchLimit = 200;
 
     private readonly LocalizationCatalog _catalog;
     private readonly SynchronizationContext _ui;
@@ -33,6 +34,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _hardwareSummary = "—";
     private string _tuningSummary = "—";
     private string _intelTuningSummary = "—";
+    private string _powerLimitsSummary = "—";
+    private string _doctorSummary = "—";
 
     private double _cpuPercent;
     private double _memoryPercent;
@@ -54,6 +57,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private PlanRow? _selectedPlan;
     private SceneRow? _selectedScene;
     private LedgerRow? _selectedLedger;
+    private ModuleRow? _selectedModule;
+    private PowerSchemeRow? _selectedPowerScheme;
+    private PowerBackupRow? _selectedPowerBackup;
 
     private bool _isCreatePlanOpen;
     private string _newPlanKind = "cpuTuning";
@@ -70,16 +76,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private string _newSceneTriggerArg = string.Empty;
     private bool _newSceneRestoreOnExit = true;
 
+    private string _powerSchemeNewName = string.Empty;
+    private string _fastWattsInput = string.Empty;
+    private string _slowWattsInput = string.Empty;
+    private string _tdcAmpsInput = string.Empty;
+    private string _edcAmpsInput = string.Empty;
+
     public MainViewModel(LocalizationCatalog catalog)
     {
         _catalog = catalog;
         _ui = SynchronizationContext.Current ?? new SynchronizationContext();
 
-        _selectedLanguage = catalog.CurrentCulture;
+        _selectedLanguage = Languages.Contains(catalog.CurrentCulture) ? catalog.CurrentCulture : "zh-CN";
         _statusText = catalog["status.connecting"];
         _activeSceneText = catalog["status.no_scene"];
 
         RefreshCommand = new AsyncRelayCommand(RefreshAllAsync, () => IsConnected);
+        RefreshHistoryCommand = new AsyncRelayCommand(RefreshHistoryAsync, () => IsConnected);
         DismissNoticeCommand = new RelayCommand(() => NoticeText = null);
 
         ToggleCreatePlanCommand = new RelayCommand(() => IsCreatePlanOpen = !IsCreatePlanOpen);
@@ -98,6 +111,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshTuningCommand = new AsyncRelayCommand(RefreshTuningAndLedgerAsync, () => IsConnected);
         ReleaseTakeoverCommand = new AsyncRelayCommand(ReleaseSelectedTakeoverAsync, () => IsConnected && SelectedLedger is { IsUserOwned: true });
 
+        RefreshModulesCommand = new AsyncRelayCommand(RefreshModulesAsync, () => IsConnected);
+        EnableModuleCommand = new AsyncRelayCommand(EnableSelectedModuleAsync, () => IsConnected && SelectedModule is { Enabled: false });
+        DisableModuleCommand = new AsyncRelayCommand(DisableSelectedModuleAsync, () => IsConnected && SelectedModule is { Enabled: true });
+
+        RefreshPowerCommand = new AsyncRelayCommand(RefreshPowerAsync, () => IsConnected);
+        ReadPowerLimitsCommand = new AsyncRelayCommand(ReadPowerLimitsAsync, () => IsConnected);
+        ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected);
+        CreatePowerSchemeCommand = new AsyncRelayCommand(CreatePowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null && !string.IsNullOrWhiteSpace(PowerSchemeNewName));
+        RenamePowerSchemeCommand = new AsyncRelayCommand(RenameSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false } && !string.IsNullOrWhiteSpace(PowerSchemeNewName));
+        BackupPowerSchemeCommand = new AsyncRelayCommand(BackupSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null);
+        DeletePowerSchemeCommand = new AsyncRelayCommand(DeleteSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false });
+        RestorePowerBackupCommand = new AsyncRelayCommand(RestoreSelectedPowerBackupAsync, () => IsConnected && SelectedPowerBackup is not null);
+
+        RefreshLogCommand = new AsyncRelayCommand(RefreshLogAsync, () => IsConnected);
+        RefreshDoctorCommand = new AsyncRelayCommand(RefreshDoctorAsync, () => IsConnected);
+
         catalog.CultureChanged += OnCultureChanged;
     }
 
@@ -106,6 +135,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<CapabilityRow> Capabilities { get; } = [];
 
+    public ObservableCollection<TelemetryHistoryRow> TelemetryHistory { get; } = [];
+
     public ObservableCollection<PlanRow> Plans { get; } = [];
 
     public ObservableCollection<SceneRow> Scenes { get; } = [];
@@ -113,6 +144,16 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<CoreOffsetRow> CoreOffsets { get; } = [];
 
     public ObservableCollection<LedgerRow> LedgerEntries { get; } = [];
+
+    public ObservableCollection<ModuleRow> Modules { get; } = [];
+
+    public ObservableCollection<PowerSchemeRow> PowerSchemes { get; } = [];
+
+    public ObservableCollection<PowerBackupRow> PowerBackups { get; } = [];
+
+    public ObservableCollection<LogRow> Logs { get; } = [];
+
+    public ObservableCollection<LogRow> DoctorErrors { get; } = [];
 
     public IReadOnlyList<string> Languages => LocalizationCatalog.SupportedCultures;
 
@@ -126,6 +167,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     ];
 
     public AsyncRelayCommand RefreshCommand { get; }
+    public AsyncRelayCommand RefreshHistoryCommand { get; }
     public RelayCommand DismissNoticeCommand { get; }
     public RelayCommand ToggleCreatePlanCommand { get; }
     public AsyncRelayCommand CreatePlanCommand { get; }
@@ -140,6 +182,19 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand DeleteSceneCommand { get; }
     public AsyncRelayCommand RefreshTuningCommand { get; }
     public AsyncRelayCommand ReleaseTakeoverCommand { get; }
+    public AsyncRelayCommand RefreshModulesCommand { get; }
+    public AsyncRelayCommand EnableModuleCommand { get; }
+    public AsyncRelayCommand DisableModuleCommand { get; }
+    public AsyncRelayCommand RefreshPowerCommand { get; }
+    public AsyncRelayCommand ReadPowerLimitsCommand { get; }
+    public AsyncRelayCommand ApplyPowerLimitsCommand { get; }
+    public AsyncRelayCommand CreatePowerSchemeCommand { get; }
+    public AsyncRelayCommand RenamePowerSchemeCommand { get; }
+    public AsyncRelayCommand BackupPowerSchemeCommand { get; }
+    public AsyncRelayCommand DeletePowerSchemeCommand { get; }
+    public AsyncRelayCommand RestorePowerBackupCommand { get; }
+    public AsyncRelayCommand RefreshLogCommand { get; }
+    public AsyncRelayCommand RefreshDoctorCommand { get; }
 
     public bool IsConnected
     {
@@ -188,6 +243,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _intelTuningSummary;
         private set => Set(ref _intelTuningSummary, value);
+    }
+
+    public string PowerLimitsSummary
+    {
+        get => _powerLimitsSummary;
+        private set => Set(ref _powerLimitsSummary, value);
+    }
+
+    public string DoctorSummary
+    {
+        get => _doctorSummary;
+        private set => Set(ref _doctorSummary, value);
     }
 
     public string CpuText => $"{_cpuPercent:0}%";
@@ -258,6 +325,46 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             if (Set(ref _selectedLedger, value))
             {
                 ReleaseTakeoverCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public ModuleRow? SelectedModule
+    {
+        get => _selectedModule;
+        set
+        {
+            if (Set(ref _selectedModule, value))
+            {
+                EnableModuleCommand.RaiseCanExecuteChanged();
+                DisableModuleCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public PowerSchemeRow? SelectedPowerScheme
+    {
+        get => _selectedPowerScheme;
+        set
+        {
+            if (Set(ref _selectedPowerScheme, value))
+            {
+                CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+                RenamePowerSchemeCommand.RaiseCanExecuteChanged();
+                BackupPowerSchemeCommand.RaiseCanExecuteChanged();
+                DeletePowerSchemeCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public PowerBackupRow? SelectedPowerBackup
+    {
+        get => _selectedPowerBackup;
+        set
+        {
+            if (Set(ref _selectedPowerBackup, value))
+            {
+                RestorePowerBackupCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -340,6 +447,43 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => Set(ref _newSceneRestoreOnExit, value);
     }
 
+    public string PowerSchemeNewName
+    {
+        get => _powerSchemeNewName;
+        set
+        {
+            if (Set(ref _powerSchemeNewName, value))
+            {
+                CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+                RenamePowerSchemeCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public string FastWattsInput
+    {
+        get => _fastWattsInput;
+        set => Set(ref _fastWattsInput, value);
+    }
+
+    public string SlowWattsInput
+    {
+        get => _slowWattsInput;
+        set => Set(ref _slowWattsInput, value);
+    }
+
+    public string TdcAmpsInput
+    {
+        get => _tdcAmpsInput;
+        set => Set(ref _tdcAmpsInput, value);
+    }
+
+    public string EdcAmpsInput
+    {
+        get => _edcAmpsInput;
+        set => Set(ref _edcAmpsInput, value);
+    }
+
     public string SelectedLanguage
     {
         get => _selectedLanguage;
@@ -414,7 +558,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -457,6 +601,415 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             UpdateHardwareSummaries(status, amdTuning, intelTuning);
             DeactivateSceneCommand.RaiseCanExecuteChanged();
         }, null);
+
+        await RefreshHistoryCoreAsync(connection, ct).ConfigureAwait(false);
+        await RefreshModulesCoreAsync(connection, ct).ConfigureAwait(false);
+        await RefreshPowerCoreAsync(connection, ct).ConfigureAwait(false);
+        await RefreshLogCoreAsync(connection, ct).ConfigureAwait(false);
+        await RefreshDoctorCoreAsync(connection, ct).ConfigureAwait(false);
+    }
+
+    private async Task RefreshHistoryAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        await RefreshHistoryCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+    }
+
+    private async Task RefreshHistoryCoreAsync(AgentConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            var history = await connection.GetTelemetryHistoryAsync(HistoryLength, ct).ConfigureAwait(false);
+            var rows = history.Samples
+                .Reverse()
+                .Select(BuildTelemetryHistoryRow)
+                .ToList();
+
+            _ui.Post(_ => Replace(TelemetryHistory, rows), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task RefreshModulesAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        await RefreshModulesCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+    }
+
+    private async Task RefreshModulesCoreAsync(AgentConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            var modules = await connection.ListModulesAsync(ct).ConfigureAwait(false);
+            _ui.Post(_ => ApplyModules(modules), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private void ApplyModules(IReadOnlyList<ModuleDto> modules)
+    {
+        var selectedId = SelectedModule?.Id;
+        Replace(Modules, modules.Select(BuildModuleRow));
+        SelectedModule = Modules.FirstOrDefault(m => m.Id == selectedId) ?? Modules.FirstOrDefault();
+    }
+
+    private async Task EnableSelectedModuleAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedModule;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var modules = await connection.EnableModuleAsync(selected.Id, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                ApplyModules(modules);
+                ShowNotice($"已启用模块 {selected.Name}。", isError: false);
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task DisableSelectedModuleAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedModule;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var modules = await connection.DisableModuleAsync(selected.Id, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                ApplyModules(modules);
+                ShowNotice($"已停用模块 {selected.Name}。", isError: false);
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task RefreshPowerAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+    }
+
+    private async Task RefreshPowerCoreAsync(AgentConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            var schemes = await connection.ListPowerSchemesAsync(ct).ConfigureAwait(false);
+            var backups = await connection.ListPowerSchemeBackupsAsync(ct).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                var selectedSchemeGuid = SelectedPowerScheme?.Guid;
+                var selectedBackupId = SelectedPowerBackup?.Id;
+
+                Replace(PowerSchemes, schemes.Select(BuildPowerSchemeRow));
+                Replace(PowerBackups, backups.Select(BuildPowerBackupRow));
+
+                SelectedPowerScheme = PowerSchemes.FirstOrDefault(s => s.Guid == selectedSchemeGuid) ?? PowerSchemes.FirstOrDefault();
+                SelectedPowerBackup = PowerBackups.FirstOrDefault(b => b.Id == selectedBackupId) ?? PowerBackups.FirstOrDefault();
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+
+        await ReadPowerLimitsCoreAsync(connection, ct).ConfigureAwait(false);
+    }
+
+    private async Task ReadPowerLimitsAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        await ReadPowerLimitsCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+    }
+
+    private async Task ReadPowerLimitsCoreAsync(AgentConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            var limits = await connection.ReadPowerLimitsAsync(ct).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                if (!limits.Supported || !limits.Available)
+                {
+                    PowerLimitsSummary = $"unavailable ({limits.Error ?? "当前平台或模块不可用"})";
+                    return;
+                }
+
+                var sim = limits.Simulated ? " · Simulated" : string.Empty;
+                var pm = $"STAPM {FormatWatts(limits.StapmWatts)} / FAST {FormatWatts(limits.FastWatts)} / SLOW {FormatWatts(limits.SlowWatts)}";
+                var fused = $"Fused FAST {FormatWatts(limits.FusedFastWatts)} / SLOW {FormatWatts(limits.FusedSlowWatts)} / TDC {FormatAmps(limits.FusedTdcAmps)}";
+                PowerLimitsSummary = $"{pm}  |  {fused}{sim}";
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ =>
+            {
+                PowerLimitsSummary = "unavailable";
+                ShowNotice(ex.DetailOrMessage(), isError: true);
+            }, null);
+        }
+    }
+
+    private async Task ApplyPowerLimitsAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var fast = ParseOptionalInt(FastWattsInput, "FAST (W)");
+            var slow = ParseOptionalInt(SlowWattsInput, "SLOW (W)");
+            var tdc = ParseOptionalInt(TdcAmpsInput, "TDC (A)");
+            var edc = ParseOptionalInt(EdcAmpsInput, "EDC (A)");
+
+            if (fast is null && slow is null && tdc is null && edc is null)
+            {
+                throw new ArgumentException("请至少填写一项功耗墙参数（FAST / SLOW / TDC / EDC）。");
+            }
+
+            var result = await connection.ApplyPowerLimitsAsync(new PowerLimitApplyRequest(fast, slow, tdc, edc), _cts.Token).ConfigureAwait(false);
+            await ReadPowerLimitsCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+
+            var hasError = !string.IsNullOrWhiteSpace(result.RejectedReason) || result.Items.Any(static i => i.State is "rejected");
+            var summary = string.IsNullOrWhiteSpace(result.RejectedReason)
+                ? string.Join("；", result.Items.Select(static i => $"{i.Item}: {i.Requested}→{i.Actual?.ToString(CultureInfo.InvariantCulture) ?? "-"} ({i.State})"))
+                : result.RejectedReason;
+            if (!string.IsNullOrWhiteSpace(result.Note))
+            {
+                summary = $"{summary} — {result.Note}";
+            }
+
+            _ui.Post(_ => ShowNotice(summary, isError: hasError), null);
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task CreatePowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        var newName = PowerSchemeNewName.Trim();
+        if (connection is null || selected is null || string.IsNullOrWhiteSpace(newName))
+        {
+            return;
+        }
+
+        try
+        {
+            var created = await connection.CreatePowerSchemeAsync(selected.Guid, newName, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                PowerSchemeNewName = string.Empty;
+                ShowNotice($"已派生电源方案 {created.Name}。", isError: false);
+            }, null);
+            await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task RenameSelectedPowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        var newName = PowerSchemeNewName.Trim();
+        if (connection is null || selected is null || string.IsNullOrWhiteSpace(newName))
+        {
+            return;
+        }
+
+        try
+        {
+            var renamed = await connection.RenamePowerSchemeAsync(selected.Guid, newName, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ =>
+            {
+                PowerSchemeNewName = string.Empty;
+                ShowNotice($"已重命名电源方案为 {renamed.Name}。", isError: false);
+            }, null);
+            await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task BackupSelectedPowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var backup = await connection.BackupPowerSchemeAsync(selected.Guid, _cts.Token).ConfigureAwait(false);
+            await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ => ShowNotice($"已备份电源方案 {selected.Name} → {backup.Id}。", isError: false), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task DeleteSelectedPowerSchemeAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerScheme;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await connection.DeletePowerSchemeAsync(selected.Guid, keepBackup: true, _cts.Token).ConfigureAwait(false);
+            await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ => ShowNotice(result.Deleted ? $"已删除电源方案 {selected.Name}。" : $"未能删除电源方案 {selected.Name}。", isError: !result.Deleted), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task RestoreSelectedPowerBackupAsync()
+    {
+        var connection = _connection;
+        var selected = SelectedPowerBackup;
+        if (connection is null || selected is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await connection.RestorePowerSchemeAsync(selected.Id, _cts.Token).ConfigureAwait(false);
+            await RefreshPowerCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+            _ui.Post(_ => ShowNotice($"已还原电源方案 {result.Scheme.Name}（应用 {result.Applied} 项，失败 {result.Failed} 项）。", isError: result.Failed > 0), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task RefreshLogAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        await RefreshLogCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+    }
+
+    private async Task RefreshLogCoreAsync(AgentConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            var entries = await connection.GetLogAsync(LogFetchLimit, ct).ConfigureAwait(false);
+            var rows = entries.Reverse().Select(BuildLogRow).ToList();
+            _ui.Post(_ => Replace(Logs, rows), null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private async Task RefreshDoctorAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        await RefreshDoctorCoreAsync(connection, _cts.Token).ConfigureAwait(false);
+    }
+
+    private async Task RefreshDoctorCoreAsync(AgentConnection connection, CancellationToken ct)
+    {
+        try
+        {
+            var doc = await connection.GetDoctorAsync(ct).ConfigureAwait(false);
+            var summary =
+                $"版本 {doc.Version} (协议 v{doc.ProtocolVersion}) · 运行 {doc.UptimeSeconds}s · 方案 {doc.PlanCount} / 场景 {doc.SceneCount} / 账本 {doc.LedgerEntryCount}" +
+                $"{Environment.NewLine}数据目录: {doc.DataDirectory}" +
+                $"{Environment.NewLine}状态文件: {doc.StatePath}" +
+                $"{Environment.NewLine}日志目录: {doc.LogDirectory}";
+            var errorRows = doc.RecentErrors.Reverse().Select(BuildLogRow).ToList();
+            _ui.Post(_ =>
+            {
+                DoctorSummary = summary;
+                Replace(DoctorErrors, errorRows);
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ =>
+            {
+                DoctorSummary = "unavailable";
+                ShowNotice(ex.DetailOrMessage(), isError: true);
+            }, null);
+        }
     }
 
     private async Task RefreshTuningAndLedgerAsync()
@@ -483,7 +1036,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -508,7 +1061,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -661,7 +1214,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -683,7 +1236,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -704,7 +1257,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -757,7 +1310,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is FormatException or ArgumentException or IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -778,7 +1331,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -798,7 +1351,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -819,7 +1372,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -840,7 +1393,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -861,7 +1414,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
         {
-            ShowNotice(ex.Message, isError: true);
+            ShowNotice(ex.DetailOrMessage(), isError: true);
         }
     }
 
@@ -922,7 +1475,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _suppressPersist = true;
         try
         {
-            SelectedLanguage = settings.Language;
+            var language = settings.Language;
+            if (!Languages.Contains(language))
+            {
+                language = "zh-CN";
+            }
+
+            SelectedLanguage = language;
             _selectedTheme = settings.Theme;
             _selectedAccent = settings.Accent;
             _uiScale = Math.Clamp(settings.UiScale, 0.8, 1.6);
@@ -1030,6 +1589,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void RaiseCommandStates()
     {
         RefreshCommand.RaiseCanExecuteChanged();
+        RefreshHistoryCommand.RaiseCanExecuteChanged();
         CreatePlanCommand.RaiseCanExecuteChanged();
         ApplyPlanCommand.RaiseCanExecuteChanged();
         RevertPlanCommand.RaiseCanExecuteChanged();
@@ -1041,7 +1601,83 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DeleteSceneCommand.RaiseCanExecuteChanged();
         RefreshTuningCommand.RaiseCanExecuteChanged();
         ReleaseTakeoverCommand.RaiseCanExecuteChanged();
+        RefreshModulesCommand.RaiseCanExecuteChanged();
+        EnableModuleCommand.RaiseCanExecuteChanged();
+        DisableModuleCommand.RaiseCanExecuteChanged();
+        RefreshPowerCommand.RaiseCanExecuteChanged();
+        ReadPowerLimitsCommand.RaiseCanExecuteChanged();
+        ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
+        CreatePowerSchemeCommand.RaiseCanExecuteChanged();
+        RenamePowerSchemeCommand.RaiseCanExecuteChanged();
+        BackupPowerSchemeCommand.RaiseCanExecuteChanged();
+        DeletePowerSchemeCommand.RaiseCanExecuteChanged();
+        RestorePowerBackupCommand.RaiseCanExecuteChanged();
+        RefreshLogCommand.RaiseCanExecuteChanged();
+        RefreshDoctorCommand.RaiseCanExecuteChanged();
     }
+
+    private static int? ParseOptionalInt(string raw, string label)
+    {
+        var trimmed = raw.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0)
+        {
+            throw new FormatException($"{label} 必须为正整数。");
+        }
+
+        return value;
+    }
+
+    private static string FormatWatts(int? watts) => watts is { } w ? $"{w}W" : "—";
+
+    private static string FormatAmps(int? amps) => amps is { } a ? $"{a}A" : "—";
+
+    private static TelemetryHistoryRow BuildTelemetryHistoryRow(TelemetryDto sample)
+    {
+        var mem = sample.MemoryTotalBytes == 0
+            ? "—"
+            : $"{(1d - (double)sample.MemoryAvailableBytes / sample.MemoryTotalBytes) * 100d:0}%";
+        var temp = sample.TemperatureCelsius is { } t ? $"{t:0.0}°C" : "—";
+        var power = sample.PackagePowerWatts is { } p ? $"{p:0.0}W" : "—";
+        return new TelemetryHistoryRow(
+            sample.Timestamp.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+            $"{sample.CpuTotalPercent:0}%",
+            mem,
+            sample.ProcessCount.ToString(CultureInfo.InvariantCulture),
+            temp,
+            power);
+    }
+
+    private static ModuleRow BuildModuleRow(ModuleDto module) => new(
+        module.Id,
+        module.Name,
+        module.State,
+        module.Optional,
+        module.Enabled,
+        string.Join(", ", module.Capabilities),
+        module.Detail ?? string.Empty);
+
+    private static PowerSchemeRow BuildPowerSchemeRow(PowerSchemeDto scheme) => new(
+        scheme.Guid,
+        scheme.Name,
+        scheme.Active,
+        scheme.BuiltIn,
+        scheme.Visible);
+
+    private static PowerBackupRow BuildPowerBackupRow(PowerSchemeBackupDto backup) => new(
+        backup.Id,
+        backup.Name,
+        backup.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+        backup.SettingCount);
+
+    private static LogRow BuildLogRow(LogEntryDto entry) => new(
+        entry.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+        entry.Level,
+        entry.Message);
 
     private static PlanRow BuildPlanRow(Plan plan)
     {
@@ -1119,6 +1755,32 @@ internal static class ExceptionTextExtensions
 }
 
 public sealed record CapabilityRow(string Id, string State, string Detail);
+
+public sealed record TelemetryHistoryRow(string Time, string Cpu, string Memory, string Processes, string Temperature, string Power);
+
+public sealed record ModuleRow(
+    string Id,
+    string Name,
+    string State,
+    bool Optional,
+    bool Enabled,
+    string Capabilities,
+    string Detail);
+
+public sealed record PowerSchemeRow(
+    Guid Guid,
+    string Name,
+    bool Active,
+    bool BuiltIn,
+    bool Visible);
+
+public sealed record PowerBackupRow(
+    string Id,
+    string Name,
+    string CreatedAt,
+    int SettingCount);
+
+public sealed record LogRow(string Time, string Level, string Message);
 
 public sealed record PlanRow(
     string Kind,

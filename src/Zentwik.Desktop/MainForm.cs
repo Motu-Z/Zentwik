@@ -10,7 +10,7 @@ using Zentwik.Localization;
 namespace Zentwik.Desktop;
 
 /// <summary>
-/// 裸控件主窗口：一个 TabControl 四页，只用 Label / Button / DataGridView / ComboBox / TextBox。
+/// 裸控件主窗口：一个 TabControl 九页，只用 Label / Button / DataGridView / ComboBox / TextBox / CheckBox / GroupBox / TableLayoutPanel / SplitContainer / FlowLayoutPanel。
 ///
 /// 约定（这一版刻意为之）：
 /// - 不写自绘、不写布局引擎、不加动画、不做设计系统、不换肤；
@@ -35,9 +35,13 @@ public sealed class MainForm : Form
     private bool _syncing;
 
     // 顶栏
-    private readonly Label _statusLabel = new() { AutoSize = true, Padding = new Padding(0, 4, 16, 4) };
-    private readonly Label _runtimeLabel = new() { AutoSize = true };
-    private readonly Label _sceneLabel = new() { AutoSize = true, Padding = new Padding(0, 4, 0, 4) };
+    private readonly Label _statusLabel = new()
+    {
+        AutoSize = true,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleRight,
+        Padding = new Padding(0, 4, 4, 4),
+    };
     private readonly Panel _noticePanel = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly Label _noticeLabel = new() { Dock = DockStyle.Fill, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
     private Button _dismissButton = null!;
@@ -52,7 +56,10 @@ public sealed class MainForm : Form
     private readonly Label _procCaption = Caption();
     private readonly Label _coreCaption = Caption();
     private readonly DataGridView _capsGrid = NewGrid(("能力", 60), ("状态", 30), ("详情", 110));
+    private readonly DataGridView _historyGrid = NewGrid(("时间", 40), ("CPU", 25), ("内存", 25), ("进程", 25), ("温度", 30), ("功耗", 30));
     private Button _refreshButton = null!;
+    private Button _refreshHistoryButton = null!;
+    private SplitContainer? _monitorSplit;
 
     // 方案
     private readonly DataGridView _plansGrid = NewGrid(("类型", 35), ("名称", 60), ("说明", 110), ("状态", 30));
@@ -67,10 +74,10 @@ public sealed class MainForm : Form
     private readonly TextBox _planSpecBox = new() { Dock = DockStyle.Fill };
     private Button _savePlanButton = null!;
     private Button _cancelPlanButton = null!;
-    private Label _planKindCaption = Caption();
-    private Label _planIdCaption = Caption();
-    private Label _planNameCaption = Caption();
-    private Label _planSpecCaption = Caption();
+    private readonly Label _planKindCaption = Caption();
+    private readonly Label _planIdCaption = Caption();
+    private readonly Label _planNameCaption = Caption();
+    private readonly Label _planSpecCaption = Caption();
 
     // 场景
     private readonly DataGridView _scenesGrid = NewGrid(("名称", 60), ("优先级", 25), ("目标", 60), ("启用", 25), ("活动", 25), ("最近结果", 80));
@@ -89,14 +96,14 @@ public sealed class MainForm : Form
     private readonly CheckBox _restoreOnExitCheck = new() { AutoSize = true };
     private Button _saveSceneButton = null!;
     private Button _cancelSceneButton = null!;
-    private Label _sceneIdCaption = Caption();
-    private Label _sceneNameCaption = Caption();
-    private Label _scenePriorityCaption = Caption();
-    private Label _scenePlanCaption = Caption();
-    private Label _sceneTriggerCaption = Caption();
-    private Label _sceneTriggerArgCaption = Caption();
+    private readonly Label _sceneIdCaption = Caption();
+    private readonly Label _sceneNameCaption = Caption();
+    private readonly Label _scenePriorityCaption = Caption();
+    private readonly Label _scenePlanCaption = Caption();
+    private readonly Label _sceneTriggerCaption = Caption();
+    private readonly Label _sceneTriggerArgCaption = Caption();
 
-    // 调校
+    // 调校与账本
     private readonly Label _tuningSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
     private readonly Label _intelSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
     private readonly DataGridView _coresGrid = NewGrid(("核心", 40), ("Curve Optimizer", 60));
@@ -105,29 +112,81 @@ public sealed class MainForm : Form
     private Button _releaseButton = null!;
     private SplitContainer? _tuningSplit;
 
-    // 语言（顶栏右侧，唯一保留的界面选项）
+    // 模块
+    private readonly DataGridView _modulesGrid = NewGrid(("标识", 45), ("名称", 60), ("状态", 35), ("可选", 25), ("启用", 25), ("能力", 80), ("详情", 90));
+    private Button _refreshModulesButton = null!;
+    private Button _enableModuleButton = null!;
+    private Button _disableModuleButton = null!;
+
+    // 电源
+    private readonly Label _powerLimitsSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
+    private readonly Label _fastWattsCaption = Caption();
+    private readonly Label _slowWattsCaption = Caption();
+    private readonly Label _tdcAmpsCaption = Caption();
+    private readonly Label _edcAmpsCaption = Caption();
+    private readonly TextBox _fastWattsBox = new() { Width = 70 };
+    private readonly TextBox _slowWattsBox = new() { Width = 70 };
+    private readonly TextBox _tdcAmpsBox = new() { Width = 70 };
+    private readonly TextBox _edcAmpsBox = new() { Width = 70 };
+    private Button _readPowerLimitsButton = null!;
+    private Button _applyPowerLimitsButton = null!;
+    private readonly DataGridView _powerSchemesGrid = NewGrid(("名称", 70), ("GUID", 110), ("活动", 25), ("内置", 25), ("可见", 25));
+    private readonly DataGridView _powerBackupsGrid = NewGrid(("备份 ID", 80), ("方案名称", 70), ("创建时间", 55), ("设置数", 30));
+    private readonly Label _powerSchemeNewNameCaption = Caption();
+    private readonly TextBox _powerSchemeNewNameBox = new() { Width = 180 };
+    private Button _refreshPowerButton = null!;
+    private Button _createPowerSchemeButton = null!;
+    private Button _renamePowerSchemeButton = null!;
+    private Button _backupPowerSchemeButton = null!;
+    private Button _deletePowerSchemeButton = null!;
+    private Button _restorePowerBackupButton = null!;
+    private SplitContainer? _powerSplit;
+
+    // 日志
+    private readonly DataGridView _logGrid = NewGrid(("时间", 55), ("级别", 25), ("内容", 180));
+    private Button _refreshLogButton = null!;
+
+    // 诊断
+    private readonly Label _doctorSummaryLabel = new() { AutoSize = true, Dock = DockStyle.Fill };
+    private readonly DataGridView _doctorErrorsGrid = NewGrid(("时间", 55), ("级别", 25), ("内容", 180));
+    private Button _refreshDoctorButton = null!;
+
+    // 设置（仅保留语言，且只有简体中文）
     private readonly ComboBox _languageCombo = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
-        Width = 120,
+        FormattingEnabled = true,
+        Width = 160,
         Anchor = AnchorStyles.Left,
     };
     private readonly Label _languageCaption = Caption();
 
-    // 页签
+    // 页签（9 页）
     private readonly TabPage _monitorPage = new();
     private readonly TabPage _plansPage = new();
     private readonly TabPage _scenesPage = new();
     private readonly TabPage _tuningPage = new();
+    private readonly TabPage _modulesPage = new();
+    private readonly TabPage _powerPage = new();
+    private readonly TabPage _logPage = new();
+    private readonly TabPage _doctorPage = new();
+    private readonly TabPage _settingsPage = new();
 
     // 分组框
     private readonly GroupBox _metricBox = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly GroupBox _capsBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _historyBox = new() { Dock = DockStyle.Fill };
     private readonly GroupBox _coresBox = new() { Dock = DockStyle.Fill };
     private readonly GroupBox _ledgerBox = new() { Dock = DockStyle.Fill };
     private readonly GroupBox _tuningBox = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly GroupBox _planFormBox = new() { Dock = DockStyle.Top, AutoSize = true };
     private readonly GroupBox _sceneFormBox = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly GroupBox _powerLimitsBox = new() { Dock = DockStyle.Fill, AutoSize = true };
+    private readonly GroupBox _powerSchemesBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _powerBackupsBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _doctorSummaryBox = new() { Dock = DockStyle.Fill, AutoSize = true };
+    private readonly GroupBox _doctorErrorsBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _settingsBox = new() { Dock = DockStyle.Top, AutoSize = true };
 
     public MainForm(MainViewModel viewModel, LocalizationCatalog catalog, bool autoConnect = true)
     {
@@ -149,9 +208,24 @@ public sealed class MainForm : Form
         BuildPlansPage();
         BuildScenesPage();
         BuildTuningPage();
+        BuildModulesPage();
+        BuildPowerPage();
+        BuildLogPage();
+        BuildDoctorPage();
+        BuildSettingsPage();
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
-        tabs.TabPages.AddRange([_monitorPage, _plansPage, _scenesPage, _tuningPage]);
+        tabs.TabPages.AddRange([
+            _monitorPage,
+            _plansPage,
+            _scenesPage,
+            _tuningPage,
+            _modulesPage,
+            _powerPage,
+            _logPage,
+            _doctorPage,
+            _settingsPage,
+        ]);
 
         var root = new TableLayoutPanel
         {
@@ -194,30 +268,7 @@ public sealed class MainForm : Form
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var labels = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-        };
-        labels.Controls.Add(_statusLabel);
-        labels.Controls.Add(_sceneLabel);
-
-        var language = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-        };
-        _languageCaption.Margin = new Padding(0, 6, 6, 0);
-        _languageCombo.Margin = new Padding(0, 2, 0, 0);
-        language.Controls.Add(_languageCaption);
-        language.Controls.Add(_languageCombo);
-
-        bar.Controls.Add(labels, 0, 0);
-        bar.Controls.Add(language, 1, 0);
+        bar.Controls.Add(_statusLabel, 1, 0);
         return bar;
     }
 
@@ -231,6 +282,7 @@ public sealed class MainForm : Form
         var row = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1 };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        row.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         _noticeLabel.Dock = DockStyle.Fill;
         _noticeLabel.AutoSize = true;
@@ -250,29 +302,38 @@ public sealed class MainForm : Form
     {
         _monitorPage.Padding = new Padding(8);
 
-        var info = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 5 };
+        var info = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 4 };
         info.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 4; i++)
         {
             info.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
 
-        _runtimeLabel.Margin = new Padding(0, 2, 0, 10);
-        info.Controls.Add(_runtimeLabel, 0, 0);
-        info.SetColumnSpan(_runtimeLabel, 2);
-        AddMetricRow(info, 1, _cpuCaption, _cpuValue);
-        AddMetricRow(info, 2, _memCaption, _memValue);
-        AddMetricRow(info, 3, _procCaption, _procValue);
-        AddMetricRow(info, 4, _coreCaption, _coreValue);
+        AddMetricRow(info, 0, _cpuCaption, _cpuValue);
+        AddMetricRow(info, 1, _memCaption, _memValue);
+        AddMetricRow(info, 2, _procCaption, _procValue);
+        AddMetricRow(info, 3, _coreCaption, _coreValue);
         _metricBox.Controls.Add(info);
 
-        _refreshButton = new Button { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
+        _refreshButton = new Button { AutoSize = true, Margin = new Padding(0, 8, 6, 0) };
+        _refreshHistoryButton = new Button { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
 
         _capsBox.Controls.Add(_capsGrid);
+        _historyBox.Controls.Add(_historyGrid);
+
+        var split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            FixedPanel = FixedPanel.Panel1,
+        };
+        _monitorSplit = split;
+        split.Panel1.Controls.Add(_capsBox);
+        split.Panel2.Controls.Add(_historyBox);
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
-        buttons.Controls.Add(_refreshButton);
+        buttons.Controls.AddRange([_refreshButton, _refreshHistoryButton]);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -280,7 +341,7 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.Controls.Add(_metricBox, 0, 0);
-        root.Controls.Add(_capsBox, 0, 1);
+        root.Controls.Add(split, 0, 1);
         root.Controls.Add(buttons, 0, 2);
         _monitorPage.Controls.Add(root);
     }
@@ -301,13 +362,14 @@ public sealed class MainForm : Form
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         buttons.Controls.AddRange([_applyPlanButton, _revertPlanButton, _deletePlanButton, _togglePlanFormButton]);
 
-        var form = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8, AutoSize = true };
+        var form = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 5, AutoSize = true };
         form.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         AddRow(form, 0, _planKindCaption, _planKindCombo);
         AddRow(form, 1, _planIdCaption, _planIdBox);
         AddRow(form, 2, _planNameCaption, _planNameBox);
         AddRow(form, 3, _planSpecCaption, _planSpecBox);
+        form.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var formButtons = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
         formButtons.Controls.AddRange([_savePlanButton, _cancelPlanButton]);
         form.Controls.Add(formButtons, 1, 4);
@@ -351,6 +413,8 @@ public sealed class MainForm : Form
         AddRow(form, 3, _scenePlanCaption, _scenePlanCombo);
         AddRow(form, 4, _sceneTriggerCaption, _sceneTriggerCombo);
         AddRow(form, 5, _sceneTriggerArgCaption, _sceneTriggerArgBox);
+        form.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        form.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         form.Controls.Add(_restoreOnExitCheck, 1, 6);
         var formButtons = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
         formButtons.Controls.AddRange([_saveSceneButton, _cancelSceneButton]);
@@ -369,7 +433,7 @@ public sealed class MainForm : Form
         _scenesPage.Controls.Add(root);
     }
 
-    // ---------------------------------------------------------------- 调校页
+    // ---------------------------------------------------------------- 调校与账本页
 
     private void BuildTuningPage()
     {
@@ -413,6 +477,182 @@ public sealed class MainForm : Form
         _tuningPage.Controls.Add(root);
     }
 
+    // ---------------------------------------------------------------- 模块页
+
+    private void BuildModulesPage()
+    {
+        _modulesPage.Padding = new Padding(8);
+
+        _refreshModulesButton = new Button { AutoSize = true };
+        _enableModuleButton = new Button { AutoSize = true };
+        _disableModuleButton = new Button { AutoSize = true };
+
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        buttons.Controls.AddRange([_refreshModulesButton, _enableModuleButton, _disableModuleButton]);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.Controls.Add(_modulesGrid, 0, 0);
+        root.Controls.Add(buttons, 0, 1);
+        _modulesPage.Controls.Add(root);
+    }
+
+    // ---------------------------------------------------------------- 电源页
+
+    private void BuildPowerPage()
+    {
+        _powerPage.Padding = new Padding(8);
+
+        _readPowerLimitsButton = new Button { AutoSize = true };
+        _applyPowerLimitsButton = new Button { AutoSize = true };
+        _refreshPowerButton = new Button { AutoSize = true };
+        _createPowerSchemeButton = new Button { AutoSize = true };
+        _renamePowerSchemeButton = new Button { AutoSize = true };
+        _backupPowerSchemeButton = new Button { AutoSize = true };
+        _deletePowerSchemeButton = new Button { AutoSize = true };
+        _restorePowerBackupButton = new Button { AutoSize = true };
+
+        var limitsInner = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 2 };
+        limitsInner.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        limitsInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        limitsInner.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        limitsInner.Controls.Add(_powerLimitsSummaryLabel, 0, 0);
+
+        var limitsInputs = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0, 6, 0, 0) };
+        _fastWattsCaption.Margin = new Padding(0, 6, 4, 0);
+        _slowWattsCaption.Margin = new Padding(10, 6, 4, 0);
+        _tdcAmpsCaption.Margin = new Padding(10, 6, 4, 0);
+        _edcAmpsCaption.Margin = new Padding(10, 6, 4, 0);
+        limitsInputs.Controls.AddRange([
+            _fastWattsCaption, _fastWattsBox,
+            _slowWattsCaption, _slowWattsBox,
+            _tdcAmpsCaption, _tdcAmpsBox,
+            _edcAmpsCaption, _edcAmpsBox,
+            _readPowerLimitsButton, _applyPowerLimitsButton,
+        ]);
+        limitsInner.Controls.Add(limitsInputs, 0, 1);
+        _powerLimitsBox.Controls.Add(limitsInner);
+
+        var schemesLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        schemesLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        schemesLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        schemesLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        schemesLayout.Controls.Add(_powerSchemesGrid, 0, 0);
+
+        var schemeButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+        _powerSchemeNewNameCaption.Margin = new Padding(8, 6, 4, 0);
+        schemeButtons.Controls.AddRange([
+            _refreshPowerButton,
+            _powerSchemeNewNameCaption,
+            _powerSchemeNewNameBox,
+            _createPowerSchemeButton,
+            _renamePowerSchemeButton,
+            _backupPowerSchemeButton,
+            _deletePowerSchemeButton,
+        ]);
+        schemesLayout.Controls.Add(schemeButtons, 0, 1);
+        _powerSchemesBox.Controls.Add(schemesLayout);
+
+        var backupsLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        backupsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        backupsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        backupsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        backupsLayout.Controls.Add(_powerBackupsGrid, 0, 0);
+
+        var backupButtons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        backupButtons.Controls.Add(_restorePowerBackupButton);
+        backupsLayout.Controls.Add(backupButtons, 0, 1);
+        _powerBackupsBox.Controls.Add(backupsLayout);
+
+        var split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            FixedPanel = FixedPanel.Panel1,
+        };
+        _powerSplit = split;
+        split.Panel1.Controls.Add(_powerSchemesBox);
+        split.Panel2.Controls.Add(_powerBackupsBox);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Add(_powerLimitsBox, 0, 0);
+        root.Controls.Add(split, 0, 1);
+        _powerPage.Controls.Add(root);
+    }
+
+    // ---------------------------------------------------------------- 日志页
+
+    private void BuildLogPage()
+    {
+        _logPage.Padding = new Padding(8);
+
+        _refreshLogButton = new Button { AutoSize = true };
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        buttons.Controls.Add(_refreshLogButton);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.Controls.Add(_logGrid, 0, 0);
+        root.Controls.Add(buttons, 0, 1);
+        _logPage.Controls.Add(root);
+    }
+
+    // ---------------------------------------------------------------- 诊断页
+
+    private void BuildDoctorPage()
+    {
+        _doctorPage.Padding = new Padding(8);
+
+        _refreshDoctorButton = new Button { AutoSize = true };
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        buttons.Controls.Add(_refreshDoctorButton);
+
+        var summaryPanel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 1 };
+        summaryPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        summaryPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        summaryPanel.Controls.Add(_doctorSummaryLabel, 0, 0);
+        _doctorSummaryBox.Controls.Add(summaryPanel);
+
+        _doctorErrorsBox.Controls.Add(_doctorErrorsGrid);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.Controls.Add(_doctorSummaryBox, 0, 0);
+        root.Controls.Add(_doctorErrorsBox, 0, 1);
+        root.Controls.Add(buttons, 0, 2);
+        _doctorPage.Controls.Add(root);
+    }
+
+    // ---------------------------------------------------------------- 设置页
+
+    private void BuildSettingsPage()
+    {
+        _settingsPage.Padding = new Padding(8);
+
+        var form = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1 };
+        form.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        AddRow(form, 0, _languageCaption, _languageCombo);
+
+        _settingsBox.Controls.Add(form);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.Controls.Add(_settingsBox, 0, 0);
+        _settingsPage.Controls.Add(root);
+    }
+
     // ---------------------------------------------------------------- 事件挂接
 
     private void WireUp()
@@ -421,17 +661,28 @@ public sealed class MainForm : Form
 
         _vm.PropertyChanged += OnViewModelChanged;
         _vm.Capabilities.CollectionChanged += (_, _) => ReloadCaps();
+        _vm.TelemetryHistory.CollectionChanged += (_, _) => ReloadHistory();
         _vm.Plans.CollectionChanged += (_, _) => ReloadPlans();
         _vm.Scenes.CollectionChanged += (_, _) => ReloadScenes();
         _vm.CoreOffsets.CollectionChanged += (_, _) => ReloadCores();
         _vm.LedgerEntries.CollectionChanged += (_, _) => ReloadLedger();
+        _vm.Modules.CollectionChanged += (_, _) => ReloadModules();
+        _vm.PowerSchemes.CollectionChanged += (_, _) => ReloadPowerSchemes();
+        _vm.PowerBackups.CollectionChanged += (_, _) => ReloadPowerBackups();
+        _vm.Logs.CollectionChanged += (_, _) => ReloadLogs();
+        _vm.DoctorErrors.CollectionChanged += (_, _) => ReloadDoctorErrors();
 
         _capsGrid.SelectionChanged += (_, _) => { };
+        _historyGrid.SelectionChanged += (_, _) => { };
         _plansGrid.SelectionChanged += OnPlansSelected;
         _scenesGrid.SelectionChanged += OnScenesSelected;
         _ledgerGrid.SelectionChanged += OnLedgerSelected;
+        _modulesGrid.SelectionChanged += OnModulesSelected;
+        _powerSchemesGrid.SelectionChanged += OnPowerSchemesSelected;
+        _powerBackupsGrid.SelectionChanged += OnPowerBackupsSelected;
 
         Bind(_refreshButton, _vm.RefreshCommand);
+        Bind(_refreshHistoryButton, _vm.RefreshHistoryCommand);
         Bind(_applyPlanButton, _vm.ApplyPlanCommand);
         Bind(_revertPlanButton, _vm.RevertPlanCommand);
         Bind(_deletePlanButton, _vm.DeletePlanCommand);
@@ -445,6 +696,22 @@ public sealed class MainForm : Form
         Bind(_saveSceneButton, _vm.CreateSceneCommand);
         Bind(_refreshTuningButton, _vm.RefreshTuningCommand);
         Bind(_releaseButton, _vm.ReleaseTakeoverCommand);
+
+        Bind(_refreshModulesButton, _vm.RefreshModulesCommand);
+        BindWithConfirm(_enableModuleButton, _vm.EnableModuleCommand, () => string.Format(_catalog["modules.confirm_enable"], _vm.SelectedModule?.Name ?? string.Empty));
+        BindWithConfirm(_disableModuleButton, _vm.DisableModuleCommand, () => string.Format(_catalog["modules.confirm_disable"], _vm.SelectedModule?.Name ?? string.Empty));
+
+        Bind(_refreshPowerButton, _vm.RefreshPowerCommand);
+        Bind(_readPowerLimitsButton, _vm.ReadPowerLimitsCommand);
+        BindWithConfirm(_applyPowerLimitsButton, _vm.ApplyPowerLimitsCommand, () => _catalog["power.limits_confirm"]);
+        Bind(_createPowerSchemeButton, _vm.CreatePowerSchemeCommand);
+        Bind(_renamePowerSchemeButton, _vm.RenamePowerSchemeCommand);
+        Bind(_backupPowerSchemeButton, _vm.BackupPowerSchemeCommand);
+        BindWithConfirm(_deletePowerSchemeButton, _vm.DeletePowerSchemeCommand, () => string.Format(_catalog["power.scheme.confirm_delete"], _vm.SelectedPowerScheme?.Name ?? string.Empty));
+        BindWithConfirm(_restorePowerBackupButton, _vm.RestorePowerBackupCommand, () => string.Format(_catalog["power.backup.confirm_restore"], _vm.SelectedPowerBackup?.Id ?? string.Empty));
+
+        Bind(_refreshLogButton, _vm.RefreshLogCommand);
+        Bind(_refreshDoctorButton, _vm.RefreshDoctorCommand);
 
         _cancelPlanButton.Click += (_, _) => _vm.IsCreatePlanOpen = false;
         _cancelSceneButton.Click += (_, _) => _vm.IsCreateSceneOpen = false;
@@ -473,6 +740,19 @@ public sealed class MainForm : Form
             _vm.NewSceneTriggerKind = _vm.TriggerKinds[_sceneTriggerCombo.SelectedIndex];
         };
 
+        _fastWattsBox.TextChanged += (_, _) => { if (!_syncing) { _vm.FastWattsInput = _fastWattsBox.Text; } };
+        _slowWattsBox.TextChanged += (_, _) => { if (!_syncing) { _vm.SlowWattsInput = _slowWattsBox.Text; } };
+        _tdcAmpsBox.TextChanged += (_, _) => { if (!_syncing) { _vm.TdcAmpsInput = _tdcAmpsBox.Text; } };
+        _edcAmpsBox.TextChanged += (_, _) => { if (!_syncing) { _vm.EdcAmpsInput = _edcAmpsBox.Text; } };
+        _powerSchemeNewNameBox.TextChanged += (_, _) => { if (!_syncing) { _vm.PowerSchemeNewName = _powerSchemeNewNameBox.Text; } };
+
+        _languageCombo.Format += (_, e) =>
+        {
+            if (e.ListItem is "zh-CN")
+            {
+                e.Value = _catalog["settings.language.zh_cn"];
+            }
+        };
         _languageCombo.SelectedIndexChanged += (_, _) =>
         {
             if (!_syncing && _languageCombo.SelectedItem is string culture)
@@ -493,6 +773,11 @@ public sealed class MainForm : Form
         Register(_plansPage, "nav.plans");
         Register(_scenesPage, "nav.scenes");
         Register(_tuningPage, "nav.tuning");
+        Register(_modulesPage, "nav.modules");
+        Register(_powerPage, "nav.power");
+        Register(_logPage, "nav.log");
+        Register(_doctorPage, "nav.doctor");
+        Register(_settingsPage, "nav.settings");
 
         Register(_cpuCaption, "monitor.cpu");
         Register(_memCaption, "monitor.memory");
@@ -500,7 +785,9 @@ public sealed class MainForm : Form
         Register(_coreCaption, "monitor.cores");
         Register(_metricBox, "monitor.title");
         Register(_capsBox, "caps.title");
+        Register(_historyBox, "monitor.history_title");
         Register(_refreshButton, "common.refresh");
+        Register(_refreshHistoryButton, "monitor.history_title");
         Register(_dismissButton, "common.dismiss");
 
         Register(_applyPlanButton, "plans.apply");
@@ -537,13 +824,46 @@ public sealed class MainForm : Form
         Register(_refreshTuningButton, "common.refresh");
         Register(_releaseButton, "tuning.release");
 
+        Register(_refreshModulesButton, "common.refresh");
+        Register(_enableModuleButton, "modules.enable");
+        Register(_disableModuleButton, "modules.disable");
+
+        Register(_powerLimitsBox, "power.limits");
+        Register(_fastWattsCaption, "power.limits_fast");
+        Register(_slowWattsCaption, "power.limits_slow");
+        Register(_tdcAmpsCaption, "power.limits_tdc");
+        Register(_edcAmpsCaption, "power.limits_edc");
+        Register(_readPowerLimitsButton, "power.limits_read");
+        Register(_applyPowerLimitsButton, "power.limits_apply");
+        Register(_powerSchemesBox, "power.title");
+        Register(_powerBackupsBox, "power.backups");
+        Register(_powerSchemeNewNameCaption, "power.scheme.new_name");
+        Register(_refreshPowerButton, "common.refresh");
+        Register(_createPowerSchemeButton, "power.scheme.create");
+        Register(_renamePowerSchemeButton, "power.scheme.rename");
+        Register(_backupPowerSchemeButton, "power.scheme.backup");
+        Register(_deletePowerSchemeButton, "power.scheme.delete");
+        Register(_restorePowerBackupButton, "power.backup.restore");
+
+        Register(_refreshLogButton, "common.refresh");
+        Register(_doctorSummaryBox, "doctor.summary");
+        Register(_doctorErrorsBox, "doctor.errors");
+        Register(_refreshDoctorButton, "common.refresh");
+
+        Register(_settingsBox, "settings.title");
         Register(_languageCaption, "settings.language");
 
         AddHeaders(_capsGrid, "caps.id", "caps.state", "caps.detail");
+        AddHeaders(_historyGrid, "monitor.history.time", "monitor.history.cpu", "monitor.history.memory", "monitor.history.processes", "monitor.history.temp", "monitor.history.power");
         AddHeaders(_plansGrid, "plans.kind", "plans.name", "plans.caption", "plans.state");
         AddHeaders(_scenesGrid, "scenes.name", "scenes.priority", "scenes.target", "scenes.enabled", "scenes.active", "scenes.outcome");
         AddHeaders(_coresGrid, "tuning.core", "tuning.offset");
         AddHeaders(_ledgerGrid, "ledger.target", "ledger.owner", "ledger.status", "ledger.values", "ledger.failure");
+        AddHeaders(_modulesGrid, "modules.id", "modules.name", "modules.state", "modules.optional", "modules.enabled", "modules.capabilities", "modules.detail");
+        AddHeaders(_powerSchemesGrid, "power.scheme.name", "power.scheme.guid", "power.scheme.active", "power.scheme.builtin", "power.scheme.visible");
+        AddHeaders(_powerBackupsGrid, "power.backup.id", "power.backup.name", "power.backup.created", "power.backup.count");
+        AddHeaders(_logGrid, "log.time", "log.level", "log.message");
+        AddHeaders(_doctorErrorsGrid, "doctor.time", "doctor.level", "doctor.message");
     }
 
     private void AddHeaders(DataGridView grid, params string[] keys)
@@ -636,12 +956,6 @@ public sealed class MainForm : Form
             case nameof(MainViewModel.StatusText):
                 _statusLabel.Text = _vm.StatusText;
                 break;
-            case nameof(MainViewModel.RuntimeSummary):
-                _runtimeLabel.Text = _vm.RuntimeSummary;
-                break;
-            case nameof(MainViewModel.ActiveSceneText):
-                _sceneLabel.Text = _vm.ActiveSceneText;
-                break;
             case nameof(MainViewModel.CpuText):
                 _cpuValue.Text = _vm.CpuText;
                 break;
@@ -659,6 +973,15 @@ public sealed class MainForm : Form
                 break;
             case nameof(MainViewModel.IntelTuningSummary):
                 _intelSummaryLabel.Text = _vm.IntelTuningSummary;
+                break;
+            case nameof(MainViewModel.PowerLimitsSummary):
+                _powerLimitsSummaryLabel.Text = _vm.PowerLimitsSummary;
+                break;
+            case nameof(MainViewModel.DoctorSummary):
+                _doctorSummaryLabel.Text = _vm.DoctorSummary;
+                break;
+            case nameof(MainViewModel.PowerSchemeNewName):
+                SyncPowerSchemeName();
                 break;
             case nameof(MainViewModel.NoticeText):
             case nameof(MainViewModel.NoticeIsError):
@@ -696,6 +1019,22 @@ public sealed class MainForm : Form
         _noticePanel.Visible = _vm.HasNotice;
         var text = _vm.NoticeText ?? string.Empty;
         _noticeLabel.Text = _vm.NoticeIsError ? _catalog["common.error_prefix"] + text : text;
+    }
+
+    private void SyncPowerSchemeName()
+    {
+        _syncing = true;
+        try
+        {
+            if (_powerSchemeNewNameBox.Text != _vm.PowerSchemeNewName)
+            {
+                _powerSchemeNewNameBox.Text = _vm.PowerSchemeNewName;
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
     }
 
     private void SyncPlanForm()
@@ -740,24 +1079,31 @@ public sealed class MainForm : Form
     private void ReloadAll()
     {
         ReloadCaps();
+        ReloadHistory();
         ReloadPlans();
         ReloadScenes();
         ReloadCores();
         ReloadLedger();
+        ReloadModules();
+        ReloadPowerSchemes();
+        ReloadPowerBackups();
+        ReloadLogs();
+        ReloadDoctorErrors();
         SyncPlanForm();
         SyncSceneForm();
+        SyncPowerSchemeName();
         UpdateNotice();
         ApplyTexts();
 
         _statusLabel.Text = _vm.StatusText;
-        _runtimeLabel.Text = _vm.RuntimeSummary;
-        _sceneLabel.Text = _vm.ActiveSceneText;
         _cpuValue.Text = _vm.CpuText;
         _memValue.Text = _vm.MemoryText;
         _procValue.Text = _vm.ProcessText;
         _coreValue.Text = _vm.CoreText;
         _tuningSummaryLabel.Text = _vm.TuningSummary;
         _intelSummaryLabel.Text = _vm.IntelTuningSummary;
+        _powerLimitsSummaryLabel.Text = _vm.PowerLimitsSummary;
+        _doctorSummaryLabel.Text = _vm.DoctorSummary;
         _planForm.Visible = _vm.IsCreatePlanOpen;
         _sceneForm.Visible = _vm.IsCreateSceneOpen;
     }
@@ -771,6 +1117,23 @@ public sealed class MainForm : Form
             foreach (var row in _vm.Capabilities)
             {
                 _capsGrid.Rows.Add(row.Id, row.State, row.Detail);
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void ReloadHistory()
+    {
+        _syncing = true;
+        try
+        {
+            _historyGrid.Rows.Clear();
+            foreach (var row in _vm.TelemetryHistory)
+            {
+                _historyGrid.Rows.Add(row.Time, row.Cpu, row.Memory, row.Processes, row.Temperature, row.Power);
             }
         }
         finally
@@ -889,6 +1252,134 @@ public sealed class MainForm : Form
         }
     }
 
+    private void ReloadModules()
+    {
+        _syncing = true;
+        try
+        {
+            var selectedId = _vm.SelectedModule?.Id;
+            _modulesGrid.Rows.Clear();
+            DataGridViewRow? match = null;
+            foreach (var module in _vm.Modules)
+            {
+                var index = _modulesGrid.Rows.Add(
+                    module.Id,
+                    module.Name,
+                    module.State,
+                    module.Optional ? _catalog["common.yes"] : _catalog["common.no"],
+                    module.Enabled ? _catalog["common.yes"] : _catalog["common.no"],
+                    module.Capabilities,
+                    module.Detail);
+                _modulesGrid.Rows[index].Tag = module;
+                if (module.Id == selectedId) { match = _modulesGrid.Rows[index]; }
+            }
+
+            if (match is not null && match.Cells.Count > 0)
+            {
+                _modulesGrid.CurrentCell = match.Cells[0];
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void ReloadPowerSchemes()
+    {
+        _syncing = true;
+        try
+        {
+            var selectedGuid = _vm.SelectedPowerScheme?.Guid;
+            _powerSchemesGrid.Rows.Clear();
+            DataGridViewRow? match = null;
+            foreach (var scheme in _vm.PowerSchemes)
+            {
+                var index = _powerSchemesGrid.Rows.Add(
+                    scheme.Name,
+                    scheme.Guid.ToString("D"),
+                    scheme.Active ? "●" : string.Empty,
+                    scheme.BuiltIn ? _catalog["common.yes"] : _catalog["common.no"],
+                    scheme.Visible ? _catalog["common.yes"] : _catalog["common.no"]);
+                _powerSchemesGrid.Rows[index].Tag = scheme;
+                if (scheme.Guid == selectedGuid) { match = _powerSchemesGrid.Rows[index]; }
+            }
+
+            if (match is not null && match.Cells.Count > 0)
+            {
+                _powerSchemesGrid.CurrentCell = match.Cells[0];
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void ReloadPowerBackups()
+    {
+        _syncing = true;
+        try
+        {
+            var selectedId = _vm.SelectedPowerBackup?.Id;
+            _powerBackupsGrid.Rows.Clear();
+            DataGridViewRow? match = null;
+            foreach (var backup in _vm.PowerBackups)
+            {
+                var index = _powerBackupsGrid.Rows.Add(
+                    backup.Id,
+                    backup.Name,
+                    backup.CreatedAt,
+                    backup.SettingCount);
+                _powerBackupsGrid.Rows[index].Tag = backup;
+                if (backup.Id == selectedId) { match = _powerBackupsGrid.Rows[index]; }
+            }
+
+            if (match is not null && match.Cells.Count > 0)
+            {
+                _powerBackupsGrid.CurrentCell = match.Cells[0];
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void ReloadLogs()
+    {
+        _syncing = true;
+        try
+        {
+            _logGrid.Rows.Clear();
+            foreach (var entry in _vm.Logs)
+            {
+                _logGrid.Rows.Add(entry.Time, entry.Level, entry.Message);
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void ReloadDoctorErrors()
+    {
+        _syncing = true;
+        try
+        {
+            _doctorErrorsGrid.Rows.Clear();
+            foreach (var entry in _vm.DoctorErrors)
+            {
+                _doctorErrorsGrid.Rows.Add(entry.Time, entry.Level, entry.Message);
+            }
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
     private void OnPlansSelected(object? sender, EventArgs e)
     {
         if (!_syncing)
@@ -913,11 +1404,60 @@ public sealed class MainForm : Form
         }
     }
 
+    private void OnModulesSelected(object? sender, EventArgs e)
+    {
+        if (!_syncing)
+        {
+            _vm.SelectedModule = _modulesGrid.CurrentRow?.Tag as ModuleRow;
+        }
+    }
+
+    private void OnPowerSchemesSelected(object? sender, EventArgs e)
+    {
+        if (!_syncing)
+        {
+            _vm.SelectedPowerScheme = _powerSchemesGrid.CurrentRow?.Tag as PowerSchemeRow;
+        }
+    }
+
+    private void OnPowerBackupsSelected(object? sender, EventArgs e)
+    {
+        if (!_syncing)
+        {
+            _vm.SelectedPowerBackup = _powerBackupsGrid.CurrentRow?.Tag as PowerBackupRow;
+        }
+    }
+
     // ---------------------------------------------------------------- 辅助
 
     private Button Bind(Button button, ICommand command)
     {
         button.Click += (_, _) => command.Execute(null);
+        command.CanExecuteChanged += (_, _) =>
+        {
+            if (IsHandleCreated && !IsDisposed)
+            {
+                BeginInvoke(new Action(RefreshCommandStates));
+            }
+        };
+        _commands.Add((button, command));
+        return button;
+    }
+
+    private Button BindWithConfirm(Button button, ICommand command, Func<string> messageFactory)
+    {
+        button.Click += (_, _) =>
+        {
+            if (MessageBox.Show(
+                this,
+                messageFactory(),
+                _catalog["common.confirm"],
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Question) == DialogResult.OK)
+            {
+                command.Execute(null);
+            }
+        };
         command.CanExecuteChanged += (_, _) =>
         {
             if (IsHandleCreated && !IsDisposed)
@@ -997,18 +1537,27 @@ public sealed class MainForm : Form
         base.OnShown(e);
 
         // SplitterDistance 在控件还没拿到真实高度时设会越界，必须等窗口显示后再设。
-        if (_tuningSplit is { } split)
-        {
-            var target = Math.Min(180, Math.Max(split.Panel1MinSize, split.Height - split.Panel2MinSize - 8));
-            if (target > split.Panel1MinSize)
-            {
-                split.SplitterDistance = target;
-            }
-        }
+        SetSplitterDistance(_monitorSplit, 220);
+        SetSplitterDistance(_tuningSplit, 180);
+        SetSplitterDistance(_powerSplit, 240);
 
         if (_autoConnect)
         {
             _ = _vm.InitializeAsync();
+        }
+    }
+
+    private static void SetSplitterDistance(SplitContainer? split, int preferred)
+    {
+        if (split is null)
+        {
+            return;
+        }
+
+        var target = Math.Min(preferred, Math.Max(split.Panel1MinSize, split.Height - split.Panel2MinSize - 8));
+        if (target > split.Panel1MinSize)
+        {
+            split.SplitterDistance = target;
         }
     }
 

@@ -7,14 +7,14 @@ using Zentwik.Localization;
 namespace Zentwik.Desktop.Tests;
 
 /// <summary>
-/// 裸控件外壳的冒烟测试：能在 STA 线程里建出窗口、四个页签齐全、交互控件都有可读文案。
+/// 裸控件外壳的冒烟测试：能在 STA 线程里建出窗口、九个页签齐全、交互控件都有可读文案。
 ///
 /// 这一版 UI 没有设计系统可测，能测的就是「结构没塌」和「点了有东西」。
 /// </summary>
 public sealed class MainFormSmokeTests
 {
     [Fact]
-    public void Form_Builds_Four_Tabs_With_Labelled_Controls()
+    public void Form_Builds_Nine_Tabs_With_Labelled_Controls()
     {
         var failure = RunOnStaThread(() =>
         {
@@ -23,9 +23,10 @@ public sealed class MainFormSmokeTests
             using var form = new MainForm(viewModel, catalog, autoConnect: false);
 
             var tabs = Descendants<TabControl>(form).Single();
-            Assert.Equal(4, tabs.TabPages.Count);
+            Assert.Equal(9, tabs.TabPages.Count);
 
             var pages = tabs.TabPages.Cast<TabPage>().ToList();
+            Assert.Equal(["监控", "方案", "场景", "调校与账本", "模块", "电源", "日志", "诊断", "设置"], pages.Select(p => p.Text).ToArray());
             Assert.All(pages, page => Assert.False(string.IsNullOrWhiteSpace(page.Text)));
 
             var buttons = Descendants<Button>(form).ToList();
@@ -33,7 +34,7 @@ public sealed class MainFormSmokeTests
             Assert.All(buttons, button => Assert.False(string.IsNullOrWhiteSpace(button.Text)));
 
             var grids = Descendants<DataGridView>(form).ToList();
-            Assert.Equal(5, grids.Count);
+            Assert.Equal(11, grids.Count);
             Assert.All(grids, grid => Assert.True(grid.Columns.Count > 0));
         });
 
@@ -41,7 +42,7 @@ public sealed class MainFormSmokeTests
     }
 
     [Fact]
-    public void Form_Has_No_Theme_Or_Accent_Surface()
+    public void Form_Has_No_Theme_Or_Accent_Surface_And_Single_Language()
     {
         var failure = RunOnStaThread(() =>
         {
@@ -49,13 +50,15 @@ public sealed class MainFormSmokeTests
             var viewModel = new MainViewModel(catalog);
             using var form = new MainForm(viewModel, catalog, autoConnect: false);
 
-            // 五页里的「设置」页已删；主题 / 强调色 / 缩放三个下拉不再存在。
             var tabs = Descendants<TabControl>(form).Single();
-            Assert.DoesNotContain(tabs.TabPages.Cast<TabPage>(), page => page.Text == "设置");
+            Assert.Contains(tabs.TabPages.Cast<TabPage>(), page => page.Text == "设置");
+
+            Assert.Single(LocalizationCatalog.SupportedCultures);
+            Assert.Equal("zh-CN", LocalizationCatalog.SupportedCultures[0]);
 
             var combos = Descendants<ComboBox>(form).ToList();
             var language = combos.Single(combo => combo.Items.Contains("zh-CN"));
-            Assert.Equal(3, language.Items.Count);
+            Assert.Equal(1, language.Items.Count);
 
             // 窗口用系统默认色，不设自定义底色。
             Assert.Equal(SystemColors.Control, form.BackColor);

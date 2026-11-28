@@ -14,7 +14,8 @@ public sealed class LocalizationCatalog
 {
     public const string FallbackCulture = "en-US";
 
-    private static readonly string[] SupportedLanguages = ["zh-CN", "zh-TW", "en-US"];
+    private static readonly string[] SupportedLanguages = ["zh-CN"];
+    private static readonly string[] EmbeddedCultures = ["zh-CN", "zh-TW", "en-US"];
 
     private readonly Dictionary<string, FrozenDictionary<string, string>> _catalogs;
     private readonly Lock _gate = new();
@@ -79,7 +80,7 @@ public sealed class LocalizationCatalog
     public static LocalizationCatalog CreateDefault()
     {
         var catalogs = new Dictionary<string, FrozenDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var culture in SupportedLanguages)
+        foreach (var culture in EmbeddedCultures)
         {
             var entries = LoadEmbedded(culture);
             if (entries.Count > 0)
@@ -89,9 +90,9 @@ public sealed class LocalizationCatalog
         }
 
         var initial = Normalize(CultureInfo.CurrentUICulture.Name);
-        if (!catalogs.ContainsKey(initial))
+        if (!SupportedLanguages.Contains(initial, StringComparer.OrdinalIgnoreCase))
         {
-            initial = FallbackCulture;
+            initial = SupportedLanguages[0];
         }
 
         return new LocalizationCatalog(catalogs, initial);
@@ -160,7 +161,7 @@ public sealed class LocalizationCatalog
             return FallbackCulture;
         }
 
-        foreach (var supported in SupportedLanguages)
+        foreach (var supported in EmbeddedCultures)
         {
             if (string.Equals(supported, culture, StringComparison.OrdinalIgnoreCase))
             {
