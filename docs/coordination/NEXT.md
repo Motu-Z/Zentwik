@@ -4,28 +4,36 @@ GUI 通道断的时候，把下面这段粘给 Gemini 就行，其余内容都�
 
 ---
 
-任务 04 我方已在 Windows 实测并合并：`flutter analyze` 无 issue，`flutter test` 40 例全绿。
-你留的两处都修了：① 宽屏用例用 `MediaQuery` 改尺寸影响不到 `LayoutBuilder` 的实际约束，
-改成 `tester.binding.setSurfaceSize`，拖拽用例一次通过（你未决问题 1 已确认可行）；
-② 全部 `package:flutter/material.dart` 换成 `package:material_ui/material_ui.dart`
-（Flutter 3.50 已把 material 拆包，原写法是 deprecated info），`onReorder` 换成
-`onReorderItem`。另外 `PlaceholderCard` 里重复渲染了 `card.kind.label`，
-与外壳标题撞名，已改为只显示「尚未接入」。
+任务 05 我方已在 Windows 实测并合并：`flutter analyze` 无 issue，`flutter test` 50 例全绿，
+`flutter build windows --release` 通过。我修了三处：
 
-请先 `git pull`，然后做 **任务 05**：
+1. `memory_card.dart` 有 **4 个编译错误**（`total > 0` 在 `hasValid` 三元表达式之外不会做类型提升），
+   已改成显式 `if (usable)` 分支；顺带无数据时不再画空进度条（会被读成「占用 0%」）、
+   不再同一行刷两个「—」。
+2. `ModuleStatusCard` 的状态文案原来中英混排（`running`/`stopped`/`未安装`）。
+   后端 `ModuleCatalog` 里模块状态只有 `ready`/`degraded`/`unavailable`，
+   而且「可选组件未启用」也报 `unavailable`——所以 `unavailable` 不等于「未安装」。
+   已统一为「就绪 / 降级 / 不可用 / 未启用」（`enabled == false` 优先判）。
+3. 你自己没跑的 `flutter analyze` 又一次是空的——**编译都没过**，务必想办法装 SDK。
 
-- 读 `docs/coordination/gemini-task-05.md`，按边界与清单实现 `lib/format/units.dart`、
-  `lib/cards/**`（九张卡）、`default_registry.dart`、`lib/shell/shell_page.dart` 与对应测试。
+另外我这边把应用真正接通了：`lib/runtime/agent_runtime.dart`（连接↔聚合状态）、
+`lib/runtime/app_host.dart`（根组件）、`main.dart` 换成真实入口，
+`AppState.attach()` 支持重连后切客户端。`lib/runtime/**` 和 `main.dart` 你不要动。
+
+请先 `git pull`，然后做 **任务 06**：
+
+- 读 `docs/coordination/gemini-task-06.md`，实现模块页、设置页、关于页，并接进 `ShellPage`。
 
 纪律：
 
 - **禁止** import `dart:ffi` / `dart:io` / `package:win32` / `package:window_manager` / 任何平台插件。
-- **不得修改** `lib/protocol/**`、`lib/state/**`、`lib/platform/**`、`pubspec.yaml`、`main.dart`、任何 `.cs`；
-  不得改既有 40 例测试的断言。
+- **不得修改** `lib/protocol/**`、`lib/state/**`、`lib/platform/**`、`lib/runtime/**`、
+  `lib/main.dart`、`pubspec.yaml`、任何 `.cs`；不得改既有 50 例测试的断言。
 - 一律 `package:material_ui/material_ui.dart`；不新增依赖，不留 TODO 或空实现。
-- 数据缺失一律显示 `—`，**不要填 0**（后端读不到就是 null，不是零）。
+- 数据缺失一律 `—`，不要填 0。
 - 每轮必须自己跑 `flutter analyze && flutter test` 并贴原始尾行；沙箱确实没有 SDK 时，
-  照实写「未执行」并逐文件静态核对，不要编造输出。
+  照实写「未执行」。**但你连续两轮交付都带编译错误**——下一轮开始，先想办法在沙箱里
+  弄到 Dart SDK（可以用 `dart analyze`，不需要完整 Flutter）。
 - `test/manual/pipe_smoke_check.dart` 是我的 Windows 侧文件，已知会卡死，不要跑它。
 
 交付：能推就继续推到 `feat/gui-protocol`，不能推就按文件输出完整内容。

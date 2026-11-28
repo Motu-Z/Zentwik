@@ -14,19 +14,25 @@ class MemoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = telemetry?.memoryTotalBytes;
-    final available = telemetry?.memoryAvailableBytes;
-    final hasValid =
-        total != null && total > 0 && available != null && available >= 0;
+    final totalBytes = telemetry?.memoryTotalBytes;
+    final availableBytes = telemetry?.memoryAvailableBytes;
+    // 总量未知或非正、可用量越界都视为「无数据」，不猜。
+    final usable = totalBytes != null &&
+        totalBytes > 0 &&
+        availableBytes != null &&
+        availableBytes >= 0;
 
-    final int? used = hasValid ? (total - available).clamp(0, total) : null;
-    final double? percent =
-        (used != null && total > 0) ? (used / total) * 100.0 : null;
-    final double ratio =
-        (used != null && total > 0) ? (used / total).clamp(0.0, 1.0) : 0.0;
+    int? usedBytes;
+    double? percent;
+    var ratio = 0.0;
+    if (usable) {
+      usedBytes = (totalBytes - availableBytes).clamp(0, totalBytes);
+      percent = (usedBytes / totalBytes) * 100.0;
+      ratio = (usedBytes / totalBytes).clamp(0.0, 1.0);
+    }
 
-    final summary = hasValid
-        ? '${formatBytes(used)} / ${formatBytes(total)}'
+    final summary = usable
+        ? '${formatBytes(usedBytes)} / ${formatBytes(totalBytes)}'
         : kMissingValue;
 
     return Column(
@@ -44,22 +50,27 @@ class MemoryCard extends StatelessWidget {
                 color: ZentwikTokens.textPrimary,
               ),
             ),
-            Text(
-              formatPercent(percent),
-              style: const TextStyle(
-                fontSize: ZentwikTokens.fontCaption,
-                color: ZentwikTokens.textSecondary,
+            // 无数据时只留一个「—」，不重复刷两遍缺失标记。
+            if (usable)
+              Text(
+                formatPercent(percent),
+                style: const TextStyle(
+                  fontSize: ZentwikTokens.fontCaption,
+                  color: ZentwikTokens.textSecondary,
+                ),
               ),
-            ),
           ],
         ),
-        const SizedBox(height: ZentwikTokens.spaceSm),
-        LinearProgressIndicator(
-          value: ratio,
-          minHeight: 4,
-          backgroundColor: ZentwikTokens.border,
-          color: ZentwikTokens.accent,
-        ),
+        // 无数据时不画空进度条，否则会被读成「占用 0%」。
+        if (usable) ...[
+          const SizedBox(height: ZentwikTokens.spaceSm),
+          LinearProgressIndicator(
+            value: ratio,
+            minHeight: 4,
+            backgroundColor: ZentwikTokens.border,
+            color: ZentwikTokens.accent,
+          ),
+        ],
       ],
     );
   }

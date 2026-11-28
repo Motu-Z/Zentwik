@@ -49,7 +49,8 @@ void main() {
       ),
     );
 
-    expect(find.text(kMissingValue), findsNWidgets(2));
+    // 总量为 0 属「无数据」：整卡只出一个缺失标记，不画空进度条。
+    expect(find.text(kMissingValue), findsOneWidget);
   });
 
   testWidgets('九张卡在有数据时关键文案格式正确，defaultCardRegistry 可正常构建',
@@ -116,6 +117,6 @@ void main() {
     expect(find.text('3'), findsOneWidget);
     expect(find.text('power'), findsOneWidget);
     expect(find.text('监控'), findsOneWidget);
-    expect(find.text('running'), findsOneWidget);
+    expect(find.text('就绪'), findsOneWidget);
   });
 }

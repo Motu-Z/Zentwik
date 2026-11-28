@@ -7,13 +7,17 @@ import '../protocol/protocol.dart';
 /// 遥测事件本地缓存上限（保留最近 60 帧）。
 const int kAppStateTelemetryCapacity = 60;
 
-/// 聚合服务状态、能力列表、模块列表与遥测流缓存，仅持有 [ProtocolClient]。
+/// 聚合服务状态、能力列表、模块列表与遥测流缓存，持有当前生效的 [ProtocolClient]。
+///
+/// 连接层每次重连都会新建客户端，[attach] 负责把聚合状态切到新客户端上；
+/// 否则重连成功后界面会一直读旧连接的数据。
 class AppState extends ChangeNotifier {
-  AppState(this._client) {
-    _telemetrySub = _client.telemetry.listen(_onTelemetry);
+  AppState(ProtocolClient client) {
+    _client = client;
+    _telemetrySub = client.telemetry.listen(_onTelemetry);
   }
 
-  final ProtocolClient _client;
+  ProtocolClient? _client;
   final List<TelemetryDto> _telemetryHistory = [];
 
   StreamSubscription<TelemetryDto>? _telemetrySub;
@@ -38,6 +42,20 @@ class AppState extends ChangeNotifier {
   /// 非协议层错误（超时、客户端已关闭等）的文本描述，与 [lastError] 互补。
   String? get lastErrorMessage => _lastErrorMessage;
 
+  /// 切到新的客户端并立刻拉一轮快照。
+  ///
+  /// 只换订阅与引用，不清空已有缓存：短暂断线时界面保留上一帧数据，
+  /// 用 `lastError` / 连接状态表达「这份数据可能不新鲜」。
+  void attach(ProtocolClient client) {
+    if (_disposed) {
+      return;
+    }
+    _telemetrySub?.cancel();
+    _client = client;
+    _telemetrySub = client.telemetry.listen(_onTelemetry);
+    unawaited(refresh());
+  }
+
   /// 并发刷新 `agent.status`、`capabilities.list`、`modules.list`。
   ///
   /// 单个请求失败不影响其余项更新，失败项保留旧缓存并记录 `lastError`；
@@ -47,6 +65,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _refreshInternal() async {
+    final client = _client;
+    if (client == null) {
+      return;
+    }
     ProtocolException? roundError;
     String? roundErrorMessage;
 
@@ -60,13 +82,13 @@ class AppState extends ChangeNotifier {
 
     try {
       await Future.wait([
-        _client.getStatus().then((value) {
+        client.getStatus().then((value) {
           _status = value;
         }).catchError(capture),
-        _client.listCapabilities().then((value) {
+        client.listCapabilities().then((value) {
           _capabilities = value;
         }).catchError(capture),
-        _client.listModules().then((value) {
+        client.listModules().then((value) {
           _modules = value;
         }).catchError(capture),
       ]);

@@ -185,7 +185,10 @@ class _NavItem extends StatelessWidget {
                   ),
                 ],
               )
-            : Icon(destination.icon, size: 18, color: color),
+            : Tooltip(
+                message: destination.label,
+                child: Icon(destination.icon, size: 18, color: color),
+              ),
       ),
     );
   }

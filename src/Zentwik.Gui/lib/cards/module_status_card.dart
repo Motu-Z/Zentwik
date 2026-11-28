@@ -14,27 +14,27 @@ class ModuleStatusCard extends StatelessWidget {
   final List<ModuleDto>? modules;
 
   Color _dotColor(ModuleDto module) {
+    // 后端语义：可选组件未启用时同样报 unavailable（见 ModuleCatalog），
+    // 所以先看 enabled 再判 state，避免把「没装的组件」标成故障色。
     if (module.enabled == false) {
       return ZentwikTokens.textSecondary;
     }
     return switch (module.state) {
-      ModuleStates.ready || 'running' => ZentwikTokens.success,
+      ModuleStates.ready => ZentwikTokens.success,
       ModuleStates.degraded => ZentwikTokens.accent,
-      ModuleStates.unavailable || 'stopped' => ZentwikTokens.textSecondary,
-      'failed' => ZentwikTokens.danger,
+      ModuleStates.unavailable => ZentwikTokens.textSecondary,
       _ => ZentwikTokens.textSecondary,
     };
   }
 
   String _statusLabel(ModuleDto module) {
     if (module.enabled == false) {
-      return 'stopped';
+      return '未启用';
     }
     return switch (module.state) {
-      ModuleStates.ready || 'running' => 'running',
-      ModuleStates.unavailable => '未安装',
-      'stopped' => 'stopped',
-      ModuleStates.degraded => 'degraded',
+      ModuleStates.ready => '就绪',
+      ModuleStates.degraded => '降级',
+      ModuleStates.unavailable => '不可用',
       _ => module.state ?? kMissingValue,
     };
   }
