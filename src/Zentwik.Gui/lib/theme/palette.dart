@@ -106,6 +106,40 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
     );
   }
 
+  /// 按值相等是必需的，不是可选项：`ThemeData` 用 `==` 逐项比较，
+  /// 而 `ThemeExtension` 默认用同一性比较。不实现的话 `buildZentwikTheme()`
+  /// 每次产出的调色板永远「不相等」，`Theme` 就会把整棵树标记为脏 ——
+  /// 遥测每秒来一帧，界面就每秒全量重建一次（最小化时也一样）。
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    return other is ZentwikPalette &&
+        other.background == background &&
+        other.surface == surface &&
+        other.border == border &&
+        other.textPrimary == textPrimary &&
+        other.textSecondary == textSecondary &&
+        other.textTertiary == textTertiary &&
+        other.accent == accent &&
+        other.danger == danger &&
+        other.success == success;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        background,
+        surface,
+        border,
+        textPrimary,
+        textSecondary,
+        textTertiary,
+        accent,
+        danger,
+        success,
+      );
+
   @override
   ZentwikPalette lerp(ThemeExtension<ZentwikPalette>? other, double t) {
     if (other is! ZentwikPalette) {

@@ -55,6 +55,21 @@ void main() {
       );
     });
 
+    test('相同参数构建的主题彼此相等（否则 Theme 会在每帧遥测时判脏整棵树）', () {
+      // Theme 用 ThemeData == 决定是否通知依赖者；ThemeExtension 默认按同一性比较，
+      // 只要调色板不实现 ==，这里就会永远是 false，界面每秒被全量重建一次。
+      expect(buildZentwikTheme(), buildZentwikTheme());
+      expect(
+        buildZentwikTheme(brightness: Brightness.light, accent: 'teal'),
+        buildZentwikTheme(brightness: Brightness.light, accent: 'teal'),
+      );
+      expect(
+        buildZentwikTheme(),
+        isNot(buildZentwikTheme(accent: 'amber')),
+      );
+      expect(ZentwikPalette.resolve(), ZentwikPalette.resolve());
+    });
+
     testWidgets('在 buildZentwikTheme 之外读取 context.palette 抛出 StateError',
         (tester) async {
       Object? caught;
