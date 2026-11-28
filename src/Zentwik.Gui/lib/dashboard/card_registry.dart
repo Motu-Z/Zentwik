@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../theme/tokens.dart';
 import 'dashboard_layout.dart';
@@ -9,6 +9,8 @@ typedef DashboardCardBuilder = Widget Function(
 );
 
 /// 尚未接入具体实现的卡片占位视图。
+///
+/// 标题由 `DashboardCardShell` 统一渲染，这里只给状态说明，避免同一标题出现两次。
 class PlaceholderCard extends StatelessWidget {
   const PlaceholderCard({
     super.key,
@@ -19,29 +21,14 @@ class PlaceholderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: ZentwikTokens.spaceSm),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            card.kind.label,
-            style: const TextStyle(
-              fontSize: ZentwikTokens.fontSubtitle,
-              fontWeight: FontWeight.w600,
-              color: ZentwikTokens.textPrimary,
-            ),
-          ),
-          const SizedBox(height: ZentwikTokens.spaceXs),
-          const Text(
-            '尚未接入',
-            style: TextStyle(
-              fontSize: ZentwikTokens.fontCaption,
-              color: ZentwikTokens.textSecondary,
-            ),
-          ),
-        ],
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: ZentwikTokens.spaceSm),
+      child: Text(
+        '尚未接入',
+        style: TextStyle(
+          fontSize: ZentwikTokens.fontCaption,
+          color: ZentwikTokens.textSecondary,
+        ),
       ),
     );
   }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Zentwik 暗色主题设计 Token，所有颜色、间距、圆角与字号统一由此派生。
 abstract final class ZentwikTokens {

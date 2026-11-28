@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../state/connection_state.dart';
 import '../theme/tokens.dart';

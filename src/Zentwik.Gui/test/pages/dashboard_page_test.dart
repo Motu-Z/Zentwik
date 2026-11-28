@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zentwik_gui/dashboard/dashboard.dart';
 import 'package:zentwik_gui/pages/dashboard_page.dart';
@@ -6,26 +6,24 @@ import 'package:zentwik_gui/theme/theme.dart';
 
 void main() {
   Widget wrapPage({
-    required Size size,
     required DashboardLayout layout,
     required ValueChanged<DashboardLayout> onLayoutChanged,
   }) {
-    return MediaQuery(
-      data: MediaQueryData(size: size),
-      child: MaterialApp(
-        theme: buildZentwikTheme(),
-        home: Scaffold(
-          body: SizedBox(
-            width: size.width,
-            height: size.height,
-            child: DashboardPage(
-              layout: layout,
-              onLayoutChanged: onLayoutChanged,
-            ),
-          ),
+    return MaterialApp(
+      theme: buildZentwikTheme(),
+      home: Scaffold(
+        body: DashboardPage(
+          layout: layout,
+          onLayoutChanged: onLayoutChanged,
         ),
       ),
     );
+  }
+
+  /// 用真实的窗口尺寸驱动 `LayoutBuilder`（`MediaQuery` 改尺寸影响不到约束）。
+  Future<void> setSurface(WidgetTester tester, Size size) async {
+    await tester.binding.setSurfaceSize(size);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
   }
 
   testWidgets('宽屏渲染全部可见卡片且拖拽触发 onLayoutChanged', (tester) async {
@@ -40,9 +38,9 @@ void main() {
     ]);
 
     DashboardLayout? updated;
+    await setSurface(tester, const Size(1200, 800));
     await tester.pumpWidget(
       wrapPage(
-        size: const Size(1200, 800),
         layout: layout,
         onLayoutChanged: (next) => updated = next,
       ),
@@ -77,9 +75,9 @@ void main() {
       const DashboardCard(kind: DashboardKind.memory, span: 1),
     ]);
 
+    await setSurface(tester, const Size(600, 800));
     await tester.pumpWidget(
       wrapPage(
-        size: const Size(600, 800),
         layout: layout,
         onLayoutChanged: (_) {},
       ),
@@ -98,9 +96,9 @@ void main() {
       ),
     ]);
 
+    await setSurface(tester, const Size(1200, 800));
     await tester.pumpWidget(
       wrapPage(
-        size: const Size(1200, 800),
         layout: hiddenAll,
         onLayoutChanged: (_) {},
       ),

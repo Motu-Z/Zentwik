@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../dashboard/card_registry.dart';
 import '../dashboard/dashboard_grid.dart';
@@ -51,7 +51,7 @@ class DashboardCardShell extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onResize,
-                tooltip: '调整卡片宽度',
+                tooltip: onResize == null ? null : '调整卡片宽度',
                 constraints: const BoxConstraints(
                   minWidth: 28,
                   minHeight: 28,
@@ -206,12 +206,9 @@ class DashboardPage extends StatelessWidget {
       padding: const EdgeInsets.all(ZentwikTokens.spaceLg),
       buildDefaultDragHandles: false,
       itemCount: visibleCards.length,
-      onReorder: (oldIndex, newIndex) {
-        var target = newIndex;
-        if (target > oldIndex) {
-          target -= 1;
-        }
-        _reorderVisible(visibleCards, oldIndex, target);
+      // onReorderItem 内部已处理「移除后目标下标前移」，不要再手工减一。
+      onReorderItem: (oldIndex, newIndex) {
+        _reorderVisible(visibleCards, oldIndex, newIndex);
       },
       itemBuilder: (context, index) {
         final card = visibleCards[index];

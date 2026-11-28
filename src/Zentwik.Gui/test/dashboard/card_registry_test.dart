@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zentwik_gui/dashboard/card_registry.dart';
 import 'package:zentwik_gui/dashboard/dashboard.dart';
@@ -31,7 +31,8 @@ void main() {
 
     expect(find.text('custom:cpuUsage'), findsOneWidget);
     expect(find.byType(PlaceholderCard), findsOneWidget);
-    expect(find.text(DashboardKind.memory.label), findsOneWidget);
+    // 标题由 DashboardCardShell 渲染，占位体里不再重复卡片名。
+    expect(find.text(DashboardKind.memory.label), findsNothing);
     expect(find.text('尚未接入'), findsOneWidget);
   });
 }
