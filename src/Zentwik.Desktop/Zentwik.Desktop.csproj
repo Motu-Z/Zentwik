@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>Zentwik.Desktop</AssemblyName>
     <RootNamespace>Zentwik.Desktop</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zentwik.Contracts\Zentwik.Contracts.csproj" />
+    <ProjectReference Include="..\Zentwik.Domain\Zentwik.Domain.csproj" />
     <ProjectReference Include="..\Zentwik.Localization\Zentwik.Localization.csproj" />
   </ItemGroup>
 

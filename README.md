@@ -1,6 +1,6 @@
 # Zentwik
 
-Windows 下的 CPU 调校、电源与进程调度管理器。当前阶段以 CLI 为正式产品入口，WPF 界面暂停开发。
+Windows 下的 CPU 调校、电源与进程调度管理器。当前阶段以 CLI 为正式产品入口，桌面界面为 WinForms 裸控件（功能优先，视觉后置）。
 
 ## 分层
 
@@ -11,7 +11,7 @@ Platform    硬件与系统访问（PawnIO/SMU、电源、调度、遥测、能�
 Core        应用服务（方案协调、场景引擎、账本、状态存储、诊断）
 Agent       命名管道服务端 + Windows 服务宿主
 Cli         命令行客户端
-Desktop     WPF 壳（暂停）
+Desktop     WinForms 客户端（裸控件）
 ```
 
 依赖方向严格单向：`Cli`/`Desktop` → `Contracts`；`Agent` → `Core` → `Domain` + `Platform`。表现层不得引用 `Platform`，不得持有设备句柄，不得承载领域规则。
@@ -115,7 +115,7 @@ dotnet run --project src/Zentwik.Cli -- tuning --json
 
 - 硬件功耗墙只覆盖 AMD Zen4/Zen5 的 RSMU 通道；Intel PL1/PL2/Tau 与 AMD STAPM（MP1 邮箱）未提供。TDC/EDC 写入无回读通道，无法验证是否在负载下生效。
 - Intel 通道已实现 OC Mailbox 写协议（命令字、bit63 忙位轮询、全局互斥、写后回读），但无 Intel 真机验证，仅位域单测。
-- GPU 遥测、托盘、WPF 界面未实现（界面阶段暂停）。安装包已有，见上节。
+- GPU 遥测、托盘未实现。桌面端五个页签（监控/方案/场景/调校与账本/设置）已接上真实代理，但尚未逐页手验。
 - 服务异常终止后的 SCM 恢复动作尚未实测。
 - 真实休眠/唤醒回调、重启后保持、多处理器组绑定未验证。
 

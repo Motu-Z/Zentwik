@@ -1,49 +1,60 @@
-using System.Windows;
-using System.Windows.Media;
+using System.Drawing;
 
 namespace Zentwik.Desktop.Services;
 
-/// <summary>只替换资源值，不重建控件树。</summary>
+/// <summary>
+/// 只记录主题选择并提供两套基础配色，不做控件级换肤。
+///
+/// 这一版 UI 是 WinForms 裸控件：原生控件的绘制由系统主题决定，
+/// 强行改色只会得到半深半浅的杂色，所以这里只负责「窗口底色 + 前景色」，
+/// 面板和列表一律交给系统默认。等交互都通了再谈换肤。
+/// </summary>
 public sealed class ThemeService
 {
-    private const int ThemeDictionaryIndex = 1;
-
-    private static readonly IReadOnlyDictionary<string, (Color Dark, Color Light)> Accents =
-        new Dictionary<string, (Color, Color)>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlyDictionary<string, (int Dark, int Light)> Accents =
+        new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase)
         {
-            ["blue"] = (Color.FromRgb(0x4C, 0x8D, 0xFF), Color.FromRgb(0x2F, 0x6F, 0xE4)),
-            ["violet"] = (Color.FromRgb(0xA9, 0x7B, 0xFF), Color.FromRgb(0x7C, 0x4D, 0xFF)),
-            ["teal"] = (Color.FromRgb(0x35, 0xC2, 0xB0), Color.FromRgb(0x0E, 0x9C, 0x8A)),
-            ["amber"] = (Color.FromRgb(0xE2, 0xA9, 0x3B), Color.FromRgb(0xB0, 0x7A, 0x0F)),
+            ["blue"] = (0x4C8DFF, 0x2F6FE4),
+            ["violet"] = (0xA97BFF, 0x7C4DFF),
+            ["teal"] = (0x35C2B0, 0x0E9C8A),
+            ["amber"] = (0xE2A93B, 0xB07A0F),
         };
+
+    /// <summary>主题或强调色变化时触发，供窗口重刷底色。</summary>
+    public event Action? Changed;
 
     public string Theme { get; private set; } = "dark";
 
     public string Accent { get; private set; } = "blue";
 
+    public bool IsDark => Theme == "dark";
+
+    public Color WindowBack => IsDark ? Color.FromArgb(0x1E, 0x1E, 0x1E) : SystemColors.Window;
+
+    public Color WindowFore => IsDark ? Color.FromArgb(0xF0, 0xF0, 0xF0) : SystemColors.WindowText;
+
+    /// <summary>强调色，用于需要「一眼看出是主操作」的少数位置（如状态点）。</summary>
+    public Color AccentColor
+    {
+        get
+        {
+            var (dark, light) = Accents.TryGetValue(Accent, out var pair) ? pair : Accents["blue"];
+            var rgb = IsDark ? dark : light;
+            return Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+        }
+    }
+
     public void Apply(string theme, string accent)
     {
-        Theme = string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase) ? "light" : "dark";
-        Accent = Accents.ContainsKey(accent) ? accent.ToLowerInvariant() : "blue";
-
-        var resources = Application.Current.Resources;
-        var dictionary = new ResourceDictionary
+        var nextTheme = string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase) ? "light" : "dark";
+        var nextAccent = Accents.ContainsKey(accent) ? accent.ToLowerInvariant() : "blue";
+        if (nextTheme == Theme && nextAccent == Accent)
         {
-            Source = new Uri(
-                $"pack://application:,,,/Zentwik.Desktop;component/Themes/{(Theme == "light" ? "Light" : "Dark")}.xaml",
-                UriKind.Absolute),
-        };
-
-        while (resources.MergedDictionaries.Count > ThemeDictionaryIndex)
-        {
-            resources.MergedDictionaries.RemoveAt(ThemeDictionaryIndex);
+            return;
         }
 
-        resources.MergedDictionaries.Insert(ThemeDictionaryIndex, dictionary);
-
-        var (darkColor, lightColor) = Accents[Accent];
-        var color = Theme == "light" ? lightColor : darkColor;
-        resources["Brush.Accent"] = new SolidColorBrush(color);
-        resources["Brush.Accent.Soft"] = new SolidColorBrush(Color.FromArgb(0x2E, color.R, color.G, color.B));
+        Theme = nextTheme;
+        Accent = nextAccent;
+        Changed?.Invoke();
     }
 }
