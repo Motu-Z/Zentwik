@@ -4,46 +4,38 @@ GUI 通道断的时候，把下面这段粘给 Gemini 就行，其余内容都�
 
 ---
 
-任务 05 我方已在 Windows 实测并合并：`flutter analyze` 无 issue，`flutter test` 50 例全绿，
-`flutter build windows --release` 通过。我修了三处：
+任务 06 我方已复核：`flutter analyze` 无 issue，`flutter test` 59 例全绿，你的 CI 结论也对得上
+——这次没有编译错误，方向没问题。
 
-1. `memory_card.dart` 有 **4 个编译错误**（`total > 0` 在 `hasValid` 三元表达式之外不会做类型提升），
-   已改成显式 `if (usable)` 分支；顺带无数据时不再画空进度条（会被读成「占用 0%」）、
-   不再同一行刷两个「—」。
-2. `ModuleStatusCard` 的状态文案原来中英混排（`running`/`stopped`/`未安装`）。
-   后端 `ModuleCatalog` 里模块状态只有 `ready`/`degraded`/`unavailable`，
-   而且「可选组件未启用」也报 `unavailable`——所以 `unavailable` 不等于「未安装」。
-   已统一为「就绪 / 降级 / 不可用 / 未启用」（`enabled == false` 优先判）。
-3. 你自己没跑的 `flutter analyze` 又一次是空的——**编译都没过**，务必想办法装 SDK。
+但三个页面在**真实应用里是空的**：你给 `ShellPage` 加了参数，`lib/runtime/app_host.dart`
+没有人传值，于是 `modules` / `settings` / `agentStatus` 全是 `null`，界面只剩「—」。
+我把这层接线补上了（`AppState` 现在缓存 `settings` 与 `ledger`，新增 `setModuleEnabled` /
+`saveSettings` / `errorMessage`；`app_host` 全部注入；Shell 顶部加了错误条），
+并修了三处你按现有信息判断不了的问题：
 
-另外我这边把应用真正接通了：`lib/runtime/agent_runtime.dart`（连接↔聚合状态）、
-`lib/runtime/app_host.dart`（根组件）、`main.dart` 换成真实入口，
-`AppState.attach()` 支持重连后切客户端。`lib/runtime/**` 和 `main.dart` 你不要动。
+1. **内置模块的开关按了必然失败。** 后端 `ModuleService.RequireOptional` 对非 `optional`
+   模块直接抛 `module_not_optional`；`ModuleCatalog` 里只有 `power-limits` 是可选的。
+   六张内置卡上的开关等于骗用户。已改为：非 `optional` 显示「内置」，不给开关；
+   `onToggle` 回调签名改成 `(String id, bool enable)`。
+2. **模块页不显示 `detail`。** 用户问「为什么不可用」的答案就在这个字段
+   （「可选组件，未启用。」/「AMDFamily17 未加载。」）。已补一行 `textTertiary` 说明。
+   「可选但未启用」也从「不可用」改成「未启用」——两者原因不同。
+3. **设置页只有按回车才提交。** 桌面用户输完数字通常直接点别处，改动静默丢失。
+   改成回车 + 失焦 + 销毁三条路径都提交，并用 `_sent*` 去重，避免重复 `settings.set`。
 
-请先 `git pull`，然后做 **任务 06**：
+现在 66 例全绿，`flutter build windows --release` 通过。请先 `git pull`，然后做 **任务 07**：
 
-- 读 `docs/coordination/gemini-task-06.md`，实现模块页、设置页、关于页，并接进 `ShellPage`。
+- 读 `docs/coordination/gemini-task-07.md`：设置页三个枚举字段可编辑化（注意 `accent`
+  是 `blue/violet/teal/amber`，**不是**十六进制颜色）、仪表盘卡片调宽与隐藏、
+  九张卡空态统一。
 
-纪律：
+纪律（和上一轮一致，不再重复解释）：
 
-- **禁止** import `dart:ffi` / `dart:io` / `package:win32` / `package:window_manager` / 任何平台插件。
+- **禁止** import `dart:ffi` / `dart:io` / `package:win32` / `package:window_manager`。
 - **不得修改** `lib/protocol/**`、`lib/state/**`、`lib/platform/**`、`lib/runtime/**`、
-  `lib/main.dart`、`pubspec.yaml`、任何 `.cs`；不得改既有 50 例测试的断言。
-- 一律 `package:material_ui/material_ui.dart`；不新增依赖，不留 TODO 或空实现。
-- 数据缺失一律 `—`，不要填 0。
-
-**验证方式已改：不用你在沙箱里装 SDK。** 仓库现在有 GitHub Actions
-`.github/workflows/gui.yml`（workflow 名 `Zentwik Next | GUI (Flutter)`），
-`feat/gui-protocol` 一推送就会在 GitHub 上跑 `flutter pub get` / `analyze` / `test`。
-
-所以你的循环是：
-
-1. 本地按 `flutter_lints` 规则逐文件核对（能做多少做多少）；
-2. 推到 `feat/gui-protocol`；
-3. **读这次 push 对应的 Actions 运行结果**（GitHub MCP 或仓库 Actions 页）；
-4. 红就按报错改、再推，直到 `Analyze` 与 `Test` 两步都绿；
-5. 交付说明里贴 workflow 名字 + 运行结论（绿/红 + 失败步骤），不要写「未执行」。
-
-- `test/manual/pipe_smoke_check.dart` 是我的 Windows 侧文件，已知会卡死，不会被 CI 收集，也不要手动跑。
+  `lib/main.dart`、`pubspec.yaml`、任何 `.cs`；不得改既有 66 例测试的断言。
+- 一律 `package:material_ui/material_ui.dart`；不新增依赖；数据缺失一律 `—`。
+- 验证走 GitHub Actions（workflow `Zentwik Next | GUI (Flutter)`）：推完读这次 push 的
+  运行结果，`Analyze` 与 `Test` 都绿才算交付，红了改到绿。别写「未执行」。
 
 交付：能推就继续推到 `feat/gui-protocol`，不能推就按文件输出完整内容。
