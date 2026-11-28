@@ -160,6 +160,15 @@ public sealed class AgentConnection : IAsyncDisposable
     public async Task<PowerLimitStateDto> ReadPowerLimitsAsync(CancellationToken ct = default) =>
         await InvokeAsync(Ops.PowerLimitRead, ZentwikJson.Default.PowerLimitStateDto, ct).ConfigureAwait(false);
 
+    public async Task<IReadOnlyList<ProcessEntryDto>> ListProcessesAsync(int? selectedPid = null, CancellationToken ct = default) =>
+        await InvokeAsync(
+                Ops.ProcessList,
+                new ProcessListRequest(selectedPid),
+                ZentwikJson.Default.ProcessListRequest,
+                ZentwikJson.Default.ProcessEntryDtoArray,
+                ct)
+            .ConfigureAwait(false);
+
     public async Task<PowerLimitApplyDto> ApplyPowerLimitsAsync(
         PowerLimitApplyRequest request,
         CancellationToken ct = default) =>

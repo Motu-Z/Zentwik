@@ -57,6 +57,9 @@ public static class Ops
     public const string SettingsGet = "settings.get";
     public const string SettingsSet = "settings.set";
 
+    /// <summary>只读进程枚举：全表 PID/名字/优先级，路径与 CPU% 只对账本内与选中的 PID 单查。</summary>
+    public const string ProcessList = "process.list";
+
     public const string TuningRead = "hardware.tuning.read";
     public const string IntelTuningRead = "hardware.tuning.intel";
     public const string PowerLimitRead = "hardware.power.limit.read";

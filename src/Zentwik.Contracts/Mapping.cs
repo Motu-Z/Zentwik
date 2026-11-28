@@ -38,6 +38,7 @@ public static class Mapping
             PlanApplyState.Applied => "applied",
             PlanApplyState.Partial => "partial",
             PlanApplyState.Failed => "failed",
+            PlanApplyState.Unknown => "unknown",
             _ => "draft",
         },
         plan.LastApply?.AppliedAt,

@@ -11,7 +11,7 @@ using Zentwik.Localization;
 namespace Zentwik.Desktop;
 
 /// <summary>
-/// 裸控件主窗口：一个 TabControl 九页，只用 Label / Button / DataGridView / ComboBox / TextBox / CheckBox / GroupBox / TableLayoutPanel / SplitContainer / FlowLayoutPanel。
+/// 裸控件主窗口：一个 TabControl 七页，只用 Label / Button / DataGridView / ComboBox / TextBox / CheckBox / GroupBox / TableLayoutPanel / SplitContainer / FlowLayoutPanel。
 ///
 /// 约定（这一版刻意为之）：
 /// - 不写自绘、不写布局引擎、不加动画、不做设计系统、不换肤；
@@ -22,6 +22,9 @@ namespace Zentwik.Desktop;
 /// </summary>
 public sealed class MainForm : Form
 {
+    /// <summary>历史表格保留的行数：与视图模型拉取的历史条数一致。</summary>
+    private const int HistoryRowLimit = 120;
+
     private readonly MainViewModel _vm;
     private readonly LocalizationCatalog _catalog;
 
@@ -52,7 +55,15 @@ public sealed class MainForm : Form
     private readonly Label _memValue = MetricValue();
     private readonly Label _procValue = MetricValue();
     private readonly Label _coreValue = MetricValue();
+    private readonly Label _tempValue = MetricValue();
+    private readonly Label _powerValue = MetricValue();
+    private readonly Label _clocksValue = MetricValue();
+    private readonly Label _utilValue = MetricValue();
     private readonly Label _cpuCaption = Caption();
+    private readonly Label _tempCaption = Caption();
+    private readonly Label _powerCaption = Caption();
+    private readonly Label _clocksCaption = Caption();
+    private readonly Label _utilCaption = Caption();
     private readonly Label _memCaption = Caption();
     private readonly Label _procCaption = Caption();
     private readonly Label _coreCaption = Caption();
@@ -165,8 +176,8 @@ public sealed class MainForm : Form
     private readonly CheckBox _closeToTrayCheck = new() { AutoSize = true };
     private readonly Label _startupHintLabel = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
 
-    // 进程（后端还没有 process.* 操作，这一页先摆骨架）
-    private readonly DataGridView _processGrid = NewGrid(30, 80, 40, 60, 60);
+    // 进程（第一批：只读枚举与手动刷新；单次下发与掩码库后置）
+    private readonly DataGridView _processGrid = NewGrid(40, 120, 240, 70, 70, 80, 50, 140);
     private readonly DataGridView _maskGrid = NewGrid(60, 80, 60, 80);
     private readonly Label _processNoteLabel = new() { AutoSize = true, MaximumSize = new Size(900, 0) };
     private Button _refreshProcessButton = null!;
@@ -309,10 +320,10 @@ public sealed class MainForm : Form
     {
         _monitorPage.Padding = new Padding(8);
 
-        var info = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 4 };
+        var info = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 8 };
         info.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 8; i++)
         {
             info.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         }
@@ -321,6 +332,10 @@ public sealed class MainForm : Form
         AddMetricRow(info, 1, _memCaption, _memValue);
         AddMetricRow(info, 2, _procCaption, _procValue);
         AddMetricRow(info, 3, _coreCaption, _coreValue);
+        AddMetricRow(info, 4, _tempCaption, _tempValue);
+        AddMetricRow(info, 5, _powerCaption, _powerValue);
+        AddMetricRow(info, 6, _clocksCaption, _clocksValue);
+        AddMetricRow(info, 7, _utilCaption, _utilValue);
         _metricBox.Controls.Add(info);
 
         _refreshButton = new Button { AutoSize = true, Margin = new Padding(0, 8, 6, 0) };
@@ -661,7 +676,7 @@ public sealed class MainForm : Form
     {
         _processPage.Padding = new Padding(8);
 
-        _refreshProcessButton = new Button { AutoSize = true, Enabled = false };
+        _refreshProcessButton = new Button { AutoSize = true };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         buttons.Controls.Add(_refreshProcessButton);
 
@@ -736,12 +751,21 @@ public sealed class MainForm : Form
         _vm.CoreOffsets.CollectionChanged += (_, _) => ReloadCores();
         _vm.LedgerEntries.CollectionChanged += (_, _) => ReloadLedger();
         _vm.Modules.CollectionChanged += (_, _) => ReloadModules();
+        _vm.Processes.CollectionChanged += (_, _) => ReloadProcesses();
         _vm.PowerSchemes.CollectionChanged += (_, _) => ReloadPowerSchemes();
         _vm.PowerBackups.CollectionChanged += (_, _) => ReloadPowerBackups();
         _vm.Logs.CollectionChanged += (_, _) => ReloadLogs();
         _vm.DoctorErrors.CollectionChanged += (_, _) => ReloadDoctorErrors();
 
         _capsGrid.SelectionChanged += (_, _) => { };
+        _processGrid.SelectionChanged += (_, _) =>
+        {
+            if (!_syncing)
+            {
+                _vm.SelectedProcess = _processGrid.CurrentRow?.Tag as ProcessRowView;
+            }
+        };
+        _vm.SampleAppended += AppendHistoryRow;
         _historyGrid.SelectionChanged += (_, _) => { };
         _plansGrid.SelectionChanged += OnPlansSelected;
         _scenesGrid.SelectionChanged += OnScenesSelected;
@@ -752,6 +776,7 @@ public sealed class MainForm : Form
 
         Bind(_refreshButton, _vm.RefreshCommand);
         Bind(_refreshHistoryButton, _vm.RefreshHistoryCommand);
+        Bind(_refreshProcessButton, _vm.RefreshProcessesCommand);
         Bind(_applyPlanButton, _vm.ApplyPlanCommand);
         Bind(_revertPlanButton, _vm.RevertPlanCommand);
         Bind(_deletePlanButton, _vm.DeletePlanCommand);
@@ -856,6 +881,10 @@ public sealed class MainForm : Form
         Register(_settingsPage, "nav.settings");
 
         Register(_cpuCaption, "monitor.cpu");
+        Register(_tempCaption, "monitor.temperature");
+        Register(_powerCaption, "monitor.package_power");
+        Register(_clocksCaption, "monitor.core_clocks");
+        Register(_utilCaption, "monitor.utilization");
         Register(_memCaption, "monitor.memory");
         Register(_procCaption, "monitor.processes");
         Register(_coreCaption, "monitor.cores");
@@ -903,7 +932,7 @@ public sealed class MainForm : Form
 
         Register(_processListBox, "process.title");
         Register(_maskBox, "process.mask_title");
-        Register(_processNoteLabel, "process.backend_missing");
+        Register(_processNoteLabel, "process.note");
         Register(_refreshProcessButton, "common.refresh");
 
         Register(_refreshModulesButton, "common.refresh");
@@ -952,7 +981,7 @@ public sealed class MainForm : Form
         AddHeaders(_powerBackupsGrid, "power.backup.id", "power.backup.name", "power.backup.created", "power.backup.count");
         AddHeaders(_logGrid, "log.time", "log.level", "log.message");
         AddHeaders(_doctorErrorsGrid, "doctor.time", "doctor.level", "doctor.message");
-        AddHeaders(_processGrid, "process.pid", "process.name", "process.priority", "process.affinity", "process.rule");
+        AddHeaders(_processGrid, "process.pid", "process.name", "process.path", "process.priority", "process.affinity", "process.cpusets", "process.cpu_percent", "process.rule");
         AddHeaders(_maskGrid, "process.mask_rule", "process.mask_process", "process.mask_value", "process.mask_note");
     }
 
@@ -1057,6 +1086,18 @@ public sealed class MainForm : Form
                 break;
             case nameof(MainViewModel.CoreText):
                 _coreValue.Text = _vm.CoreText;
+                break;
+            case nameof(MainViewModel.TemperatureText):
+                _tempValue.Text = _vm.TemperatureText;
+                break;
+            case nameof(MainViewModel.PackagePowerText):
+                _powerValue.Text = _vm.PackagePowerText;
+                break;
+            case nameof(MainViewModel.CoreClocksText):
+                _clocksValue.Text = _vm.CoreClocksText;
+                break;
+            case nameof(MainViewModel.UtilizationText):
+                _utilValue.Text = _vm.UtilizationText;
                 break;
             case nameof(MainViewModel.TuningSummary):
                 _tuningSummaryLabel.Text = _vm.TuningSummary;
@@ -1190,6 +1231,10 @@ public sealed class MainForm : Form
         _memValue.Text = _vm.MemoryText;
         _procValue.Text = _vm.ProcessText;
         _coreValue.Text = _vm.CoreText;
+        _tempValue.Text = _vm.TemperatureText;
+        _powerValue.Text = _vm.PackagePowerText;
+        _clocksValue.Text = _vm.CoreClocksText;
+        _utilValue.Text = _vm.UtilizationText;
         _tuningSummaryLabel.Text = _vm.TuningSummary;
         _intelSummaryLabel.Text = _vm.IntelTuningSummary;
         _powerLimitsSummaryLabel.Text = _vm.PowerLimitsSummary;
@@ -1217,6 +1262,16 @@ public sealed class MainForm : Form
         }
     }
 
+    /// <summary>实时追加一行。整表重填会丢滚动位置，这里只往末尾加并裁掉最旧的。</summary>
+    private void AppendHistoryRow(TelemetryHistoryRow row)
+    {
+        _historyGrid.Rows.Add(row.Time, row.Cpu, row.Memory, row.Processes, row.Temperature, row.Power);
+        while (_historyGrid.Rows.Count > HistoryRowLimit)
+        {
+            _historyGrid.Rows.RemoveAt(0);
+        }
+    }
+
     private void ReloadHistory()
     {
         _syncing = true;
@@ -1229,6 +1284,34 @@ public sealed class MainForm : Form
             }
 
             _historyGrid.ClearSelection();
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private void ReloadProcesses()
+    {
+        _syncing = true;
+        try
+        {
+            _processGrid.Rows.Clear();
+            foreach (var row in _vm.Processes)
+            {
+                var index = _processGrid.Rows.Add(
+                    row.Pid,
+                    row.Name,
+                    row.Path,
+                    row.Priority,
+                    row.Affinity,
+                    row.CpuSets,
+                    row.CpuPercent,
+                    row.Rule);
+                _processGrid.Rows[index].Tag = row;
+            }
+
+            _processGrid.ClearSelection();
         }
         finally
         {

@@ -8,6 +8,7 @@ using Zentwik.Core.Diagnostics;
 using Zentwik.Core.Modules;
 using Zentwik.Core.Plans;
 using Zentwik.Core.Power;
+using Zentwik.Core.Processes;
 using Zentwik.Core.Scenes;
 using Zentwik.Core.State;
 using Zentwik.Core.Telemetry;
@@ -80,6 +81,7 @@ ICpuTuningProvider tuning = options.UseFake ? new FakeCpuTuningProvider() : new 
 IIntelTuningProvider intel = options.UseFake ? new FakeIntelTuningProvider() : new IntelMsrTuningProvider(system);
 IPowerPolicyService power = options.UseFake ? new FakePowerPolicyService() : new Win32PowerPolicyService();
 IProcessScheduler scheduler = options.UseFake ? new FakeProcessScheduler() : new AffinityScheduler();
+IProcessInventory processInventory = options.UseFake ? new FakeProcessInventory() : new WindowsProcessInventory();
 IPowerStatus powerStatus = options.UseFake ? new FakePowerStatus() : new Win32PowerStatus();
 ITelemetrySource telemetry = options.UseFake ? new FakeTelemetrySource(system.ProcessorCount) : new Win32TelemetrySource();
 IPowerNotificationSource powerNotifications = options.UseFake ? new NoPowerNotifications() : new Win32SuspendResumeNotifications();
@@ -104,7 +106,8 @@ var capabilities = new CapabilityService(
             () => modules.IsEnabled(ModuleIds.PowerLimits),
             cpuSensors)
         .Append(new CpuSetsCapabilityProbe(scheduler)));
-var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel, powerStatus);
+var plans = new PlanCoordinator(store, tuning, power, scheduler, log, intel, powerStatus, powerLimits, () => modules.IsEnabled(ModuleIds.PowerLimits));
+var processQuery = new ProcessQueryService(processInventory, scheduler, plans.Ledger);
 var powerSchemes = new PowerSchemeService(power, new PowerSchemeBackupStore(options.DataDirectory, log), log);
 var scenes = new SceneEngine(store, plans, scheduler, powerStatus, log, new SystemBootInfo());
 
@@ -121,7 +124,7 @@ var doctor = new DoctorService(store, capabilities, log, runtime, system, () => 
 var policy = new CallerPolicy(store.Current.OwnerSid, RequireInteractiveSession: true, IntegrityLevel.Medium);
 var server = new AgentServer(
     options, store, hub, capabilities, system, log, plans, scenes, doctor, tuning, intel, policy,
-    powerNotifications, powerSchemes, modules, powerLimits);
+    powerNotifications, powerSchemes, modules, powerLimits, processQuery);
 
 using var shutdown = new CancellationTokenSource();
 Console.CancelKeyPress += (_, eventArgs) =>

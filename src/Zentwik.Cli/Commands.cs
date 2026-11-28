@@ -712,7 +712,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
 
     private async Task<int> PlanCreateAsync(CancellationToken ct)
     {
-        args.EnsureOnly("--pipe", "--kind", "--id", "--name", "--default-co", "--ccd-co", "--core", "--fmax", "--intel-voltage", "--scheme", "--set", "--rule");
+        args.EnsureOnly("--pipe", "--kind", "--id", "--name", "--default-co", "--ccd-co", "--core", "--fmax", "--intel-voltage", "--power-fast", "--power-slow", "--power-tdc", "--power-edc", "--scheme", "--set", "--rule");
         var kind = args.Require("--kind");
         var id = args.Require("--id");
         var name = args.Require("--name");
@@ -804,9 +804,24 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             intelVoltage = parsed;
         }
 
-        if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0 && fmax is null && intelVoltage is null)
+        int? powerFast = OptionalInt("--power-fast");
+        int? powerSlow = OptionalInt("--power-slow");
+        int? powerTdc = OptionalInt("--power-tdc");
+        int? powerEdc = OptionalInt("--power-edc");
+
+        PowerLimitRequest? powerLimits = null;
+        if (powerFast is not null || powerSlow is not null || powerTdc is not null || powerEdc is not null)
         {
-            throw new CliUsageException("至少需要 --default-co、--ccd-co、--core、--fmax 或 --intel-voltage 之一。");
+            powerLimits = new PowerLimitRequest(powerFast, powerSlow, powerTdc, powerEdc);
+            if (PowerLimitBounds.Validate(powerLimits) is { } invalid)
+            {
+                throw new CliUsageException(invalid);
+            }
+        }
+
+        if (defaultCo is null && ccdOffsets.Count == 0 && cores.Count == 0 && fmax is null && intelVoltage is null && powerLimits is null)
+        {
+            throw new CliUsageException("至少需要 --default-co、--ccd-co、--core、--fmax、--intel-voltage 或 --power-* 之一。");
         }
 
         return new CpuTuningPlan
@@ -818,9 +833,35 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
             Cores = cores,
             FMaxLimitMhz = fmax,
             IntelVoltageOffsetMillivolts = intelVoltage,
+            PowerLimits = powerLimits,
             CreatedAt = DateTimeOffset.Now,
             UpdatedAt = DateTimeOffset.Now,
         };
+    }
+
+    private int? OptionalInt(string flag)
+    {
+        if (args.Value(flag) is not { } text)
+        {
+            return null;
+        }
+
+        if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        {
+            throw new CliUsageException($"{flag} 需要一个整数。");
+        }
+
+        return parsed;
+    }
+
+    private static string DescribePowerLimits(PowerLimitRequest limits)
+    {
+        var parts = new List<string>(4);
+        if (limits.FastWatts is { } fast) { parts.Add($"fast={fast}W"); }
+        if (limits.SlowWatts is { } slow) { parts.Add($"slow={slow}W"); }
+        if (limits.TdcAmps is { } tdc) { parts.Add($"tdc={tdc}A"); }
+        if (limits.EdcAmps is { } edc) { parts.Add($"edc={edc}A"); }
+        return parts.Count == 0 ? "-" : string.Join(" ", parts);
     }
 
     private PowerPlan BuildPowerPlan(string id, string name)
@@ -1318,6 +1359,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
                 Console.WriteLine($"asymmetry {(asym.IsAsymmetric ? $"yes ({asym.MinOffset}..{asym.MaxOffset})" : "no")}");
                 Console.WriteLine($"fmax      {cpu.FMaxLimitMhz?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
                 Console.WriteLine($"intelMv   {cpu.IntelVoltageOffsetMillivolts?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
+                Console.WriteLine($"power     {(cpu.PowerLimits is { } limits ? DescribePowerLimits(limits) : "-")}");
                 break;
             case PowerPlan power:
                 Console.WriteLine($"scheme    {power.BaseSchemeGuid?.ToString("D") ?? "(active)"}");
@@ -1349,6 +1391,7 @@ public sealed class CliApp(AgentConnection connection, CommandLine args, Output 
         PlanApplyState.Applied => "applied",
         PlanApplyState.Partial => "partial",
         PlanApplyState.Failed => "failed",
+        PlanApplyState.Unknown => "unknown",
         _ => "draft",
     };
 

@@ -218,6 +218,25 @@ public sealed class StateLedger
         };
     }
 
+    /// <summary>
+    /// 没有可回退基线时标记为不可回退：仍由方案持有写入，但 revert 不再尝试它。
+    /// 典型场景是功耗墙的 TDC/EDC——PM 表没有这两项的当前生效值。
+    /// </summary>
+    public void MarkNotRestorable(string target, string reason)
+    {
+        if (!_entries.TryGetValue(target, out var entry))
+        {
+            return;
+        }
+
+        _entries[target] = entry with
+        {
+            Restorable = false,
+            Failure = reason,
+            UpdatedAt = _clock.GetUtcNow(),
+        };
+    }
+
     public void MarkUnknown(string target, string reason)
     {
         if (!_entries.TryGetValue(target, out var entry))

@@ -57,7 +57,12 @@ internal static partial class Native
 
     internal const int SystemProcessorPerformanceInformation = 8;
 
+    /// <summary>全表进程信息：PID、映像名、创建时间、Kernel+User 时间、基础优先级，一次系统调用。</summary>
+    internal const int SystemProcessInformation = 5;
+
     internal const int StatusInfoLengthMismatch = unchecked((int)0xC0000004);
+
+    internal const int StatusBufferOverflow = unchecked((int)0xC0000023);
 
     [LibraryImport("ntdll.dll")]
     internal static partial int NtQuerySystemInformation(

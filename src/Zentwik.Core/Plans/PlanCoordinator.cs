@@ -6,6 +6,7 @@ using Zentwik.Core.Diagnostics;
 using Zentwik.Core.State;
 using Zentwik.Domain.Ownership;
 using Zentwik.Domain.Plans;
+using Zentwik.Domain.Power;
 using Zentwik.Platform;
 
 namespace Zentwik.Core.Plans;
@@ -40,6 +41,8 @@ public sealed class PlanCoordinator
     private readonly IPowerPolicyService _power;
     private readonly IProcessScheduler _scheduler;
     private readonly IPowerStatus? _powerStatus;
+    private readonly IPowerLimitProvider? _powerLimits;
+    private readonly Func<bool>? _powerLimitsEnabled;
     private readonly DiagnosticLog _log;
     private readonly StateLedger _ledger;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -55,7 +58,9 @@ public sealed class PlanCoordinator
         IProcessScheduler scheduler,
         DiagnosticLog log,
         IIntelTuningProvider? intel = null,
-        IPowerStatus? powerStatus = null)
+        IPowerStatus? powerStatus = null,
+        IPowerLimitProvider? powerLimits = null,
+        Func<bool>? powerLimitsEnabled = null)
     {
         _store = store;
         _tuning = tuning;
@@ -63,6 +68,8 @@ public sealed class PlanCoordinator
         _power = power;
         _scheduler = scheduler;
         _powerStatus = powerStatus;
+        _powerLimits = powerLimits;
+        _powerLimitsEnabled = powerLimitsEnabled;
         _log = log;
         _ledger = StateLedger.Restore(store.Current.Ledger);
     }
@@ -306,7 +313,8 @@ public sealed class PlanCoordinator
     private static bool IsResumeTarget(string target) =>
         target.StartsWith("cpu.co.", StringComparison.Ordinal)
         || string.Equals(target, "cpu.fmax", StringComparison.Ordinal)
-        || string.Equals(target, "cpu.intel.voltage", StringComparison.Ordinal);
+        || string.Equals(target, "cpu.intel.voltage", StringComparison.Ordinal)
+        || target.StartsWith("cpu.power.limit.", StringComparison.Ordinal);
 
     private static Func<string, string, bool>? EquivalentFor(string target) =>
         string.Equals(target, "cpu.fmax", StringComparison.Ordinal) ? FMaxTolerance.Within : null;
@@ -316,6 +324,11 @@ public sealed class PlanCoordinator
         if (!int.TryParse(desired, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
             return (null, "期望值不是整数。");
+        }
+
+        if (TryParsePowerLimitTarget(target, out var limitField))
+        {
+            return WritePowerLimit(limitField, value);
         }
 
         if (target.StartsWith("cpu.co.", StringComparison.Ordinal))
@@ -1206,7 +1219,228 @@ public sealed class PlanCoordinator
             }
         }
 
-        return (outcomes, outcomes.Count == 0 ? "方案没有核、FMax 或 Intel 电压偏移配置。" : null);
+        if (plan.PowerLimits is { } powerLimits)
+        {
+            outcomes.AddRange(ApplyPowerLimits(plan, powerLimits, source, priority));
+        }
+
+        return (outcomes, outcomes.Count == 0 ? "方案没有核、FMax、Intel 电压偏移或功耗墙配置。" : null);
+    }
+
+    /// <summary>
+    /// 硬件功耗墙写入。逐项记账、一次下发：provider 的写入是整表命令，但账本按项持有，
+    /// 回退时才能只写回某一项。
+    /// </summary>
+    /// <remarks>
+    /// 可选模块未启用、平台不支持、读不到基线一律 Skipped——这是能力缺失，不是方案失败。
+    /// 写入后的四态由 provider 给出：Applied 才记成功；Diverged 是固件折算，回读与请求不符，按未生效记；
+    /// Accepted 表示该项没有回读通道，只能记 Unknown，不得冒充成功。
+    /// </remarks>
+    private IReadOnlyList<TargetOutcome> ApplyPowerLimits(
+        CpuTuningPlan plan,
+        PowerLimitRequest limits,
+        string source,
+        int priority)
+    {
+        if (limits.IsEmpty)
+        {
+            return [];
+        }
+
+        if (_powerLimits is null)
+        {
+            return [PowerLimitSkipped("未装配硬件功耗墙通道。")];
+        }
+
+        if (_powerLimitsEnabled is not null && !_powerLimitsEnabled())
+        {
+            return [PowerLimitSkipped("可选模块 power-limits 未启用。")];
+        }
+
+        var (availability, availabilityDetail) = _powerLimits.ProbePowerLimit();
+        if (availability != HardwareAvailability.Available)
+        {
+            return [PowerLimitSkipped(availabilityDetail ?? availability.ToString())];
+        }
+
+        if (PowerLimitBounds.Validate(limits) is { } invalid)
+        {
+            return [PowerLimitSkipped(invalid)];
+        }
+
+        if (!_powerLimits.TryReadCurrentPowerLimits(out var before, out var readError))
+        {
+            return [PowerLimitSkipped(readError ?? "读取当前功耗墙失败，未写入。")];
+        }
+
+        var wanted = new List<(string Target, string Key, int Value, string? Previous)>(4);
+        if (limits.FastWatts is int fast)
+        {
+            wanted.Add(("cpu.power.limit.fast", "fast", fast, FormatInt(before.FastWatts)));
+        }
+
+        if (limits.SlowWatts is int slow)
+        {
+            wanted.Add(("cpu.power.limit.slow", "slow", slow, FormatInt(before.SlowWatts)));
+        }
+
+        // TDC/EDC 没有 PM 表读数：前值未知，账本记 null，回退时如实报「无基线」。
+        if (limits.TdcAmps is int tdc)
+        {
+            wanted.Add(("cpu.power.limit.tdc", "tdc", tdc, null));
+        }
+
+        if (limits.EdcAmps is int edc)
+        {
+            wanted.Add(("cpu.power.limit.edc", "edc", edc, null));
+        }
+
+        var outcomes = new List<TargetOutcome>(wanted.Count);
+        var acquired = new List<(string Target, string Key, string? Previous)>(wanted.Count);
+
+        foreach (var item in wanted)
+        {
+            var desired = FormatInt(item.Value)!;
+            var result = _ledger.Acquire(item.Target, source, priority, item.Previous, desired, plan.Id, OwnerFor(source));
+            if (result is AcquireOutcome.DeniedUserOwned or AcquireOutcome.DeniedLowerPriority)
+            {
+                outcomes.Add(new TargetOutcome(
+                    item.Target,
+                    item.Previous,
+                    desired,
+                    item.Previous,
+                    LedgerStatus.Skipped,
+                    DenialReason(result)));
+                continue;
+            }
+
+            acquired.Add((item.Target, item.Key, item.Previous));
+        }
+
+        if (acquired.Count == 0)
+        {
+            return outcomes;
+        }
+
+        var applied = _powerLimits.ApplyPowerLimits(limits);
+        if (applied.RejectedReason is { } rejected)
+        {
+            foreach (var item in acquired)
+            {
+                _ledger.Fail(item.Target, rejected);
+                outcomes.Add(OutcomeFromLedger(item.Target));
+            }
+
+            return outcomes;
+        }
+
+        var byKey = applied.Items.ToDictionary(static item => item.Item, StringComparer.OrdinalIgnoreCase);
+        foreach (var item in acquired)
+        {
+            if (!byKey.TryGetValue(item.Key, out var write))
+            {
+                _ledger.MarkUnknown(item.Target, "提供者没有回报该项结果。");
+                outcomes.Add(OutcomeFromLedger(item.Target));
+                continue;
+            }
+
+            var detail = write.Detail ?? $"请求 {write.Requested}，回读 {(write.Actual is { } actual ? actual.ToString(CultureInfo.InvariantCulture) : "无")}。";
+            switch (write.State)
+            {
+                case PowerLimitWriteState.Applied when write.Actual is { } value:
+                    _ledger.Commit(item.Target, FormatInt(value)!);
+                    break;
+                case PowerLimitWriteState.Diverged when write.Actual is { } diverged:
+                    // 回读与请求不符：账本记下真实值并判未生效，不把固件折算说成成功。
+                    _ledger.Commit(item.Target, FormatInt(diverged)!);
+                    _ledger.Fail(item.Target, $"固件折算：{detail}");
+                    break;
+                case PowerLimitWriteState.Accepted:
+                    _ledger.MarkUnknown(item.Target, $"该通道无回读，SMU 已接受请求：{detail}");
+                    break;
+                default:
+                    _ledger.Fail(item.Target, detail);
+                    break;
+            }
+
+            if (item.Previous is null)
+            {
+                // TDC/EDC 没有 PM 表当前值：可以写，但没有可回退的基线，不能让 revert 假装能恢复。
+                _ledger.MarkNotRestorable(item.Target, "该项没有可回退的基线读数。");
+            }
+
+            outcomes.Add(OutcomeFromLedger(item.Target));
+        }
+
+        return outcomes;
+    }
+
+    private static TargetOutcome PowerLimitSkipped(string reason) =>
+        new("cpu.power.limit", null, null, null, LedgerStatus.Skipped, reason);
+
+    private static string? FormatInt(int? value) =>
+        value?.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>功耗墙目标名 → 单项。返回 false 表示不是功耗墙目标。</summary>
+    private static bool TryParsePowerLimitTarget(string target, out string field)
+    {
+        field = string.Empty;
+        const string prefix = "cpu.power.limit.";
+        if (!target.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var candidate = target[prefix.Length..];
+        if (candidate is not ("fast" or "slow" or "tdc" or "edc"))
+        {
+            return false;
+        }
+
+        field = candidate;
+        return true;
+    }
+
+    private static PowerLimitRequest RequestFor(string field, int value) => field switch
+    {
+        "fast" => new PowerLimitRequest(value, null, null, null),
+        "slow" => new PowerLimitRequest(null, value, null, null),
+        "tdc" => new PowerLimitRequest(null, null, value, null),
+        _ => new PowerLimitRequest(null, null, null, value),
+    };
+
+    /// <summary>只写一项并回读。回退与漂移重放共用；没有回读通道的项按失败返回，不冒充成功。</summary>
+    private (string? Actual, string? Error) WritePowerLimit(string field, int value)
+    {
+        if (_powerLimits is null)
+        {
+            return (null, "未装配硬件功耗墙通道。");
+        }
+
+        if (_powerLimitsEnabled is not null && !_powerLimitsEnabled())
+        {
+            return (null, "可选模块 power-limits 未启用。");
+        }
+
+        var result = _powerLimits.ApplyPowerLimits(RequestFor(field, value));
+        if (result.RejectedReason is { } rejected)
+        {
+            return (null, rejected);
+        }
+
+        var write = result.Items.FirstOrDefault(item => string.Equals(item.Item, field, StringComparison.OrdinalIgnoreCase));
+        if (write is null)
+        {
+            return (null, "提供者没有回报该项结果。");
+        }
+
+        return write.State switch
+        {
+            PowerLimitWriteState.Applied or PowerLimitWriteState.Diverged when write.Actual is { } actual =>
+                (FormatInt(actual), null),
+            PowerLimitWriteState.Accepted => (null, "该通道无回读，无法确认是否生效。"),
+            _ => (null, write.Detail ?? "写入被拒。"),
+        };
     }
 
     private (IReadOnlyList<TargetOutcome> Targets, string? Error) ApplyPower(
@@ -1646,6 +1880,16 @@ public sealed class PlanCoordinator
                 : (null, error);
         }
 
+        if (TryParsePowerLimitTarget(entry.Target, out var limitField))
+        {
+            if (!int.TryParse(entry.PreviousValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var prevLimit))
+            {
+                return (null, "功耗墙前值未知，无法回退。");
+            }
+
+            return WritePowerLimit(limitField, prevLimit);
+        }
+
         if (string.Equals(entry.Target, "power.active", StringComparison.Ordinal))
         {
             if (!Guid.TryParse(entry.PreviousValue, out var scheme))
@@ -1746,6 +1990,22 @@ public sealed class PlanCoordinator
             return match is null ? null : match.Offset.ToString(CultureInfo.InvariantCulture);
         }
 
+        if (TryParsePowerLimitTarget(target, out var limitField))
+        {
+            if (_powerLimits is null || !_powerLimits.TryReadCurrentPowerLimits(out var current, out _))
+            {
+                return null;
+            }
+
+            // TDC/EDC 没有 PM 表读数：读不到不是「没有上限」，返回 null 让漂移核对跳过。
+            return limitField switch
+            {
+                "fast" => FormatInt(current.FastWatts),
+                "slow" => FormatInt(current.SlowWatts),
+                _ => null,
+            };
+        }
+
         if (string.Equals(target, "power.active", StringComparison.Ordinal))
         {
             return _power.GetActiveScheme()?.Guid.ToString("D");
@@ -1778,6 +2038,8 @@ public sealed class PlanCoordinator
 
     private bool PersistsAcrossReboot(Plan plan) => plan switch
     {
+        // SMU DPTC 功耗墙是会话级：重启由固件恢复，不能对外宣称「重启后仍生效」。
+        CpuTuningPlan cpu when cpu.PowerLimits is not null => false,
         CpuTuningPlan cpu when cpu.IntelVoltageOffsetMillivolts is not null
                                && !CurveOptimizerConfig.HasAnyCo(cpu)
                                && cpu.FMaxLimitMhz is null
@@ -1811,7 +2073,12 @@ public sealed class PlanCoordinator
         var applied = targets.Count(static target => target.Status == LedgerStatus.Applied);
         if (applied == 0)
         {
-            return PlanApplyState.Failed;
+            // 没有失败、但有「写入了却无法确认」的项时不能判失败：结果未知是独立状态。
+            return targets.Any(static target => target.Status == LedgerStatus.Failed)
+                ? PlanApplyState.Failed
+                : targets.Any(static target => target.Status == LedgerStatus.Unknown)
+                    ? PlanApplyState.Unknown
+                    : PlanApplyState.Failed;
         }
 
         return applied == targets.Count && error is null ? PlanApplyState.Applied : PlanApplyState.Partial;
@@ -1822,11 +2089,13 @@ public sealed class PlanCoordinator
         var applied = targets.Count(static target => target.Status == LedgerStatus.Applied);
         var failed = targets.Count(static target => target.Status == LedgerStatus.Failed);
         var skipped = targets.Count(static target => target.Status == LedgerStatus.Skipped);
+        var unknown = targets.Count(static target => target.Status == LedgerStatus.Unknown);
         return state switch
         {
             PlanApplyState.Applied => $"已应用 {applied} 项。",
-            PlanApplyState.Partial => $"部分生效：成功 {applied}，失败 {failed}，跳过 {skipped}。",
+            PlanApplyState.Partial => $"部分生效：成功 {applied}，失败 {failed}，跳过 {skipped}，结果未知 {unknown}。",
             PlanApplyState.Failed => $"未生效：失败 {failed}。",
+            PlanApplyState.Unknown => $"结果未知：{unknown} 项无回读通道，无法确认是否生效。",
             _ => $"未应用：跳过 {skipped}。",
         };
     }

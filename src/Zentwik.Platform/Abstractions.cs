@@ -254,3 +254,21 @@ public interface ISystemInfo
     /// <summary>形如 AMD64 Family 25 Model 97 Stepping 2，用于判定 SMU 命令族。</summary>
     string? CpuIdentifier { get; }
 }
+/// <summary>
+/// 一帧进程快照。路径与 CPU% 只对请求明细的 PID 填充，其余为 null（全表逐进程开句柄是明确禁止的做法）。
+/// </summary>
+public sealed record ProcessInventoryEntry(
+    int ProcessId,
+    string Name,
+    int BasePriority,
+    string? ImagePath,
+    double? CpuPercent);
+
+/// <summary>
+/// 全表进程快照。名字、累计 CPU 时间与基础优先级来自一次系统调用，全程不对进程 OpenProcess；
+/// 映像路径与句柄相关数据只对指定 PID 单查。
+/// </summary>
+public interface IProcessInventory
+{
+    IReadOnlyList<ProcessInventoryEntry> Snapshot(IReadOnlyCollection<int> detailProcessIds);
+}

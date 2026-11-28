@@ -414,6 +414,8 @@ public sealed class SceneEngine
             switch (outcome.State)
             {
                 case PlanApplyState.Applied:
+                // 结果未知是「写下去了但确认不了」，不是失败；细节留在方案的 LastApply.Outcome 里。
+                case PlanApplyState.Unknown:
                     applied++;
                     break;
                 case PlanApplyState.NotApplied:

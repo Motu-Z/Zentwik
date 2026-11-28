@@ -334,6 +334,29 @@ internal sealed class AgentSession : IAsyncDisposable
             case Ops.SettingsSet:
                 return await ApplySettingsAsync(request, ct).ConfigureAwait(false);
 
+            case Ops.ProcessList:
+            {
+                // 载荷可选：不传就只查账本内的 PID，不把「没选中任何行」当成请求错误。
+                var selection = request.Payload is { } element
+                    ? element.Deserialize(ZentwikJson.Default.ProcessListRequest)
+                    : null;
+
+                var rows = _server.Processes?.List(selection?.SelectedPid) ?? [];
+                var dtos = rows
+                    .Select(static row => new ProcessEntryDto(
+                        row.Pid,
+                        row.Name,
+                        row.Path,
+                        row.Priority,
+                        row.Affinity,
+                        row.CpuSets,
+                        row.CpuPercent,
+                        row.Rule))
+                    .ToArray();
+
+                return Ok(request, JsonSerializer.SerializeToElement(dtos, ZentwikJson.Default.ProcessEntryDtoArray));
+            }
+
             case Ops.TuningRead:
             {
                 var snapshot = ReadTuning();
@@ -834,6 +857,13 @@ internal sealed class AgentSession : IAsyncDisposable
                     throw new CoreException(ErrorCodes.PlanInvalid, IntelVoltageOffsetBounds.FormatRejection(mv));
                 }
 
+                // 功耗墙只校验取值范围；模块是否启用、平台是否支持延后到应用时按 Skipped 处理，
+                // 否则模块停用时用户连方案都保存不了。
+                if (cpu.PowerLimits is { } limits && PowerLimitBounds.Validate(limits) is { } invalidLimits)
+                {
+                    throw new CoreException(ErrorCodes.PlanInvalid, invalidLimits);
+                }
+
                 break;
             }
 
@@ -1000,6 +1030,7 @@ internal sealed class AgentSession : IAsyncDisposable
             PlanApplyState.Applied => "applied",
             PlanApplyState.Partial => "partial",
             PlanApplyState.Failed => "failed",
+            PlanApplyState.Unknown => "unknown",
             _ => "notApplied",
         },
         outcome.Plan.LastApply?.AppliedAt,

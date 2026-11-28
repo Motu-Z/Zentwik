@@ -9,6 +9,7 @@ using Zentwik.Core.Diagnostics;
 using Zentwik.Core.Modules;
 using Zentwik.Core.Plans;
 using Zentwik.Core.Power;
+using Zentwik.Core.Processes;
 using Zentwik.Core.Scenes;
 using Zentwik.Core.State;
 using Zentwik.Core.Telemetry;
@@ -28,6 +29,7 @@ public sealed class AgentServer
     private readonly PowerSchemeService? _powerSchemes;
     private readonly ModuleService? _modules;
     private readonly IPowerLimitProvider? _powerLimits;
+    private readonly ProcessQueryService? _processes;
     private readonly SceneEngine _scenes;
     private readonly DoctorService _doctor;
     private readonly ICpuTuningProvider _tuning;
@@ -55,7 +57,8 @@ public sealed class AgentServer
         IPowerNotificationSource? powerNotifications = null,
         PowerSchemeService? powerSchemes = null,
         ModuleService? modules = null,
-        IPowerLimitProvider? powerLimits = null)
+        IPowerLimitProvider? powerLimits = null,
+        ProcessQueryService? processes = null)
     {
         _options = options;
         _store = store;
@@ -67,6 +70,7 @@ public sealed class AgentServer
         _powerSchemes = powerSchemes;
         _modules = modules;
         _powerLimits = powerLimits;
+        _processes = processes;
         _scenes = scenes;
         _doctor = doctor;
         _tuning = tuning;
@@ -176,6 +180,8 @@ public sealed class AgentServer
     internal ModuleService? Modules => _modules;
 
     internal IPowerLimitProvider? PowerLimits => _powerLimits;
+
+    internal ProcessQueryService? Processes => _processes;
 
     internal SceneEngine Scenes => _scenes;
 

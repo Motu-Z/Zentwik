@@ -6,10 +6,43 @@ using Zentwik.Platform;
 
 namespace Zentwik.Platform.Windows;
 
-public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetScheduler
+public sealed partial class AffinityScheduler : IProcessScheduler, IProcessCpuSetScheduler
 {
     // 一轮持续执行会对多条规则逐个查找进程；共用一份短时快照，避免每条规则各枚举一遍系统进程。
     private static readonly TimeSpan SnapshotTtl = TimeSpan.FromSeconds(1);
+
+    private const uint PriorityClassIdle = 0x00000040;
+    private const int ProcessPowerThrottling = 4;
+    private const uint PowerThrottlingVersion = 1;
+    private const uint PowerThrottlingExecutionSpeed = 0x1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessPowerThrottlingState
+    {
+        public uint Version;
+        public uint ControlMask;
+        public uint StateMask;
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetPriorityClass(nint process, uint priorityClass);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetProcessInformation(
+        nint process,
+        int informationClass,
+        ref ProcessPowerThrottlingState information,
+        int size);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetProcessInformation(
+        nint process,
+        int informationClass,
+        ref ProcessPowerThrottlingState information,
+        int size);
 
     private readonly Lock _snapshotGate = new();
     private Dictionary<string, ProcessTarget[]>? _snapshot;
@@ -107,7 +140,11 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
             }
 
             cpuMask = $"0x{process.ProcessorAffinity.ToInt64():X}";
-            priority = process.PriorityClass.ToString();
+
+            // 优先级类本身分不出 EcoQoS 与 Idle：两者都是 Idle 类，差别在节流状态位。
+            var priorityClass = (uint)process.PriorityClass;
+            var eco = priorityClass == PriorityClassIdle && TryReadEcoQoS(processId);
+            priority = ProcessPriorityTokens.Describe(priorityClass, eco);
             error = null;
             return true;
         }
@@ -157,13 +194,44 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
 
             if (priority is not null)
             {
-                if (!Enum.TryParse<ProcessPriorityClass>(priority, ignoreCase: true, out var priorityClass))
+                if (!ProcessPriorityTokens.TryMap(priority, out var priorityClass, out var eco))
                 {
                     error = $"未知进程优先级：{priority}。";
                     return false;
                 }
 
-                process.PriorityClass = priorityClass;
+                // 与旧版同一条路径：SET_INFORMATION 必须配 QUERY_LIMITED，否则内核判定受保护进程那一步会被拒，
+                // 表现为 OpenProcess 成功而 SetPriorityClass 返回错误 5。
+                var handle = CpuSetsNative.OpenProcess(
+                    CpuSetsNative.ProcessSetInformation | CpuSetsNative.ProcessQueryLimitedInformation,
+                    false,
+                    processId);
+
+                if (handle == 0)
+                {
+                    error = $"打开进程 {processId} 失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+                    return false;
+                }
+
+                try
+                {
+                    if (!SetPriorityClass(handle, priorityClass))
+                    {
+                        error = $"设置进程 {processId} 优先级失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+                        return false;
+                    }
+
+                    // 效率模式必须显式写：置位失败算失败，清位失败不报错（清位只是尽力恢复默认）。
+                    if (!TryWriteThrottling(handle, eco) && eco)
+                    {
+                        error = $"开启进程 {processId} 效率模式失败，Win32 错误码 {Marshal.GetLastWin32Error()}。";
+                        return false;
+                    }
+                }
+                finally
+                {
+                    CpuSetsNative.CloseHandle(handle);
+                }
             }
 
             error = null;
@@ -326,6 +394,39 @@ public sealed class AffinityScheduler : IProcessScheduler, IProcessCpuSetSchedul
         {
             CpuSetsNative.CloseHandle(handle);
         }
+    }
+
+    /// <summary>读节流状态位。读不到返回 false，调用方按「不是 EcoQoS」处理，不伪造。</summary>
+    private static bool TryReadEcoQoS(int processId)
+    {
+        var handle = CpuSetsNative.OpenProcess(CpuSetsNative.ProcessQueryLimitedInformation, false, processId);
+        if (handle == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var state = new ProcessPowerThrottlingState { Version = PowerThrottlingVersion };
+            return GetProcessInformation(handle, ProcessPowerThrottling, ref state, Marshal.SizeOf<ProcessPowerThrottlingState>())
+                   && (state.ControlMask & state.StateMask & PowerThrottlingExecutionSpeed) != 0;
+        }
+        finally
+        {
+            CpuSetsNative.CloseHandle(handle);
+        }
+    }
+
+    private static bool TryWriteThrottling(nint handle, bool on)
+    {
+        var state = new ProcessPowerThrottlingState
+        {
+            Version = PowerThrottlingVersion,
+            ControlMask = PowerThrottlingExecutionSpeed,
+            StateMask = on ? PowerThrottlingExecutionSpeed : 0,
+        };
+
+        return SetProcessInformation(handle, ProcessPowerThrottling, ref state, Marshal.SizeOf<ProcessPowerThrottlingState>());
     }
 
     private static bool TryParseMask(string text, out nint mask)

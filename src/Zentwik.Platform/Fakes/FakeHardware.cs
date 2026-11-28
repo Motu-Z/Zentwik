@@ -650,3 +650,32 @@ public sealed class FakePowerLimitProvider : IPowerLimitProvider
         actual == requested ? PowerLimitWriteState.Applied : PowerLimitWriteState.Diverged,
         actual == requested ? "模拟回读一致。" : "模拟固件折算。");
 }
+
+/// <summary>
+/// 固定进程表，用于 --fake 与单测：不做任何系统调用，也不模拟 CPU% 的真实变化。
+/// </summary>
+public sealed class FakeProcessInventory : IProcessInventory
+{
+    private readonly List<ProcessInventoryEntry> _entries =
+    [
+        new(4, "System", 8, null, 0.1),
+        new(1000, "explorer", 8, @"C:/Windows/explorer.exe", 0.4),
+        new(2000, "game", 8, @"D:/Games/game.exe", 12.5),
+    ];
+
+    public int SnapshotCount { get; private set; }
+
+    public IReadOnlyList<int> LastDetailPids { get; private set; } = [];
+
+    public IReadOnlyList<ProcessInventoryEntry> Snapshot(IReadOnlyCollection<int> detailProcessIds)
+    {
+        SnapshotCount++;
+        LastDetailPids = [.. detailProcessIds];
+
+        return [.. _entries.Select(entry => entry with
+        {
+            // CPU% 来自全表快照，所有行都有；路径属于单查范围，范围外不给。
+            ImagePath = detailProcessIds.Contains(entry.ProcessId) ? entry.ImagePath : null,
+        })];
+    }
+}

@@ -17,7 +17,8 @@ public static class Help
                       delete <id>                 删除方案（被场景引用时拒绝）
                       save --file <path|->        从 JSON 保存方案
                       create --kind <kind> --id <id> --name <name>
-                          cpuTuning  --core 核=CO值 ... [--fmax MHz]
+                          cpuTuning  --core 核=CO值 ... [--fmax MHz] [--intel-voltage mV]
+                                     [--power-fast W] [--power-slow W] [--power-tdc A] [--power-edc A]
                           power      --scheme GUID [--set 子组/设置/ac|dc=值 ...]
                           scheduling --rule 进程=掩码:优先级 ...
                     """);

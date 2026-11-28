@@ -8,6 +8,9 @@ public enum PlanApplyState
     Applied,
     Partial,
     Failed,
+
+    /// <summary>写入了但无法确认实际值（如无回读通道），不得当作成功或失败。</summary>
+    Unknown,
 }
 
 public sealed record PlanApplyRecord

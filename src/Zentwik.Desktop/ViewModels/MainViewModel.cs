@@ -21,7 +21,6 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private readonly LocalizationCatalog _catalog;
     private readonly SynchronizationContext _ui;
-    private readonly Queue<double> _history = new();
     private readonly CancellationTokenSource _cts = new();
 
     private AgentConnection? _connection;
@@ -42,6 +41,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private int _processCount;
     private int _coreCount;
     private int _physicalCoreCount;
+
+    private double? _temperatureCelsius;
+    private double? _packagePowerWatts;
+    private IReadOnlyList<TelemetryCoreClockDto>? _coreClocks;
+    private IReadOnlyList<double>? _processorUtilization;
+
+    private ProcessRowView? _selectedProcess;
 
     private string _selectedLanguage;
 
@@ -93,6 +99,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         RefreshCommand = new AsyncRelayCommand(RefreshAllAsync, () => IsConnected);
         RefreshHistoryCommand = new AsyncRelayCommand(RefreshHistoryAsync, () => IsConnected);
+        RefreshProcessesCommand = new AsyncRelayCommand(RefreshProcessesAsync, () => IsConnected);
         DismissNoticeCommand = new RelayCommand(() => NoticeText = null);
 
         ToggleCreatePlanCommand = new RelayCommand(() => IsCreatePlanOpen = !IsCreatePlanOpen);
@@ -130,12 +137,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         catalog.CultureChanged += OnCultureChanged;
     }
 
-    /// <summary>采样历史更新。视图层据此重绘折线，视图模型不持有绘图对象。</summary>
-    public event Action<double[]>? HistoryChanged;
+    /// <summary>
+    /// 每来一帧遥测追加一行历史。视图只负责往表格末尾加一行，不重排整表，
+    /// 所以这里传单行而不是整段序列。
+    /// </summary>
+    public event Action<TelemetryHistoryRow>? SampleAppended;
 
     public ObservableCollection<CapabilityRow> Capabilities { get; } = [];
 
     public ObservableCollection<TelemetryHistoryRow> TelemetryHistory { get; } = [];
+
+    public ObservableCollection<ProcessRowView> Processes { get; } = [];
 
     public ObservableCollection<PlanRow> Plans { get; } = [];
 
@@ -168,6 +180,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand RefreshHistoryCommand { get; }
+    public AsyncRelayCommand RefreshProcessesCommand { get; }
     public RelayCommand DismissNoticeCommand { get; }
     public RelayCommand ToggleCreatePlanCommand { get; }
     public AsyncRelayCommand CreatePlanCommand { get; }
@@ -272,6 +285,53 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         : _physicalCoreCount > 0 && _physicalCoreCount != _coreCount
             ? $"{_physicalCoreCount}C / {_coreCount}T"
             : _coreCount.ToString(CultureInfo.InvariantCulture);
+
+    public string TemperatureText => _temperatureCelsius is { } t
+        ? string.Format(CultureInfo.CurrentCulture, T("monitor.temperature_value"), t)
+        : "—";
+
+    public string PackagePowerText => _packagePowerWatts is { } p
+        ? string.Format(CultureInfo.CurrentCulture, T("monitor.power_value"), p)
+        : "—";
+
+    /// <summary>逐核频率：只报均值与区间，32 个核逐个列出来在 Label 里读不了。</summary>
+    public string CoreClocksText
+    {
+        get
+        {
+            if (_coreClocks is not { Count: > 0 } clocks)
+            {
+                return "—";
+            }
+
+            var average = clocks.Average(static clock => clock.Megahertz);
+            var min = clocks.Min(static clock => clock.Megahertz);
+            var max = clocks.Max(static clock => clock.Megahertz);
+            return string.Format(
+                CultureInfo.CurrentCulture,
+                T("monitor.clocks_value"),
+                average / 1000d,
+                min / 1000d,
+                max / 1000d,
+                clocks.Count);
+        }
+    }
+
+    /// <summary>逐逻辑处理器占用：同样只报均值、峰值与线程数。</summary>
+    public string UtilizationText => _processorUtilization is { Count: > 0 } utilization
+        ? string.Format(
+            CultureInfo.CurrentCulture,
+            T("monitor.utilization_value"),
+            utilization.Average(),
+            utilization.Max(),
+            utilization.Count)
+        : "—";
+
+    public ProcessRowView? SelectedProcess
+    {
+        get => _selectedProcess;
+        set => Set(ref _selectedProcess, value);
+    }
 
     public string? NoticeText
     {
@@ -658,6 +718,43 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
         }
     }
+
+    private async Task RefreshProcessesAsync()
+    {
+        var connection = _connection;
+        if (connection is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // 只把当前选中行带上：路径与亲和性只对它单查，全表逐进程开句柄是被禁止的做法。
+            var rows = await connection.ListProcessesAsync(SelectedProcess?.Pid, _cts.Token).ConfigureAwait(false);
+            var mapped = rows.Select(BuildProcessRow).ToList();
+
+            _ui.Post(_ =>
+            {
+                var selectedPid = SelectedProcess?.Pid;
+                Replace(Processes, mapped);
+                SelectedProcess = Processes.FirstOrDefault(row => row.Pid == selectedPid);
+            }, null);
+        }
+        catch (Exception ex) when (ex is IpcTransportException or TimeoutException or AgentRequestException)
+        {
+            _ui.Post(_ => ShowNotice(ex.DetailOrMessage(), isError: true), null);
+        }
+    }
+
+    private static ProcessRowView BuildProcessRow(ProcessEntryDto row) => new(
+        row.Pid,
+        row.Name,
+        row.Path ?? "—",
+        row.Priority,
+        row.Affinity ?? "—",
+        row.CpuSets ?? "—",
+        row.CpuPercent is { } percent ? $"{percent:0.0}%" : "—",
+        row.Rule ?? "—");
 
     private async Task RefreshModulesAsync()
     {
@@ -1481,18 +1578,37 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _processCount = sample.ProcessCount;
         _coreCount = sample.ProcessorCount;
 
+        // 传感器按自己的节拍采样：这一帧没带传感器值时保持上一帧，不要把「这次没读」显示成 0。
+        if (sample.TemperatureCelsius is { } temperature)
+        {
+            _temperatureCelsius = temperature;
+        }
+
+        if (sample.PackagePowerWatts is { } power)
+        {
+            _packagePowerWatts = power;
+        }
+
+        if (sample.CoreClocks is { Count: > 0 } clocks)
+        {
+            _coreClocks = clocks;
+        }
+
+        if (sample.ProcessorUtilization is { Count: > 0 } utilization)
+        {
+            _processorUtilization = utilization;
+        }
+
         Raise(nameof(CpuText));
         Raise(nameof(MemoryText));
         Raise(nameof(ProcessText));
         Raise(nameof(CoreText));
+        Raise(nameof(TemperatureText));
+        Raise(nameof(PackagePowerText));
+        Raise(nameof(CoreClocksText));
+        Raise(nameof(UtilizationText));
 
-        _history.Enqueue(_cpuPercent);
-        while (_history.Count > HistoryLength)
-        {
-            _history.Dequeue();
-        }
-
-        HistoryChanged?.Invoke([.. _history]);
+        SampleAppended?.Invoke(BuildTelemetryHistoryRow(sample));
     }
 
     private void ApplySettings(SettingsDto settings)
@@ -1619,6 +1735,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         RefreshCommand.RaiseCanExecuteChanged();
         RefreshHistoryCommand.RaiseCanExecuteChanged();
+        RefreshProcessesCommand.RaiseCanExecuteChanged();
         CreatePlanCommand.RaiseCanExecuteChanged();
         ApplyPlanCommand.RaiseCanExecuteChanged();
         RevertPlanCommand.RaiseCanExecuteChanged();
@@ -1715,6 +1832,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             PlanApplyState.Applied => "applied",
             PlanApplyState.Partial => "partial",
             PlanApplyState.Failed => "failed",
+            PlanApplyState.Unknown => "unknown",
             _ => "draft",
         };
         var detail = plan switch
@@ -1731,7 +1849,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             plan.Id,
             state,
             plan.LastApply?.Outcome ?? string.Empty,
-            CanRevert: plan.LastApply?.State is PlanApplyState.Applied or PlanApplyState.Partial,
+            CanRevert: plan.LastApply?.State is PlanApplyState.Applied or PlanApplyState.Partial or PlanApplyState.Unknown,
             Detail: detail);
     }
 
@@ -1784,6 +1902,16 @@ internal static class ExceptionTextExtensions
 }
 
 public sealed record CapabilityRow(string Id, string State, string Detail);
+
+public sealed record ProcessRowView(
+    int Pid,
+    string Name,
+    string Path,
+    string Priority,
+    string Affinity,
+    string CpuSets,
+    string CpuPercent,
+    string Rule);
 
 public sealed record TelemetryHistoryRow(string Time, string Cpu, string Memory, string Processes, string Temperature, string Power);
 

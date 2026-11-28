@@ -1,3 +1,5 @@
+using Zentwik.Domain.Power;
+
 namespace Zentwik.Domain.Plans;
 
 public enum PlanKind
@@ -43,6 +45,10 @@ public sealed record CpuTuningPlan : Plan
 
     // Intel MSR 0x150 核心电压偏移（mV，负值为降压，仅当前会话有效）。
     public int? IntelVoltageOffsetMillivolts { get; init; }
+
+    // 硬件功耗墙（PPT FAST/SLOW、TDC、EDC）。null 表示本方案不管理功耗墙；各项内部 null 表示该项不改。
+    // 按 PROJECT_BRIEF 的领域划分，电压/频率/功耗同属 CPU 调校，因此不另立第四类方案。
+    public PowerLimitRequest? PowerLimits { get; init; }
 }
 
 public sealed record PowerSettingEntry
@@ -301,6 +307,16 @@ public static class CurveOptimizerConfig
         if (plan.IntelVoltageOffsetMillivolts is { } mv)
         {
             parts.Add($"intel={mv}mV");
+        }
+
+        if (plan.PowerLimits is { } limits)
+        {
+            var items = new List<string>(4);
+            if (limits.FastWatts is { } fast) { items.Add($"fast={fast}W"); }
+            if (limits.SlowWatts is { } slow) { items.Add($"slow={slow}W"); }
+            if (limits.TdcAmps is { } tdc) { items.Add($"tdc={tdc}A"); }
+            if (limits.EdcAmps is { } edc) { items.Add($"edc={edc}A"); }
+            if (items.Count > 0) { parts.Add("pl:" + string.Join('/', items)); }
         }
 
         return string.Join(", ", parts);

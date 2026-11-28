@@ -273,3 +273,20 @@ public sealed record TuningSnapshotDto(
     bool PersistsAcrossReboot,
     bool Simulated,
     IReadOnlyList<CoreOffsetDto> Cores);
+
+/// <summary>进程枚举请求。SelectedPid 是界面上选中的行，只对它单查路径与 CPU%，不给就只查账本内的 PID。</summary>
+public sealed record ProcessListRequest(int? SelectedPid);
+
+/// <summary>
+/// 一行进程。Path 与 CpuPercent 为 null 表示这一行不在单查范围内，不是读取失败。
+/// Affinity 与 CpuSets 同理，只对单查范围内的 PID 填充。
+/// </summary>
+public sealed record ProcessEntryDto(
+    int Pid,
+    string Name,
+    string? Path,
+    string Priority,
+    string? Affinity,
+    string? CpuSets,
+    double? CpuPercent,
+    string? Rule);
