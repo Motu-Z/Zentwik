@@ -36,6 +36,8 @@ class AgentRuntime extends ChangeNotifier {
 
     _statusSub = connection.changes.listen(_onStatusChanged);
     _currentClient = firstClient;
+    // 设置里的推送间隔改动要立刻重建订阅，否则用户改完看不到任何变化。
+    appState.addListener(_onAppStateChanged);
   }
 
   static ProtocolClient _defaultClientFactory() =>
@@ -50,6 +52,10 @@ class AgentRuntime extends ChangeNotifier {
 
   StreamSubscription<String>? _statusSub;
   ProtocolClient? _currentClient;
+
+  /// 已生效的订阅间隔，用于避免同一组值重复下发订阅。
+  int? _appliedPoll;
+  int? _appliedSensor;
 
   String get status => connection.status;
   int get reconnectAttempt => connection.attempt;
@@ -68,32 +74,70 @@ class AgentRuntime extends ChangeNotifier {
       if (client != null) {
         if (identical(client, _currentClient)) {
           // 首连：AppState 已经持有这个客户端，只需拉快照与订阅。
-          unawaited(appState.refresh());
+          unawaited(_refreshThenSubscribe());
         } else {
           _currentClient = client;
           appState.attach(client);
+          unawaited(_refreshThenSubscribe());
         }
-        unawaited(_subscribe(client));
       }
+    } else {
+      // 断开后下次连上必须重新订阅，间隔相同也要重发。
+      _appliedPoll = null;
+      _appliedSensor = null;
     }
     notifyListeners();
   }
 
-  Future<void> _subscribe(ProtocolClient client) async {
+  /// 先拉快照拿到服务端设置，再按设置里的间隔订阅遥测。
+  ///
+  /// 直接拿 [pollIntervalMs] 硬订阅会让设置页那两个输入框变成摆设：
+  /// 值写进了 `state.json`，实际推送节奏还是默认值。
+  Future<void> _refreshThenSubscribe() async {
+    try {
+      await appState.refresh();
+    } on Object {
+      // 刷新失败也要继续订阅，退回默认间隔，界面不能因为一次超时没有数据。
+    }
+    await _applySubscription();
+  }
+
+  void _onAppStateChanged() {
+    unawaited(_applySubscription());
+  }
+
+  Future<void> _applySubscription() async {
+    final client = _currentClient;
+    if (client == null || status != ConnectionStatuses.connected) {
+      return;
+    }
+
+    final settings = appState.settings;
+    final poll = settings?.monitorIntervalMs ?? pollIntervalMs;
+    final sensor = settings?.sensorIntervalMs ?? sensorIntervalMs;
+    if (poll == _appliedPoll && sensor == _appliedSensor) {
+      return;
+    }
+
+    // 先记账再发：订阅失败重试会在下一次设置变化或重连时发生，
+    // 而不是每次遥测帧都重发一轮订阅。
+    _appliedPoll = poll;
+    _appliedSensor = sensor;
+
     try {
       await client.subscribeTelemetry(
-        intervalMs: pollIntervalMs,
-        sensorIntervalMs: sensorIntervalMs,
+        intervalMs: poll,
+        sensorIntervalMs: sensor,
       );
     } on Object {
-      // 订阅失败不改变连接状态：下次推送间隔到期由后端决定，
-      // 这里只丢一帧数据源，界面仍可用 agent.status 等快照。
+      // 订阅失败不改变连接状态：界面仍可用 agent.status 等快照。
     }
   }
 
   @override
   void dispose() {
     _statusSub?.cancel();
+    appState.removeListener(_onAppStateChanged);
     unawaited(connection.dispose());
     appState.dispose();
     super.dispose();

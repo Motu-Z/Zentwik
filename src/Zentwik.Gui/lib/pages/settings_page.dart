@@ -356,6 +356,17 @@ class _SettingsPageState extends State<SettingsPage> {
                     widget.onChange?.call(SettingsPatch(uiScale: rounded));
                   },
           ),
+          const SizedBox(height: ZentwikTokens.spaceSm),
+          // 说实话比好看重要：这四项确实只写进了配置，界面渲染还没接上。
+          // 不说清楚，用户点「亮色」发现没反应，只会认为软件坏了。
+          const Text(
+            '语言、主题、强调色与界面缩放会写入配置，但界面渲染尚未接入——'
+            '目前改动不会立刻改变外观。上面两个推送间隔是即时生效的。',
+            style: TextStyle(
+              fontSize: ZentwikTokens.fontCaption,
+              color: ZentwikTokens.textTertiary,
+            ),
+          ),
         ],
       ),
     );
