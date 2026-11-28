@@ -122,24 +122,81 @@ public static class PowerLimitBounds
     }
 }
 
-/// <summary>把写入请求与 PM 表回读按状态分类；不猜固件为什么折算，只如实区分四种结果。</summary>
+/// <summary>
+/// 「回读没变」的成因。只用于把说明写准，不对外暴露出新的写入状态——
+/// 对使用者来说 Repeated / ScaledToSame / Unexplained 都是「回读没变化」，区别在谁能解释它。
+/// </summary>
+public enum PowerLimitReadBackReason
+{
+    /// <summary>回读与请求在容差内一致。</summary>
+    Applied,
+
+    /// <summary>回读发生了变化（与请求不符即固件折算）。</summary>
+    Changed,
+
+    /// <summary>本次请求值与此前成功写入的同一项相同，属重复应用。</summary>
+    Repeated,
+
+    /// <summary>按本机实测折算比例计算，请求值正好落在当前生效值上。</summary>
+    ScaledToSame,
+
+    /// <summary>回读与写前逐字相同，且手上信息解释不了。</summary>
+    Unexplained,
+}
+
+/// <summary>把写入请求与 PM 表回读按状态分类；不猜固件为什么折算，只如实区分结果。</summary>
 public static class PowerLimitReadBack
 {
-    public static PowerLimitWriteState Classify(int requested, int? actual, int? previous)
+    /// <summary>
+    /// <paramref name="knownScale"/> 是本机实测过的折算比例（actual / requested），
+    /// <paramref name="lastRequested"/> 是此前成功写入的同一项请求值。
+    /// 两者都允许为空：缺信息时不下结论，宁可落回 Rejected 也不谎报成功。
+    /// </summary>
+    public static PowerLimitWriteState Classify(
+        int requested,
+        int? actual,
+        int? previous,
+        double? knownScale = null,
+        int? lastRequested = null) =>
+        ClassifyDetailed(requested, actual, previous, knownScale, lastRequested).State;
+
+    public static (PowerLimitWriteState State, PowerLimitReadBackReason Reason) ClassifyDetailed(
+        int requested,
+        int? actual,
+        int? previous,
+        double? knownScale = null,
+        int? lastRequested = null)
     {
         if (actual is null)
         {
-            return PowerLimitWriteState.Accepted;
+            return (PowerLimitWriteState.Accepted, PowerLimitReadBackReason.Unexplained);
         }
 
         if (Math.Abs(actual.Value - requested) <= PowerLimitBounds.ReadBackToleranceWatts)
         {
-            return PowerLimitWriteState.Applied;
+            return (PowerLimitWriteState.Applied, PowerLimitReadBackReason.Applied);
         }
 
-        return previous.HasValue && previous.Value == actual.Value
-            ? PowerLimitWriteState.Rejected
-            : PowerLimitWriteState.Diverged;
+        if (!previous.HasValue || previous.Value != actual.Value)
+        {
+            return (PowerLimitWriteState.Diverged, PowerLimitReadBackReason.Changed);
+        }
+
+        // 回读与写前逐字相同。先看是不是「重复应用同一设置」——这是最常见的一种。
+        if (lastRequested == requested)
+        {
+            return (PowerLimitWriteState.Diverged, PowerLimitReadBackReason.Repeated);
+        }
+
+        // 再看是不是「折算后恰好等于原值」：用实测比例预测，不写死任何机型常数。
+        if (knownScale is double scale
+            && scale > 0
+            && Math.Abs((requested * scale) - previous.Value) <= PowerLimitBounds.ReadBackToleranceWatts)
+        {
+            return (PowerLimitWriteState.Diverged, PowerLimitReadBackReason.ScaledToSame);
+        }
+
+        return (PowerLimitWriteState.Rejected, PowerLimitReadBackReason.Unexplained);
     }
 
     /// <summary>

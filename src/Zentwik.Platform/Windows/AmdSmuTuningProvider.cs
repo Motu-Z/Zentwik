@@ -50,6 +50,11 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     private bool _pmTableReady;
     private uint _pmTableVersion;
 
+    // 本机实测的折算比例（按项分开）与此前成功写入的请求值。只在进程内保留：
+    // 落盘要动 state.json 的 schema，而重启后第一次写入就会重新学到比例，不值得为它改数据格式。
+    private readonly Dictionary<string, double> _observedScales = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _lastRequests = new(StringComparer.Ordinal);
+
     public AmdSmuTuningProvider(ISystemInfo info) => _info = info;
 
     public CpuTuningStatus Query()
@@ -392,7 +397,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             if (TryReadPmTable(forceTransfer: true, out var afterTable, out _))
             {
                 after = DecodeCurrent(afterTable);
-                Verify(items, before, after);
+                Verify(items, before, after, commands);
             }
 
             return new PowerLimitApplyResult(items, before, after, null, false);
@@ -414,10 +419,15 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     }
 
     /// <summary>
-    /// FAST/SLOW 在 PM 表里有对应项：回读一致算 Applied；回读变了但不符合请求算 Diverged（固件折算）；
-    /// 回读完全没变算 Rejected。TDC/EDC 无回读通道，保持 Accepted。
+    /// FAST/SLOW 在 PM 表里有对应项，逐项判定：回读一致 → Applied；回读变了但与请求不符 → Diverged
+    /// （固件折算，同时记下实测比例）；回读与写前逐字相同 → 先查是不是重复应用或折算撞值，
+    /// 两者都解释不了才用探针确认通道是否响应。TDC/EDC 无回读通道，保持 Accepted。
     /// </summary>
-    private static void Verify(List<PowerLimitWrite> items, PowerLimitCurrent before, PowerLimitCurrent after)
+    private void Verify(
+        List<PowerLimitWrite> items,
+        PowerLimitCurrent before,
+        PowerLimitCurrent after,
+        PowerLimitCommands commands)
     {
         for (var i = 0; i < items.Count; i++)
         {
@@ -427,38 +437,175 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
                 continue;
             }
 
-            int? actual = item.Item switch
-            {
-                "fast" => after.FastWatts,
-                "slow" => after.SlowWatts,
-                _ => null,
-            };
-
+            var (actual, previous) = Compared(item.Item, before, after);
             if (actual is null)
             {
                 continue;
             }
 
-            int? previous = item.Item switch
-            {
-                "fast" => before.FastWatts,
-                "slow" => before.SlowWatts,
-                _ => null,
-            };
+            var knownScale = _observedScales.TryGetValue(item.Item, out var scale) ? scale : (double?)null;
+            var lastRequested = _lastRequests.TryGetValue(item.Item, out var last) ? last : (int?)null;
 
-            var state = PowerLimitReadBack.Classify(item.Requested, actual, previous);
-            items[i] = item with
+            var (state, reason) = PowerLimitReadBack.ClassifyDetailed(
+                item.Requested, actual, previous, knownScale, lastRequested);
+
+            string detail;
+            switch (reason)
             {
-                Actual = actual,
-                State = state,
-                Detail = state switch
-                {
-                    PowerLimitWriteState.Applied => "回读一致。",
-                    PowerLimitWriteState.Rejected => "回读未变化，写入未生效。",
-                    _ => "回读与请求不符，按固件折算后的值生效。",
-                },
-            };
+                case PowerLimitReadBackReason.Applied:
+                    detail = "回读一致。";
+                    break;
+
+                case PowerLimitReadBackReason.Changed:
+                    RememberScaling(item.Item, item.Requested, actual.Value);
+                    detail = "回读与请求不符，按固件折算后的值生效。";
+                    break;
+
+                case PowerLimitReadBackReason.Repeated:
+                    detail = "与此前成功写入的请求值相同，回读未变化属重复应用。";
+                    break;
+
+                case PowerLimitReadBackReason.ScaledToSame:
+                    detail = $"按本机实测折算比例约 {knownScale!.Value:P0} 计算，请求值正好落在当前生效值上，回读未变化属正常。";
+                    break;
+
+                default:
+                    detail = "回读未变化，写入未生效。";
+                    if (TryGetLimitMessage(commands, item.Item, out var message))
+                    {
+                        var probe = ProbeChannel(item.Item, message, item.Requested, actual.Value);
+                        if (probe.Responded)
+                        {
+                            state = PowerLimitWriteState.Diverged;
+                            detail = $"回读未变化，但探针写入 {probe.ProbeRequested} W 后回读变为 {probe.ProbeActual} W，"
+                                + "说明写入通道正常；本次请求应是被折算后恰好等于原值。";
+                        }
+                        else
+                        {
+                            state = PowerLimitWriteState.Rejected;
+                            detail = probe.Detail ?? "回读未变化，探针写入也未引起回读变化。";
+                        }
+                    }
+
+                    break;
+            }
+
+            if (state is PowerLimitWriteState.Applied or PowerLimitWriteState.Diverged)
+            {
+                _lastRequests[item.Item] = item.Requested;
+            }
+
+            items[i] = item with { Actual = actual, State = state, Detail = detail };
         }
+    }
+
+    /// <summary>记下本机实测的折算比例（按项分开，不同项可能折算不同）；只用来解释下一次「回读没变」。</summary>
+    private void RememberScaling(string item, int requested, int actual)
+    {
+        if (requested > 0 && actual > 0)
+        {
+            _observedScales[item] = (double)actual / requested;
+        }
+    }
+
+    /// <summary>
+    /// 回读与写前逐字相同、又找不到解释时，用相邻 1 W 的探针确认通道是否响应。
+    /// 探针是真实写入（折算后差 0.8 W，PM 表按 float 记录足以观测），只在无法解释的罕见路径触发一次，
+    /// 且无论探针看到什么都要把墙写回用户请求的值——否则会把墙留在探针值上。
+    /// </summary>
+    private ProbeOutcome ProbeChannel(string item, uint message, int requested, int unchangedActual)
+    {
+        var probeRequested = requested < PowerLimitBounds.MaxWatts ? requested + 1 : requested - 1;
+
+        if (!TrySend(message, [ToWire(item, probeRequested)], new long[MaxArgs], out var writeError))
+        {
+            return new ProbeOutcome(false, probeRequested, null, $"探针写入 {probeRequested} 未发出：{writeError}");
+        }
+
+        int? probed = null;
+        string? readError = null;
+        if (TryReadPmTable(forceTransfer: true, out var probeTable, out readError))
+        {
+            probed = Read(item, DecodeCurrent(probeTable));
+        }
+
+        if (!TrySend(message, [ToWire(item, requested)], new long[MaxArgs], out var restoreError))
+        {
+            return new ProbeOutcome(false, probeRequested, probed,
+                $"探针后写回 {requested} 失败：{restoreError}。功耗墙可能停在 {probeRequested} 折算后的值上，请重新应用。");
+        }
+
+        // 写回后必须强制重传并确认：PM 表不会自行刷新，不确认就会把探针的中间值留给下一次读，
+        // 让下一次写入的「写前值」错位（实测表现为 fast 判成重复应用、slow 判成折算生效）。
+        int? restoredTo = null;
+        var restoreConfirmed = false;
+        for (var attempt = 1; attempt <= 3 && !restoreConfirmed; attempt++)
+        {
+            if (TryReadPmTable(forceTransfer: true, out var restoredTable, out _)
+                && Read(item, DecodeCurrent(restoredTable)) is int value)
+            {
+                restoredTo = value;
+                if (value == unchangedActual)
+                {
+                    restoreConfirmed = true;
+                    break;
+                }
+            }
+
+            if (attempt < 3 && !TrySend(message, [ToWire(item, requested)], new long[MaxArgs], out _))
+            {
+                break;
+            }
+        }
+
+        if (!restoreConfirmed)
+        {
+            return new ProbeOutcome(false, probeRequested, probed,
+                $"探针后已写回 {requested}，但回读为 {(restoredTo?.ToString() ?? "读不到")}，"
+                + $"与写前的 {unchangedActual} 不一致，请重新应用。");
+        }
+
+        if (probed is null)
+        {
+            return new ProbeOutcome(false, probeRequested, null, $"探针写入后读表失败：{readError}（已写回 {requested}）。");
+        }
+
+        return probed.Value == unchangedActual
+            ? new ProbeOutcome(false, probeRequested, probed,
+                $"探针写入 {probeRequested} 后回读仍为 {probed}，写入通道无响应（已写回 {requested}）。")
+            : new ProbeOutcome(true, probeRequested, probed, null);
+    }
+
+    private static (int? Actual, int? Previous) Compared(string item, PowerLimitCurrent before, PowerLimitCurrent after) =>
+        item switch
+        {
+            "fast" => (after.FastWatts, before.FastWatts),
+            "slow" => (after.SlowWatts, before.SlowWatts),
+            _ => (null, null),
+        };
+
+    private static int? Read(string item, PowerLimitCurrent current) =>
+        item switch
+        {
+            "fast" => current.FastWatts,
+            "slow" => current.SlowWatts,
+            _ => null,
+        };
+
+    /// <summary>功率项 SMU 收 mW，电流项收 mA——调用方传进来的已是各自单位，这里只对功率做换算。</summary>
+    private static int ToWire(string item, int value) =>
+        item is "fast" or "slow" ? value * 1000 : value;
+
+    private static bool TryGetLimitMessage(PowerLimitCommands commands, string item, out uint message)
+    {
+        message = item switch
+        {
+            "fast" => commands.Fast,
+            "slow" => commands.Slow,
+            _ => 0,
+        };
+
+        return message != 0;
     }
 
     /// <summary>
@@ -1030,4 +1177,11 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
     private readonly record struct CoCommands(uint Family, uint Model, uint Set, uint Get, uint SetFMax, uint GetFMax);
 
     private readonly record struct PowerLimitCommands(uint Fast, uint Slow, uint Tdc, uint Edc);
+
+    /// <summary>探针结果：Responded 表示通道确实响应了写入；Detail 只在失败或需要提示时非空。</summary>
+    private readonly record struct ProbeOutcome(
+        bool Responded,
+        int ProbeRequested,
+        int? ProbeActual,
+        string? Detail);
 }
