@@ -12,6 +12,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
     required this.accent,
     required this.danger,
     required this.success,
+    required this.warning,
   });
 
   factory ZentwikPalette.resolve({
@@ -32,6 +33,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
         accent: accentColor,
         danger: const Color(0xFFF85149),
         success: const Color(0xFF3FB950),
+        warning: const Color(0xFFD29922),
       );
     }
 
@@ -46,6 +48,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
       accent: accentColor,
       danger: const Color(0xFFCF222E),
       success: const Color(0xFF1A7F37),
+      warning: const Color(0xFF9A6700),
     );
   }
 
@@ -81,6 +84,9 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
   final Color danger;
   final Color success;
 
+  /// 警示但不致命（接近阈值、模块降级）。时间线的 warning 事件用它。
+  final Color warning;
+
   @override
   ZentwikPalette copyWith({
     Color? background,
@@ -92,6 +98,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
     Color? accent,
     Color? danger,
     Color? success,
+    Color? warning,
   }) {
     return ZentwikPalette(
       background: background ?? this.background,
@@ -103,6 +110,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
       accent: accent ?? this.accent,
       danger: danger ?? this.danger,
       success: success ?? this.success,
+      warning: warning ?? this.warning,
     );
   }
 
@@ -124,7 +132,8 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
         other.textTertiary == textTertiary &&
         other.accent == accent &&
         other.danger == danger &&
-        other.success == success;
+        other.success == success &&
+        other.warning == warning;
   }
 
   @override
@@ -138,6 +147,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
         accent,
         danger,
         success,
+        warning,
       );
 
   @override
@@ -155,6 +165,7 @@ class ZentwikPalette extends ThemeExtension<ZentwikPalette> {
       accent: Color.lerp(accent, other.accent, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       success: Color.lerp(success, other.success, t)!,
+      warning: Color.lerp(warning, other.warning, t)!,
     );
   }
 }

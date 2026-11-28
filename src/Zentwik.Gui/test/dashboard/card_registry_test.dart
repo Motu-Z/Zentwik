@@ -1,6 +1,5 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zentwik_gui/dashboard/card_registry.dart';
 import 'package:zentwik_gui/dashboard/dashboard.dart';
 import 'package:zentwik_gui/theme/theme.dart';
 
@@ -12,8 +11,8 @@ void main() {
           Text('custom:${card.kind.wire}'),
     });
 
-    const cpuCard = DashboardCard(kind: DashboardKind.cpuUsage, span: 1);
-    const memoryCard = DashboardCard(kind: DashboardKind.memory, span: 1);
+    const cpuCard = BoardItem(kind: DashboardKind.cpuUsage, span: 1);
+    const memoryCard = BoardItem(kind: DashboardKind.memory, span: 1);
 
     await tester.pumpWidget(
       MaterialApp(

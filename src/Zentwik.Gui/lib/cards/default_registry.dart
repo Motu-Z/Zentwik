@@ -42,31 +42,31 @@ class DashboardDataProvider extends InheritedWidget {
 /// 将 9 种默认 [DashboardKind] 映射到对应卡片内容体。
 CardRegistry defaultCardRegistry() {
   return CardRegistry({
-    DashboardKind.cpuUsage.wire: (context, _) => CpuUsageCard(
+    DashboardKind.cpuUsage.wire: (context, item) => CpuUsageCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.cpuTemperature.wire: (context, _) => CpuTemperatureCard(
+    DashboardKind.cpuTemperature.wire: (context, item) => CpuTemperatureCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.packagePower.wire: (context, _) => PackagePowerCard(
+    DashboardKind.packagePower.wire: (context, item) => PackagePowerCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.coreClocks.wire: (context, _) => CoreClocksCard(
+    DashboardKind.coreClocks.wire: (context, item) => CoreClocksCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.processorUsage.wire: (context, _) => ProcessorUsageCard(
+    DashboardKind.processorUsage.wire: (context, item) => ProcessorUsageCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.memory.wire: (context, _) => MemoryCard(
+    DashboardKind.memory.wire: (context, item) => MemoryCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.processCount.wire: (context, _) => ProcessCountCard(
+    DashboardKind.processCount.wire: (context, item) => ProcessCountCard(
           telemetry: DashboardDataProvider.maybeOf(context)?.telemetry,
         ),
-    DashboardKind.ledgerSummary.wire: (context, _) => LedgerSummaryCard(
+    DashboardKind.ledgerSummary.wire: (context, item) => LedgerSummaryCard(
           entries: DashboardDataProvider.maybeOf(context)?.ledgerEntries,
         ),
-    DashboardKind.moduleStatus.wire: (context, _) => ModuleStatusCard(
+    DashboardKind.moduleStatus.wire: (context, item) => ModuleStatusCard(
           modules: DashboardDataProvider.maybeOf(context)?.modules,
         ),
   });

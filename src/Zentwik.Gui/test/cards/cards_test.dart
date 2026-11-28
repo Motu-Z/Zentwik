@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zentwik_gui/cards/cards.dart';
 import 'package:zentwik_gui/dashboard/dashboard_kind.dart';
-import 'package:zentwik_gui/dashboard/dashboard_layout.dart';
+import 'package:zentwik_gui/dashboard/board.dart';
 import 'package:zentwik_gui/format/units.dart';
 import 'package:zentwik_gui/protocol/models/models.dart';
 import 'package:zentwik_gui/theme/theme.dart';
@@ -109,7 +109,7 @@ void main() {
                 Builder(
                   builder: (context) => registry.buildCard(
                     context,
-                    DashboardCard(kind: kind, span: kind.defaultSpan),
+                    BoardItem(kind: kind, span: kind.defaultSpan),
                   ),
                 ),
             ],

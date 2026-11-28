@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../dashboard/card_registry.dart';
-import '../dashboard/dashboard_layout.dart';
 import '../pages/about_page.dart';
 import '../pages/dashboard_page.dart';
 import '../pages/modules_page.dart';
@@ -11,6 +10,7 @@ import '../protocol/models/module_dto.dart';
 import '../protocol/models/settings_dto.dart';
 import '../state/connection_state.dart';
 import '../theme/theme.dart';
+import '../workspace/workspace.dart';
 import 'connection_banner.dart';
 
 class _ShellDestination {
@@ -37,10 +37,8 @@ class ShellPage extends StatelessWidget {
     super.key,
     this.selectedIndex = 0,
     required this.onDestinationSelected,
-    required this.layout,
-    required this.onLayoutChanged,
+    required this.workspace,
     this.registry = const CardRegistry(),
-    this.onResizeCard,
     this.connectionStatus = ConnectionStatuses.disconnected,
     this.reconnectAttempt = 0,
     this.onRetry,
@@ -58,10 +56,8 @@ class ShellPage extends StatelessWidget {
 
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
-  final DashboardLayout layout;
-  final ValueChanged<DashboardLayout> onLayoutChanged;
+  final Workspace workspace;
   final CardRegistry registry;
-  final ValueChanged<DashboardCard>? onResizeCard;
   final String connectionStatus;
   final int reconnectAttempt;
   final VoidCallback? onRetry;
@@ -81,10 +77,8 @@ class ShellPage extends StatelessWidget {
   Widget _buildContent(BuildContext context) {
     return switch (selectedIndex) {
       0 => DashboardPage(
-          layout: layout,
-          onLayoutChanged: onLayoutChanged,
+          workspace: workspace,
           registry: registry,
-          onResizeCard: onResizeCard,
         ),
       5 => ModulesPage(
           modules: modules,

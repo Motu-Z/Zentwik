@@ -1,9 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zentwik_gui/dashboard/dashboard.dart';
 import 'package:zentwik_gui/protocol/models/settings_dto.dart';
 import 'package:zentwik_gui/shell/shell_page.dart';
 import 'package:zentwik_gui/theme/theme.dart';
+import 'package:zentwik_gui/workspace/workspace.dart';
+import 'package:zentwik_gui/workspace/workspace_store.dart';
 
 void main() {
   Widget buildShell({
@@ -17,8 +18,7 @@ void main() {
       home: ShellPage(
         selectedIndex: selectedIndex,
         onDestinationSelected: onSelected,
-        layout: DashboardLayout.defaults,
-        onLayoutChanged: (_) {},
+        workspace: Workspace(store: MemoryWorkspaceStore()),
         settings: settings,
         errorMessage: errorMessage,
       ),
@@ -72,7 +72,9 @@ void main() {
 
     expect(find.text('进程'), findsNothing);
     expect(find.text('设置'), findsNothing);
-    expect(find.byIcon(Icons.list_alt_outlined), findsOneWidget);
+    // 用 tooltip 定位导航项：首页卡片头也用 list_alt_outlined 图标，
+    // 按图标数断言会把它一起数进来。
+    expect(find.byTooltip('进程'), findsOneWidget);
   });
 
   testWidgets('点击设置导航项后显示设置页而非尚未接入', (tester) async {
