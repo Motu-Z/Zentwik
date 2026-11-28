@@ -509,7 +509,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
 
             if (forceTransfer || !HasLimits(values))
             {
-                if (!TryTransferTable(out var transferError))
+                if (!TryTransferWithRetry(out var transferError))
                 {
                     error = transferError;
                     return false;
@@ -561,6 +561,33 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         return true;
     }
 
+    /// <summary>
+    /// 0x03 偶发被驱动判为「已有在途」（实测 Win32 1359），隔一小段时间重发即可成功；一次性失败不该让整帧读数作废。
+    /// 传输是幂等的（把固件里的表重抄一遍到 DRAM），重试无副作用，因此可以安全重试。
+    /// 调用方须已持有 PCI 互斥，不能再走 TrySend（会重复取锁）。
+    /// </summary>
+    private bool TryTransferWithRetry(out string? error)
+    {
+        const int maxAttempts = 3;
+
+        error = null;
+        for (var attempt = 1; ; attempt++)
+        {
+            if (TryTransferTable(out error))
+            {
+                return true;
+            }
+
+            if (attempt >= maxAttempts)
+            {
+                error = $"{error}（已重试 {maxAttempts - 1} 次）";
+                return false;
+            }
+
+            Thread.Sleep(100 * attempt);
+        }
+    }
+
     /// <summary>调用方须已持有 PCI 互斥，不能再走 TrySend（会重复取锁）。</summary>
     private bool TryTransferTable(out string? error)
     {
@@ -577,7 +604,10 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         return true;
     }
 
-    /// <summary>limit 位置按 W 计，超出 1–1000 的值视为未填充，不能当基线。</summary>
+    /// <summary>
+    /// limit 位置按 W 计。下界必须是 1 而不是 0：未传输时的残留位模式解出来是 1e-23 这类极小的正数，
+    /// 用 <c>raw &gt; 0</c> 判断会被它骗过，舍入成 0 后当成有效基线，从此不再触发强制传输。
+    /// </summary>
     private static bool HasLimits(float[] values) =>
         ToWatts(values[2]).HasValue || ToWatts(values[4]).HasValue;
 
@@ -590,8 +620,9 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
         ToWatts(table[4]),
         $"功耗表 v0x{_pmTableVersion:X8}，功率单位 W。");
 
-    private static int? ToWatts(float raw) =>
-        float.IsFinite(raw) && raw > 0 && raw <= 1000 ? (int)Math.Round(raw) : null;
+    /// <summary>低于 1 W 或高于 1000 W 视为未填充，返回 null，不返回 0。</summary>
+    internal static int? ToWatts(float raw) =>
+        float.IsFinite(raw) && raw >= 1 && raw <= 1000 ? (int)Math.Round(raw) : null;
 
     /// <summary>熔断值单位：功率 mW、电流 mA；越界视为不可信，不参与展示。</summary>
     private int? ReadFusedValue(uint message, string label, List<string> notes)
@@ -900,6 +931,7 @@ public sealed class AmdSmuTuningProvider : ICpuTuningProvider, IFMaxTuningProvid
             31 => "模块转述 SMU 返回 0xFF（命令执行失败）",
             170 => "模块转述 SMU 返回 0xFC（暂忙）",
             121 => "SMU 未在超时内应答",
+            1359 => "驱动报告已有在途操作（ERROR_ALREADY_EXISTS），稍后重试可恢复",
             _ => "驱动返回错误",
         };
 
