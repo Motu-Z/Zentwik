@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using System.Windows.Input;
+using Zentwik.Desktop.Services;
 using Zentwik.Desktop.ViewModels;
 using Zentwik.Localization;
 
@@ -27,6 +28,10 @@ public sealed class MainForm : Form
     /// <summary>是否在窗口显示后自动连接代理。测试构造时传 false。</summary>
     private readonly bool _autoConnect;
 
+    private readonly ShellPreferences _prefs = ShellPreferences.Load();
+    private NotifyIcon? _tray;
+    private bool _exitRequested;
+
     private readonly List<(Button Button, ICommand Command)> _commands = [];
     private readonly List<(Control Target, string Key)> _texts = [];
     private readonly List<(DataGridViewColumn Column, string Key)> _headers = [];
@@ -34,14 +39,10 @@ public sealed class MainForm : Form
     /// <summary>重建列表行时置位，避免 SelectionChanged 把视图模型的选中项刷成 null。</summary>
     private bool _syncing;
 
-    // 顶栏
-    private readonly Label _statusLabel = new()
-    {
-        AutoSize = true,
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleRight,
-        Padding = new Padding(0, 4, 4, 4),
-    };
+    // 底栏：代理状态放状态条，顶部整块让给页签（原生工具都这么放）
+    private readonly ToolStripStatusLabel _agentStatus = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly ToolStripStatusLabel _dataDirStatus = new() { BorderSides = ToolStripStatusLabelBorderSides.Left };
+    private readonly StatusStrip _statusStrip = new();
     private readonly Panel _noticePanel = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly Label _noticeLabel = new() { Dock = DockStyle.Fill, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
     private Button _dismissButton = null!;
@@ -151,7 +152,7 @@ public sealed class MainForm : Form
     private readonly DataGridView _doctorErrorsGrid = NewGrid(("时间", 55), ("级别", 25), ("内容", 180));
     private Button _refreshDoctorButton = null!;
 
-    // 设置（仅保留语言，且只有简体中文）
+    // 设置（语言 / 启动 / 后台 / 模块）
     private readonly ComboBox _languageCombo = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
@@ -160,16 +161,23 @@ public sealed class MainForm : Form
         Anchor = AnchorStyles.Left,
     };
     private readonly Label _languageCaption = Caption();
+    private readonly CheckBox _autostartCheck = new() { AutoSize = true };
+    private readonly CheckBox _closeToTrayCheck = new() { AutoSize = true };
+    private readonly Label _startupHintLabel = new() { AutoSize = true, MaximumSize = new Size(760, 0) };
 
-    // 页签（9 页）
+    // 进程（后端还没有 process.* 操作，这一页先摆骨架）
+    private readonly DataGridView _processGrid = NewGrid(("PID", 30), ("进程", 80), ("优先级", 40), ("亲和性", 60), ("规则", 60));
+    private readonly DataGridView _maskGrid = NewGrid(("规则", 60), ("进程名", 80), ("掩码", 60), ("说明", 80));
+    private readonly Label _processNoteLabel = new() { AutoSize = true, MaximumSize = new Size(900, 0) };
+    private Button _refreshProcessButton = null!;
+
+    // 页签（7 页）
     private readonly TabPage _monitorPage = new();
-    private readonly TabPage _plansPage = new();
-    private readonly TabPage _scenesPage = new();
     private readonly TabPage _tuningPage = new();
-    private readonly TabPage _modulesPage = new();
+    private readonly TabPage _processPage = new();
     private readonly TabPage _powerPage = new();
+    private readonly TabPage _scenesPage = new();
     private readonly TabPage _logPage = new();
-    private readonly TabPage _doctorPage = new();
     private readonly TabPage _settingsPage = new();
 
     // 分组框
@@ -187,6 +195,15 @@ public sealed class MainForm : Form
     private readonly GroupBox _doctorSummaryBox = new() { Dock = DockStyle.Fill, AutoSize = true };
     private readonly GroupBox _doctorErrorsBox = new() { Dock = DockStyle.Fill };
     private readonly GroupBox _settingsBox = new() { Dock = DockStyle.Top, AutoSize = true };
+    private readonly GroupBox _plansBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _modulesBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _doctorBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _processListBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _maskBox = new() { Dock = DockStyle.Fill };
+    private readonly GroupBox _logBox = new() { Dock = DockStyle.Fill };
+    private SplitContainer? _logSplit;
+    private SplitContainer? _processSplit;
+    private SplitContainer? _tuningSideSplit;
 
     public MainForm(MainViewModel viewModel, LocalizationCatalog catalog, bool autoConnect = true)
     {
@@ -205,25 +222,21 @@ public sealed class MainForm : Form
         ClientSize = new Size(1120, 760);
 
         BuildMonitorPage();
-        BuildPlansPage();
-        BuildScenesPage();
         BuildTuningPage();
-        BuildModulesPage();
+        BuildProcessPage();
         BuildPowerPage();
+        BuildScenesPage();
         BuildLogPage();
-        BuildDoctorPage();
         BuildSettingsPage();
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
         tabs.TabPages.AddRange([
             _monitorPage,
-            _plansPage,
-            _scenesPage,
             _tuningPage,
-            _modulesPage,
+            _processPage,
             _powerPage,
+            _scenesPage,
             _logPage,
-            _doctorPage,
             _settingsPage,
         ]);
 
@@ -231,18 +244,18 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
-            Padding = new Padding(8),
+            RowCount = 2,
+            Padding = new Padding(4, 4, 4, 0),
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var statusBar = BuildStatusBar();
-        root.Controls.Add(statusBar, 0, 0);
-        root.Controls.Add(_noticePanel, 0, 1);
-        root.Controls.Add(tabs, 0, 2);
+        root.Controls.Add(_noticePanel, 0, 0);
+        root.Controls.Add(tabs, 0, 1);
+
+        BuildStatusStrip();
         Controls.Add(root);
+        Controls.Add(_statusStrip);
 
         ResumeLayout(performLayout: true);
 
@@ -252,24 +265,18 @@ public sealed class MainForm : Form
         ReloadAll();
     }
 
-    // ---------------------------------------------------------------- 顶栏
+    // ---------------------------------------------------------------- 底栏
 
-    private Control BuildStatusBar()
+    private void BuildStatusStrip()
     {
-        var bar = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            ColumnCount = 2,
-            RowCount = 1,
-            Padding = new Padding(2, 2, 2, 6),
-        };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bar.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _statusStrip.Dock = DockStyle.Bottom;
+        _statusStrip.SizingGrip = true;
+        _statusStrip.ShowItemToolTips = true;
+        _statusStrip.Items.Add(_agentStatus);
+        _statusStrip.Items.Add(_dataDirStatus);
 
-        bar.Controls.Add(_statusLabel, 1, 0);
-        return bar;
+        // 右格是纯技术标识（服务名 + 管道名），不进本地化表。
+        _dataDirStatus.Text = "ZentwikAgent · \\\\.\\pipe\\zentwik-agent";
     }
 
     private void BuildNoticePanel()
@@ -346,12 +353,10 @@ public sealed class MainForm : Form
         _monitorPage.Controls.Add(root);
     }
 
-    // ---------------------------------------------------------------- 方案页
+    // ---------------------------------------------------------------- 方案分组（挂在调校页下半）
 
-    private void BuildPlansPage()
+    private void BuildPlansGroup()
     {
-        _plansPage.Padding = new Padding(8);
-
         _applyPlanButton = new Button { AutoSize = true };
         _revertPlanButton = new Button { AutoSize = true };
         _deletePlanButton = new Button { AutoSize = true };
@@ -384,7 +389,7 @@ public sealed class MainForm : Form
         root.Controls.Add(_plansGrid, 0, 0);
         root.Controls.Add(buttons, 0, 1);
         root.Controls.Add(_planForm, 0, 2);
-        _plansPage.Controls.Add(root);
+        _plansBox.Controls.Add(root);
     }
 
     // ---------------------------------------------------------------- 场景页
@@ -456,15 +461,25 @@ public sealed class MainForm : Form
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         buttons.Controls.AddRange([_refreshTuningButton, _releaseButton]);
 
-        var split = new SplitContainer
+        // 32 线程的逐核表需要高度，账本和方案横向排不完 —— 左边逐核，右边上下分账本/方案。
+        var side = new SplitContainer
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Horizontal,
             FixedPanel = FixedPanel.Panel1,
         };
+        _tuningSideSplit = side;
+        side.Panel1.Controls.Add(_ledgerBox);
+        side.Panel2.Controls.Add(_plansBox);
+
+        var split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+        };
         _tuningSplit = split;
         split.Panel1.Controls.Add(_coresBox);
-        split.Panel2.Controls.Add(_ledgerBox);
+        split.Panel2.Controls.Add(side);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -475,14 +490,14 @@ public sealed class MainForm : Form
         root.Controls.Add(split, 0, 1);
         root.Controls.Add(buttons, 0, 2);
         _tuningPage.Controls.Add(root);
+
+        BuildPlansGroup();
     }
 
-    // ---------------------------------------------------------------- 模块页
+    // ---------------------------------------------------------------- 模块分组（挂在设置页）
 
-    private void BuildModulesPage()
+    private void BuildModulesGroup()
     {
-        _modulesPage.Padding = new Padding(8);
-
         _refreshModulesButton = new Button { AutoSize = true };
         _enableModuleButton = new Button { AutoSize = true };
         _disableModuleButton = new Button { AutoSize = true };
@@ -496,7 +511,7 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.Controls.Add(_modulesGrid, 0, 0);
         root.Controls.Add(buttons, 0, 1);
-        _modulesPage.Controls.Add(root);
+        _modulesBox.Controls.Add(root);
     }
 
     // ---------------------------------------------------------------- 电源页
@@ -592,28 +607,37 @@ public sealed class MainForm : Form
         _logPage.Padding = new Padding(8);
 
         _refreshLogButton = new Button { AutoSize = true };
+        _refreshDoctorButton = new Button { AutoSize = true };
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
-        buttons.Controls.Add(_refreshLogButton);
+        buttons.Controls.AddRange([_refreshLogButton, _refreshDoctorButton]);
+
+        _logBox.Controls.Add(_logGrid);
+
+        var split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            FixedPanel = FixedPanel.Panel1,
+        };
+        _logSplit = split;
+        split.Panel1.Controls.Add(_logBox);
+        split.Panel2.Controls.Add(_doctorBox);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(_logGrid, 0, 0);
+        root.Controls.Add(split, 0, 0);
         root.Controls.Add(buttons, 0, 1);
         _logPage.Controls.Add(root);
+
+        BuildDoctorGroup();
     }
 
-    // ---------------------------------------------------------------- 诊断页
+    // ---------------------------------------------------------------- 诊断分组（挂在日志页下半）
 
-    private void BuildDoctorPage()
+    private void BuildDoctorGroup()
     {
-        _doctorPage.Padding = new Padding(8);
-
-        _refreshDoctorButton = new Button { AutoSize = true };
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
-        buttons.Controls.Add(_refreshDoctorButton);
-
         var summaryPanel = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 1, RowCount = 1 };
         summaryPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         summaryPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -622,15 +646,50 @@ public sealed class MainForm : Form
 
         _doctorErrorsBox.Controls.Add(_doctorErrorsGrid);
 
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.Controls.Add(_doctorSummaryBox, 0, 0);
+        root.Controls.Add(_doctorErrorsBox, 0, 1);
+        _doctorBox.Controls.Add(root);
+    }
+
+    // ---------------------------------------------------------------- 进程页
+
+    private void BuildProcessPage()
+    {
+        _processPage.Padding = new Padding(8);
+
+        _refreshProcessButton = new Button { AutoSize = true, Enabled = false };
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        buttons.Controls.Add(_refreshProcessButton);
+
+        var notePanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+        notePanel.Controls.Add(_processNoteLabel);
+
+        _processListBox.Controls.Add(_processGrid);
+        _maskBox.Controls.Add(_maskGrid);
+
+        var split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            FixedPanel = FixedPanel.Panel1,
+        };
+        _processSplit = split;
+        split.Panel1.Controls.Add(_processListBox);
+        split.Panel2.Controls.Add(_maskBox);
+
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(_doctorSummaryBox, 0, 0);
-        root.Controls.Add(_doctorErrorsBox, 0, 1);
+        root.Controls.Add(notePanel, 0, 0);
+        root.Controls.Add(split, 0, 1);
         root.Controls.Add(buttons, 0, 2);
-        _doctorPage.Controls.Add(root);
+        _processPage.Controls.Add(root);
     }
 
     // ---------------------------------------------------------------- 设置页
@@ -639,18 +698,28 @@ public sealed class MainForm : Form
     {
         _settingsPage.Padding = new Padding(8);
 
-        var form = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 1 };
-        form.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var form = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, RowCount = 4 };
+        form.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
         form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         AddRow(form, 0, _languageCaption, _languageCombo);
+        AddRow(form, 1, new Label { AutoSize = true }, _autostartCheck);
+        AddRow(form, 2, new Label { AutoSize = true }, _closeToTrayCheck);
+
+        var hintPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+        hintPanel.Controls.Add(_startupHintLabel);
+        form.Controls.Add(hintPanel, 1, 3);
 
         _settingsBox.Controls.Add(form);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.Controls.Add(_settingsBox, 0, 0);
+        root.Controls.Add(_modulesBox, 0, 1);
         _settingsPage.Controls.Add(root);
+
+        BuildModulesGroup();
     }
 
     // ---------------------------------------------------------------- 事件挂接
@@ -763,6 +832,15 @@ public sealed class MainForm : Form
 
         _catalog.CultureChanged += OnCultureChanged;
 
+        _autostartCheck.CheckedChanged += (_, _) => OnAutostartToggled();
+        _closeToTrayCheck.CheckedChanged += (_, _) =>
+        {
+            if (_syncing) { return; }
+            _prefs.CloseToTray = _closeToTrayCheck.Checked;
+            _prefs.Save();
+            if (_prefs.CloseToTray) { EnsureTray(); }
+        };
+
         // 属性文案先注册，ApplyTexts 才知道该翻哪个键。
         RegisterTexts();
     }
@@ -770,13 +848,11 @@ public sealed class MainForm : Form
     private void RegisterTexts()
     {
         Register(_monitorPage, "nav.monitor");
-        Register(_plansPage, "nav.plans");
-        Register(_scenesPage, "nav.scenes");
         Register(_tuningPage, "nav.tuning");
-        Register(_modulesPage, "nav.modules");
+        Register(_processPage, "nav.process");
         Register(_powerPage, "nav.power");
+        Register(_scenesPage, "nav.scenes");
         Register(_logPage, "nav.log");
-        Register(_doctorPage, "nav.doctor");
         Register(_settingsPage, "nav.settings");
 
         Register(_cpuCaption, "monitor.cpu");
@@ -787,7 +863,7 @@ public sealed class MainForm : Form
         Register(_capsBox, "caps.title");
         Register(_historyBox, "monitor.history_title");
         Register(_refreshButton, "common.refresh");
-        Register(_refreshHistoryButton, "monitor.history_title");
+        Register(_refreshHistoryButton, "monitor.history_refresh");
         Register(_dismissButton, "common.dismiss");
 
         Register(_applyPlanButton, "plans.apply");
@@ -821,8 +897,14 @@ public sealed class MainForm : Form
         Register(_tuningBox, "tuning.channel");
         Register(_coresBox, "tuning.cores_title");
         Register(_ledgerBox, "tuning.ledger_title");
+        Register(_plansBox, "plans.title");
         Register(_refreshTuningButton, "common.refresh");
         Register(_releaseButton, "tuning.release");
+
+        Register(_processListBox, "process.title");
+        Register(_maskBox, "process.mask_title");
+        Register(_processNoteLabel, "process.backend_missing");
+        Register(_refreshProcessButton, "common.refresh");
 
         Register(_refreshModulesButton, "common.refresh");
         Register(_enableModuleButton, "modules.enable");
@@ -845,13 +927,19 @@ public sealed class MainForm : Form
         Register(_deletePowerSchemeButton, "power.scheme.delete");
         Register(_restorePowerBackupButton, "power.backup.restore");
 
-        Register(_refreshLogButton, "common.refresh");
+        Register(_logBox, "log.title");
+        Register(_refreshLogButton, "log.refresh");
+        Register(_doctorBox, "doctor.title");
         Register(_doctorSummaryBox, "doctor.summary");
         Register(_doctorErrorsBox, "doctor.errors");
-        Register(_refreshDoctorButton, "common.refresh");
+        Register(_refreshDoctorButton, "doctor.refresh");
 
         Register(_settingsBox, "settings.title");
         Register(_languageCaption, "settings.language");
+        Register(_autostartCheck, "settings.autostart");
+        Register(_closeToTrayCheck, "settings.close_to_tray");
+        Register(_startupHintLabel, "settings.startup_hint");
+        Register(_modulesBox, "modules.title");
 
         AddHeaders(_capsGrid, "caps.id", "caps.state", "caps.detail");
         AddHeaders(_historyGrid, "monitor.history.time", "monitor.history.cpu", "monitor.history.memory", "monitor.history.processes", "monitor.history.temp", "monitor.history.power");
@@ -864,6 +952,8 @@ public sealed class MainForm : Form
         AddHeaders(_powerBackupsGrid, "power.backup.id", "power.backup.name", "power.backup.created", "power.backup.count");
         AddHeaders(_logGrid, "log.time", "log.level", "log.message");
         AddHeaders(_doctorErrorsGrid, "doctor.time", "doctor.level", "doctor.message");
+        AddHeaders(_processGrid, "process.pid", "process.name", "process.priority", "process.affinity", "process.rule");
+        AddHeaders(_maskGrid, "process.mask_rule", "process.mask_process", "process.mask_value", "process.mask_note");
     }
 
     private void AddHeaders(DataGridView grid, params string[] keys)
@@ -954,7 +1044,7 @@ public sealed class MainForm : Form
         switch (e.PropertyName)
         {
             case nameof(MainViewModel.StatusText):
-                _statusLabel.Text = _vm.StatusText;
+                _agentStatus.Text = _vm.StatusText;
                 break;
             case nameof(MainViewModel.CpuText):
                 _cpuValue.Text = _vm.CpuText;
@@ -1095,7 +1185,7 @@ public sealed class MainForm : Form
         UpdateNotice();
         ApplyTexts();
 
-        _statusLabel.Text = _vm.StatusText;
+        _agentStatus.Text = _vm.StatusText;
         _cpuValue.Text = _vm.CpuText;
         _memValue.Text = _vm.MemoryText;
         _procValue.Text = _vm.ProcessText;
@@ -1118,6 +1208,8 @@ public sealed class MainForm : Form
             {
                 _capsGrid.Rows.Add(row.Id, row.State, row.Detail);
             }
+
+            _capsGrid.ClearSelection();
         }
         finally
         {
@@ -1135,6 +1227,8 @@ public sealed class MainForm : Form
             {
                 _historyGrid.Rows.Add(row.Time, row.Cpu, row.Memory, row.Processes, row.Temperature, row.Power);
             }
+
+            _historyGrid.ClearSelection();
         }
         finally
         {
@@ -1214,6 +1308,8 @@ public sealed class MainForm : Form
             {
                 _coresGrid.Rows.Add(core.Label, core.ValueText);
             }
+
+            _coresGrid.ClearSelection();
         }
         finally
         {
@@ -1356,6 +1452,8 @@ public sealed class MainForm : Form
             {
                 _logGrid.Rows.Add(entry.Time, entry.Level, entry.Message);
             }
+
+            _logGrid.ClearSelection();
         }
         finally
         {
@@ -1373,6 +1471,8 @@ public sealed class MainForm : Form
             {
                 _doctorErrorsGrid.Rows.Add(entry.Time, entry.Level, entry.Message);
             }
+
+            _doctorErrorsGrid.ClearSelection();
         }
         finally
         {
@@ -1516,6 +1616,7 @@ public sealed class MainForm : Form
             RowHeadersVisible = false,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             BorderStyle = BorderStyle.None,
+            BackgroundColor = SystemColors.Window,
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
         };
 
@@ -1538,13 +1639,119 @@ public sealed class MainForm : Form
 
         // SplitterDistance 在控件还没拿到真实高度时设会越界，必须等窗口显示后再设。
         SetSplitterDistance(_monitorSplit, 220);
-        SetSplitterDistance(_tuningSplit, 180);
+        if (_tuningSplit is { Width: > 0 } tuningSplit)
+        {
+            SetSplitterDistance(tuningSplit, (int)(tuningSplit.Width * 0.44));
+        }
+
+        SetSplitterDistance(_tuningSideSplit, 300);
         SetSplitterDistance(_powerSplit, 240);
+        SetSplitterDistance(_logSplit, 300);
+        SetSplitterDistance(_processSplit, 260);
+
+        SyncShellSettings();
+        UpdateNotice();
 
         if (_autoConnect)
         {
             _ = _vm.InitializeAsync();
         }
+    }
+
+    // ---------------------------------------------------------------- 外壳行为（托盘 / 自启动）
+
+    private void SyncShellSettings()
+    {
+        _syncing = true;
+        try
+        {
+            _autostartCheck.Checked = StartupRegistration.IsEnabled();
+            _closeToTrayCheck.Checked = _prefs.CloseToTray;
+        }
+        finally
+        {
+            _syncing = false;
+        }
+
+        if (_prefs.CloseToTray)
+        {
+            EnsureTray();
+        }
+    }
+
+    private void OnAutostartToggled()
+    {
+        if (_syncing)
+        {
+            return;
+        }
+
+        var wanted = _autostartCheck.Checked;
+        if (StartupRegistration.TrySetEnabled(wanted, out var error))
+        {
+            return;
+        }
+
+        MessageBox.Show(
+            this,
+            string.Format(_catalog["settings.autostart_failed"], error),
+            _catalog["settings.title"],
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+
+        _syncing = true;
+        _autostartCheck.Checked = !wanted;
+        _syncing = false;
+    }
+
+    private void EnsureTray()
+    {
+        if (_tray is not null)
+        {
+            _tray.Visible = true;
+            return;
+        }
+
+        var menu = new ContextMenuStrip();
+        menu.Items.Add(_catalog["shell.show"], null, (_, _) => ShowFromTray());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_catalog["shell.exit"], null, (_, _) =>
+        {
+            _exitRequested = true;
+            Close();
+        });
+
+        _tray = new NotifyIcon
+        {
+            Text = "Zentwik",
+            Icon = SystemIcons.Application,
+            Visible = true,
+            ContextMenuStrip = menu,
+        };
+        _tray.DoubleClick += (_, _) => ShowFromTray();
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        // 只有用户点右上角关闭才收进托盘；注销/关机/程序自己退出照常结束。
+        if (!_exitRequested
+            && _prefs.CloseToTray
+            && e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            EnsureTray();
+            return;
+        }
+
+        base.OnFormClosing(e);
     }
 
     private static void SetSplitterDistance(SplitContainer? split, int preferred)
@@ -1554,7 +1761,9 @@ public sealed class MainForm : Form
             return;
         }
 
-        var target = Math.Min(preferred, Math.Max(split.Panel1MinSize, split.Height - split.Panel2MinSize - 8));
+        // 竖直分隔条沿宽度分，横向分隔条沿高度分，夹取的上限不一样。
+        var extent = split.Orientation == Orientation.Vertical ? split.Width : split.Height;
+        var target = Math.Min(preferred, Math.Max(split.Panel1MinSize, extent - split.Panel2MinSize - 8));
         if (target > split.Panel1MinSize)
         {
             split.SplitterDistance = target;
@@ -1566,6 +1775,13 @@ public sealed class MainForm : Form
         if (disposing)
         {
             _catalog.CultureChanged -= OnCultureChanged;
+
+            if (_tray is not null)
+            {
+                _tray.Visible = false;
+                _tray.Dispose();
+                _tray = null;
+            }
         }
 
         base.Dispose(disposing);

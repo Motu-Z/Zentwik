@@ -117,7 +117,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         RefreshPowerCommand = new AsyncRelayCommand(RefreshPowerAsync, () => IsConnected);
         ReadPowerLimitsCommand = new AsyncRelayCommand(ReadPowerLimitsAsync, () => IsConnected);
-        ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected);
+        ApplyPowerLimitsCommand = new AsyncRelayCommand(ApplyPowerLimitsAsync, () => IsConnected && HasAnyLimitInput);
         CreatePowerSchemeCommand = new AsyncRelayCommand(CreatePowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null && !string.IsNullOrWhiteSpace(PowerSchemeNewName));
         RenamePowerSchemeCommand = new AsyncRelayCommand(RenameSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is { BuiltIn: false } && !string.IsNullOrWhiteSpace(PowerSchemeNewName));
         BackupPowerSchemeCommand = new AsyncRelayCommand(BackupSelectedPowerSchemeAsync, () => IsConnected && SelectedPowerScheme is not null);
@@ -463,25 +463,42 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public string FastWattsInput
     {
         get => _fastWattsInput;
-        set => Set(ref _fastWattsInput, value);
+        set => SetLimitInput(ref _fastWattsInput, value);
     }
 
     public string SlowWattsInput
     {
         get => _slowWattsInput;
-        set => Set(ref _slowWattsInput, value);
+        set => SetLimitInput(ref _slowWattsInput, value);
     }
 
     public string TdcAmpsInput
     {
         get => _tdcAmpsInput;
-        set => Set(ref _tdcAmpsInput, value);
+        set => SetLimitInput(ref _tdcAmpsInput, value);
     }
 
     public string EdcAmpsInput
     {
         get => _edcAmpsInput;
-        set => Set(ref _edcAmpsInput, value);
+        set => SetLimitInput(ref _edcAmpsInput, value);
+    }
+
+    /// <summary>四项功耗墙输入至少填了一项，「应用功耗墙」才有意义。</summary>
+    private bool HasAnyLimitInput =>
+        !string.IsNullOrWhiteSpace(_fastWattsInput)
+        || !string.IsNullOrWhiteSpace(_slowWattsInput)
+        || !string.IsNullOrWhiteSpace(_tdcAmpsInput)
+        || !string.IsNullOrWhiteSpace(_edcAmpsInput);
+
+    private void SetLimitInput(ref string field, string value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        if (!Set(ref field, value, name))
+        {
+            return;
+        }
+
+        ApplyPowerLimitsCommand.RaiseCanExecuteChanged();
     }
 
     public string SelectedLanguage
